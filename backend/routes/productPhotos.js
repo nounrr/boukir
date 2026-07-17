@@ -920,8 +920,9 @@ router.delete('/manual-images/:imageId', async (req, res) => {
 });
 
 // POST /api/product-photos/manual-images/:imageId/reject
-// Marks a wrong manually attached image as rejected and removes it from the
-// product's public gallery without deleting the audit record or uploaded file.
+// Marks a wrong manual image as rejected without deleting the audit record or
+// uploaded file. Pending images never touch the product gallery; attached
+// images are also removed from the public gallery.
 router.post('/manual-images/:imageId/reject', async (req, res) => {
   let conn;
   let committed = false;
@@ -943,10 +944,22 @@ router.post('/manual-images/:imageId/reject', async (req, res) => {
       throw error;
     }
     const photo = photos[0];
-    if (photo.status !== 'attached') {
-      const error = new Error('Seule une image manuelle attachée peut être marquée comme fausse');
+    if (!['uploaded', 'attached'].includes(photo.status)) {
+      const error = new Error('Cette image manuelle a déjà été traitée');
       error.status = 409;
       throw error;
+    }
+
+    if (photo.status === 'uploaded') {
+      await conn.query(
+        `UPDATE manual_product_photos
+         SET status = 'rejected', rejected_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [imageId]
+      );
+      await conn.commit();
+      committed = true;
+      return res.json({ ok: true, product_id: Number(photo.product_id), image_id: imageId });
     }
 
     const [products] = await conn.query(

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import {
   Camera, X, Trash2, Wand2, Search, ImagePlus, Check,
@@ -33,6 +33,7 @@ import type {
   PhotoShootStatus,
   ManualProductImageStatus,
   ManualProductPhoto,
+  ManualPhotoProduct,
   ManualPhotoBatchResponse,
 } from '../store/api/productPhotosApi';
 import { useAuth } from '../hooks/redux';
@@ -1503,6 +1504,11 @@ const AttachedTab: React.FC = () => {
 
 type ManualPhotoQueues = Record<number, ManualProductPhoto[]>;
 
+interface ManualPhotoReviewItem {
+  product: ManualPhotoProduct;
+  photo: ManualProductPhoto;
+}
+
 const ManualPhotosTab: React.FC = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1518,7 +1524,14 @@ const ManualPhotosTab: React.FC = () => {
   const [batchDragOver, setBatchDragOver] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
   const [batchResult, setBatchResult] = useState<ManualPhotoBatchResponse | null>(null);
+  const [reviewPhotoId, setReviewPhotoId] = useState<number | null>(null);
   const queuesRef = useRef<ManualPhotoQueues>({});
+  const attachingLocksRef = useRef<Set<number>>(new Set());
+  const rejectingLocksRef = useRef<Set<number>>(new Set());
+  const reviewDialogRef = useRef<HTMLDivElement | null>(null);
+  const reviewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const reviewTriggerRef = useRef<HTMLElement | null>(null);
+  const reviewTriggerProductIdRef = useRef<number | null>(null);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useGetManualPhotoProductsQuery({
     q: debouncedSearch || undefined,
@@ -1531,6 +1544,27 @@ const ManualPhotosTab: React.FC = () => {
   const [uploadManualProductPhotosBatch] = useUploadManualProductPhotosBatchMutation();
   const [deleteManualProductPhoto] = useDeleteManualProductPhotoMutation();
   const [rejectManualProductPhoto] = useRejectManualProductPhotoMutation();
+
+  const openReview = (photoId: number, trigger: HTMLElement, productId: number) => {
+    reviewTriggerRef.current = trigger;
+    reviewTriggerProductIdRef.current = productId;
+    setReviewPhotoId(photoId);
+  };
+
+  const closeReview = useCallback(() => {
+    setReviewPhotoId(null);
+    window.setTimeout(() => {
+      const trigger = reviewTriggerRef.current;
+      if (trigger?.isConnected) {
+        trigger.focus();
+        return;
+      }
+      const productId = reviewTriggerProductIdRef.current;
+      if (productId !== null) {
+        document.querySelector<HTMLElement>(`[data-manual-product-id="${productId}"]`)?.focus();
+      }
+    }, 0);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 350);
@@ -1667,34 +1701,51 @@ const ManualPhotosTab: React.FC = () => {
   };
 
   const rejectPhoto = async (productId: number, photoId: number) => {
-    if (rejectingIds.has(photoId) || attachingIds.has(productId)) return;
-    const confirmation = await Swal.fire({
-      title: 'Marquer cette image comme fausse ?',
-      text: 'Elle sera retirée du produit et conservée dans l’historique interne.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Oui, image fausse',
-      cancelButtonText: 'Annuler',
-      confirmButtonColor: '#dc2626',
-    });
-    if (!confirmation.isConfirmed) return;
-
-    setRejectingIds((current) => new Set(current).add(photoId));
+    if (
+      rejectingLocksRef.current.has(photoId) ||
+      attachingLocksRef.current.has(productId) ||
+      rejectingIds.has(photoId) ||
+      attachingIds.has(productId)
+    ) return;
+    rejectingLocksRef.current.add(photoId);
+    const photo = (queuesRef.current[productId] || []).find((item) => item.id === photoId);
+    let mutationStarted = false;
     try {
+      const confirmation = await Swal.fire({
+        title: 'Marquer cette image comme fausse ?',
+        text: photo?.status === 'uploaded'
+          ? 'Elle sera retirée de la file d’attente et conservée dans l’historique interne, sans modifier les images du produit.'
+          : 'Elle sera retirée du produit et conservée dans l’historique interne.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Oui, image fausse',
+        cancelButtonText: 'Annuler',
+        confirmButtonColor: '#dc2626',
+      });
+      if (!confirmation.isConfirmed) return;
+
+      mutationStarted = true;
+      setRejectingIds((current) => new Set(current).add(photoId));
       await rejectManualProductPhoto(photoId).unwrap();
       updateQueues((current) => ({
         ...current,
         [productId]: (current[productId] || []).filter((photo) => photo.id !== photoId),
       }));
-      toast('success', 'Image marquée comme fausse et retirée du produit');
+      advanceAfterReview(photoId);
+      toast('success', photo?.status === 'uploaded'
+        ? 'Photo fausse rejetée de la file d’attente'
+        : 'Image marquée comme fausse et retirée du produit');
     } catch (requestError: any) {
       toast('error', requestError?.data?.message || 'Impossible de marquer cette image comme fausse');
     } finally {
-      setRejectingIds((current) => {
-        const next = new Set(current);
-        next.delete(photoId);
-        return next;
-      });
+      rejectingLocksRef.current.delete(photoId);
+      if (mutationStarted) {
+        setRejectingIds((current) => {
+          const next = new Set(current);
+          next.delete(photoId);
+          return next;
+        });
+      }
     }
   };
 
@@ -1713,7 +1764,14 @@ const ManualPhotosTab: React.FC = () => {
 
   const attach = async (productId: number) => {
     const photos = (queuesRef.current[productId] || []).filter((photo) => photo.status === 'uploaded');
-    if (!photos.length || attachingIds.has(productId) || uploadingIds.has(productId)) return;
+    if (
+      !photos.length ||
+      attachingLocksRef.current.has(productId) ||
+      photos.some((photo) => rejectingLocksRef.current.has(photo.id)) ||
+      attachingIds.has(productId) ||
+      uploadingIds.has(productId)
+    ) return;
+    attachingLocksRef.current.add(productId);
     setAttachingIds((current) => new Set(current).add(productId));
     try {
       const response = await attachManualProductPhotos({ productId, imageIds: photos.map((photo) => photo.id) }).unwrap();
@@ -1727,6 +1785,43 @@ const ManualPhotosTab: React.FC = () => {
     } catch (requestError: any) {
       toast('error', requestError?.data?.message || 'Erreur lors de l’attachement');
     } finally {
+      attachingLocksRef.current.delete(productId);
+      setAttachingIds((current) => {
+        const next = new Set(current);
+        next.delete(productId);
+        return next;
+      });
+    }
+  };
+
+  const attachPhoto = async (productId: number, photoId: number) => {
+    const photo = (queuesRef.current[productId] || []).find(
+      (item) => item.id === photoId && item.status === 'uploaded'
+    );
+    if (
+      !photo ||
+      attachingLocksRef.current.has(productId) ||
+      rejectingLocksRef.current.has(photoId) ||
+      attachingIds.has(productId) ||
+      uploadingIds.has(productId) ||
+      rejectingIds.has(photoId)
+    ) return;
+    attachingLocksRef.current.add(productId);
+    setAttachingIds((current) => new Set(current).add(productId));
+    try {
+      await attachManualProductPhotos({ productId, imageIds: [photoId] }).unwrap();
+      updateQueues((current) => ({
+        ...current,
+        [productId]: (current[productId] || []).map((item) =>
+          item.id === photoId ? { ...item, status: 'attached' as const } : item
+        ),
+      }));
+      advanceAfterReview(photoId);
+      toast('success', 'Photo attachée au produit');
+    } catch (requestError: any) {
+      toast('error', requestError?.data?.message || 'Erreur lors de l’attachement');
+    } finally {
+      attachingLocksRef.current.delete(productId);
       setAttachingIds((current) => {
         const next = new Set(current);
         next.delete(productId);
@@ -1736,8 +1831,89 @@ const ManualPhotosTab: React.FC = () => {
   };
 
   const errorMessage = (error as { data?: { message?: string } } | undefined)?.data?.message;
-  const products = data?.data || [];
+  const products = useMemo(() => data?.data || [], [data?.data]);
   const meta = data?.meta;
+  const reviewItems = useMemo<ManualPhotoReviewItem[]>(
+    () => products.flatMap((product) =>
+      (queues[product.id] || [])
+        .filter((photo) => photo.status === 'uploaded')
+        .map((photo) => ({ product, photo }))
+    ),
+    [products, queues]
+  );
+  const reviewIndex = reviewPhotoId === null
+    ? -1
+    : reviewItems.findIndex((item) => item.photo.id === reviewPhotoId);
+  const reviewItem = reviewIndex >= 0 ? reviewItems[reviewIndex] : null;
+  const reviewBusy = reviewItem
+    ? attachingIds.has(reviewItem.product.id) || rejectingIds.has(reviewItem.photo.id)
+    : false;
+
+  const advanceAfterReview = (photoId: number) => {
+    const removedIndex = Math.max(0, reviewItems.findIndex((item) => item.photo.id === photoId));
+    const remaining = reviewItems.filter((item) => item.photo.id !== photoId);
+    if (remaining.length) {
+      setReviewPhotoId(remaining[Math.min(removedIndex, remaining.length - 1)].photo.id);
+    } else {
+      closeReview();
+    }
+  };
+
+  const navigateReview = useCallback((direction: -1 | 1) => {
+    if (reviewIndex < 0 || reviewItems.length < 2 || reviewBusy) return;
+    const nextIndex = (reviewIndex + direction + reviewItems.length) % reviewItems.length;
+    setReviewPhotoId(reviewItems[nextIndex].photo.id);
+  }, [reviewBusy, reviewIndex, reviewItems]);
+
+  useEffect(() => {
+    if (reviewPhotoId === null) return;
+    if (!reviewItems.length) {
+      closeReview();
+      return;
+    }
+    if (!reviewItems.some((item) => item.photo.id === reviewPhotoId)) {
+      setReviewPhotoId(reviewItems[0].photo.id);
+    }
+  }, [closeReview, reviewItems, reviewPhotoId]);
+
+  useEffect(() => {
+    if (!reviewItem) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.setTimeout(() => reviewCloseButtonRef.current?.focus(), 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (Swal.isVisible()) return;
+      if (event.key === 'Tab') {
+        const focusable = Array.from(
+          reviewDialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]') || []
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      } else if (event.key === 'Escape' && !reviewBusy) {
+        event.preventDefault();
+        closeReview();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        navigateReview(-1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        navigateReview(1);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [closeReview, navigateReview, reviewItem, reviewBusy]);
 
   return (
     <section className="space-y-4" aria-label="Photos recherche manuelle">
@@ -1965,9 +2141,31 @@ const ManualPhotosTab: React.FC = () => {
               return (
                 <article
                   key={product.id}
-                  className={`bg-white rounded-xl border p-3 md:p-4 transition-colors ${
+                  data-manual-product-id={product.id}
+                  role={pendingPhotos.length && imageStatus === 'present' ? 'button' : undefined}
+                  tabIndex={pendingPhotos.length && imageStatus === 'present' ? 0 : -1}
+                  aria-label={pendingPhotos.length && imageStatus === 'present'
+                    ? `Examiner les photos en attente de ${product.designation}`
+                    : undefined}
+                  className={`bg-white rounded-xl border p-3 md:p-4 transition-colors ${pendingPhotos.length && imageStatus === 'present' ? 'cursor-pointer hover:border-orange-300' : ''} ${
                     draggingFiles ? 'border-orange-500 bg-orange-50/40 ring-2 ring-orange-200' : 'border-gray-200'
                   }`}
+                  onClick={(event) => {
+                    if (imageStatus !== 'present' || !pendingPhotos.length) return;
+                    const target = event.target as HTMLElement;
+                    if (target.closest('button, input, label, select, a')) return;
+                    openReview(pendingPhotos[0].id, event.currentTarget, product.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.target !== event.currentTarget ||
+                      imageStatus !== 'present' ||
+                      !pendingPhotos.length ||
+                      (event.key !== 'Enter' && event.key !== ' ')
+                    ) return;
+                    event.preventDefault();
+                    openReview(pendingPhotos[0].id, event.currentTarget, product.id);
+                  }}
                   onDragEnter={(event) => {
                     if (!busy && event.dataTransfer.types.includes('Files')) setDragOverId(product.id);
                   }}
@@ -2068,7 +2266,26 @@ const ManualPhotosTab: React.FC = () => {
                                     ref={dragProvided.innerRef}
                                     {...dragProvided.draggableProps}
                                     {...dragProvided.dragHandleProps}
-                                    className={`relative w-20 h-20 flex-none rounded-lg bg-white ${
+                                    role={photo.status === 'uploaded' && imageStatus === 'present' ? 'button' : undefined}
+                                    tabIndex={photo.status === 'uploaded' && imageStatus === 'present' ? 0 : -1}
+                                    aria-label={photo.status === 'uploaded' && imageStatus === 'present'
+                                      ? `Examiner l'image ${index + 1} de ${product.designation}`
+                                      : undefined}
+                                    onClick={(event) => {
+                                      if ((event.target as HTMLElement).closest('button')) return;
+                                      if (photo.status === 'uploaded' && imageStatus === 'present') {
+                                        event.stopPropagation();
+                                        openReview(photo.id, event.currentTarget, product.id);
+                                      }
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (photo.status !== 'uploaded' || imageStatus !== 'present') return;
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        openReview(photo.id, event.currentTarget, product.id);
+                                      }
+                                    }}
+                                    className={`relative w-20 h-20 flex-none rounded-lg bg-white ${photo.status === 'uploaded' && imageStatus === 'present' ? 'cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2' : ''} ${
                                       dragSnapshot.isDragging ? 'shadow-xl ring-2 ring-orange-400' : ''
                                     }`}
                                   >
@@ -2087,7 +2304,10 @@ const ManualPhotosTab: React.FC = () => {
                                     {photo.status === 'uploaded' && (
                                       <button
                                         type="button"
-                                        onClick={() => void removePhoto(product.id, photo.id)}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void removePhoto(product.id, photo.id);
+                                        }}
                                         disabled={busy || deletingIds.has(photo.id)}
                                         className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-red-600 text-white shadow flex items-center justify-center hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
                                         title="Supprimer cette image uploadée"
@@ -2099,7 +2319,10 @@ const ManualPhotosTab: React.FC = () => {
                                     {photo.status === 'attached' && (
                                       <button
                                         type="button"
-                                        onClick={() => void rejectPhoto(product.id, photo.id)}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void rejectPhoto(product.id, photo.id);
+                                        }}
                                         disabled={busy || rejectingIds.has(photo.id)}
                                         className="absolute -top-2 -right-2 min-h-8 px-2 rounded-full bg-red-600 text-white shadow flex items-center justify-center gap-1 text-[10px] font-bold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
                                         title="Marquer cette image comme fausse"
@@ -2187,6 +2410,140 @@ const ManualPhotosTab: React.FC = () => {
             </button>
           </div>
         </footer>
+      )}
+
+      {reviewItem && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-950/85 p-2 sm:p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target && !reviewBusy) closeReview();
+          }}
+        >
+          <div
+            ref={reviewDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manual-review-title"
+            aria-describedby="manual-review-reference"
+            className="flex h-[calc(100vh-1rem)] max-h-[900px] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-white/15 bg-white shadow-2xl sm:h-[calc(100vh-2rem)]"
+          >
+            <header className="flex flex-none items-start justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700">Revue photo</span>
+                  <span className="text-xs font-semibold text-gray-500" aria-live="polite">
+                    {reviewIndex + 1} / {reviewItems.length}
+                  </span>
+                </div>
+                <h2 id="manual-review-title" className="mt-1 truncate text-base font-bold text-gray-950 sm:text-lg">
+                  {reviewItem.product.designation}
+                </h2>
+                <p id="manual-review-reference" className="mt-0.5 text-xs text-gray-500">
+                  Réf. {reviewItem.product.reference || reviewItem.product.id}
+                </p>
+              </div>
+              <button
+                ref={reviewCloseButtonRef}
+                type="button"
+                onClick={closeReview}
+                disabled={reviewBusy}
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Fermer la revue des photos"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </header>
+
+            <div className="grid min-h-0 flex-1 grid-rows-[minmax(170px,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-1">
+              <div className="relative flex min-h-0 items-center justify-center overflow-hidden bg-gray-950 p-3 sm:p-6">
+                <img
+                  src={reviewItem.photo.image_url}
+                  alt={`Photo en attente de ${reviewItem.product.designation}`}
+                  className="max-h-full max-w-full object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={() => navigateReview(-1)}
+                  disabled={reviewItems.length < 2 || reviewBusy}
+                  className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-gray-950/75 text-white shadow-lg hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-gray-950 disabled:cursor-not-allowed disabled:opacity-30 sm:left-4"
+                  aria-label="Photo précédente"
+                >
+                  <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateReview(1)}
+                  disabled={reviewItems.length < 2 || reviewBusy}
+                  className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-gray-950/75 text-white shadow-lg hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-gray-950 disabled:cursor-not-allowed disabled:opacity-30 sm:right-4"
+                  aria-label="Photo suivante"
+                >
+                  <ChevronRight className="h-6 w-6" aria-hidden="true" />
+                </button>
+              </div>
+
+              <aside className="flex min-h-0 flex-col overflow-y-auto border-t border-gray-200 bg-gray-50 p-3 sm:p-4 lg:border-l lg:border-t-0">
+                <div className="min-h-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Photos en attente</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-600">
+                    Vérifiez la photo avant de l’attacher. Une photo rejetée reste conservée dans l’historique interne.
+                  </p>
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-2 lg:max-h-[calc(100vh-390px)] lg:flex-wrap lg:overflow-y-auto">
+                    {reviewItems.map((item, index) => (
+                      <button
+                        key={item.photo.id}
+                        type="button"
+                        onClick={() => setReviewPhotoId(item.photo.id)}
+                        disabled={reviewBusy}
+                        aria-label={`Afficher la photo ${index + 1} de ${item.product.designation}`}
+                        aria-current={item.photo.id === reviewItem.photo.id ? 'true' : undefined}
+                        className={`relative h-16 w-16 flex-none overflow-hidden rounded-lg border-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${
+                          item.photo.id === reviewItem.photo.id
+                            ? 'border-orange-500 shadow-sm'
+                            : 'border-transparent opacity-70 hover:border-gray-300 hover:opacity-100'
+                        }`}
+                        title={`${item.product.designation} · Réf. ${item.product.reference || item.product.id}`}
+                      >
+                        <img src={item.photo.image_url} alt="" className="h-full w-full object-cover" />
+                        <span className="absolute bottom-0 right-0 bg-gray-950/80 px-1 text-[9px] font-bold text-white">
+                          {index + 1}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-3 grid flex-none gap-2 border-t border-gray-200 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => void attachPhoto(reviewItem.product.id, reviewItem.photo.id)}
+                    disabled={reviewBusy}
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 text-sm font-bold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  >
+                    {attachingIds.has(reviewItem.product.id)
+                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      : <Link2 className="h-4 w-4" aria-hidden="true" />}
+                    {attachingIds.has(reviewItem.product.id) ? 'Attachement…' : 'Attacher cette photo'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void rejectPhoto(reviewItem.product.id, reviewItem.photo.id)}
+                    disabled={reviewBusy}
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-bold text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400"
+                  >
+                    {rejectingIds.has(reviewItem.photo.id)
+                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+                    {rejectingIds.has(reviewItem.photo.id) ? 'Rejet…' : 'Photo fausse — Rejeter'}
+                  </button>
+                  <p className="hidden text-center text-[11px] text-gray-400 lg:block">
+                    Touches ← → pour naviguer · Échap pour fermer
+                  </p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
