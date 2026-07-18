@@ -63,9 +63,10 @@ export const paymentsApi = api.injectEndpoints({
 
     createPayment: builder.mutation<Payment, CreatePaymentData & { created_by: number }>({
       query: (body) => ({ url: '/payments', method: 'POST', body }),
-  invalidatesTags: (_result, _error, body) => [
+      invalidatesTags: (_result, _error, body) => [
         'Payment',
         'Contact',
+        { type: 'Remise' as const, id: 'LIST' },
         ...(body?.contact_id ? [{ type: 'Contact' as const, id: body.contact_id }] : []),
       ],
     }),
@@ -77,6 +78,7 @@ export const paymentsApi = api.injectEndpoints({
         'Payment',
         { type: 'Payment', id },
         'Contact',
+        { type: 'Remise' as const, id: 'LIST' },
         ...(contact_id ? [{ type: 'Contact' as const, id: contact_id }] : []),
       ],
     }),
@@ -84,7 +86,7 @@ export const paymentsApi = api.injectEndpoints({
     changePaymentStatus: builder.mutation<{ success: boolean; message?: string; data?: Payment }, { id: number; statut: string }>({
       query: ({ id, statut }) => ({ url: `/payments/${id}/statut`, method: 'PATCH', body: { statut } }),
   // invalidate both the specific payment and the global Payment list so queries refetch
-  invalidatesTags: (_res, _err, { id }) => [ 'Payment', { type: 'Payment' as const, id }, 'Contact' ],
+  invalidatesTags: (_res, _err, { id }) => [ 'Payment', { type: 'Payment' as const, id }, 'Contact', { type: 'Remise' as const, id: 'LIST' } ],
     }),
 
     deletePayment: builder.mutation<{ success: boolean; id: number }, { id: number; contact_id?: number }>({
@@ -92,6 +94,7 @@ export const paymentsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, { id, contact_id }) => [
         { type: 'Payment', id },
         'Contact',
+        { type: 'Remise' as const, id: 'LIST' },
         ...(contact_id ? [{ type: 'Contact' as const, id: contact_id }] : []),
       ],
     }),

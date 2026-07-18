@@ -717,6 +717,48 @@ export const bonsApi = api.injectEndpoints({
         { type: 'Commande', id: 'LIST' },
       ],
     }),
+
+    updateAvoirInclusEnCaisse: builder.mutation<
+      any,
+      { id: number; type: 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'AvoirCharge'; inclus_en_caisse: boolean | number }
+    >({
+      query: ({ id, type, inclus_en_caisse }) => {
+        let url = '';
+        switch (type) {
+          case 'Avoir':
+            url = `/avoirs_client/${id}/inclus-en-caisse`;
+            break;
+          case 'AvoirFournisseur':
+            url = `/avoirs_fournisseur/${id}/inclus-en-caisse`;
+            break;
+          case 'AvoirComptant':
+            url = `/avoirs_comptant/${id}/inclus-en-caisse`;
+            break;
+          case 'AvoirEcommerce':
+            url = `/avoirs_ecommerce/${id}/inclus-en-caisse`;
+            break;
+          case 'AvoirCharge':
+            url = `/charges/${id}/inclus-en-caisse?type=avoir`;
+            break;
+          default:
+            throw new Error('Type non supporté pour inclus-en-caisse');
+        }
+        return {
+          url,
+          method: 'PATCH',
+          body: { inclus_en_caisse: inclus_en_caisse ? 1 : 0 },
+        };
+      },
+      invalidatesTags: (_result, _error, { id, type }) => {
+        const tag: any = type === 'Avoir' ? 'AvoirClient' : type;
+        return [
+          { type: tag, id },
+          { type: tag, id: 'LIST' },
+          { type: 'Bon', id: 'LIST' },
+          'FondCaisse',
+        ];
+      },
+    }),
   }),
 });
 
@@ -740,6 +782,7 @@ export const {
   useMarkBonAsAvoirMutation,
   useUpdateChargeInclusEnCaisseMutation,
   useUpdateCommandeInclusEnCaisseMutation,
+  useUpdateAvoirInclusEnCaisseMutation,
 } = bonsApi;
 
 // Explicit re-export (avoids occasional TS server cache issues)

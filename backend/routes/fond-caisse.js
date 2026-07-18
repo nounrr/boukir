@@ -833,7 +833,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       label: 'avoirs_charge',
       field: 'avoirChargeInclusCaisse',
       sql: `
-        SELECT DATE(bc.created_at) AS jour,
+        SELECT DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) AS jour,
                COALESCE(SUM(COALESCE(ci_sum.total_items, bc.montant_total, 0)), 0) AS total
           FROM avoirs_charge bc
           LEFT JOIN (
@@ -841,11 +841,11 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
               FROM items_avoir_charge
              GROUP BY avoir_charge_id
           ) ci_sum ON ci_sum.avoir_charge_id = bc.id
-         WHERE DATE(bc.created_at) BETWEEN ? AND ?
+         WHERE DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) BETWEEN ? AND ?
            AND COALESCE(bc.inclus_en_caisse, 0) = 1
            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-           ${afterLatestCaisseStartSql('bc.created_at')}
-         GROUP BY DATE(bc.created_at)
+           ${afterLatestCaisseStartSql('COALESCE(bc.inclus_en_caisse_at, bc.created_at)')}
+         GROUP BY DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at))
       `,
     },
     {
@@ -864,12 +864,13 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       label: 'avoirs_comptant',
       field: 'avoirComptant',
       sql: `
-        SELECT DATE(acp.created_at) AS jour, COALESCE(SUM(acp.montant_total), 0) AS total
+        SELECT DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at)) AS jour, COALESCE(SUM(acp.montant_total), 0) AS total
           FROM avoirs_comptant acp
-         WHERE DATE(acp.created_at) BETWEEN ? AND ?
+         WHERE DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at)) BETWEEN ? AND ?
+           AND COALESCE(acp.inclus_en_caisse, 1) = 1
            AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
-           ${afterLatestCaisseStartSql('acp.created_at')}
-         GROUP BY DATE(acp.created_at)
+           ${afterLatestCaisseStartSql('COALESCE(acp.inclus_en_caisse_at, acp.created_at)')}
+         GROUP BY DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at))
       `,
     },
   ];
@@ -1171,7 +1172,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            bc.created_at AS action_date,
+            COALESCE(bc.inclus_en_caisse_at, bc.created_at) AS action_date,
             'Avoir charge' AS type,
             'ENTREE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM items_avoir_charge ci WHERE ci.avoir_charge_id = bc.id), bc.montant_total, 0) AS amount,
@@ -1181,10 +1182,10 @@ router.get('/days/:date', async (req, res) => {
             COALESCE(bc.observations, 'Avoir charge entree en caisse') AS description
           FROM avoirs_charge bc
           LEFT JOIN contacts c ON c.id = bc.client_id
-          WHERE DATE(bc.created_at) = ?
+          WHERE DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('bc.created_at')}
+            ${afterLatestCaisseStartSql('COALESCE(bc.inclus_en_caisse_at, bc.created_at)')}
         `,
       },
       {
@@ -1212,7 +1213,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             acp.id,
-            acp.created_at AS action_date,
+            COALESCE(acp.inclus_en_caisse_at, acp.created_at) AS action_date,
             'Avoir comptant' AS type,
             'SORTIE' AS direction,
             acp.montant_total AS amount,
@@ -1221,9 +1222,10 @@ router.get('/days/:date', async (req, res) => {
             acp.statut,
             COALESCE(acp.lieu_chargement, 'Avoir comptant') AS description
           FROM avoirs_comptant acp
-          WHERE DATE(acp.created_at) = ?
+          WHERE DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at)) = ?
+            AND COALESCE(acp.inclus_en_caisse, 1) = 1
             AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('acp.created_at')}
+            ${afterLatestCaisseStartSql('COALESCE(acp.inclus_en_caisse_at, acp.created_at)')}
         `,
       },
     ];
@@ -1543,7 +1545,7 @@ router.get('/mouvements', async (req, res) => {
         label: 'avoirs_charge',
         field: 'avoirChargeInclusCaisse',
         sql: `
-          SELECT DATE(bc.created_at) AS jour,
+          SELECT DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) AS jour,
                  COALESCE(SUM(COALESCE(ci_sum.total_items, bc.montant_total, 0)), 0) AS total
             FROM avoirs_charge bc
             LEFT JOIN (
@@ -1551,11 +1553,11 @@ router.get('/mouvements', async (req, res) => {
                 FROM items_avoir_charge
                GROUP BY avoir_charge_id
             ) ci_sum ON ci_sum.avoir_charge_id = bc.id
-           WHERE DATE(bc.created_at) BETWEEN ? AND ?
+           WHERE DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('bc.created_at')}
-           GROUP BY DATE(bc.created_at)
+             ${afterLatestCaisseStartSql('COALESCE(bc.inclus_en_caisse_at, bc.created_at)')}
+           GROUP BY DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at))
         `,
       },
       {
@@ -1574,12 +1576,13 @@ router.get('/mouvements', async (req, res) => {
         label: 'avoirs_comptant',
         field: 'avoirComptant',
         sql: `
-          SELECT DATE(acp.created_at) AS jour, COALESCE(SUM(acp.montant_total), 0) AS total
+          SELECT DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at)) AS jour, COALESCE(SUM(acp.montant_total), 0) AS total
             FROM avoirs_comptant acp
-           WHERE DATE(acp.created_at) BETWEEN ? AND ?
+           WHERE DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at)) BETWEEN ? AND ?
+             AND COALESCE(acp.inclus_en_caisse, 1) = 1
              AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('acp.created_at')}
-           GROUP BY DATE(acp.created_at)
+             ${afterLatestCaisseStartSql('COALESCE(acp.inclus_en_caisse_at, acp.created_at)')}
+           GROUP BY DATE(COALESCE(acp.inclus_en_caisse_at, acp.created_at))
         `,
       },
     ];

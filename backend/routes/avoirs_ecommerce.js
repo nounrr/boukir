@@ -20,6 +20,7 @@ async function ensureAvoirEcommerceTables(conn) {
         date_creation DATETIME NOT NULL,
         montant_total DECIMAL(10, 2) NOT NULL,
         statut ENUM('En attente','Validé','Appliqué','Annulé') DEFAULT 'En attente',
+        inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0,
         created_by INT NOT NULL,
         isNotCalculated TINYINT(1) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -46,6 +47,22 @@ async function ensureAvoirEcommerceTables(conn) {
         INDEX idx_avoir_ecom_product_id (product_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    const [cols] = await db.query(
+      "SHOW COLUMNS FROM avoirs_ecommerce LIKE 'inclus_en_caisse'"
+    );
+    if (!Array.isArray(cols) || cols.length === 0) {
+      await db.query(
+        "ALTER TABLE avoirs_ecommerce ADD COLUMN inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0 AFTER statut"
+      );
+    }
+    const [colsAt] = await db.query(
+      "SHOW COLUMNS FROM avoirs_ecommerce LIKE 'inclus_en_caisse_at'"
+    );
+    if (!Array.isArray(colsAt) || colsAt.length === 0) {
+      await db.query(
+        "ALTER TABLE avoirs_ecommerce ADD COLUMN inclus_en_caisse_at DATETIME NULL AFTER inclus_en_caisse"
+      );
+    }
   } catch (e) {
     console.error('ensureAvoirEcommerceTables:', e);
   }
@@ -511,6 +528,32 @@ router.put('/:id', async (req, res) => {
 });
 
 /* ========== PATCH /:id/statut (changer) ========== */
+// PATCH /avoirs_ecommerce/:id/inclus-en-caisse - Basculer l'inclusion en caisse
+router.patch('/:id/inclus-en-caisse', verifyToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+    const value = req.body?.inclus_en_caisse ? 1 : 0;
+    const [result] = await pool.execute(
+      `UPDATE avoirs_ecommerce
+          SET inclus_en_caisse = ?,
+              inclus_en_caisse_at = CASE WHEN ? = 1 THEN NOW() ELSE NULL END,
+              updated_at = NOW()
+        WHERE id = ?`,
+      [value, value, id]
+    );
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Avoir ecommerce non trouvé' });
+    }
+    res.json({ success: true, id, inclus_en_caisse: value });
+  } catch (error) {
+    console.error('PATCH /avoirs_ecommerce/:id/inclus-en-caisse error:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  }
+});
+
 router.patch('/:id/statut', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {

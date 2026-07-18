@@ -6,6 +6,31 @@ import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../u
 
 const router = express.Router();
 
+// S'assure que les colonnes inclus_en_caisse / inclus_en_caisse_at existent sur avoirs_fournisseur
+async function ensureInclusEnCaisseColumn() {
+  try {
+    const [cols] = await pool.query(
+      "SHOW COLUMNS FROM avoirs_fournisseur LIKE 'inclus_en_caisse'"
+    );
+    if (!Array.isArray(cols) || cols.length === 0) {
+      await pool.query(
+        "ALTER TABLE avoirs_fournisseur ADD COLUMN inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0 AFTER statut"
+      );
+    }
+    const [colsAt] = await pool.query(
+      "SHOW COLUMNS FROM avoirs_fournisseur LIKE 'inclus_en_caisse_at'"
+    );
+    if (!Array.isArray(colsAt) || colsAt.length === 0) {
+      await pool.query(
+        "ALTER TABLE avoirs_fournisseur ADD COLUMN inclus_en_caisse_at DATETIME NULL AFTER inclus_en_caisse"
+      );
+    }
+  } catch (e) {
+    console.error('ensureInclusEnCaisseColumn avoirs_fournisseur:', e?.sqlMessage || e?.message || e);
+  }
+}
+ensureInclusEnCaisseColumn();
+
 const averageSnapshotCoutRevientExpr = (itemAlias) => `COALESCE((
   SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
   FROM product_snapshot ps_avg
@@ -520,6 +545,32 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 });
 
 /* ====== DELETE /:id ====== */
+// PATCH /avoirs_fournisseur/:id/inclus-en-caisse - Basculer l'inclusion en caisse
+router.patch('/:id/inclus-en-caisse', verifyToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+    const value = req.body?.inclus_en_caisse ? 1 : 0;
+    const [result] = await pool.execute(
+      `UPDATE avoirs_fournisseur
+          SET inclus_en_caisse = ?,
+              inclus_en_caisse_at = CASE WHEN ? = 1 THEN NOW() ELSE NULL END,
+              updated_at = NOW()
+        WHERE id = ?`,
+      [value, value, id]
+    );
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Avoir fournisseur non trouvé' });
+    }
+    res.json({ success: true, id, inclus_en_caisse: value });
+  } catch (error) {
+    console.error('PATCH /avoirs_fournisseur/:id/inclus-en-caisse error:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  }
+});
+
 router.delete('/:id', verifyToken, async (req, res) => {
   if (!canManageBon('AvoirFournisseur', req.user?.role)) {
     return res.status(403).json({ message: 'Accès refusé' });

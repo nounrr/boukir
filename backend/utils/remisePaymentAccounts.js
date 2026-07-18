@@ -38,6 +38,12 @@ function mergeAccountTotal(targetMap, sourceMap, resolver) {
 }
 
 export async function ensurePaymentRemiseColumns(db = pool) {
+  if (!(await columnExists(db, 'payments', 'montant_ignorer'))) {
+    await db.execute('ALTER TABLE payments ADD COLUMN montant_ignorer DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER montant_total');
+  }
+  if (!(await columnExists(db, 'payments', 'remise'))) {
+    await db.execute('ALTER TABLE payments ADD COLUMN remise TINYINT(1) NOT NULL DEFAULT 0 AFTER montant_ignorer');
+  }
   if (!(await columnExists(db, 'payments', 'remise_account_id'))) {
     await db.execute('ALTER TABLE payments ADD COLUMN remise_account_id INT NULL AFTER contact_id');
   }
@@ -158,7 +164,7 @@ async function getEcommerceEarnedTotalsByContact(db, contactIds) {
 
 async function getUsedRemiseTotals(db, accountIds) {
   if (!accountIds.length) return new Map();
-  const [rows] = await db.execute(
+  const [remisePaymentRows] = await db.execute(
     `SELECT p.remise_account_id AS id,
             COALESCE(SUM(p.montant_total), 0) AS total
      FROM payments p
@@ -168,7 +174,29 @@ async function getUsedRemiseTotals(db, accountIds) {
      GROUP BY p.remise_account_id`,
     [...accountIds, ...ACTIVE_REMISE_PAYMENT_STATUSES]
   );
-  return mapTotals(rows);
+  const totals = mapTotals(remisePaymentRows);
+
+  const [ignoredRemiseRows] = await db.execute(
+    `SELECT cr.id AS id,
+            COALESCE(SUM(p.montant_ignorer), 0) AS total
+     FROM client_remises cr
+     INNER JOIN payments p ON p.contact_id = cr.contact_id
+     WHERE cr.id IN (${makeInClause(accountIds)})
+       AND cr.type = 'client_abonne'
+       AND cr.id = (
+         SELECT MAX(cr2.id)
+         FROM client_remises cr2
+         WHERE cr2.contact_id = cr.contact_id
+           AND cr2.type = 'client_abonne'
+       )
+       AND p.remise = 1
+       AND p.mode_paiement <> 'Remise'
+       AND p.statut IN (${makeInClause(ACTIVE_REMISE_PAYMENT_STATUSES)})
+     GROUP BY cr.id`,
+    [...accountIds, ...ACTIVE_REMISE_PAYMENT_STATUSES]
+  );
+  mergeAccountTotal(totals, mapTotals(ignoredRemiseRows), (accountId) => accountId);
+  return totals;
 }
 
 export async function getRemisePaymentAccounts(db = pool, options = {}) {
@@ -230,8 +258,14 @@ export async function getRemisePaymentAccounts(db = pool, options = {}) {
   const accountIdByContactId = new Map();
   for (const account of accounts) {
     const contactId = Number(account.contact_id);
-    if (Number.isFinite(contactId) && contactId > 0) {
-      accountIdByContactId.set(contactId, Number(account.id));
+    const accountId = Number(account.id);
+    if (
+      account.type === 'client_abonne' &&
+      Number.isFinite(contactId) &&
+      contactId > 0 &&
+      (!accountIdByContactId.has(contactId) || accountId > accountIdByContactId.get(contactId))
+    ) {
+      accountIdByContactId.set(contactId, accountId);
     }
   }
 
@@ -308,12 +342,39 @@ async function getDirectBonEarnedAll(db) {
 async function getUsedByContactDirect(db, contactIds) {
   if (!contactIds.length) return new Map();
   const [rows] = await db.execute(
-    `SELECT p.contact_id AS id, COALESCE(SUM(p.montant_total), 0) AS total
+    `SELECT p.contact_id AS id,
+            COALESCE(SUM(
+              CASE
+                WHEN p.mode_paiement = 'Remise' AND p.remise_account_id IS NULL
+                  THEN p.montant_total
+                WHEN p.remise = 1
+                  AND p.mode_paiement <> 'Remise'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM client_remises cr
+                    WHERE cr.contact_id = p.contact_id
+                      AND cr.type = 'client_abonne'
+                  )
+                  THEN p.montant_ignorer
+                ELSE 0
+              END
+            ), 0) AS total
      FROM payments p
-     WHERE p.mode_paiement = 'Remise'
-       AND p.remise_account_id IS NULL
-       AND p.contact_id IN (${makeInClause(contactIds)})
+     WHERE p.contact_id IN (${makeInClause(contactIds)})
        AND p.statut IN (${makeInClause(ACTIVE_REMISE_PAYMENT_STATUSES)})
+       AND (
+         (p.mode_paiement = 'Remise' AND p.remise_account_id IS NULL)
+         OR (
+           p.remise = 1
+           AND p.mode_paiement <> 'Remise'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM client_remises cr
+             WHERE cr.contact_id = p.contact_id
+               AND cr.type = 'client_abonne'
+           )
+         )
+       )
      GROUP BY p.contact_id`,
     [...contactIds, ...ACTIVE_REMISE_PAYMENT_STATUSES]
   );
@@ -359,6 +420,7 @@ async function getRemiseContactItemsTotalAll(db) {
 }
 
 export async function getDirectContactRemiseBalances(db = pool) {
+  await ensurePaymentRemiseColumns(db);
   const earnedMap = await getDirectBonEarnedAll(db);
   const oldEarnedMap = await getDirectOldEarnedAll(db);
   const separeeMap = await getRemiseContactItemsTotalAll(db);
@@ -397,6 +459,7 @@ export async function getDirectContactRemiseBalances(db = pool) {
 }
 
 export async function getDirectContactRemiseInfo(db, contactId) {
+  await ensurePaymentRemiseColumns(db);
   const numId = Number(contactId);
   if (!Number.isFinite(numId) || numId <= 0) throw Object.assign(new Error('Contact invalide'), { statusCode: 400 });
 

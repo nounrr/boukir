@@ -157,7 +157,10 @@ const CaissePage = () => {
     const map = new Map<number, RemisePaymentAccount>();
     for (const acc of remiseAccounts) {
       if (acc.type === 'client_abonne' && acc.contact_id) {
-        map.set(acc.contact_id, acc);
+        const current = map.get(acc.contact_id);
+        if (!current || Number(acc.id) > Number(current.id)) {
+          map.set(acc.contact_id, acc);
+        }
       }
     }
     return map;
@@ -824,6 +827,7 @@ const paymentValidationSchema = Yup.object({
     .transform((v, orig) => (orig === '' ? 0 : v))
     .typeError('Le montant ignoré doit être un nombre')
     .min(0, 'Le montant ignoré doit être positif ou nul'),
+  remise: Yup.boolean().default(false),
 
   mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
     .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
@@ -891,6 +895,7 @@ const paymentValidationSchema = Yup.object({
         .transform((v, orig) => (orig === '' ? 0 : v))
         .typeError('Le montant ignoré doit être un nombre')
         .min(0, 'Le montant ignoré doit être positif ou nul'),
+      remise: Yup.boolean().default(false),
       mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
         .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
         .required('Mode de paiement est requis'),
@@ -1054,6 +1059,7 @@ const paymentValidationSchema = Yup.object({
         bon_type: selectedPayment.bon_type || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
         montant_ignorer: selectedPayment.montant_ignorer || 0,
+        remise: Number(selectedPayment.remise ?? 0) === 1,
         mode_paiement: selectedPayment.mode_paiement,
         statut: selectedPayment.statut || 'En attente',
         date_paiement: formatMySQLToDateTimeInput(selectedPayment.date_paiement) || getCurrentDateTimeInput(),
@@ -1078,6 +1084,7 @@ const paymentValidationSchema = Yup.object({
       bon_type: '',
       montant: 0,
       montant_ignorer: 0,
+      remise: false,
       mode_paiement: 'Espèces',
       statut: 'En attente',
       date_paiement: createOpenedAt || getCurrentDateTimeInput(),
@@ -1117,6 +1124,7 @@ const paymentValidationSchema = Yup.object({
       const mainLine = {
         montant: values.montant,
         montant_ignorer: values.montant_ignorer,
+        remise: values.remise,
         mode_paiement: values.mode_paiement,
         date_paiement: values.date_paiement,
         bon_id: values.bon_id,
@@ -1137,6 +1145,38 @@ const paymentValidationSchema = Yup.object({
       const remiseAmount = paymentLines
         .filter((line: any) => line.mode_paiement === 'Remise')
         .reduce((sum: number, line: any) => sum + Number(line.montant || 0), 0);
+      const ignoredRemiseAmount = paymentLines
+        .filter((line: any) =>
+          Boolean(line.remise) &&
+          values.type_paiement === 'Client' &&
+          Boolean(values.contact_id) &&
+          line.mode_paiement !== 'Remise' &&
+          Number(line.montant_ignorer || 0) > 0
+        )
+        .reduce((sum: number, line: any) => sum + Number(line.montant_ignorer || 0), 0);
+
+      if (ignoredRemiseAmount > 0 && ['En attente', 'Validé'].includes(String(values.statut || ''))) {
+        const ordinaryContactId = Number(values.contact_id);
+        const authoritativeAccount = clientAbonneAccountByContactId.get(ordinaryContactId);
+        const directBalance = directContactBalances.find(
+          (balance: any) => Number(balance.contact_id) === ordinaryContactId
+        );
+        let allowedIgnoredRemise = authoritativeAccount
+          ? Number(authoritativeAccount.available_total || 0)
+          : Number(directBalance?.available_total || 0);
+        if (
+          Number(selectedPayment?.remise ?? 0) === 1 &&
+          selectedPayment?.mode_paiement !== 'Remise' &&
+          Number(selectedPayment?.contact_id) === ordinaryContactId &&
+          ['En attente', 'Validé'].includes(String(selectedPayment?.statut || ''))
+        ) {
+          allowedIgnoredRemise += Number(selectedPayment?.montant_ignorer || 0);
+        }
+        if (ignoredRemiseAmount > allowedIgnoredRemise + 0.000001) {
+          showError(`Le montant ignoré dépasse la remise disponible (${allowedIgnoredRemise.toFixed(2)} DH)`);
+          return;
+        }
+      }
 
       if (remiseAmount > 0) {
         if (!selectedRemiseAccount && !selectedDirectBalance) {
@@ -1201,6 +1241,14 @@ const paymentValidationSchema = Yup.object({
         montant_total: Number(line.montant),
         montant: Number(line.montant), // Alias
         montant_ignorer: Number(line.montant_ignorer || 0),
+        remise:
+          Boolean(line.remise) &&
+          values.type_paiement === 'Client' &&
+          Boolean(values.contact_id) &&
+          Number(line.montant_ignorer || 0) > 0 &&
+          lineModePaiement !== 'Remise'
+            ? 1
+            : 0,
         mode_paiement: lineModePaiement,
   statut: values.statut,
         date_paiement: cleanedDatePaiement,
@@ -1251,6 +1299,7 @@ const paymentValidationSchema = Yup.object({
           remise_account_name: paymentData.remise_account_name,
           montant_total: paymentData.montant_total,
           montant_ignorer: paymentData.montant_ignorer,
+          remise: paymentData.remise,
           mode_paiement: paymentData.mode_paiement,
           statut: paymentData.statut,
           date_paiement: paymentData.date_paiement,
@@ -2345,6 +2394,11 @@ const paymentValidationSchema = Yup.object({
               {({ values, setFieldValue }) => {
                 const isFournisseurPayment = values.type_paiement === 'Fournisseur';
                 const isRemisePayment = values.mode_paiement === 'Remise';
+                const canUseIgnoredRemise =
+                  !isFournisseurPayment &&
+                  Boolean(values.contact_id) &&
+                  Number(values.montant_ignorer || 0) > 0 &&
+                  !isRemisePayment;
                 const selectedRemiseId = Number(values.remise_account_id || 0);
                 const filteredRemiseAccounts: RemisePaymentAccount[] = [];
                 if (values.remise_filter_client_remise) {
@@ -2653,18 +2707,38 @@ const paymentValidationSchema = Yup.object({
                       )}
                     </div>
 
-                    <div>
+                    <div className="col-span-2 md:col-span-1">
                       <label htmlFor="montant_ignorer" className="block text-sm font-medium text-gray-700 mb-1">
                         Montant ignoré
                       </label>
-                      <Field
-                        id="montant_ignorer"
-                        name="montant_ignorer"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                      <div className="flex items-stretch">
+                        <Field
+                          id="montant_ignorer"
+                          name="montant_ignorer"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="min-w-0 flex-1 rounded-l-md border border-gray-300 px-3 py-2 focus:z-10 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                        <label
+                          className={`inline-flex select-none items-center gap-2 rounded-r-md border border-l-0 px-3 text-sm font-medium transition-colors ${
+                            canUseIgnoredRemise
+                              ? 'cursor-pointer border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                              : 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                          }`}
+                        >
+                          <Field
+                            type="checkbox"
+                            name="remise"
+                            disabled={!canUseIgnoredRemise}
+                            className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-2 focus:ring-amber-500"
+                          />
+                          Remise
+                        </label>
+                      </div>
+                      <p className="mt-1 text-xs text-amber-700">
+                        Cochée, cette somme est déduite du solde remise du client.
+                      </p>
                       <ErrorMessage name="montant_ignorer" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
 
@@ -2681,6 +2755,7 @@ const paymentValidationSchema = Yup.object({
                           const nextMode = e.target.value;
                           setFieldValue('mode_paiement', nextMode);
                           if (nextMode === 'Remise') {
+                            setFieldValue('remise', false);
                             setFieldValue('type_paiement', 'Client');
                             setFieldValue('contact_optional', true);
                             setFieldValue('contact_id', '');
@@ -2887,6 +2962,7 @@ const paymentValidationSchema = Yup.object({
                             {
                               montant: '',
                               montant_ignorer: '',
+                              remise: false,
                               mode_paiement: values.mode_paiement || 'Espèces',
                               date_paiement: values.date_paiement || getCurrentDateTimeInput(),
                               bon_id: '',
@@ -2946,17 +3022,45 @@ const paymentValidationSchema = Yup.object({
                                   />
                                   <ErrorMessage name={`payment_lines.${index}.montant`} component="div" className="mt-1 text-sm text-red-500" />
                                 </div>
-                                <div>
+                                <div className="col-span-2 md:col-span-1">
                                   <label className="mb-1 block text-sm font-medium text-gray-700">
                                     Montant ignoré
                                   </label>
-                                  <Field
-                                    name={`payment_lines.${index}.montant_ignorer`}
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  />
+                                  <div className="flex items-stretch">
+                                    <Field
+                                      name={`payment_lines.${index}.montant_ignorer`}
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      className="min-w-0 flex-1 rounded-l-md border border-gray-300 px-3 py-2 focus:z-10 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                    />
+                                    <label
+                                      className={`inline-flex select-none items-center gap-2 rounded-r-md border border-l-0 px-2 text-xs font-medium transition-colors ${
+                                        !isFournisseurPayment &&
+                                        Boolean(values.contact_id) &&
+                                        Number(line.montant_ignorer || 0) > 0 &&
+                                        line.mode_paiement !== 'Remise'
+                                          ? 'cursor-pointer border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                                          : 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                                      }`}
+                                    >
+                                      <Field
+                                        type="checkbox"
+                                        name={`payment_lines.${index}.remise`}
+                                        disabled={
+                                          isFournisseurPayment ||
+                                          !values.contact_id ||
+                                          Number(line.montant_ignorer || 0) <= 0 ||
+                                          line.mode_paiement === 'Remise'
+                                        }
+                                        className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-2 focus:ring-amber-500"
+                                      />
+                                      Remise
+                                    </label>
+                                  </div>
+                                  <p className="mt-1 text-xs text-amber-700">
+                                    Déduit ce montant du solde remise du client.
+                                  </p>
                                   <ErrorMessage name={`payment_lines.${index}.montant_ignorer`} component="div" className="mt-1 text-sm text-red-500" />
                                 </div>
                                 <div>

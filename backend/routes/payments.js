@@ -2,6 +2,12 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
 import { ensurePaymentRemiseColumns, getRemisePaymentAccounts, getDirectContactRemiseInfo } from '../utils/remisePaymentAccounts.js';
+import {
+  assertIgnoredRemiseAvailability,
+  buildIgnoredRemiseValidation,
+  normalizeRemiseFlag,
+  selectAuthoritativeClientAbonneAccount,
+} from '../utils/paymentIgnoredRemise.js';
 
 const router = express.Router();
 
@@ -166,6 +172,7 @@ const toPayment = (r) => ({
   montant_total: Number(r.montant_total ?? 0),
   montant: Number(r.montant_total ?? 0),
   montant_ignorer: Number(r.montant_ignorer ?? 0),
+  remise: Number(r.remise ?? 0) === 1 ? 1 : 0,
   mode_paiement: r.mode_paiement,
   date_paiement: dbDateTimeToFullOrNull(r.date_paiement), // DATETIME complet pour affichage
   designation: r.designation || '',
@@ -361,6 +368,20 @@ async function resolveRemisePaymentInput(db, payload, currentPayment = null) {
     remiseAccountType: 'direct-client',
     remiseAccountName: info.nom_complet,
   };
+}
+
+async function resolveIgnoredAmountRemiseInput(db, payload, currentPayment = null) {
+  const validation = buildIgnoredRemiseValidation(payload, currentPayment);
+  if (validation.remise === 0 || !validation.requiresAvailability) return validation.remise;
+
+  const linkedAccounts = await getRemisePaymentAccounts(db, { contactIds: [validation.contactId] });
+  const authoritativeAccount = selectAuthoritativeClientAbonneAccount(linkedAccounts);
+  const availableAmount = authoritativeAccount
+    ? Number(authoritativeAccount.available_total || 0)
+    : Number((await getDirectContactRemiseInfo(db, validation.contactId)).available || 0);
+
+  assertIgnoredRemiseAvailability(validation, availableAmount);
+  return validation.remise;
 }
 
 // List payments
@@ -706,8 +727,9 @@ router.post('/', verifyToken, async (req, res) => {
 			contact_id,
       bon_id = null,
 			bon_type = null,
-			montant_total,
+      montant_total,
       montant_ignorer = 0,
+      remise = 0,
 			mode_paiement,
 			date_paiement,
       designation = null,
@@ -742,6 +764,7 @@ router.post('/', verifyToken, async (req, res) => {
       const cleanTalonId = talon_id ? Number(talon_id) : null;
       const cleanPayment = Number(payment) === 1 ? 1 : 0;
       const cleanMontantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
+      const cleanRemise = normalizeRemiseFlag(remise);
       const cleanPaymentGroupId = payment_group_id != null && String(payment_group_id).trim() !== '' ? String(payment_group_id).trim().slice(0, 64) : null;
       const cleanDatePaiement = toYMDTime(date_paiement, true);
       const cleanDateEcheance = toYMD(date_echeance);
@@ -768,6 +791,14 @@ router.post('/', verifyToken, async (req, res) => {
         montant_total,
         mode_paiement,
         remise_account_id,
+      });
+      await resolveIgnoredAmountRemiseInput(connection, {
+        type_paiement: remiseFields.typePaiement,
+        contact_id: remiseFields.contactId,
+        montant_ignorer: cleanMontantIgnorer,
+        mode_paiement,
+        remise: cleanRemise,
+        statut,
       });
 
       // Si un bon est associé, récupérer sa date pour l'ordre chronologique
@@ -842,10 +873,10 @@ router.post('/', verifyToken, async (req, res) => {
 
       const [result] = await connection.query(
       `INSERT INTO payments
-        (numero, payment_group_id, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, montant_ignorer, mode_paiement, date_paiement, designation,
+        (numero, payment_group_id, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, montant_ignorer, remise, mode_paiement, date_paiement, designation,
          date_echeance, banque, personnel, code_reglement, image_url, payment, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ['', cleanPaymentGroupId, remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, cleanMontantIgnorer, mode_paiement, cleanDatePaiement, designation,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['', cleanPaymentGroupId, remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, cleanMontantIgnorer, cleanRemise, mode_paiement, cleanDatePaiement, designation,
         cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
     );
       await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
@@ -898,6 +929,9 @@ router.put('/:id', verifyToken, async (req, res) => {
     if (Object.hasOwn(data, 'montant_ignorer')) {
       data.montant_ignorer = Number.isFinite(Number(data.montant_ignorer)) ? Number(data.montant_ignorer) : 0;
     }
+    if (Object.hasOwn(data, 'remise')) {
+      data.remise = normalizeRemiseFlag(data.remise);
+    }
     // Validate statut if provided according to user role and normalize to canonical label
     const allowedAllPut = ['En attente','Validé','Refusé','Annulé'];
     const allowedEmployeePut = ['En attente','Annulé'];
@@ -923,9 +957,13 @@ router.put('/:id', verifyToken, async (req, res) => {
       data.remise_account_id = remiseFields.remiseAccountId;
       data.remise_account_type = remiseFields.remiseAccountType;
       data.remise_account_name = remiseFields.remiseAccountName;
+      data.remise = await resolveIgnoredAmountRemiseInput(connection, {
+        ...currentPayment,
+        ...data,
+      }, currentPayment);
 
       const fields = [
-        'payment_group_id','type_paiement','contact_id','remise_account_id','remise_account_type','remise_account_name','bon_id','bon_type','montant_total','montant_ignorer','mode_paiement','date_paiement','designation',
+        'payment_group_id','type_paiement','contact_id','remise_account_id','remise_account_type','remise_account_name','bon_id','bon_type','montant_total','montant_ignorer','remise','mode_paiement','date_paiement','designation',
         'date_echeance','banque','personnel','code_reglement','image_url','payment','talon_id','statut','updated_by'
       ];
       const setParts = [];
@@ -975,13 +1013,22 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
     }
 
+    await ensurePaymentRemiseColumns();
+    const [currentRows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
+    if (!currentRows.length) return res.status(404).json({ message: 'Paiement introuvable' });
+    await resolveIgnoredAmountRemiseInput(pool, {
+      ...currentRows[0],
+      statut: canonical,
+    }, currentRows[0]);
+
     const [result] = await pool.query('UPDATE payments SET statut = ?, updated_at = NOW() WHERE id = ?', [canonical, id]);
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Paiement introuvable' });
     const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
     res.json({ success: true, message: `Statut mis à jour: ${canonical}`, data: toPayment(rows[0]) });
   } catch (err) {
     console.error('PATCH /payments/:id/statut error:', err);
-    res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+    const statusCode = err?.statusCode || 500;
+    res.status(statusCode).json({ message: statusCode === 500 ? 'Internal error' : err?.message, detail: String(err?.sqlMessage || err?.message || err) });
   }
 });
 

@@ -572,6 +572,7 @@ export interface Payment {
   talon_id?: number; // ID du talon associé
   montant_total: number;
   montant_ignorer?: number;
+  remise?: number | boolean;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
   date_paiement: string | null;
   designation: string;
@@ -610,6 +611,7 @@ export interface CreatePaymentData {
   bon_type?: string | null;
   montant_total: number;
   montant_ignorer?: number;
+  remise?: number | boolean;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
   date_paiement: string | null;
   designation: string;

@@ -96,6 +96,22 @@ async function ensureChargeTables() {
     )
   `);
 
+  try {
+    const [colsAt] = await pool.query(
+      "SHOW COLUMNS FROM avoirs_charge LIKE 'inclus_en_caisse_at'"
+    );
+    if (!Array.isArray(colsAt) || colsAt.length === 0) {
+      await pool.query(
+        "ALTER TABLE avoirs_charge ADD COLUMN inclus_en_caisse_at DATETIME NULL AFTER inclus_en_caisse"
+      );
+      await pool.query(
+        "UPDATE avoirs_charge SET inclus_en_caisse_at = created_at WHERE inclus_en_caisse = 1 AND inclus_en_caisse_at IS NULL"
+      );
+    }
+  } catch (e) {
+    console.error('ensureChargeTables alter inclus_en_caisse_at:', e);
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS items_avoir_charge (
       id INT NOT NULL AUTO_INCREMENT,
@@ -406,7 +422,7 @@ router.post('/', async (req, res) => {
     const observations = req.body?.observations ?? null;
     const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type);
     const cfg = getChargeConfig(operationType);
-    const inclusEnCaisse = operationType === 'charge' && req.body?.inclus_en_caisse ? 1 : 0;
+    const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
     let items = parseItems(req.body?.items);
 
     if (operationType === 'charge') {
@@ -509,7 +525,6 @@ router.put('/:id', async (req, res) => {
     const observations = req.body?.observations ?? null;
     const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type ?? req.query?.operation_type);
     const cfg = getChargeConfig(operationType);
-    const inclusEnCaisse = operationType === 'charge' && req.body?.inclus_en_caisse ? 1 : 0;
     let items = parseItems(req.body?.items);
 
     if (operationType === 'charge') {
@@ -530,7 +545,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const [existingRows] = await connection.execute(
-      `SELECT statut FROM ${cfg.table} WHERE id = ? FOR UPDATE`,
+      `SELECT statut, inclus_en_caisse FROM ${cfg.table} WHERE id = ? FOR UPDATE`,
       [id]
     );
     if (!Array.isArray(existingRows) || existingRows.length === 0) {
@@ -538,6 +553,10 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Bon charge non trouvé' });
     }
     const oldStatut = existingRows[0].statut;
+    // Conserver le flag existant si la requête ne le fournit pas (édition d'avoirs sans le champ)
+    const inclusEnCaisse = req.body?.inclus_en_caisse != null
+      ? (req.body.inclus_en_caisse ? 1 : 0)
+      : (existingRows[0].inclus_en_caisse ? 1 : 0);
     const oldOperationType = operationType;
     const [oldItemsStock] = await connection.execute(
       `SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ? ORDER BY id ASC`,
@@ -636,18 +655,23 @@ router.patch('/:id/inclus-en-caisse', async (req, res) => {
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: 'ID invalide' });
     }
+    const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type ?? req.query?.operation_type);
+    const cfg = getChargeConfig(operationType);
     const value = req.body?.inclus_en_caisse ? 1 : 0;
-    const [result] = await pool.execute(
-      'UPDATE bons_charge SET inclus_en_caisse = ?, updated_at = NOW() WHERE id = ?',
-      [value, id]
-    );
+    // Seuls les avoirs (avoirs_charge) classent leur montant en caisse à la date de cochage ;
+    // les charges normales (bons_charge) gardent la date de création du bon.
+    const sql = operationType === 'avoir'
+      ? `UPDATE ${cfg.table} SET inclus_en_caisse = ?, inclus_en_caisse_at = CASE WHEN ? = 1 THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = ?`
+      : `UPDATE ${cfg.table} SET inclus_en_caisse = ?, updated_at = NOW() WHERE id = ?`;
+    const params = operationType === 'avoir' ? [value, value, id] : [value, id];
+    const [result] = await pool.execute(sql, params);
     if (!result || result.affectedRows === 0) {
       return res.status(404).json({ message: 'Bon charge non trouvé' });
     }
-    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id]);
+    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id], operationType);
     if (!rows.length) return res.status(404).json({ message: 'Bon charge non trouvé' });
     const row = rows[0];
-    res.json(formatChargeRow(row, 'charge'));
+    res.json(formatChargeRow(row, operationType));
   } catch (error) {
     console.error('PATCH /charges/:id/inclus-en-caisse error:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
