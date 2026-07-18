@@ -52,6 +52,14 @@ export interface ProductNameCorrectionMeta {
   totalPages: number;
 }
 
+export interface ReplaceInitialProductNameCorrectionsResult {
+  ok: boolean;
+  imported: number;
+  replacedInitial: number;
+  preservedCorrect: number;
+  preservedFalse: number;
+}
+
 export const productNameCorrectionsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getProductNameCorrections: builder.query<
@@ -79,6 +87,22 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         body.append('file', file);
         return {
           url: '/product-name-corrections/upload',
+          method: 'POST',
+          body,
+        };
+      },
+      invalidatesTags: ['ProductNameCorrection'],
+    }),
+
+    replaceInitialProductNameCorrections: builder.mutation<
+      ReplaceInitialProductNameCorrectionsResult,
+      File
+    >({
+      query: (file) => {
+        const body = new FormData();
+        body.append('file', file);
+        return {
+          url: '/product-name-corrections/upload/replace-initial',
           method: 'POST',
           body,
         };
@@ -168,6 +192,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
 export const {
   useGetProductNameCorrectionsQuery,
   useUploadProductNameCorrectionsMutation,
+  useReplaceInitialProductNameCorrectionsMutation,
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,

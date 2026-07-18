@@ -23,6 +23,9 @@ const EXPECTED_HEADERS = [
   'Image',
 ];
 
+const REPLACE_INITIAL_LOCK_NAME = 'product_name_corrections_replace_initial';
+const REPLACE_INITIAL_LOCK_TIMEOUT_SECONDS = 30;
+
 let ensured = false;
 
 async function ensureTable() {
@@ -373,6 +376,121 @@ function rowsFromSheet(sheet) {
   });
 }
 
+function createRequestError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+export function parseCorrectionWorkbook(buffer) {
+  let workbook;
+  try {
+    workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+  } catch {
+    throw createRequestError('Le fichier Excel est invalide ou corrompu.');
+  }
+
+  const firstSheetName = workbook?.SheetNames?.[0];
+  const sheet = firstSheetName ? workbook.Sheets?.[firstSheetName] : null;
+  if (!firstSheetName || !sheet) {
+    throw createRequestError('Le fichier Excel ne contient aucune feuille exploitable.');
+  }
+
+  const rows = rowsFromSheet(sheet);
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw createRequestError('Aucune ligne trouvée dans le fichier.');
+  }
+
+  const mapped = rows
+    .map((row, idx) => mapExcelRow(row, row.__rowIndex || idx + 2))
+    .filter((row) => row.reference || row.ancienne_designation || row.designation_fr_pro || row.designation_ar_pro);
+
+  if (!mapped.length) {
+    throw createRequestError('Aucune ligne valide à importer.');
+  }
+
+  return mapped;
+}
+
+async function insertMappedCorrectionRows(conn, mappedRows) {
+  for (const row of mappedRows) {
+    const match = await matchCorrection(row, conn);
+    await conn.query(
+      `INSERT INTO product_name_corrections (
+        row_index, reference, ref_variant, variante_originale, variante_fr_pro, variante_ar_pro,
+        ancienne_designation, designation_fr_pro, designation_ar_pro, statut_controle,
+        note_controle, image, matched_product_id, matched_variant_id, match_status, match_message,
+        review_status, is_checked, applied_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        row.row_index,
+        row.reference,
+        row.ref_variant,
+        row.variante_originale,
+        row.variante_fr_pro,
+        row.variante_ar_pro,
+        row.ancienne_designation,
+        row.designation_fr_pro,
+        row.designation_ar_pro,
+        row.statut_controle,
+        row.note_controle,
+        row.image,
+        match.matched_product_id,
+        match.matched_variant_id,
+        match.match_status,
+        match.match_message,
+        'initial',
+        0,
+        null,
+      ]
+    );
+  }
+}
+
+export async function replaceInitialCorrectionsInTransaction(
+  conn,
+  mappedRows,
+  options = {}
+) {
+  const insertRows = options.insertRows || insertMappedCorrectionRows;
+  let transactionStarted = false;
+  try {
+    await conn.beginTransaction();
+    transactionStarted = true;
+
+    const [countRows] = await conn.query(
+      `SELECT
+         COALESCE(SUM(review_status = 'correct'), 0) AS preservedCorrect,
+         COALESCE(SUM(review_status = 'false'), 0) AS preservedFalse
+       FROM product_name_corrections`
+    );
+    const [deleteResult] = await conn.query(
+      "DELETE FROM product_name_corrections WHERE review_status = 'initial'"
+    );
+
+    await insertRows(conn, mappedRows);
+    await conn.commit();
+    transactionStarted = false;
+
+    return {
+      ok: true,
+      imported: mappedRows.length,
+      replacedInitial: Number(deleteResult?.affectedRows || 0),
+      preservedCorrect: Number(countRows?.[0]?.preservedCorrect || 0),
+      preservedFalse: Number(countRows?.[0]?.preservedFalse || 0),
+    };
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error('Rollback replace-initial failed:', rollbackError);
+      }
+    }
+    throw error;
+  }
+}
+
 function serialize(row) {
   return {
     ...row,
@@ -568,59 +686,15 @@ router.get('/', async (req, res, next) => {
 
 router.post('/upload', upload.single('file'), async (req, res, next) => {
   try {
-    await ensureTable();
     if (!req.file) return res.status(400).json({ message: 'Fichier Excel requis' });
 
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = rowsFromSheet(sheet);
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(400).json({ message: 'Aucune ligne trouvée dans le fichier' });
-    }
-
-    const mapped = rows
-      .map((row, idx) => mapExcelRow(row, row.__rowIndex || idx + 2))
-      .filter((row) => row.reference || row.ancienne_designation || row.designation_fr_pro || row.designation_ar_pro);
-
-    if (!mapped.length) {
-      return res.status(400).json({ message: 'Aucune ligne valide à importer' });
-    }
-
+    const mapped = parseCorrectionWorkbook(req.file.buffer);
+    await ensureTable();
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       await conn.query('DELETE FROM product_name_corrections');
-
-      for (const row of mapped) {
-        const match = await matchCorrection(row, conn);
-        await conn.query(
-          `INSERT INTO product_name_corrections (
-            row_index, reference, ref_variant, variante_originale, variante_fr_pro, variante_ar_pro,
-            ancienne_designation, designation_fr_pro, designation_ar_pro, statut_controle,
-            note_controle, image, matched_product_id, matched_variant_id, match_status, match_message
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            row.row_index,
-            row.reference,
-            row.ref_variant,
-            row.variante_originale,
-            row.variante_fr_pro,
-            row.variante_ar_pro,
-            row.ancienne_designation,
-            row.designation_fr_pro,
-            row.designation_ar_pro,
-            row.statut_controle,
-            row.note_controle,
-            row.image,
-            match.matched_product_id,
-            match.matched_variant_id,
-            match.match_status,
-            match.match_message,
-          ]
-        );
-      }
-
+      await insertMappedCorrectionRows(conn, mapped);
       await conn.commit();
       res.json({ ok: true, imported: mapped.length });
     } catch (err) {
@@ -631,6 +705,51 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
     }
   } catch (err) {
     next(err);
+  }
+});
+
+router.post('/upload/replace-initial', upload.single('file'), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ message: 'Fichier Excel requis' });
+
+  let mapped;
+  try {
+    mapped = parseCorrectionWorkbook(req.file.buffer);
+  } catch (error) {
+    return next(error);
+  }
+
+  let conn;
+  let lockAcquired = false;
+  try {
+    await ensureTable();
+    conn = await pool.getConnection();
+    const [lockRows] = await conn.query(
+      'SELECT GET_LOCK(?, ?) AS acquired',
+      [REPLACE_INITIAL_LOCK_NAME, REPLACE_INITIAL_LOCK_TIMEOUT_SECONDS]
+    );
+    lockAcquired = Number(lockRows?.[0]?.acquired) === 1;
+    if (!lockAcquired) {
+      throw createRequestError(
+        'Un autre remplacement de l’import Initial est en cours. Veuillez réessayer.',
+        409
+      );
+    }
+
+    const result = await replaceInitialCorrectionsInTransaction(conn, mapped);
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  } finally {
+    if (conn) {
+      if (lockAcquired) {
+        try {
+          await conn.query('SELECT RELEASE_LOCK(?) AS released', [REPLACE_INITIAL_LOCK_NAME]);
+        } catch (releaseError) {
+          console.error('Release replace-initial lock failed:', releaseError);
+        }
+      }
+      conn.release();
+    }
   }
 });
 

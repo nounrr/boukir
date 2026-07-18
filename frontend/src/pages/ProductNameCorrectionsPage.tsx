@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, RefreshCcw, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
 import {
   useApplyProductNameCorrectionsMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
   useGetProductNameCorrectionsQuery,
+  useReplaceInitialProductNameCorrectionsMutation,
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
   useUpdateProductCorrectionNamesMutation,
@@ -187,6 +188,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [limit, setLimit] = useState(getStoredPageSize);
   const [exportingReviewStatus, setExportingReviewStatus] = useState<'correct' | 'false' | null>(null);
   const exportInProgressRef = useRef(false);
+  const uploadInProgressRef = useRef(false);
 
   const { data, isLoading, isFetching } = useGetProductNameCorrectionsQuery({
     status: 'all',
@@ -198,6 +200,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
     limit,
   });
   const [uploadCorrections, { isLoading: isUploading }] = useUploadProductNameCorrectionsMutation();
+  const [replaceInitialCorrections, { isLoading: isReplacingInitial }] =
+    useReplaceInitialProductNameCorrectionsMutation();
   const [rematch, { isLoading: isRematching }] = useRematchProductNameCorrectionsMutation();
   const [setChecked] = useSetProductNameCorrectionCheckedMutation();
   const [bulkSetChecked, { isLoading: isBulkUpdating }] = useBulkSetProductNameCorrectionsCheckedMutation();
@@ -209,6 +213,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
     isLoading: isCategoriesLoading,
     isError: isCategoriesError,
   } = useGetCategoriesQuery();
+  const uploadsBusy = isUploading || isReplacingInitial;
 
   const rows = useMemo(() => data?.rows || [], [data?.rows]);
   const summary = data?.summary;
@@ -263,13 +268,65 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
+    if (!file || uploadInProgressRef.current) return;
+    uploadInProgressRef.current = true;
     setMessage('');
     try {
       const result = await uploadCorrections(file).unwrap();
       setMessage(`Import terminé: ${result.imported} lignes enregistrées.`);
     } catch (error: any) {
       setMessage(`Import échoué: ${getErrorMessage(error)}`);
+    } finally {
+      uploadInProgressRef.current = false;
+    }
+  };
+
+  const handleReplaceInitialFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || uploadInProgressRef.current) return;
+
+    const initialCount = Number(summary?.initial || 0);
+    const correctCount = Number(summary?.correct || 0);
+    const falseCount = Number(summary?.false_count || 0);
+    const confirmed = window.confirm(
+      `Remplacer uniquement l’import Initial avec « ${file.name} » ?\n\n` +
+      `• ${initialCount} ligne(s) Initial seront supprimées et remplacées.\n` +
+      `• ${correctCount} ligne(s) Correct seront conservées.\n` +
+      `• ${falseCount} ligne(s) False seront conservées.\n\n` +
+      'Les lignes déjà examinées ne seront pas modifiées.'
+    );
+    if (!confirmed) return;
+
+    uploadInProgressRef.current = true;
+    setMessage('');
+    try {
+      const result = await replaceInitialCorrections(file).unwrap();
+      setActiveTab('initial');
+      setPage(1);
+      setSelectedIds(new Set());
+      setProcessingIds(new Set());
+      setTransitionedIds(new Set());
+      setCategoryValues({});
+      setSavingCategoryProductIds(new Set());
+      setQAncienne('');
+      setQFr('');
+      setQAr('');
+      setMessage(
+        `Import Initial remplacé : ${result.imported} nouvelle(s) ligne(s) importée(s), ` +
+        `${result.replacedInitial} ancienne(s) ligne(s) Initial remplacée(s). ` +
+        `${result.preservedCorrect} ligne(s) Correct et ${result.preservedFalse} ligne(s) False préservée(s).`
+      );
+    } catch (error: any) {
+      const preservationNote = typeof error?.status === 'number'
+        ? ' Les lignes Initial existantes ont été conservées.'
+        : ' Vérifiez l’état de la page avant de relancer le remplacement.';
+      const errorDetail = getErrorMessage(error).trim().replace(/[.\s]+$/, '');
+      setMessage(
+        `Remplacement de l’import Initial échoué : ${errorDetail}.${preservationNote}`
+      );
+    } finally {
+      uploadInProgressRef.current = false;
     }
   };
 
@@ -497,15 +554,51 @@ const ProductNameCorrectionsPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50">
-            <Upload className="h-4 w-4" />
+          <label
+            aria-disabled={uploadsBusy}
+            className={`inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium shadow-sm ring-1 ${
+              uploadsBusy
+                ? 'pointer-events-none cursor-not-allowed text-gray-400 ring-gray-200'
+                : 'cursor-pointer text-gray-800 ring-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Upload className="h-4 w-4" aria-hidden="true" />
+            )}
             <span>{isUploading ? 'Import...' : 'Uploader Excel'}</span>
             <input
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"
-              disabled={isUploading}
+              disabled={uploadsBusy}
+              aria-label="Uploader un fichier Excel et remplacer toutes les corrections"
               onChange={handleFile}
+            />
+          </label>
+          <label
+            aria-disabled={uploadsBusy || !summary}
+            title="Remplacer uniquement les lignes encore au statut Initial"
+            className={`inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium shadow-sm ring-1 ${
+              uploadsBusy || !summary
+                ? 'pointer-events-none cursor-not-allowed text-gray-400 ring-gray-200'
+                : 'cursor-pointer text-amber-800 ring-amber-300 hover:bg-amber-50 focus-within:ring-2 focus-within:ring-amber-500'
+            }`}
+          >
+            {isReplacingInitial ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span>{isReplacingInitial ? 'Remplacement...' : 'Remplacer import'}</span>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              disabled={uploadsBusy || !summary}
+              aria-label="Sélectionner un fichier Excel pour remplacer uniquement l’import Initial"
+              onChange={handleReplaceInitialFile}
             />
           </label>
           <button
@@ -541,7 +634,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
           <button
             type="button"
             onClick={handleRematch}
-            disabled={isRematching || isUploading}
+            disabled={isRematching || uploadsBusy}
             className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
           >
             <RefreshCw className="h-4 w-4" />
