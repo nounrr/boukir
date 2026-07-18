@@ -56,7 +56,15 @@ export const productNameCorrectionsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getProductNameCorrections: builder.query<
       { rows: ProductNameCorrectionRow[]; summary: ProductNameCorrectionSummary; meta: ProductNameCorrectionMeta },
-      { status?: string; review_status?: string; q?: string; page?: number; limit?: number } | void
+      {
+        status?: string;
+        review_status?: string;
+        q_ancienne?: string;
+        q_fr?: string;
+        q_ar?: string;
+        page?: number;
+        limit?: number;
+      } | void
     >({
       query: (params) => ({
         url: '/product-name-corrections',

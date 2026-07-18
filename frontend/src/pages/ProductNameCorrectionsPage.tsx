@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Pencil, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
 import {
   useApplyProductNameCorrectionsMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
@@ -171,8 +172,11 @@ const EditableCorrectionName: React.FC<{
 };
 
 const ProductNameCorrectionsPage: React.FC = () => {
+  const authToken = useSelector((state: any) => state.auth?.token);
   const [activeTab, setActiveTab] = useState<TabKey>('initial');
-  const [q, setQ] = useState('');
+  const [qAncienne, setQAncienne] = useState('');
+  const [qFr, setQFr] = useState('');
+  const [qAr, setQAr] = useState('');
   const [message, setMessage] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
@@ -181,11 +185,15 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [savingCategoryProductIds, setSavingCategoryProductIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(getStoredPageSize);
+  const [exportingReviewStatus, setExportingReviewStatus] = useState<'correct' | 'false' | null>(null);
+  const exportInProgressRef = useRef(false);
 
   const { data, isLoading, isFetching } = useGetProductNameCorrectionsQuery({
     status: 'all',
     review_status: activeTab,
-    q: q || undefined,
+    q_ancienne: qAncienne || undefined,
+    q_fr: qFr || undefined,
+    q_ar: qAr || undefined,
     page,
     limit,
   });
@@ -224,13 +232,25 @@ const ProductNameCorrectionsPage: React.FC = () => {
     [categories]
   );
 
+  const handleSearchChange = (
+    field: 'ancienne' | 'fr' | 'ar',
+    value: string
+  ) => {
+    setPage(1);
+    setSelectedIds(new Set());
+
+    if (field === 'ancienne') setQAncienne(value);
+    else if (field === 'fr') setQFr(value);
+    else setQAr(value);
+  };
+
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [activeTab, q, page, limit]);
+  }, [activeTab, page, limit]);
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, q, limit]);
+  }, [activeTab, limit]);
 
   useEffect(() => {
     try {
@@ -250,6 +270,60 @@ const ProductNameCorrectionsPage: React.FC = () => {
       setMessage(`Import terminé: ${result.imported} lignes enregistrées.`);
     } catch (error: any) {
       setMessage(`Import échoué: ${getErrorMessage(error)}`);
+    }
+  };
+
+  const handleExportExcel = async (reviewStatus: 'correct' | 'false') => {
+    if (exportInProgressRef.current) return;
+
+    exportInProgressRef.current = true;
+    setExportingReviewStatus(reviewStatus);
+    setMessage('');
+    try {
+      const params = new URLSearchParams({
+        review_status: reviewStatus,
+        q_ancienne: qAncienne,
+        q_fr: qFr,
+        q_ar: qAr,
+      });
+      const response = await fetch(`/api/product-name-corrections/export-excel?${params.toString()}`, {
+        headers: authToken ? { authorization: `Bearer ${authToken}` } : undefined,
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Export impossible (HTTP ${response.status}).`;
+        try {
+          const errorData = await response.json();
+          if (typeof errorData?.message === 'string' && errorData.message.trim()) {
+            errorMessage = errorData.message;
+          }
+        } catch {
+          // Keep the HTTP fallback when the server did not return JSON.
+        }
+        throw new Error(errorMessage);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      try {
+        const statusLabel = reviewStatus === 'correct' ? 'corrects' : 'faux';
+        link.href = objectUrl;
+        link.download = `correction-noms-${statusLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        setMessage(
+          `Téléchargement des corrections ${reviewStatus === 'correct' ? 'correctes' : 'fausses'} lancé.`
+        );
+      } finally {
+        link.remove();
+        window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
+      }
+    } catch (error: any) {
+      setMessage(`Export Excel échoué : ${getErrorMessage(error)}`);
+    } finally {
+      exportInProgressRef.current = false;
+      setExportingReviewStatus(null);
     }
   };
 
@@ -436,6 +510,36 @@ const ProductNameCorrectionsPage: React.FC = () => {
           </label>
           <button
             type="button"
+            onClick={() => void handleExportExcel('correct')}
+            disabled={exportingReviewStatus !== null}
+            title="Télécharger toutes les corrections correctes correspondant aux recherches"
+            aria-label="Télécharger les produits corrects au format Excel"
+            className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-emerald-800 shadow-sm ring-1 ring-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 disabled:ring-gray-300"
+          >
+            {exportingReviewStatus === 'correct' ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Download className="h-4 w-4" aria-hidden="true" />
+            )}
+            Télécharger corrects
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExportExcel('false')}
+            disabled={exportingReviewStatus !== null}
+            title="Télécharger toutes les corrections fausses correspondant aux recherches"
+            aria-label="Télécharger les produits faux au format Excel"
+            className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-red-700 shadow-sm ring-1 ring-red-300 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 disabled:ring-gray-300"
+          >
+            {exportingReviewStatus === 'false' ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Download className="h-4 w-4" aria-hidden="true" />
+            )}
+            Télécharger faux
+          </button>
+          <button
+            type="button"
             onClick={handleRematch}
             disabled={isRematching || isUploading}
             className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
@@ -498,17 +602,76 @@ const ProductNameCorrectionsPage: React.FC = () => {
             );
           })}
         </div>
-        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <input
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
-            placeholder="Rechercher référence, ancien nom, nouveau nom, variante..."
-            className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
-        </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-4 p-4">
+          <fieldset className="rounded-md border border-gray-200 bg-gray-50/70 px-3 pb-3 pt-2">
+            <legend className="px-1 text-xs font-semibold text-gray-700">Rechercher par colonne</legend>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-gray-500">
+                Chaque champ cible uniquement la colonne indiquée.
+              </p>
+              <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                Filtres combinés avec
+                <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-800">
+                  ET
+                </span>
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-700">
+                  <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500">
+                    ANCIENNE
+                  </span>
+                  Ancienne désignation
+                </span>
+                <span className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    value={qAncienne}
+                    onChange={(event) => handleSearchChange('ancienne', event.target.value)}
+                    placeholder="Rechercher l’ancienne désignation"
+                    className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </span>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-700">
+                  <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-700">
+                    FR PRO
+                  </span>
+                  Désignation française
+                </span>
+                <span className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    value={qFr}
+                    onChange={(event) => handleSearchChange('fr', event.target.value)}
+                    placeholder="Rechercher la désignation FR Pro"
+                    className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </span>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-700">
+                  <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-700">
+                    AR PRO
+                  </span>
+                  Désignation arabe
+                </span>
+                <span className="relative block">
+                  <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    value={qAr}
+                    onChange={(event) => handleSearchChange('ar', event.target.value)}
+                    placeholder="ابحث في التسمية العربية المهنية"
+                    dir="rtl"
+                    className="w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-9 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </span>
+              </label>
+            </div>
+          </fieldset>
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <PageSizeSelect value={limit} onChange={setLimit} />
             <span className="text-sm text-gray-600">{selectedIds.size} sélection</span>
             <button

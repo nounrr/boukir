@@ -382,42 +382,145 @@ function serialize(row) {
   };
 }
 
+function buildCorrectionFilters(query, options = {}) {
+  const {
+    includeMatchStatus = true,
+    reviewStatusOverride,
+  } = options;
+  const status = clean(query.status);
+  const reviewStatus = reviewStatusOverride ?? clean(query.review_status);
+  const qAncienne = clean(query.q_ancienne);
+  const qFr = clean(query.q_fr);
+  const qAr = clean(query.q_ar);
+  const params = [];
+  const where = [];
+
+  if (includeMatchStatus && status && status !== 'all') {
+    where.push('pnc.match_status = ?');
+    params.push(status);
+  }
+
+  if (reviewStatus && reviewStatus !== 'all') {
+    where.push('pnc.review_status = ?');
+    params.push(reviewStatus);
+  }
+
+  if (qAncienne) {
+    where.push('pnc.ancienne_designation LIKE ?');
+    params.push(`%${qAncienne}%`);
+  }
+
+  if (qFr) {
+    where.push('pnc.designation_fr_pro LIKE ?');
+    params.push(`%${qFr}%`);
+  }
+
+  if (qAr) {
+    where.push('pnc.designation_ar_pro LIKE ?');
+    params.push(`%${qAr}%`);
+  }
+
+  return {
+    whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
+    params,
+  };
+}
+
+function createCorrectionsExcelBuffer(rows) {
+  const exportRows = rows.map((row) => ({
+    Reference: row.reference ?? '',
+    'Ref variant': row.ref_variant ?? '',
+    'Variante originale': row.variante_originale ?? '',
+    'Variante FR pro': row.variante_fr_pro ?? '',
+    'Variante AR pro': row.variante_ar_pro ?? '',
+    'Ancienne désignation': row.ancienne_designation ?? '',
+    'Désignation FR pro': row.designation_fr_pro ?? '',
+    'Désignation AR pro': row.designation_ar_pro ?? '',
+    'Statut contrôle': row.statut_controle ?? '',
+    'Note contrôle': row.note_controle ?? '',
+    Image: row.image ?? '',
+  }));
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: EXPECTED_HEADERS });
+  worksheet['!cols'] = [
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 30 },
+    { wch: 30 },
+    { wch: 30 },
+    { wch: 34 },
+    { wch: 34 },
+    { wch: 34 },
+    { wch: 20 },
+    { wch: 42 },
+    { wch: 32 },
+  ];
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Corrections');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+}
+
 router.get('/template/headers', (_req, res) => {
   res.json({ headers: EXPECTED_HEADERS });
+});
+
+router.get('/export-excel', async (req, res, next) => {
+  try {
+    const reviewStatus = clean(req.query.review_status);
+    if (reviewStatus !== 'correct' && reviewStatus !== 'false') {
+      return res.status(400).json({
+        message: 'Le statut d’export doit être « correct » ou « false ».',
+      });
+    }
+
+    await ensureTable();
+    const { whereSql, params } = buildCorrectionFilters(req.query, {
+      includeMatchStatus: false,
+      reviewStatusOverride: reviewStatus,
+    });
+    const [rows] = await pool.query(
+      `SELECT
+         pnc.reference,
+         pnc.ref_variant,
+         pnc.variante_originale,
+         pnc.variante_fr_pro,
+         pnc.variante_ar_pro,
+         pnc.ancienne_designation,
+         pnc.designation_fr_pro,
+         pnc.designation_ar_pro,
+         pnc.statut_controle,
+         pnc.note_controle,
+         pnc.image
+       FROM product_name_corrections pnc
+       ${whereSql}
+       ORDER BY pnc.row_index ASC, pnc.id ASC`,
+      params
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({
+        message: `Aucune correction ${reviewStatus === 'correct' ? 'correcte' : 'fausse'} ne correspond aux filtres.`,
+      });
+    }
+
+    const buffer = createCorrectionsExcelBuffer(rows);
+    const statusLabel = reviewStatus === 'correct' ? 'corrects' : 'faux';
+    const fileName = `correction-noms-${statusLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
+  } catch (err) {
+    return next(err);
+  }
 });
 
 router.get('/', async (req, res, next) => {
   try {
     await ensureTable();
-    const status = clean(req.query.status);
-    const reviewStatus = clean(req.query.review_status);
-    const q = clean(req.query.q);
     const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
     const limit = Math.min(500, Math.max(25, Number.parseInt(String(req.query.limit || '50'), 10) || 50));
     const offset = (page - 1) * limit;
-    const params = [];
-    const where = [];
-
-    if (status && status !== 'all') {
-      where.push('pnc.match_status = ?');
-      params.push(status);
-    }
-
-    if (reviewStatus && reviewStatus !== 'all') {
-      where.push('pnc.review_status = ?');
-      params.push(reviewStatus);
-    }
-
-    if (q) {
-      where.push(`(
-        pnc.reference LIKE ? OR pnc.ref_variant LIKE ? OR pnc.ancienne_designation LIKE ? OR
-        pnc.designation_fr_pro LIKE ? OR pnc.designation_ar_pro LIKE ? OR pnc.variante_originale LIKE ?
-      )`);
-      const like = `%${q}%`;
-      params.push(like, like, like, like, like, like);
-    }
-
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const { whereSql, params } = buildCorrectionFilters(req.query);
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total FROM product_name_corrections pnc ${whereSql}`,
       params
