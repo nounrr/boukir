@@ -19,7 +19,7 @@ const averageSnapshotCoutRevientExpr = (itemAlias) => `COALESCE((
 ), p.cout_revient, ps.cout_revient, p.prix_achat, ps.prix_achat, 0)`;
 
 const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge, onlyCharge }) => {
-  let whereSql = ' WHERE 1=1';
+  let whereSql = ' WHERE c.deleted_at IS NULL';
   const params = [];
 
   if (type && (type === 'Client' || type === 'Fournisseur')) {
@@ -330,7 +330,7 @@ const SINGLE_CONTACT_QUERY = `
     ) AS solde_cumule
   FROM contacts c
   LEFT JOIN contact_groups cg ON cg.id = c.group_id
-  WHERE c.id = ?
+  WHERE c.id = ? AND c.deleted_at IS NULL
 `;
 
 // GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculÃ©) et pagination
@@ -2124,7 +2124,7 @@ router.put('/:id', async (req, res) => {
 
     // Check if contact exists
     const [existing] = await pool.execute(
-      'SELECT id FROM contacts WHERE id = ?',
+      'SELECT id FROM contacts WHERE id = ? AND deleted_at IS NULL',
       [req.params.id]
     );
 
@@ -2288,11 +2288,16 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/contacts/:id - Delete contact
+// DELETE /api/contacts/:id - Soft delete contact
 router.delete('/:id', async (req, res) => {
   try {
+    const requestedUpdatedBy = Number(req.body?.updated_by);
+    const updatedBy = Number.isInteger(requestedUpdatedBy) && requestedUpdatedBy > 0
+      ? requestedUpdatedBy
+      : null;
+
     const [existing] = await pool.execute(
-      'SELECT id FROM contacts WHERE id = ?',
+      'SELECT id FROM contacts WHERE id = ? AND deleted_at IS NULL',
       [req.params.id]
     );
 
@@ -2300,7 +2305,18 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    await pool.execute('DELETE FROM contacts WHERE id = ?', [req.params.id]);
+    const [result] = await pool.execute(
+      `UPDATE contacts
+       SET deleted_at = NOW(),
+           updated_at = NOW(),
+           updated_by = COALESCE(?, updated_by)
+       WHERE id = ? AND deleted_at IS NULL`,
+      [updatedBy, req.params.id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
 
     res.status(204).send();
   } catch (error) {

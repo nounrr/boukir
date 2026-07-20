@@ -124,9 +124,10 @@ const contactsApi = api.injectEndpoints({
     }),
 
     deleteContact: builder.mutation<void, { id: number; updated_by: number }>({
-      query: ({ id }) => ({
+      query: ({ id, updated_by }) => ({
         url: `/contacts/${id}`,
         method: 'DELETE',
+        body: { updated_by },
       }),
       invalidatesTags: ['Contact'],
     }),
