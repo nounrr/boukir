@@ -177,6 +177,7 @@ const EditableCorrectionName: React.FC<{
 };
 
 const ProductCorrectionImages: React.FC<{ row: ProductNameCorrectionRow }> = ({ row }) => {
+  const [preview, setPreview] = useState<{ src: string; label: string; x: number; y: number } | null>(null);
   const images = [
     { key: 'product', label: 'Produit', url: row.product_image_url },
     { key: 'variant', label: 'Variante', url: row.is_variant_row ? row.variant_image_url : null },
@@ -196,6 +197,19 @@ const ProductCorrectionImages: React.FC<{ row: ProductNameCorrectionRow }> = ({ 
             key={`${image.key}-${image.url}`}
             type="button"
             onClick={() => window.open(src, '_blank', 'noopener,noreferrer')}
+            onMouseEnter={(event) => setPreview({
+              src,
+              label: image.label,
+              x: event.clientX,
+              y: event.clientY,
+            })}
+            onMouseMove={(event) => setPreview({
+              src,
+              label: image.label,
+              x: event.clientX,
+              y: event.clientY,
+            })}
+            onMouseLeave={() => setPreview(null)}
             className="group relative h-12 w-12 overflow-hidden rounded-md border border-gray-200 bg-gray-50 shadow-sm hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             title={`${image.label}: ${image.url}`}
             aria-label={`Ouvrir image ${image.label}`}
@@ -215,6 +229,22 @@ const ProductCorrectionImages: React.FC<{ row: ProductNameCorrectionRow }> = ({ 
           </button>
         );
       })}
+      {preview && (
+        <div
+          className="pointer-events-none fixed z-[9999] overflow-hidden rounded-lg border border-gray-200 bg-white p-2 shadow-2xl"
+          style={{
+            left: Math.max(12, Math.min(preview.x + 18, window.innerWidth - 460)),
+            top: Math.max(12, Math.min(preview.y + 18, window.innerHeight - 460)),
+          }}
+        >
+          <img
+            src={preview.src}
+            alt={preview.label}
+            className="max-h-[70vh] w-[420px] max-w-[70vw] rounded-md object-contain"
+          />
+          <div className="mt-1 text-center text-xs font-medium text-gray-700">{preview.label}</div>
+        </div>
+      )}
     </div>
   );
 };
