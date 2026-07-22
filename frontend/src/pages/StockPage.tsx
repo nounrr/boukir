@@ -13,6 +13,8 @@ import CategoryFormModal from '../components/CategoryFormModal';
 import Swal from 'sweetalert2';
 import { printProductTicket } from '../utils/productTicketPrint';
 
+const cleanDesignationText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
   const authToken = useSelector((state: any) => state.auth?.token);
@@ -802,7 +804,7 @@ const StockPage: React.FC = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
-            placeholder="Rechercher par ID ou désignation..."
+            placeholder="Rechercher par ID, désignation, ancienne désignation ou nom arabe…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => {
@@ -1051,11 +1053,37 @@ const StockPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      {product.designation}
-                      {product.isVariantRow && <span className="ml-2 text-xs text-blue-600 font-normal">(Variante)</span>}
-                    </div>
+                  <td className="px-6 py-4 min-w-[220px] max-w-[360px]">
+                    {(() => {
+                      const displayDesignation = cleanDesignationText(product.designation);
+                      const currentDesignation = cleanDesignationText(
+                        product.isVariantRow ? product.parent_designation : product.designation
+                      );
+                      const oldDesignation = cleanDesignationText(product.old_designation);
+                      const arabicDesignation = cleanDesignationText(product.designation_ar);
+                      const showOldDesignation = oldDesignation.length > 0
+                        && oldDesignation.toLocaleLowerCase('fr') !== currentDesignation.toLocaleLowerCase('fr');
+
+                      return (
+                        <div className="space-y-0.5 break-words">
+                          <div className="text-sm font-medium text-gray-900">
+                            {displayDesignation}
+                            {product.isVariantRow && <span className="ml-2 text-xs text-blue-600 font-normal">(Variante)</span>}
+                          </div>
+                          {showOldDesignation && (
+                            <div className="text-xs text-gray-500">
+                              {product.isVariantRow ? 'Ancien produit' : 'Ancien'} : {oldDesignation}
+                            </div>
+                          )}
+                          {arabicDesignation && (
+                            <div className="text-xs text-gray-700">
+                              {product.isVariantRow ? 'Nom AR produit' : 'Nom AR'} :{' '}
+                              <span lang="ar" dir="auto">{arabicDesignation}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     {!product.isVariantRow && !product.est_service && !product.non_stockable && (

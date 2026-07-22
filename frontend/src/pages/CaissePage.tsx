@@ -238,18 +238,6 @@ const CaissePage = () => {
     return 'Client remise';
   };
 
-  const getContactSelectLabel = (contact: Contact, kind: 'Client' | 'Fournisseur') => {
-    const baseName = String(contact.nom_complet || `${kind} #${contact.id}`).trim();
-    const extras = [
-      `#${contact.id}`,
-      contact.societe ? String(contact.societe).trim() : '',
-      contact.telephone ? String(contact.telephone).trim() : '',
-      (contact as any).reference ? String((contact as any).reference).trim() : '',
-    ].filter(Boolean);
-
-    return extras.length ? `${baseName} - ${extras.join(' - ')}` : baseName;
-  };
-
   const getPaymentContactName = (payment: Payment) => {
     if (payment.mode_paiement === 'Remise' && payment.remise_account_name) {
       return payment.remise_account_name;
@@ -1480,13 +1468,60 @@ const paymentValidationSchema = Yup.object({
   const formatTotalCumule = (value: number) =>
     `${new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} DH`;
 
+  const normalizeContactTotalCumule = (contact?: Contact | null) => {
+    const total = contact?.total_cumule;
+    return total !== null && total !== undefined ? Number(total) || 0 : null;
+  };
+
+  const getTotalCumuleBadgeClasses = (value: number) => {
+    if (value > 0) return 'border border-red-200 bg-red-50 text-red-700';
+    if (value < 0) return 'border border-green-200 bg-green-50 text-green-700';
+    return 'border border-gray-200 bg-gray-100 text-gray-600';
+  };
+
+  const getContactSelectLabel = (contact: Contact, kind: 'Client' | 'Fournisseur') => {
+    const reference = String(contact.reference || contact.id).trim();
+    const totalCumule = normalizeContactTotalCumule(contact);
+    return [
+      `Réf ${reference}`,
+      String(contact.nom_complet || `${kind} #${contact.id}`).trim(),
+      contact.societe ? String(contact.societe).trim() : '',
+      contact.telephone ? String(contact.telephone).trim() : '',
+      `ID ${contact.id}`,
+      totalCumule === null ? '' : `Total cumulé ${formatTotalCumule(totalCumule)}`,
+    ].filter(Boolean).join(' - ');
+  };
+
+  const renderContactSelectContent = (option: { data?: any }) => {
+    const contact = option.data as Contact | undefined;
+    if (!contact) return null;
+    const totalCumule = normalizeContactTotalCumule(contact);
+
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="shrink-0 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-xs font-semibold text-violet-700">
+          Réf {contact.reference || contact.id}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-gray-900">{contact.nom_complet}</span>
+          {contact.societe && (
+            <span className="block truncate text-xs text-gray-500">{contact.societe}</span>
+          )}
+        </span>
+        {totalCumule !== null && (
+          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold sm:ml-auto ${getTotalCumuleBadgeClasses(totalCumule)}`}>
+            Total cumulé : {formatTotalCumule(totalCumule)}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const getContactTotalCumule = (contactId: string | number, type: 'Client' | 'Fournisseur') => {
     if (!contactId) return null;
     const source = type === 'Fournisseur' ? fournisseurs : clients;
     const contact = source.find((c: any) => Number(c.id) === Number(contactId));
-    if (!contact) return null;
-    const total = (contact as any).total_cumule;
-    return total !== null && total !== undefined ? Number(total) || 0 : null;
+    return normalizeContactTotalCumule(contact);
   };
 
   // Rendu d'une ligne de paiement (utilisée pour les paiements simples et les items d'un groupe déplié)
@@ -2644,6 +2679,8 @@ const paymentValidationSchema = Yup.object({
                             placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
                             className="w-full"
                             autoOpenOnFocus={true}
+                            renderOption={renderContactSelectContent}
+                            renderValue={renderContactSelectContent}
                           />
                           <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
                           {isFournisseurPayment && values.contact_id && (
@@ -2659,9 +2696,8 @@ const paymentValidationSchema = Yup.object({
                           {values.contact_id && (() => {
                             const totalCumule = getContactTotalCumule(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client');
                             if (totalCumule === null) return null;
-                            const colorClass = totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500';
                             return (
-                              <div className={`mt-2 text-xs font-semibold ${colorClass}`}>
+                              <div className={`mt-2 inline-flex rounded px-2 py-1 text-xs font-semibold ${getTotalCumuleBadgeClasses(totalCumule)}`}>
                                 Total cumulé : {formatTotalCumule(totalCumule)}
                               </div>
                             );

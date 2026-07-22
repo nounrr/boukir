@@ -49,6 +49,11 @@ export interface PhotoShoot {
   processed: PhotoShootImage[];
 }
 
+export interface CancelPhotoShootsResponse {
+  ok: boolean;
+  cancelled: number[];
+}
+
 export interface PhotoShootStatusCounts {
   history_total: number;
   pending: number;
@@ -175,9 +180,30 @@ const productPhotosApi = api.injectEndpoints({
       invalidatesTags: ['PhotoShoot'],
     }),
 
+    replacePhotoShootImage: builder.mutation<
+      { ok: boolean; image: PhotoShootImage; shoot: PhotoShoot },
+      { shootId: number; imageId: number; body: FormData }
+    >({
+      query: ({ shootId, imageId, body }) => ({
+        url: `/product-photos/shoots/${shootId}/images/${imageId}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['PhotoShoot', 'Product'],
+    }),
+
     processPhotoShoots: builder.mutation<{ ok: boolean; processing: number[] }, ProcessPhotoShootsRequest>({
       query: (body) => ({
         url: '/product-photos/process',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['PhotoShoot'],
+    }),
+
+    cancelPhotoShoots: builder.mutation<CancelPhotoShootsResponse, { shootIds: number[] }>({
+      query: (body) => ({
+        url: '/product-photos/process/cancel',
         method: 'POST',
         body,
       }),
@@ -280,7 +306,9 @@ export const {
   useAddPhotoShootImagesMutation,
   useDeletePhotoShootMutation,
   useDeletePhotoImageMutation,
+  useReplacePhotoShootImageMutation,
   useProcessPhotoShootsMutation,
+  useCancelPhotoShootsMutation,
   useReprocessPhotoImageMutation,
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,

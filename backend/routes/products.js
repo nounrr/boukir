@@ -980,6 +980,7 @@ async function runProductSearch(query) {
         id: r.id,
         reference: String(r.id),
         designation: r.designation,
+        old_designation: r.old_designation ?? null,
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
         designation_zh: r.designation_zh,

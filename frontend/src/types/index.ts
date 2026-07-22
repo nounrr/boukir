@@ -235,6 +235,7 @@ export interface Product {
   // reference is now id as string (derived from backend); keep optional for compatibility
   reference?: string;
   designation: string;
+  old_designation?: string | null;
   categorie_id: number;
   categorie?: Category;
   categories?: Category[];

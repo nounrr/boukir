@@ -4,8 +4,13 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 import OpenAI, { toFile } from 'openai';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
+import {
+  deleteProductPhotoFileIfUnreferenced,
+  syncAttachedPhotoUrl,
+} from '../utils/productPhotoFiles.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -105,6 +110,15 @@ const receiveManualImages = (req, res, next) => {
   });
 };
 
+const receiveEditedImage = (req, res, next) => {
+  upload.single('image')(req, res, (error) => {
+    if (!error) return next();
+    deleteUploadedFiles(req.file ? [req.file] : []);
+    const status = error?.code === 'LIMIT_FILE_SIZE' ? 400 : 415;
+    return res.status(status).json({ message: error?.message || 'Image modifiée invalide' });
+  });
+};
+
 // ----------------------------
 // Schema
 // ----------------------------
@@ -118,6 +132,7 @@ async function ensureSchema() {
       product_id INT NOT NULL,
       variant_id INT NULL,
       status ENUM('pending','processing','processed','attached','error') NOT NULL DEFAULT 'pending',
+      processing_job_id VARCHAR(36) NULL,
       error_message TEXT NULL,
       created_by INT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -149,6 +164,17 @@ async function ensureSchema() {
       CONSTRAINT fk_photo_images_shoot FOREIGN KEY (shoot_id) REFERENCES product_photo_shoots(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  const [shootColumns] = await pool.query('SHOW COLUMNS FROM product_photo_shoots');
+  if (!shootColumns.some((column) => column.Field === 'processing_job_id')) {
+    try {
+      await pool.query(
+        'ALTER TABLE product_photo_shoots ADD COLUMN processing_job_id VARCHAR(36) NULL AFTER status'
+      );
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS manual_product_photos (
@@ -256,6 +282,42 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey: key, maxRetries: 2 });
 };
 
+const activeProcessingJobs = new Map();
+
+class ProcessingCancelledError extends Error {
+  constructor() {
+    super('Traitement annulé');
+    this.name = 'ProcessingCancelledError';
+  }
+}
+
+const isProcessingCancelled = (error) =>
+  error instanceof ProcessingCancelledError || error?.name === 'AbortError';
+
+async function isProcessingJobCurrent(shootId, jobId) {
+  const [rows] = await pool.query(
+    `SELECT id FROM product_photo_shoots
+     WHERE id = ? AND status = 'processing' AND processing_job_id = ?`,
+    [shootId, jobId]
+  );
+  return rows.length > 0;
+}
+
+async function assertProcessingJobCurrent(shootId, jobId, signal) {
+  if (signal?.aborted || !(await isProcessingJobCurrent(shootId, jobId))) {
+    throw new ProcessingCancelledError();
+  }
+}
+
+function registerProcessingJobs(jobs) {
+  for (const { shootId, jobId } of jobs) {
+    activeProcessingJobs.set(Number(shootId), {
+      jobId,
+      controller: new AbortController(),
+    });
+  }
+}
+
 function getImageBilling(result, { model, quality }) {
   const usage = result?.usage;
   const rates = IMAGE_TOKEN_RATES[model];
@@ -289,7 +351,7 @@ function getImageBilling(result, { model, quality }) {
   };
 }
 
-async function processOneImage(client, image, { model, quality }) {
+async function processOneImage(client, image, { model, quality }, { signal, assertCurrent }) {
   const abs = absolutePathForUrl(image.image_url);
   if (!abs || !fs.existsSync(abs)) {
     throw new Error(`Fichier introuvable: ${image.image_url}`);
@@ -311,16 +373,22 @@ async function processOneImage(client, image, { model, quality }) {
 
   let result;
   try {
-    result = await client.images.edit(params);
+    result = await client.images.edit(params, { signal });
   } catch (e) {
+    if (signal.aborted) throw new ProcessingCancelledError();
     // Certains modèles/versions d'API ne supportent pas ces paramètres : retry en mode simple
     const msg = String(e?.message || '').toLowerCase();
     if (msg.includes('input_fidelity') || msg.includes('quality') || msg.includes('background') || msg.includes('unknown parameter')) {
-      result = await client.images.edit({ model, image: file, prompt: IMAGE_PROMPT });
+      result = await client.images.edit(
+        { model, image: file, prompt: IMAGE_PROMPT },
+        { signal }
+      );
     } else {
       throw e;
     }
   }
+
+  await assertCurrent();
 
   const b64 = result?.data?.[0]?.b64_json;
   if (!b64) throw new Error('Réponse IA sans image');
@@ -333,10 +401,77 @@ async function processOneImage(client, image, { model, quality }) {
   };
 }
 
+async function persistProcessedImage({ shootId, jobId, image, processed, shouldReplaceExisting }) {
+  const conn = await pool.getConnection();
+  let committed = false;
+  let replacedUrls = [];
+  try {
+    await conn.beginTransaction();
+    const [shootRows] = await conn.query(
+      `SELECT id FROM product_photo_shoots
+       WHERE id = ? AND status = 'processing' AND processing_job_id = ?
+       FOR UPDATE`,
+      [shootId, jobId]
+    );
+    if (!shootRows.length) throw new ProcessingCancelledError();
+
+    const [existing] = await conn.query(
+      `SELECT id, image_url FROM product_photo_images
+       WHERE shoot_id = ? AND kind = 'processed' AND source_image_id = ?
+       FOR UPDATE`,
+      [shootId, image.id]
+    );
+    if (existing.length && !shouldReplaceExisting) {
+      await conn.rollback();
+      return false;
+    }
+
+    const billing = processed.billing;
+    await conn.query(
+      `INSERT INTO product_photo_images (
+         shoot_id, kind, source_image_id, image_url, position,
+         ai_provider, ai_model, ai_quality, ai_size,
+         ai_input_tokens, ai_input_text_tokens, ai_input_image_tokens, ai_output_tokens,
+         ai_cost_usd, ai_pricing_version
+       ) VALUES (?, 'processed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        shootId,
+        image.id,
+        processed.url,
+        image.position,
+        billing.provider,
+        billing.model,
+        billing.quality,
+        billing.size,
+        billing.inputTokens,
+        billing.inputTextTokens,
+        billing.inputImageTokens,
+        billing.outputTokens,
+        billing.costUsd,
+        billing.pricingVersion,
+      ]
+    );
+
+    if (shouldReplaceExisting && existing.length) {
+      await conn.query('DELETE FROM product_photo_images WHERE id IN (?)', [existing.map((row) => row.id)]);
+      replacedUrls = existing.map((row) => row.image_url);
+    }
+    await conn.commit();
+    committed = true;
+    replacedUrls.forEach(deleteFileForUrl);
+    return true;
+  } finally {
+    if (!committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    conn.release();
+  }
+}
+
 // Sequential background worker per request (avoids rate-limit bursts).
 // sourceImageIds + replaceExisting are used by the single-image gallery action.
 async function processShootsInBackground(
-  shootIds,
+  jobs,
   options,
   { sourceImageIds = null, replaceExisting = false, replaceShootIds = null } = {}
 ) {
@@ -348,9 +483,12 @@ async function processShootsInBackground(
     Array.isArray(replaceShootIds) ? replaceShootIds.map(Number).filter(Number.isFinite) : []
   );
 
-  for (const shootId of shootIds) {
+  for (const { shootId, jobId } of jobs) {
+    const registeredJob = activeProcessingJobs.get(Number(shootId));
+    const controller = registeredJob?.jobId === jobId ? registeredJob.controller : new AbortController();
     try {
       if (!client) throw new Error('OPENAI_API_KEY non configurée côté serveur');
+      await assertProcessingJobCurrent(shootId, jobId, controller.signal);
       const shouldReplaceExisting = replaceExisting || replaceShootIdSet.has(Number(shootId));
 
       const imageWhere = targetImageIds?.length ? ' AND id IN (?)' : '';
@@ -365,6 +503,7 @@ async function processShootsInBackground(
       if (!images.length) throw new Error('Aucune image originale à traiter');
 
       for (const img of images) {
+        await assertProcessingJobCurrent(shootId, jobId, controller.signal);
         // Normal batch processing skips completed images. A gallery reprocess
         // creates the replacement first, then removes the previous result.
         const [existing] = await pool.query(
@@ -374,36 +513,23 @@ async function processShootsInBackground(
         );
         if (existing.length && !shouldReplaceExisting) continue;
 
-        const processed = await processOneImage(client, img, options);
-        const billing = processed.billing;
-        await pool.query(
-          `INSERT INTO product_photo_images (
-             shoot_id, kind, source_image_id, image_url, position,
-             ai_provider, ai_model, ai_quality, ai_size,
-             ai_input_tokens, ai_input_text_tokens, ai_input_image_tokens, ai_output_tokens,
-             ai_cost_usd, ai_pricing_version
-           ) VALUES (?, 'processed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
+        const processed = await processOneImage(client, img, options, {
+          signal: controller.signal,
+          assertCurrent: () => assertProcessingJobCurrent(shootId, jobId, controller.signal),
+        });
+        try {
+          await assertProcessingJobCurrent(shootId, jobId, controller.signal);
+          const persisted = await persistProcessedImage({
             shootId,
-            img.id,
-            processed.url,
-            img.position,
-            billing.provider,
-            billing.model,
-            billing.quality,
-            billing.size,
-            billing.inputTokens,
-            billing.inputTextTokens,
-            billing.inputImageTokens,
-            billing.outputTokens,
-            billing.costUsd,
-            billing.pricingVersion,
-          ]
-        );
-
-        if (shouldReplaceExisting && existing.length) {
-          await pool.query('DELETE FROM product_photo_images WHERE id IN (?)', [existing.map((row) => row.id)]);
-          existing.forEach((row) => deleteFileForUrl(row.image_url));
+            jobId,
+            image: img,
+            processed,
+            shouldReplaceExisting,
+          });
+          if (!persisted) deleteFileForUrl(processed.url);
+        } catch (error) {
+          deleteFileForUrl(processed.url);
+          throw error;
         }
       }
 
@@ -422,17 +548,26 @@ async function processShootsInBackground(
         [shootId]
       );
       await pool.query(
-        `UPDATE product_photo_shoots SET status = ?, error_message = NULL WHERE id = ?`,
-        [Number(missingCount) === 0 ? 'processed' : 'pending', shootId]
+        `UPDATE product_photo_shoots
+         SET status = ?, processing_job_id = NULL, error_message = NULL
+         WHERE id = ? AND status = 'processing' AND processing_job_id = ?`,
+        [Number(missingCount) === 0 ? 'processed' : 'pending', shootId, jobId]
       );
     } catch (e) {
-      console.error(`[ProductPhotos] Erreur traitement IA shoot ${shootId}:`, e?.message);
-      await pool
-        .query(`UPDATE product_photo_shoots SET status = 'error', error_message = ? WHERE id = ?`, [
-          String(e?.message || 'Erreur traitement IA').slice(0, 1000),
-          shootId,
-        ])
-        .catch(() => {});
+      if (!isProcessingCancelled(e) && await isProcessingJobCurrent(shootId, jobId).catch(() => false)) {
+        console.error(`[ProductPhotos] Erreur traitement IA shoot ${shootId}:`, e?.message);
+        await pool
+          .query(
+            `UPDATE product_photo_shoots
+             SET status = 'error', processing_job_id = NULL, error_message = ?
+             WHERE id = ? AND status = 'processing' AND processing_job_id = ?`,
+            [String(e?.message || 'Erreur traitement IA').slice(0, 1000), shootId, jobId]
+          )
+          .catch(() => {});
+      }
+    } finally {
+      const currentJob = activeProcessingJobs.get(Number(shootId));
+      if (currentJob?.jobId === jobId) activeProcessingJobs.delete(Number(shootId));
     }
   }
 }
@@ -1233,17 +1368,166 @@ router.get('/shoots/:id', async (req, res) => {
 });
 
 // DELETE /api/product-photos/shoots/:id — delete shoot + files
+// Persists a non-destructive edit. Editing an original creates a processed
+// derivative so the captured source and its metadata remain intact.
+router.put('/shoots/:shootId/images/:imageId', receiveEditedImage, async (req, res) => {
+  const shootId = Number(req.params.shootId);
+  const imageId = Number(req.params.imageId);
+  const uploadedPath = req.file?.path;
+  const newUrl = req.file ? publicUrlFor(req.file.filename) : null;
+  let conn;
+  let committed = false;
+  let oldUrlToDelete = null;
+
+  try {
+    if (!Number.isFinite(shootId) || !Number.isFinite(imageId)) {
+      const error = new Error('Identifiants invalides');
+      error.status = 400;
+      throw error;
+    }
+    if (!req.file || !newUrl) {
+      const error = new Error('Image modifiée requise');
+      error.status = 400;
+      throw error;
+    }
+    await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT i.*, s.product_id, s.variant_id, s.status
+       FROM product_photo_images i
+       JOIN product_photo_shoots s ON s.id = i.shoot_id
+       WHERE i.id = ? AND i.shoot_id = ?
+       FOR UPDATE`,
+      [imageId, shootId]
+    );
+    if (!rows.length) {
+      const error = new Error('Cette image n’appartient pas à la session indiquée');
+      error.status = 404;
+      throw error;
+    }
+
+    const image = rows[0];
+    if (!['processed', 'attached'].includes(image.status)) {
+      const error = new Error('Seules les images traitées ou déjà attachées peuvent être modifiées');
+      error.status = 409;
+      throw error;
+    }
+
+    let updatedImageId = image.id;
+    let replacedUrl = image.image_url;
+    if (image.kind === 'original') {
+      const [derivatives] = await conn.query(
+        `SELECT * FROM product_photo_images
+         WHERE shoot_id = ? AND source_image_id = ? AND kind = 'processed'
+         ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+        [shootId, image.id]
+      );
+      if (derivatives.length) {
+        updatedImageId = derivatives[0].id;
+        replacedUrl = derivatives[0].image_url;
+        oldUrlToDelete = replacedUrl;
+        await conn.query(
+          'UPDATE product_photo_images SET image_url = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [newUrl, updatedImageId]
+        );
+      } else {
+        const [inserted] = await conn.query(
+          `INSERT INTO product_photo_images
+             (shoot_id, kind, source_image_id, image_url, position)
+           VALUES (?, 'processed', ?, ?, ?)`,
+          [shootId, image.id, newUrl, image.position]
+        );
+        updatedImageId = inserted.insertId;
+      }
+    } else {
+      oldUrlToDelete = image.image_url;
+      await conn.query(
+        'UPDATE product_photo_images SET image_url = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [newUrl, image.id]
+      );
+    }
+
+    if (image.status === 'attached') {
+      await syncAttachedPhotoUrl(conn, image, replacedUrl, newUrl);
+    }
+
+    await conn.commit();
+    committed = true;
+
+    if (oldUrlToDelete && oldUrlToDelete !== newUrl) {
+      await deleteProductPhotoFileIfUnreferenced({
+        conn: pool,
+        imageUrl: oldUrlToDelete,
+        resolvePath: absolutePathForUrl,
+      }).catch((error) => console.warn('[ProductPhotos] Ancien fichier édité conservé:', error?.message));
+    }
+
+    const [updatedShoot] = await getShootsWithDetails({ ids: [shootId] });
+    const updatedImage = [...updatedShoot.originals, ...updatedShoot.processed]
+      .find((item) => Number(item.id) === Number(updatedImageId));
+    res.json({ ok: true, image: updatedImage, shoot: updatedShoot });
+  } catch (error) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    if (!committed && uploadedPath) {
+      try { if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath); } catch (_) {}
+    }
+    console.error('[ProductPhotos] edit image error:', error);
+    res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur sauvegarde image modifiée' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 router.delete('/shoots/:id', async (req, res) => {
+  let conn;
+  let committed = false;
   try {
     const shootId = Number(req.params.id);
-    const [images] = await pool.query('SELECT image_url FROM product_photo_images WHERE shoot_id = ?', [shootId]);
-    const [result] = await pool.query('DELETE FROM product_photo_shoots WHERE id = ?', [shootId]);
-    if (!result.affectedRows) return res.status(404).json({ message: 'Session introuvable' });
-    for (const img of images) deleteFileForUrl(img.image_url);
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [shootRows] = await conn.query(
+      'SELECT status FROM product_photo_shoots WHERE id = ? FOR UPDATE',
+      [shootId]
+    );
+    if (!shootRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Session introuvable' });
+    }
+    if (shootRows[0].status === 'processing') {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Arrêtez le traitement IA avant de supprimer cette session' });
+    }
+    const [images] = await conn.query(
+      'SELECT image_url FROM product_photo_images WHERE shoot_id = ? FOR UPDATE',
+      [shootId]
+    );
+    const [result] = await conn.query('DELETE FROM product_photo_shoots WHERE id = ?', [shootId]);
+    if (!result.affectedRows) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Session introuvable' });
+    }
+    await conn.commit();
+    committed = true;
+    for (const img of images) {
+      await deleteProductPhotoFileIfUnreferenced({
+        conn: pool,
+        imageUrl: img.image_url,
+        resolvePath: absolutePathForUrl,
+      }).catch((error) => console.warn('[ProductPhotos] Fichier partagé conservé:', error?.message));
+    }
     res.json({ success: true });
   } catch (err) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
     console.error('[ProductPhotos] delete shoot error:', err);
     res.status(500).json({ message: err?.message || 'Erreur suppression session' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
@@ -1302,29 +1586,81 @@ router.post('/process', async (req, res) => {
       return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
     }
 
-    const [rows] = await pool.query(
-      `SELECT id FROM product_photo_shoots WHERE id IN (?) AND status IN ('pending','processed','error')`,
-      [shootIds]
-    );
-    const validIds = rows.map((r) => r.id);
+    const jobs = [];
+    for (const shootId of [...new Set(shootIds)]) {
+      const jobId = randomUUID();
+      const [claim] = await pool.query(
+        `UPDATE product_photo_shoots
+         SET status = 'processing', processing_job_id = ?, error_message = NULL
+         WHERE id = ? AND status IN ('pending','processed','error')`,
+        [jobId, shootId]
+      );
+      if (claim.affectedRows) jobs.push({ shootId, jobId });
+    }
+    const validIds = jobs.map((job) => job.shootId);
     const validIdSet = new Set(validIds);
     const replaceShootIds = requestedReplaceShootIds.filter((id) => validIdSet.has(id));
     if (!validIds.length) {
       return res.status(400).json({ message: 'Aucune session éligible (déjà en cours de traitement ?)' });
     }
 
-    await pool.query(
-      `UPDATE product_photo_shoots SET status = 'processing', error_message = NULL WHERE id IN (?)`,
-      [validIds]
-    );
-
     // Fire-and-forget: frontend polls /shoots for status changes
-    processShootsInBackground(validIds, { model, quality }, { replaceShootIds });
+    registerProcessingJobs(jobs);
+    void processShootsInBackground(jobs, { model, quality }, { replaceShootIds }).catch((error) => {
+      console.error('[ProductPhotos] Erreur worker IA:', error);
+    });
 
     res.json({ ok: true, processing: validIds });
   } catch (err) {
     console.error('[ProductPhotos] process error:', err);
     res.status(500).json({ message: err?.message || 'Erreur lancement traitement IA' });
+  }
+});
+
+// POST /api/product-photos/process/cancel — stop one or more active AI jobs
+router.post('/process/cancel', async (req, res) => {
+  const shootIds = [...new Set(
+    (Array.isArray(req.body?.shootIds) ? req.body.shootIds : [])
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+  if (!shootIds.length) return res.status(400).json({ message: 'shootIds requis' });
+
+  const conn = await pool.getConnection();
+  let committed = false;
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT id, processing_job_id FROM product_photo_shoots
+       WHERE id IN (?) AND status = 'processing'
+       FOR UPDATE`,
+      [shootIds]
+    );
+    const cancelled = rows.map((row) => Number(row.id));
+    if (cancelled.length) {
+      await conn.query(
+        `UPDATE product_photo_shoots
+         SET status = 'pending', processing_job_id = NULL, error_message = NULL
+         WHERE id IN (?) AND status = 'processing'`,
+        [cancelled]
+      );
+    }
+    await conn.commit();
+    committed = true;
+
+    for (const row of rows) {
+      const activeJob = activeProcessingJobs.get(Number(row.id));
+      if (activeJob?.jobId === row.processing_job_id) activeJob.controller.abort();
+    }
+    res.json({ ok: true, cancelled });
+  } catch (error) {
+    if (!committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    console.error('[ProductPhotos] cancel processing error:', error);
+    res.status(500).json({ message: error?.message || 'Erreur arrêt traitement IA' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -1364,14 +1700,24 @@ router.post('/shoots/:shootId/images/:imageId/reprocess', async (req, res) => {
       return res.status(409).json({ message: 'Un traitement IA est déjà en cours pour cette session' });
     }
 
-    await pool.query(
-      `UPDATE product_photo_shoots SET status = 'processing', error_message = NULL WHERE id = ?`,
-      [shootId]
+    const jobId = randomUUID();
+    const [claim] = await pool.query(
+      `UPDATE product_photo_shoots
+       SET status = 'processing', processing_job_id = ?, error_message = NULL
+       WHERE id = ? AND status <> 'processing'`,
+      [jobId, shootId]
     );
+    if (!claim.affectedRows) {
+      return res.status(409).json({ message: 'Un traitement IA est déjà en cours pour cette session' });
+    }
 
-    processShootsInBackground([shootId], { model, quality }, {
+    const jobs = [{ shootId, jobId }];
+    registerProcessingJobs(jobs);
+    void processShootsInBackground(jobs, { model, quality }, {
       sourceImageIds: [imageId],
       replaceExisting: true,
+    }).catch((error) => {
+      console.error('[ProductPhotos] Erreur worker IA:', error);
     });
 
     res.json({ ok: true, processing: [shootId], imageId });

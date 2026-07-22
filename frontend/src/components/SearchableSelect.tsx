@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 
 interface Option { value: string; label: string; data?: any; disabled?: boolean }
 
@@ -15,6 +15,8 @@ interface SearchableSelectProps {
   allowCreate?: boolean;
   onCreate?: (label: string) => void;
   createText?: string;
+  renderOption?: (option: Option) => React.ReactNode;
+  renderValue?: (option: Option) => React.ReactNode;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -30,6 +32,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   allowCreate = false,
   onCreate,
   createText = 'Créer',
+  renderOption,
+  renderValue,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,6 +41,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [highlightIndex, setHighlightIndex] = useState<number>(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastOpenAtRef = useRef<number>(0);
+  const generatedId = useId();
+  const listboxId = `${id || `searchable-select-${generatedId.replace(/:/g, '')}`}-listbox`;
 
   // Multi-word search: every token must be contained in the label (order-independent)
   const norm = (s: string) => String(s || '')
@@ -124,13 +130,20 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }}
         disabled={disabled}
         title={selectedOption ? selectedOption.label : placeholder}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
       >
-        <span className="truncate pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
-        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="6"/></svg>
+        {selectedOption && renderValue ? (
+          <div className="min-w-0 flex-1 overflow-hidden pr-2">{renderValue(selectedOption)}</div>
+        ) : (
+          <span className="truncate pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
+        )}
+        <svg className="w-4 h-4 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="6"/></svg>
       </button>
 
       {isOpen && !disabled && (
-        <div className="relative z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-hidden">
+        <div id={listboxId} role="listbox" className="relative z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-hidden">
           <div className="p-2 border-b bg-gray-50">
             <input
               type="text"
@@ -216,6 +229,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     key={option.value}
                     type="button"
                     disabled={option.disabled}
+                    role="option"
+                    aria-selected={option.value === value}
                     className={`w-full px-3 py-2 text-left text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${
                       option.disabled
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
@@ -244,7 +259,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     }}
                     title={option.disabled ? (option.data?.disabledReason || 'Option non selectionnable') : option.label}
                   >
-                    <span className="block truncate">{option.label}</span>
+                    {renderOption ? renderOption(option) : <span className="block truncate">{option.label}</span>}
                   </button>
                 ))}
                 {hasMoreItems && (

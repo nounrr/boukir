@@ -3,7 +3,7 @@ import Swal from 'sweetalert2';
 import {
   Camera, X, Trash2, Wand2, Search, ImagePlus, Check,
   Link2, RefreshCw, Star, ChevronLeft, ChevronRight, Loader2, History, Aperture, ZoomIn,
-  ImageOff, Upload, FolderUp, AlertTriangle
+  ImageOff, Upload, FolderUp, AlertTriangle, OctagonX
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -16,6 +16,7 @@ import {
   useDeletePhotoShootMutation,
   useDeletePhotoImageMutation,
   useProcessPhotoShootsMutation,
+  useCancelPhotoShootsMutation,
   useReprocessPhotoImageMutation,
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
@@ -38,6 +39,7 @@ import type {
 } from '../store/api/productPhotosApi';
 import { useAuth } from '../hooks/redux';
 import type { Product, ProductVariant } from '../types';
+import ProductPhotoEditor from '../components/product-photos/ProductPhotoEditor';
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -307,12 +309,55 @@ const ProductPicker: React.FC<{
 }> = ({ onSelect, onClose }) => {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
-  const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const openerRef = useRef<HTMLElement | null>(
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 300);
     return () => clearTimeout(t);
   }, [q]);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        ) || []
+      ).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      openerRef.current?.focus();
+    };
+  }, []);
 
   const { data, isFetching } = useSearchBonProductsQuery(
     { q: debouncedQ, limit: 30 },
@@ -320,101 +365,112 @@ const ProductPicker: React.FC<{
   );
   const products = data?.data || [];
 
-  const pick = (p: Product) => {
-    const variants = p.variants || [];
-    if (variants.length > 0) {
-      setPendingProduct(p);
-    } else {
-      onSelect(p, null);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-start sm:items-center justify-center p-2 sm:p-6" onClick={onClose}>
       <div
+        ref={dialogRef}
         className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="product-picker-title"
       >
-        {!pendingProduct ? (
-          <>
-            <div className="p-4 border-b">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800">Choisir un produit</h3>
-                <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  autoFocus
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Référence ou désignation…"
-                  className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-            </div>
-            <div className="overflow-y-auto flex-1 divide-y">
-              {isFetching && <div className="p-4 text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Recherche…</div>}
-              {!isFetching && debouncedQ && products.length === 0 && (
-                <div className="p-4 text-sm text-gray-500">Aucun produit trouvé</div>
-              )}
-              {products.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => pick(p)}
-                  className="w-full text-left p-3 hover:bg-orange-50 flex items-center gap-3"
-                >
-                  {p.image_url ? (
-                    <img src={p.image_url} className="w-10 h-10 rounded object-cover border" alt="" />
-                  ) : (
-                    <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-400 border">
-                      <Camera className="w-4 h-4" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-800 truncate">{p.designation}</div>
-                    <div className="text-xs text-gray-500">
-                      Réf: {p.id}
-                      {(p.variants?.length || 0) > 0 && ` • ${p.variants!.length} variante(s)`}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="p-4 border-b flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 truncate">
-                {pendingProduct.designation} — choisir la variante
-              </h3>
-              <button onClick={() => setPendingProduct(null)} className="p-1 rounded hover:bg-gray-100"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="overflow-y-auto flex-1 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-3">
+            <h3 id="product-picker-title" className="font-semibold text-gray-800">Choisir un produit</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fermer la recherche de produits"
+              className="p-1 rounded hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <label htmlFor="product-picker-search" className="sr-only">Référence ou désignation du produit ou de la variante</label>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              id="product-picker-search"
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Référence ou désignation…"
+              className="w-full pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 space-y-2 bg-gray-50/70 p-2">
+          {isFetching && <div className="p-4 text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Recherche…</div>}
+          {!isFetching && debouncedQ && products.length === 0 && (
+            <div className="p-4 text-sm text-gray-500">Aucun produit trouvé</div>
+          )}
+          {products.map((p) => (
+            <div
+              key={`product-${p.id}`}
+              className="overflow-hidden rounded-lg border border-gray-200 border-l-[3px] border-l-orange-300 bg-white shadow-sm"
+            >
               <button
-                onClick={() => onSelect(pendingProduct, null)}
-                className="p-3 border rounded-lg hover:border-orange-400 hover:bg-orange-50 text-left"
+                type="button"
+                onClick={() => onSelect(p, null)}
+                aria-label={`Sélectionner le produit principal ${p.designation}`}
+                className="w-full text-left p-3 bg-gray-50/80 hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-400 flex items-center gap-3"
               >
-                <div className="font-medium text-gray-800">Produit principal</div>
-                <div className="text-xs text-gray-500">Sans variante</div>
-              </button>
-              {(pendingProduct.variants || []).map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => onSelect(pendingProduct, v)}
-                  className="p-3 border rounded-lg hover:border-orange-400 hover:bg-orange-50 text-left flex items-center gap-2"
-                >
-                  {v.image_url && <img src={v.image_url} className="w-8 h-8 rounded object-cover border" alt="" />}
-                  <div>
-                    <div className="font-medium text-gray-800">{v.variant_name}</div>
-                    {v.reference && <div className="text-xs text-gray-500">Réf: {v.reference}</div>}
+                {p.image_url ? (
+                  <img src={p.image_url} className="w-10 h-10 rounded object-cover border" alt="" />
+                ) : (
+                  <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-400 border">
+                    <Camera className="w-4 h-4" />
                   </div>
-                </button>
-              ))}
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-800 truncate">{p.designation}</div>
+                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-gray-500">
+                    <span className="font-medium text-gray-600">Produit principal</span>
+                    <span>Réf: {p.reference || p.id}</span>
+                    {(p.variants?.length || 0) > 0 && <span>{p.variants!.length} variante(s)</span>}
+                  </div>
+                </div>
+              </button>
+              {(p.variants || []).map((v, index) => {
+                const imageUrl = v.image_url || p.image_url;
+                return (
+                  <button
+                    type="button"
+                    key={`variant-${p.id}-${v.id ?? index}`}
+                    onClick={() => onSelect(p, v)}
+                    aria-label={`Sélectionner la variante ${v.variant_name} de ${p.designation}${v.reference ? `, référence ${v.reference}` : ''}`}
+                    className="w-full text-left py-3 pl-5 sm:pl-7 pr-3 border-t border-gray-100 hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-400 flex items-center gap-3"
+                  >
+                    {imageUrl ? (
+                      <img src={imageUrl} className="w-10 h-10 rounded object-cover border" alt="" />
+                    ) : (
+                      <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-400 border">
+                        <Camera className="w-4 h-4" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
+                      <div className="min-w-0">
+                        <div className="text-xs text-gray-600 truncate">{p.designation}</div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-semibold text-gray-900 break-words">{v.variant_name}</span>
+                          <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">Variante</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Réf. produit: {p.reference || p.id}</div>
+                      </div>
+                      {v.reference && (
+                        <div className="mt-1 text-xs text-gray-600 sm:mt-0 sm:flex-shrink-0 sm:text-right">
+                          <span className="text-gray-500 sm:block">Réf. variante</span>{' '}
+                          <span className="font-semibold text-gray-700 break-all">{v.reference}</span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          </>
-        )}
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -616,7 +672,7 @@ interface HistoryGallerySelection {
   imageId: number;
 }
 
-const ShootGalleryModal: React.FC<{
+export const LegacyShootGalleryModal: React.FC<{
   shoots: PhotoShoot[];
   initialSelection: HistoryGallerySelection;
   aiConfiguration: AiConfiguration;
@@ -813,6 +869,7 @@ const ShootCard: React.FC<{
   const [deleteShoot] = useDeletePhotoShootMutation();
   const [deleteImage] = useDeletePhotoImageMutation();
   const [processShoots, { isLoading: processing }] = useProcessPhotoShootsMutation();
+  const [cancelShoots, { isLoading: stopping }] = useCancelPhotoShootsMutation();
   const [reorderImages] = useReorderPhotoImagesMutation();
   const [attachShoot, { isLoading: attaching }] = useAttachPhotoShootMutation();
 
@@ -874,6 +931,18 @@ const ShootCard: React.FC<{
     if (r.isConfirmed) deleteShoot(shoot.id);
   };
 
+  const stopProcessing = async () => {
+    try {
+      const result = await cancelShoots({ shootIds: [shoot.id] }).unwrap();
+      toast(
+        result.cancelled.includes(shoot.id) ? 'success' : 'info',
+        result.cancelled.includes(shoot.id) ? 'Traitement IA arrêté' : 'Ce traitement était déjà terminé ou arrêté'
+      );
+    } catch (e: any) {
+      toast('error', e?.data?.message || 'Impossible d’arrêter le traitement IA');
+    }
+  };
+
   const attach = async () => {
     try {
       const res = await attachShoot({ shootId: shoot.id, imageIds: localOrder.map((i) => i.id) }).unwrap();
@@ -914,6 +983,19 @@ const ShootCard: React.FC<{
           {shoot.status === 'processing' && <Loader2 className="w-3 h-3 inline animate-spin mr-1" />}
           {statusInfo.label}
         </span>
+        {shoot.status === 'processing' && (
+          <button
+            type="button"
+            onClick={stopProcessing}
+            disabled={stopping}
+            className="px-3 py-1.5 text-sm border border-red-300 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            title="Arrêter immédiatement ce traitement IA"
+            aria-label={`Arrêter le traitement IA de ${shoot.product_designation}`}
+          >
+            {stopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <OctagonX className="w-4 h-4" />}
+            {stopping ? 'Arrêt…' : 'Arrêter'}
+          </button>
+        )}
         {hasSessionCost && (
           <span
             className="text-xs px-2 py-1 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
@@ -935,7 +1017,14 @@ const ShootCard: React.FC<{
             <Wand2 className="w-4 h-4" /> {shoot.status === 'processed' ? 'Retraiter par IA' : 'Traiter par IA'}
           </button>
         )}
-        <button onClick={confirmDeleteShoot} className="p-2 text-red-500 hover:bg-red-50 rounded-lg" title="Supprimer la session">
+        <button
+          type="button"
+          onClick={confirmDeleteShoot}
+          disabled={shoot.status === 'processing'}
+          className="p-2 text-red-500 hover:bg-red-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={shoot.status === 'processing' ? 'Arrêtez le traitement avant de supprimer' : 'Supprimer la session'}
+          aria-label="Supprimer la session"
+        >
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
@@ -1155,6 +1244,7 @@ const HistoryTab: React.FC<{
   );
 
   const [processShoots, { isLoading: batchProcessing }] = useProcessPhotoShootsMutation();
+  const [cancelShoots, { isLoading: batchStopping }] = useCancelPhotoShootsMutation();
   const [attachShoot] = useAttachPhotoShootMutation();
   const [batchAttaching, setBatchAttaching] = useState(false);
 
@@ -1163,6 +1253,12 @@ const HistoryTab: React.FC<{
 
   const selectAllVisible = () => {
     setSelectedIds(shoots.map((shoot) => shoot.id));
+  };
+
+  const processingShoots = shoots.filter((shoot) => shoot.status === 'processing');
+
+  const selectProcessing = () => {
+    setSelectedIds(processingShoots.map((shoot) => shoot.id));
   };
 
   const selectVisibleCount = () => {
@@ -1184,6 +1280,9 @@ const HistoryTab: React.FC<{
   );
   const selectableForAttach = shoots.filter(
     (s) => selectedIds.includes(s.id) && s.status !== 'processing'
+  );
+  const selectableForCancel = shoots.filter(
+    (s) => selectedIds.includes(s.id) && s.status === 'processing'
   );
 
   const batchProcess = async () => {
@@ -1225,6 +1324,22 @@ const HistoryTab: React.FC<{
     setBatchAttaching(false);
     setSelectedIds([]);
     toast(ok === selectableForAttach.length ? 'success' : 'info', `${ok}/${selectableForAttach.length} session(s) attachée(s)`);
+  };
+
+  const batchCancel = async () => {
+    if (!selectableForCancel.length) return;
+    try {
+      const result = await cancelShoots({ shootIds: selectableForCancel.map((shoot) => shoot.id) }).unwrap();
+      setSelectedIds((current) => current.filter((id) => !result.cancelled.includes(id)));
+      toast(
+        result.cancelled.length ? 'success' : 'info',
+        result.cancelled.length
+          ? `${result.cancelled.length} traitement(s) IA arrêté(s)`
+          : 'Aucun traitement actif à arrêter'
+      );
+    } catch (e: any) {
+      toast('error', e?.data?.message || 'Impossible d’arrêter les traitements IA');
+    }
   };
 
   return (
@@ -1294,6 +1409,15 @@ const HistoryTab: React.FC<{
         >
           Tout sélectionner ({shoots.length})
         </button>
+        <button
+          type="button"
+          onClick={selectProcessing}
+          disabled={processingShoots.length === 0}
+          className="px-3 py-2 text-sm border border-red-200 text-red-700 rounded-lg hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+        >
+          <OctagonX className="w-4 h-4" />
+          Sélectionner les traitements en cours ({processingShoots.length})
+        </button>
         <label className="inline-flex items-center gap-2 text-sm text-gray-600">
           <span>Nombre de produits</span>
           <input
@@ -1332,6 +1456,18 @@ const HistoryTab: React.FC<{
             {batchProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
             Traiter par IA ({selectableForProcess.length})
           </button>
+          {selectableForCancel.length > 0 && (
+            <button
+              type="button"
+              onClick={batchCancel}
+              disabled={batchStopping}
+              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              aria-label={`Arrêter ${selectableForCancel.length} traitement(s) IA`}
+            >
+              {batchStopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <OctagonX className="w-4 h-4" />}
+              {batchStopping ? 'Arrêt…' : `Arrêter le traitement (${selectableForCancel.length})`}
+            </button>
+          )}
           <button
             onClick={batchAttach}
             disabled={batchAttaching || !selectableForAttach.length}
@@ -1364,7 +1500,8 @@ const HistoryTab: React.FC<{
             selected={selectedIds.includes(s.id)}
             onToggleSelect={() => toggleSelect(s.id)}
             onOpenGallery={(imageIndex) => {
-              const image = s.originals[imageIndex];
+              const original = s.originals[imageIndex];
+              const image = s.processed.find((item) => item.source_image_id === original?.id) || original;
               if (image) setGallerySelection({ shootId: s.id, imageId: image.id });
             }}
             aiConfiguration={aiConfiguration}
@@ -1372,13 +1509,16 @@ const HistoryTab: React.FC<{
         ))}
       </div>
       {gallerySelection && (
-        <ShootGalleryModal
-          shoots={shoots}
-          initialSelection={gallerySelection}
-          aiConfiguration={aiConfiguration}
-          onAiConfigurationChange={onAiConfigurationChange}
-          onClose={() => setGallerySelection(null)}
-        />
+        (() => {
+          const selectedShoot = shoots.find((shoot) => shoot.id === gallerySelection.shootId);
+          return selectedShoot ? (
+            <ProductPhotoEditor
+              shoot={selectedShoot}
+              initialImageId={gallerySelection.imageId}
+              onClose={() => setGallerySelection(null)}
+            />
+          ) : null;
+        })()
       )}
     </div>
   );
@@ -1391,6 +1531,7 @@ const HistoryTab: React.FC<{
 const AttachedTab: React.FC = () => {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
+  const [gallerySelection, setGallerySelection] = useState<HistoryGallerySelection | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 300);
@@ -1472,12 +1613,20 @@ const AttachedTab: React.FC = () => {
               <div className="p-3">
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {gallery.map((img, idx) => (
-                    <div key={img.id} className="relative flex-shrink-0">
+                    <button
+                      type="button"
+                      key={img.id}
+                      onClick={() => setGallerySelection({ shootId: shoot.id, imageId: img.id })}
+                      className="relative flex-shrink-0 group cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                      aria-label={`Ouvrir et modifier l’image ${idx + 1} de ${shoot.product_designation}`}
+                    >
                       <img
                         src={img.image_url}
-                        className={`w-20 h-20 object-cover rounded-lg border-2 ${idx === 0 ? 'border-yellow-400' : 'border-gray-200'}`}
-                        alt=""
+                        className={`w-20 h-20 object-cover rounded-lg border-2 transition ${idx === 0 ? 'border-yellow-400' : 'border-gray-200 group-hover:border-orange-400'}`}
+                        alt={`Photo produit ${idx + 1}`}
                       />
+                      <span className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/30 transition" aria-hidden="true" />
+                      <span className="absolute left-1 top-1 rounded bg-black/70 p-1 text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true"><ZoomIn className="w-3.5 h-3.5" /></span>
                       {idx === 0 && (
                         <span className="absolute -top-2 -left-2 bg-yellow-400 text-white rounded-full p-1 shadow" title="Image principale">
                           <Star className="w-3 h-3 fill-current" />
@@ -1486,7 +1635,7 @@ const AttachedTab: React.FC = () => {
                       <span className="absolute bottom-0.5 right-1 text-[10px] bg-black/50 text-white px-1 rounded">
                         {idx + 1}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1494,6 +1643,16 @@ const AttachedTab: React.FC = () => {
           );
         })}
       </div>
+      {gallerySelection && (() => {
+        const selectedShoot = shoots.find((shoot) => shoot.id === gallerySelection.shootId);
+        return selectedShoot ? (
+          <ProductPhotoEditor
+            shoot={selectedShoot}
+            initialImageId={gallerySelection.imageId}
+            onClose={() => setGallerySelection(null)}
+          />
+        ) : null;
+      })()}
     </div>
   );
 };
@@ -2553,7 +2712,7 @@ const ProductPhotoStudioPage: React.FC = () => {
   const [tab, setTab] = useState<'capture' | 'history' | 'attached' | 'manual'>('capture');
   const [aiConfiguration, setAiConfiguration] = useState<AiConfiguration>({
     model: 'gpt-image-2',
-    quality: 'medium',
+    quality: 'low',
   });
 
   return (
