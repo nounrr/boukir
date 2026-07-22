@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, RefreshCcw, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, RefreshCcw, RefreshCw, Replace as ReplaceIcon, Search, Upload, XCircle } from 'lucide-react';
 import {
   useApplyProductNameCorrectionsMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
   useGetProductNameCorrectionsQuery,
   useReplaceInitialProductNameCorrectionsMutation,
+  useReplaceProductNameCorrectionNamesMutation,
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
   useUpdateProductCorrectionNamesMutation,
@@ -14,8 +15,11 @@ import {
   type ProductNameCorrectionRow,
 } from '../store/api/productNameCorrectionsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { toBackendUrl } from '../utils/url';
 
 type TabKey = 'initial' | 'correct' | 'false';
+type ReplaceColumn = 'fr' | 'ar';
+type ReplaceScope = 'selected' | 'tab';
 
 const PAGE_SIZE_STORAGE_KEY = 'productNameCorrections.pageSize';
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500] as const;
@@ -172,6 +176,49 @@ const EditableCorrectionName: React.FC<{
   );
 };
 
+const ProductCorrectionImages: React.FC<{ row: ProductNameCorrectionRow }> = ({ row }) => {
+  const images = [
+    { key: 'product', label: 'Produit', url: row.product_image_url },
+    { key: 'variant', label: 'Variante', url: row.is_variant_row ? row.variant_image_url : null },
+    { key: 'import', label: 'Import', url: row.image },
+  ].filter((image): image is { key: string; label: string; url: string } => Boolean(String(image.url || '').trim()));
+
+  if (!images.length) {
+    return <span className="text-gray-400">-</span>;
+  }
+
+  return (
+    <div className="flex min-w-[120px] flex-wrap gap-2">
+      {images.map((image) => {
+        const src = toBackendUrl(image.url);
+        return (
+          <button
+            key={`${image.key}-${image.url}`}
+            type="button"
+            onClick={() => window.open(src, '_blank', 'noopener,noreferrer')}
+            className="group relative h-12 w-12 overflow-hidden rounded-md border border-gray-200 bg-gray-50 shadow-sm hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            title={`${image.label}: ${image.url}`}
+            aria-label={`Ouvrir image ${image.label}`}
+          >
+            <img
+              src={src}
+              alt={image.label}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none';
+              }}
+            />
+            <span className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-[9px] font-medium leading-none text-white">
+              {image.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 const ProductNameCorrectionsPage: React.FC = () => {
   const authToken = useSelector((state: any) => state.auth?.token);
   const [activeTab, setActiveTab] = useState<TabKey>('initial');
@@ -187,6 +234,10 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(getStoredPageSize);
   const [exportingReviewStatus, setExportingReviewStatus] = useState<'correct' | 'false' | null>(null);
+  const [replaceColumn, setReplaceColumn] = useState<ReplaceColumn>('fr');
+  const [replaceScope, setReplaceScope] = useState<ReplaceScope>('selected');
+  const [replaceSearch, setReplaceSearch] = useState('');
+  const [replaceValue, setReplaceValue] = useState('');
   const exportInProgressRef = useRef(false);
   const uploadInProgressRef = useRef(false);
 
@@ -205,6 +256,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [rematch, { isLoading: isRematching }] = useRematchProductNameCorrectionsMutation();
   const [setChecked] = useSetProductNameCorrectionCheckedMutation();
   const [bulkSetChecked, { isLoading: isBulkUpdating }] = useBulkSetProductNameCorrectionsCheckedMutation();
+  const [replaceCorrectionNames, { isLoading: isReplacingNames }] = useReplaceProductNameCorrectionNamesMutation();
   const [updateCorrectionNames] = useUpdateProductCorrectionNamesMutation();
   const [applyCorrections, { isLoading: isApplying }] = useApplyProductNameCorrectionsMutation();
   const [updateProductCategory] = useUpdateProductCorrectionCategoryMutation();
@@ -403,6 +455,61 @@ const ProductNameCorrectionsPage: React.FC = () => {
       );
     } catch (error: any) {
       setMessage(`Remplacement échoué: ${getErrorMessage(error)}`);
+    }
+  };
+
+  const handleReplaceNames = async () => {
+    const searchText = replaceSearch.trim();
+    const replacementText = replaceValue.trim();
+    if (!searchText) {
+      setMessage('Recherche/remplacement: saisissez le mot a rechercher.');
+      return;
+    }
+
+    const ids = replaceScope === 'selected'
+      ? selectedRows.filter((row) => !row.applied_at).map((row) => row.id)
+      : [];
+    if (replaceScope === 'selected' && ids.length === 0) {
+      setMessage('Recherche/remplacement: selectionnez au moins une ligne non appliquee.');
+      return;
+    }
+
+    if (replaceScope === 'tab') {
+      const tabLabel: Record<TabKey, string> = {
+        initial: 'Initial',
+        correct: 'Correct',
+        false: 'Fausse',
+      };
+      const hasFilters = Boolean(qAncienne.trim() || qFr.trim() || qAr.trim());
+      const confirmed = window.confirm(
+        `Remplacer "${searchText}" par "${replacementText}" dans la colonne ${replaceColumn.toUpperCase()} Pro ?\n\n` +
+        `Portee: tout l'onglet ${tabLabel[activeTab]}${hasFilters ? ' avec les filtres actuels' : ''}.\n` +
+        'Les corrections deja appliquees seront ignorees.'
+      );
+      if (!confirmed) return;
+    }
+
+    setMessage('');
+    try {
+      const result = await replaceCorrectionNames({
+        field: replaceColumn,
+        search: searchText,
+        replace: replacementText,
+        review_status: activeTab,
+        ids: ids.length ? ids : undefined,
+        q_ancienne: replaceScope === 'tab' ? qAncienne || undefined : undefined,
+        q_fr: replaceScope === 'tab' ? qFr || undefined : undefined,
+        q_ar: replaceScope === 'tab' ? qAr || undefined : undefined,
+      }).unwrap();
+      if (replaceScope === 'selected') setSelectedIds(new Set());
+      const skipped = result.skippedApplied
+        ? ` ${result.skippedApplied} ligne(s) deja appliquee(s) ignoree(s).`
+        : '';
+      setMessage(
+        `Recherche/remplacement termine: ${result.updated} ligne(s) modifiee(s) sur ${result.matched} ligne(s) trouvee(s).${skipped}`
+      );
+    } catch (error: any) {
+      setMessage(`Recherche/remplacement echoue: ${getErrorMessage(error)}`);
     }
   };
 
@@ -764,6 +871,97 @@ const ProductNameCorrectionsPage: React.FC = () => {
               </label>
             </div>
           </fieldset>
+          <fieldset className="rounded-md border border-sky-200 bg-sky-50/60 px-3 pb-3 pt-2">
+            <legend className="px-1 text-xs font-semibold text-sky-900">Recherche et remplacer</legend>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[170px_180px_1fr_1fr_auto] lg:items-end">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-sky-900">Colonne</span>
+                <select
+                  value={replaceColumn}
+                  onChange={(event) => setReplaceColumn(event.target.value as ReplaceColumn)}
+                  disabled={isReplacingNames}
+                  className="w-full rounded-md border border-sky-300 bg-white px-2 py-2 text-sm text-gray-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-gray-100"
+                  aria-label="Colonne a remplacer"
+                >
+                  <option value="fr">FR Pro</option>
+                  <option value="ar">AR Pro</option>
+                </select>
+              </label>
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-sky-900">Portee</span>
+                <div className="inline-flex w-full overflow-hidden rounded-md border border-sky-300 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setReplaceScope('selected')}
+                    disabled={isReplacingNames}
+                    className={`min-h-10 flex-1 px-3 text-sm font-medium ${
+                      replaceScope === 'selected'
+                        ? 'bg-sky-700 text-white'
+                        : 'text-sky-900 hover:bg-sky-50'
+                    } disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400`}
+                  >
+                    Selection
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReplaceScope('tab')}
+                    disabled={isReplacingNames}
+                    className={`min-h-10 flex-1 border-l border-sky-300 px-3 text-sm font-medium ${
+                      replaceScope === 'tab'
+                        ? 'bg-sky-700 text-white'
+                        : 'text-sky-900 hover:bg-sky-50'
+                    } disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400`}
+                  >
+                    Onglet
+                  </button>
+                </div>
+              </div>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-sky-900">Rechercher</span>
+                <input
+                  value={replaceSearch}
+                  onChange={(event) => setReplaceSearch(event.target.value)}
+                  disabled={isReplacingNames}
+                  maxLength={255}
+                  dir={replaceColumn === 'ar' ? 'rtl' : 'ltr'}
+                  placeholder="Mot a remplacer"
+                  className="w-full rounded-md border border-sky-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-gray-100"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-sky-900">Remplacer par</span>
+                <input
+                  value={replaceValue}
+                  onChange={(event) => setReplaceValue(event.target.value)}
+                  disabled={isReplacingNames}
+                  maxLength={255}
+                  dir={replaceColumn === 'ar' ? 'rtl' : 'ltr'}
+                  placeholder="Nouveau mot"
+                  className="w-full rounded-md border border-sky-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-gray-100"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleReplaceNames()}
+                disabled={
+                  isReplacingNames ||
+                  !replaceSearch.trim() ||
+                  (replaceScope === 'selected' && selectedIds.size === 0)
+                }
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {isReplacingNames ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ReplaceIcon className="h-4 w-4" />
+                )}
+                Remplacer
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-sky-900">
+              Selection modifie les lignes cochees. Onglet modifie toutes les lignes non appliquees de l'onglet actif, avec les filtres actuels.
+            </div>
+          </fieldset>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PageSizeSelect value={limit} onChange={setLimit} />
             <span className="text-sm text-gray-600">{selectedIds.size} sélection</span>
@@ -821,6 +1019,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Action</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Ref</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Ref var</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Images</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Ancienne désignation</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Désignation FR pro</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Désignation AR pro</th>
@@ -876,6 +1075,9 @@ const ProductNameCorrectionsPage: React.FC = () => {
                     </td>
                     <td className="px-3 py-3 align-top font-medium text-gray-900">{fmt(row.reference)}</td>
                     <td className="px-3 py-3 align-top text-gray-700">{fmt(row.ref_variant)}</td>
+                    <td className="px-3 py-3 align-top">
+                      <ProductCorrectionImages row={row} />
+                    </td>
                     <td className="px-3 py-3 align-top text-gray-800">{isVariantRow ? '-' : fmt(row.ancienne_designation)}</td>
                     <td className="px-3 py-3 align-top text-gray-900">
                       {isVariantRow ? '-' : (
@@ -972,7 +1174,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
 
               {!isLoading && visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-6 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={13} className="px-6 py-10 text-center text-sm text-gray-500">
                     Aucune ligne enregistrée. Uploadez le fichier Excel pour démarrer.
                   </td>
                 </tr>

@@ -21,6 +21,8 @@ export interface ProductNameCorrectionRow {
   statut_controle: string | null;
   note_controle: string | null;
   image: string | null;
+  product_image_url: string | null;
+  variant_image_url: string | null;
   matched_product_id: number | null;
   matched_variant_id: number | null;
   product_categorie_id: number | null;
@@ -58,6 +60,26 @@ export interface ReplaceInitialProductNameCorrectionsResult {
   replacedInitial: number;
   preservedCorrect: number;
   preservedFalse: number;
+}
+
+export interface ReplaceProductNameCorrectionNamesPayload {
+  field: 'fr' | 'ar';
+  search: string;
+  replace: string;
+  review_status: 'initial' | 'correct' | 'false';
+  ids?: number[];
+  q_ancienne?: string;
+  q_fr?: string;
+  q_ar?: string;
+}
+
+export interface ReplaceProductNameCorrectionNamesResult {
+  ok: boolean;
+  mode: 'selected' | 'tab';
+  field: 'fr' | 'ar';
+  matched: number;
+  updated: number;
+  skippedApplied: number;
 }
 
 export const productNameCorrectionsApi = api.injectEndpoints({
@@ -142,6 +164,18 @@ export const productNameCorrectionsApi = api.injectEndpoints({
       invalidatesTags: ['ProductNameCorrection'],
     }),
 
+    replaceProductNameCorrectionNames: builder.mutation<
+      ReplaceProductNameCorrectionNamesResult,
+      ReplaceProductNameCorrectionNamesPayload
+    >({
+      query: (body) => ({
+        url: '/product-name-corrections/bulk/replace-names',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['ProductNameCorrection'],
+    }),
+
     updateProductCorrectionNames: builder.mutation<
       {
         ok: boolean;
@@ -196,6 +230,7 @@ export const {
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
+  useReplaceProductNameCorrectionNamesMutation,
   useUpdateProductCorrectionNamesMutation,
   useApplyProductNameCorrectionsMutation,
   useUpdateProductCorrectionCategoryMutation,

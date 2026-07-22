@@ -43,7 +43,9 @@ async function ensureTable() {
 
   await addColumnIfMissing('products', 'designation_ar', 'VARCHAR(255) DEFAULT NULL');
   await addColumnIfMissing('products', 'old_designation', 'VARCHAR(255) DEFAULT NULL');
+  await addColumnIfMissing('products', 'image_url', 'VARCHAR(255) DEFAULT NULL');
   await addColumnIfMissing('product_variants', 'variant_name_ar', 'VARCHAR(255) DEFAULT NULL');
+  await addColumnIfMissing('product_variants', 'image_url', 'VARCHAR(255) NULL');
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS product_name_corrections (
@@ -544,6 +546,71 @@ function buildCorrectionFilters(query, options = {}) {
   };
 }
 
+const REPLACEABLE_NAME_COLUMNS = {
+  fr: {
+    product: 'designation_fr_pro',
+    variant: 'variante_fr_pro',
+  },
+  ar: {
+    product: 'designation_ar_pro',
+    variant: 'variante_ar_pro',
+  },
+};
+
+const SQL_VARIANT_CORRECTION_ROW = `(
+  pnc.matched_variant_id IS NOT NULL
+  OR NULLIF(TRIM(pnc.variante_originale), '') IS NOT NULL
+  OR NULLIF(TRIM(pnc.variante_fr_pro), '') IS NOT NULL
+  OR NULLIF(TRIM(pnc.variante_ar_pro), '') IS NOT NULL
+  OR (
+    NULLIF(TRIM(pnc.ref_variant), '') IS NOT NULL
+    AND NULLIF(TRIM(pnc.ref_variant), '') <> COALESCE(NULLIF(TRIM(pnc.reference), ''), '')
+  )
+)`;
+
+function buildNameReplacementFilters({
+  reviewStatus,
+  ids,
+  qAncienne,
+  qFr,
+  qAr,
+  searchText,
+  target,
+  includeAppliedFilter = true,
+}) {
+  const filterQuery = {
+    review_status: reviewStatus,
+    q_ancienne: ids?.length ? undefined : qAncienne,
+    q_fr: ids?.length ? undefined : qFr,
+    q_ar: ids?.length ? undefined : qAr,
+  };
+  const { whereSql, params } = buildCorrectionFilters(filterQuery, {
+    includeMatchStatus: false,
+  });
+  const where = whereSql ? [whereSql.replace(/^WHERE\s+/i, '')] : [];
+  const whereParams = [...params];
+
+  if (ids?.length) {
+    where.push('pnc.id IN (?)');
+    whereParams.push(ids);
+  }
+
+  if (includeAppliedFilter) {
+    where.push('pnc.applied_at IS NULL');
+  }
+
+  where.push(`(
+    (${SQL_VARIANT_CORRECTION_ROW} AND pnc.${target.variant} IS NOT NULL AND LOCATE(?, pnc.${target.variant}) > 0)
+    OR (NOT ${SQL_VARIANT_CORRECTION_ROW} AND pnc.${target.product} IS NOT NULL AND LOCATE(?, pnc.${target.product}) > 0)
+  )`);
+  whereParams.push(searchText, searchText);
+
+  return {
+    whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
+    params: whereParams,
+  };
+}
+
 function createCorrectionsExcelBuffer(rows) {
   const exportRows = rows.map((row) => ({
     Reference: row.reference ?? '',
@@ -646,9 +713,14 @@ router.get('/', async (req, res, next) => {
     const filteredTotal = Number(countRows?.[0]?.total || 0);
 
     const [rows] = await pool.query(
-      `SELECT pnc.*, p.categorie_id AS product_categorie_id
+      `SELECT
+         pnc.*,
+         p.categorie_id AS product_categorie_id,
+         p.image_url AS product_image_url,
+         pv.image_url AS variant_image_url
        FROM product_name_corrections pnc
        LEFT JOIN products p ON p.id = pnc.matched_product_id
+       LEFT JOIN product_variants pv ON pv.id = pnc.matched_variant_id
        ${whereSql}
        ORDER BY pnc.row_index ASC, pnc.id ASC
        LIMIT ${limit} OFFSET ${offset}`,
@@ -788,6 +860,112 @@ router.patch('/bulk/check', async (req, res, next) => {
     res.json({ ok: true, checked: Boolean(checked), updated: result.affectedRows || 0 });
   } catch (err) {
     next(err);
+  }
+});
+
+router.patch('/bulk/replace-names', async (req, res, next) => {
+  try {
+    await ensureTable();
+
+    const field = clean(req.body?.field);
+    const target = REPLACEABLE_NAME_COLUMNS[field];
+    if (!target) {
+      return res.status(400).json({ message: 'Colonne invalide: choisir fr ou ar' });
+    }
+
+    const reviewStatus = clean(req.body?.review_status);
+    if (!['initial', 'correct', 'false'].includes(reviewStatus)) {
+      return res.status(400).json({ message: 'Onglet invalide: initial, correct ou false requis' });
+    }
+
+    const searchText = String(req.body?.search ?? '').trim();
+    const replacementText = String(req.body?.replace ?? '').trim();
+    if (!searchText) {
+      return res.status(400).json({ message: 'Mot a rechercher requis' });
+    }
+    if (searchText.length > 255 || replacementText.length > 255) {
+      return res.status(400).json({ message: 'Recherche et remplacement limites a 255 caracteres' });
+    }
+
+    const ids = Array.isArray(req.body?.ids)
+      ? [...new Set(req.body.ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+      : [];
+    const mode = ids.length ? 'selected' : 'tab';
+
+    const filters = buildNameReplacementFilters({
+      reviewStatus,
+      ids,
+      qAncienne: req.body?.q_ancienne,
+      qFr: req.body?.q_fr,
+      qAr: req.body?.q_ar,
+      searchText,
+      target,
+    });
+
+    const [candidateRows] = await pool.query(
+      `SELECT COUNT(*) AS total FROM product_name_corrections pnc ${filters.whereSql}`,
+      filters.params
+    );
+    const candidateCount = Number(candidateRows?.[0]?.total || 0);
+
+    const [updateResult] = await pool.query(
+      `UPDATE product_name_corrections pnc
+       SET
+         ${target.product} = CASE
+           WHEN NOT ${SQL_VARIANT_CORRECTION_ROW} AND LOCATE(?, pnc.${target.product}) > 0
+           THEN REPLACE(pnc.${target.product}, ?, ?)
+           ELSE pnc.${target.product}
+         END,
+         ${target.variant} = CASE
+           WHEN ${SQL_VARIANT_CORRECTION_ROW} AND LOCATE(?, pnc.${target.variant}) > 0
+           THEN REPLACE(pnc.${target.variant}, ?, ?)
+           ELSE pnc.${target.variant}
+         END,
+         updated_at = NOW()
+       ${filters.whereSql}`,
+      [
+        searchText,
+        searchText,
+        replacementText,
+        searchText,
+        searchText,
+        replacementText,
+        ...filters.params,
+      ]
+    );
+
+    let skippedApplied = 0;
+    if (ids.length) {
+      const appliedFilters = buildNameReplacementFilters({
+        reviewStatus,
+        ids,
+        qAncienne: req.body?.q_ancienne,
+        qFr: req.body?.q_fr,
+        qAr: req.body?.q_ar,
+        searchText,
+        target,
+        includeAppliedFilter: false,
+      });
+      const [appliedRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM product_name_corrections pnc
+         ${appliedFilters.whereSql}
+         AND pnc.applied_at IS NOT NULL`,
+        appliedFilters.params
+      );
+      skippedApplied = Number(appliedRows?.[0]?.total || 0);
+    }
+
+    return res.json({
+      ok: true,
+      mode,
+      field,
+      matched: candidateCount,
+      updated: Number(updateResult?.affectedRows || 0),
+      skippedApplied,
+    });
+  } catch (err) {
+    return next(err);
   }
 });
 
