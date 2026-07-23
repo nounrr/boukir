@@ -223,6 +223,10 @@ const bonPagedConfigs = {
     itemAlias: 'i',
     itemSnapshot: false,
   },
+  Ecommerce: {
+    type: 'Ecommerce',
+    table: 'ecommerce_orders',
+  },
 };
 
 const buildItemsSql = (cfg) => {
@@ -801,6 +805,55 @@ router.get('/paged/:type', async (req, res) => {
   } catch (error) {
     console.error('GET /bons/paged/:type error:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message, code: error?.code });
+  }
+});
+
+router.patch('/:type/:id/livre', async (req, res) => {
+  try {
+    const { type, id: rawId } = req.params;
+    const cfg = bonPagedConfigs[type];
+    if (!cfg) {
+      return res.status(400).json({ message: 'Type de bon invalide' });
+    }
+
+    if (!/^[1-9]\d*$/.test(String(rawId || ''))) {
+      return res.status(400).json({ message: 'Identifiant de bon invalide' });
+    }
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id)) {
+      return res.status(400).json({ message: 'Identifiant de bon invalide' });
+    }
+
+    const rawLivre = req.body?.livre;
+    const livre = typeof rawLivre === 'boolean'
+      ? rawLivre
+      : rawLivre === 0
+        ? false
+        : rawLivre === 1
+          ? true
+          : null;
+    if (livre === null) {
+      return res.status(400).json({ message: 'Le champ livre doit être un booléen' });
+    }
+
+    await pool.query(`UPDATE ${cfg.table} SET livre = ? WHERE id = ?`, [livre ? 1 : 0, id]);
+    const [rows] = await pool.query(`SELECT id, livre FROM ${cfg.table} WHERE id = ? LIMIT 1`, [id]);
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Bon introuvable' });
+    }
+
+    return res.json({
+      id: Number(rows[0].id),
+      type: cfg.type,
+      livre: Number(rows[0].livre) === 1,
+    });
+  } catch (error) {
+    console.error('PATCH /bons/:type/:id/livre error:', error);
+    return res.status(500).json({
+      message: 'Erreur lors de la mise à jour de la livraison',
+      error: error?.sqlMessage || error?.message,
+      code: error?.code,
+    });
   }
 });
 

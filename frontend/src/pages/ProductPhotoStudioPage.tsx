@@ -1513,7 +1513,8 @@ const HistoryTab: React.FC<{
           const selectedShoot = shoots.find((shoot) => shoot.id === gallerySelection.shootId);
           return selectedShoot ? (
             <ProductPhotoEditor
-              shoot={selectedShoot}
+              shoots={shoots}
+              initialShootId={selectedShoot.id}
               initialImageId={gallerySelection.imageId}
               onClose={() => setGallerySelection(null)}
             />
@@ -1647,7 +1648,8 @@ const AttachedTab: React.FC = () => {
         const selectedShoot = shoots.find((shoot) => shoot.id === gallerySelection.shootId);
         return selectedShoot ? (
           <ProductPhotoEditor
-            shoot={selectedShoot}
+            shoots={shoots}
+            initialShootId={selectedShoot.id}
             initialImageId={gallerySelection.imageId}
             onClose={() => setGallerySelection(null)}
           />

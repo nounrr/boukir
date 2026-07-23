@@ -9,7 +9,10 @@ import { sendWhatsApp } from '../utils/notifications';
 const SHOW_WHATSAPP_POPUP = false;
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
-import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
+import {
+  useGetEmployeesQueryServer as useGetEmployeesQueryServer,
+  useGetMyBonAuthorizationsQueryServer,
+} from '../store/api/employeesApi.server';
 import { useGetProductsQuery, useGetProductsWithSnapshotsQuery, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
@@ -1013,6 +1016,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const isEditMode = Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
+  const { data: myBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, { skip: !isOpen });
+  const plafondAuthorizationsRemaining = Number(myBonAuthorizations?.bon_plafond_autorisations || 0);
+  const blockedAuthorizationsRemaining = Number(myBonAuthorizations?.bon_client_bloque_autorisations || 0);
+  const canAuthorizePlafond = isPDG || plafondAuthorizationsRemaining > 0;
+  const canAuthorizeBlockedClient = isPDG || blockedAuthorizationsRemaining > 0;
   const isQtyOnlyEdit = isChefChauffeur && isEditMode;
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
@@ -1545,11 +1553,15 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
     const depassement = isOverLimit ? soldeCumule - limite : 0;
     const isBlocked = isContactBlocked(c);
-    const isDisabled = !allowCreditNote && (isBlocked || (isOverLimit && user?.role !== 'PDG'));
+    const supportsExceptionAuthorization = ['Sortie', 'Comptant'].includes(String(currentModalType));
+    const isDisabled = !allowCreditNote && (
+      (isBlocked && (!supportsExceptionAuthorization || !canAuthorizeBlockedClient)) ||
+      (isOverLimit && (supportsExceptionAuthorization ? !canAuthorizePlafond : user?.role !== 'PDG'))
+    );
     const blockedLabel = !allowCreditNote && isBlocked ? ' - Client bloque' : '';
-    const disabledReason = !allowCreditNote && isBlocked
-      ? 'Client bloque'
-      : !allowCreditNote && isOverLimit && user?.role !== 'PDG'
+    const disabledReason = !allowCreditNote && isBlocked && (!supportsExceptionAuthorization || !canAuthorizeBlockedClient)
+      ? 'Client bloque - aucune autorisation restante'
+      : !allowCreditNote && isOverLimit && (supportsExceptionAuthorization ? !canAuthorizePlafond : user?.role !== 'PDG')
         ? 'Client non selectionnable - Plafond depasse'
         : undefined;
     const baseLabel = `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}${blockedLabel}`;
@@ -1566,7 +1578,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const clientOptions = useMemo(
     () => (selectableClients as Contact[]).map(buildClientOption),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectableClients, user?.role, currentModalType]
+    [selectableClients, user?.role, currentModalType, canAuthorizeBlockedClient, canAuthorizePlafond]
   );
   // PERF: options fournisseur mémoïsées (évite .map(fournisseurs) à chaque render).
   const fournisseurOptions = useMemo(
@@ -2746,15 +2758,33 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   submitInProgressRef.current = true;
   setIsSavingBon(true);
   try {
+    let useExceptionAuthorization = false;
 
     const selectedClientId = values.client_id ? Number(values.client_id) : null;
     const selectedClient = selectedClientId
       ? allClients.find((c: any) => Number(c?.id) === selectedClientId)
       : null;
     if (selectedClient && !isClientCreditNoteType(values.type) && isContactBlocked(selectedClient)) {
-      showError(`Client bloque: ${selectedClient.nom_complet || selectedClientId}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
-      setSubmitting(false);
-      return;
+      const supportsExceptionAuthorization = ['Sortie', 'Comptant'].includes(String(values.type));
+      if (!supportsExceptionAuthorization || !canAuthorizeBlockedClient) {
+        showError(`Client bloqué : ${selectedClient.nom_complet || selectedClientId}. Aucune autorisation "client bloqué" restante.`);
+        setSubmitting(false);
+        return;
+      }
+      const blockedConfirmation = await showConfirmation(
+        `${selectedClient.nom_complet || selectedClientId} est bloqué.\n\n` +
+        (isPDG
+          ? 'Le PDG peut autoriser ce bon sans quota.'
+          : `Cette opération consommera 1 autorisation "client bloqué".\nAutorisations restantes : ${blockedAuthorizationsRemaining}.`),
+        'Autorisation client bloqué',
+        'Utiliser l’autorisation',
+        'Annuler'
+      );
+      if (!blockedConfirmation.isConfirmed) {
+        setSubmitting(false);
+        return;
+      }
+      useExceptionAuthorization = !isPDG;
     }
     if (isChefChauffeur && !isEditMode) {
       showError('Permission refusée: Chef Chauffeur ne peut pas créer des bons/avoirs.');
@@ -3017,6 +3047,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       remise_client_nom: (requestType === 'Sortie' || requestType === 'Comptant') ? effectiveRemiseTarget.remise_client_nom : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
+      use_exception_authorization: useExceptionAuthorization,
       // N'envoyer livraisons que si au moins un véhicule est défini
       livraisons: livraisonsClean.length ? livraisonsClean : undefined,
       items: (requestType === 'Charge' || requestType === 'AvoirCharge')
@@ -3426,6 +3457,22 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
                 }
               }
               // Si approbation récente ou nouvelle approbation, continuer
+            } else if (canAuthorizePlafond) {
+              const result = await showConfirmation(
+                `Client : ${client.nom_complet}\n` +
+                `Dépassement actuel : ${depassementActuel.toFixed(2)} DH\n` +
+                `Montant du nouveau bon : ${montantTotal.toFixed(2)} DH\n\n` +
+                `Cette opération consommera 1 autorisation "dépassement de plafond".\n` +
+                `Autorisations restantes : ${plafondAuthorizationsRemaining}.`,
+                'Utiliser une autorisation plafond',
+                'Utiliser l’autorisation',
+                'Annuler'
+              );
+              if (!result.isConfirmed) {
+                setSubmitting(false);
+                return;
+              }
+              cleanBonData.use_exception_authorization = true;
             } else {
               // Autres rôles : Interdiction complète
               showError(
@@ -3468,6 +3515,21 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
                 setSubmitting(false);
                 return;
               }
+            } else if (canAuthorizePlafond) {
+              const result = await showConfirmation(
+                `Client : ${client.nom_complet}\n` +
+                `Ce bon dépassera la limite de ${depassement.toFixed(2)} DH.\n\n` +
+                `Cette opération consommera 1 autorisation "dépassement de plafond".\n` +
+                `Autorisations restantes : ${plafondAuthorizationsRemaining}.`,
+                'Utiliser une autorisation plafond',
+                'Utiliser l’autorisation',
+                'Annuler'
+              );
+              if (!result.isConfirmed) {
+                setSubmitting(false);
+                return;
+              }
+              cleanBonData.use_exception_authorization = true;
             } else {
               // Autres rôles : Annulation automatique
               showError(
@@ -4270,6 +4332,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   Chef Chauffeur: modification limitée — vous pouvez changer uniquement les quantités.
                 </div>
               )}
+              {!isPDG && ['Sortie', 'Comptant'].includes(currentTab) && (
+                <div className="flex flex-wrap gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <span className="font-medium">Autorisations disponibles :</span>
+                  <span className="rounded bg-white px-2 py-0.5">
+                    Plafond {plafondAuthorizationsRemaining}
+                  </span>
+                  <span className="rounded bg-white px-2 py-0.5">
+                    Client bloqué {blockedAuthorizationsRemaining}
+                  </span>
+                </div>
+              )}
               <AutoCheckNonCalculatedForAwatif isOpen={isOpen} clients={clients as any[]} />
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 
@@ -4478,8 +4551,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         return;
                       }
                       if (!isClientCreditNoteType(values.type) && isContactBlocked(client)) {
-                        showError(`Client bloque: ${client.nom_complet || clientId}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
-                        return;
+                        const supportsExceptionAuthorization = ['Sortie', 'Comptant'].includes(String(values.type));
+                        if (!supportsExceptionAuthorization || !canAuthorizeBlockedClient) {
+                          showError(`Client bloqué : ${client.nom_complet || clientId}. Aucune autorisation "client bloqué" restante.`);
+                          return;
+                        }
                       }
                       
                       if (isClientCreditNoteType(values.type)) {
@@ -4529,6 +4605,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             if (values.type === 'Devis') setFieldValue('client_nom', '');
                           }
                           // Sinon ne pas sélectionner le client
+                        } else if (canAuthorizePlafond) {
+                          setFieldValue('client_id', clientId);
+                          setFieldValue('client_nom', client.nom_complet);
+                          setFieldValue('client_adresse', client.adresse || '');
+                          setFieldValue('client_societe', (client as any).societe || '');
+                          showSuccess(`Client sélectionné. Il reste ${plafondAuthorizationsRemaining} autorisation(s) plafond.`);
                         } else {
                           // Autres rôles : Interdiction complète
                           showError(

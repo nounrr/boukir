@@ -6,7 +6,12 @@ import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { syncBonItemRemises } from '../utils/syncBonItemRemises.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
-import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
+import {
+  BonAuthorizationError,
+  bonAuthorizationErrorPayload,
+  recordBonExceptionAuthorizationUsage,
+  reserveBonExceptionAuthorizations,
+} from '../utils/bonExceptionAuthorization.js';
 
 const router = express.Router();
 
@@ -667,11 +672,14 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     let effectiveClientNom = String(client_nom || '').trim() || null;
     const comptantRemiseTotal = computeComptantRemiseTotal(items);
     const wantsDirectComptantRemise = parseBooleanFlag(remise_is_client) && comptantRemiseTotal > 0;
-    const blockedClient = await findBlockedClient(connection, cId);
-    if (blockedClient) {
-      await connection.rollback();
-      return res.status(400).json(blockedClientPayload(blockedClient));
-    }
+    const exceptionReservation = await reserveBonExceptionAuthorizations({
+      db: connection,
+      user: req.user,
+      clientId: cId,
+      amount: Number(montant_total || 0) + Number(montant_ignorer || 0),
+      bonType: 'Comptant',
+      requested: req.body?.use_exception_authorization,
+    });
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
@@ -717,6 +725,13 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     ]);
 
     const comptantId = comptantResult.insertId;
+    await recordBonExceptionAuthorizationUsage({
+      db: connection,
+      reservation: exceptionReservation,
+      user: req.user,
+      bonType: 'Comptant',
+      bonId: comptantId,
+    });
 
     if (wantsDirectComptantRemise && !cId) {
       const createdContact = await createComptantRemiseContact(connection, {
@@ -878,6 +893,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   res.status(201).json({ message: 'Bon comptant créé avec succès', id: comptantId, numero });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('Erreur POST /comptant:', error);
     const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
     const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');
@@ -1009,11 +1027,16 @@ router.put('/:id', async (req, res) => {
     if (wantsDirectComptantRemise && !effectiveClientNom) {
       effectiveClientNom = `client comptant_${Number(id)}`;
     }
-    const blockedClient = await findBlockedClient(connection, cId);
-    if (blockedClient) {
-      await connection.rollback();
-      return res.status(400).json(blockedClientPayload(blockedClient));
-    }
+    const exceptionReservation = await reserveBonExceptionAuthorizations({
+      db: connection,
+      user: req.user,
+      clientId: cId,
+      amount: Number(montant_total || 0) + Number(montant_ignorer || 0),
+      bonType: 'Comptant',
+      bonId: Number(id),
+      existingBon: oldBon,
+      requested: req.body?.use_exception_authorization,
+    });
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
@@ -1082,6 +1105,13 @@ router.put('/:id', async (req, res) => {
       resolved.remise_id,
       id,
     ]);
+    await recordBonExceptionAuthorizationUsage({
+      db: connection,
+      reservation: exceptionReservation,
+      user: req.user,
+      bonType: 'Comptant',
+      bonId: Number(id),
+    });
 
     const nextNonPayePayments = nonPayeRequested && Array.isArray(paiements_non_payes)
       ? paiements_non_payes
@@ -1237,6 +1267,9 @@ router.put('/:id', async (req, res) => {
     res.json({ message: 'Bon comptant mis à jour avec succès' });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('Erreur PUT /comptant/:id:', error);
     const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
     const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');

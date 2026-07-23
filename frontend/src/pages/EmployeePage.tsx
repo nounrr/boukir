@@ -392,6 +392,8 @@ const validationSchemaCreate = Yup.object({
   date_embauche: Yup.string().optional(),
   role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'ChefChauffeur', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
+  bon_plafond_autorisations: Yup.number().integer('Nombre entier requis').min(0, 'Minimum 0').required('Requis'),
+  bon_client_bloque_autorisations: Yup.number().integer('Nombre entier requis').min(0, 'Minimum 0').required('Requis'),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').required('Mot de passe requis'),
 });
 
@@ -401,6 +403,8 @@ const validationSchemaEdit = Yup.object({
   date_embauche: Yup.string().optional(),
   role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'ChefChauffeur', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
+  bon_plafond_autorisations: Yup.number().integer('Nombre entier requis').min(0, 'Minimum 0').required('Requis'),
+  bon_client_bloque_autorisations: Yup.number().integer('Nombre entier requis').min(0, 'Minimum 0').required('Requis'),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
 
@@ -459,6 +463,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
       date_embauche: '',
       role: 'Employé',
   salaire: '' as any,
+      bon_plafond_autorisations: 0,
+      bon_client_bloque_autorisations: 0,
       password: '',
     },
     validationSchema: editingEmployee ? validationSchemaEdit : validationSchemaCreate,
@@ -470,6 +476,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
           date_embauche: string | null;
           role: 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'ChefChauffeur' | 'Employé' | null;
           salaire: number | null;
+          bon_plafond_autorisations: number;
+          bon_client_bloque_autorisations: number;
           password: string;
         } = {
           cin: values.cin.trim(),
@@ -479,6 +487,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
           salaire: values.salaire !== undefined && values.salaire !== null && String(values.salaire).trim() !== ''
             ? Number(values.salaire)
             : null,
+          bon_plafond_autorisations: Number(values.bon_plafond_autorisations || 0),
+          bon_client_bloque_autorisations: Number(values.bon_client_bloque_autorisations || 0),
           password: values.password?.trim() || '',
         };
         if (editingEmployee) {
@@ -535,6 +545,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
   date_embauche: employee.date_embauche ? String(employee.date_embauche).slice(0, 10) : '',
   role: (employee.role as any) || 'Employé',
   salaire: employee.salaire != null ? String(employee.salaire) : '',
+  bon_plafond_autorisations: Number(employee.bon_plafond_autorisations || 0),
+  bon_client_bloque_autorisations: Number(employee.bon_client_bloque_autorisations || 0),
   password: '', // Ne pas pré-remplir le mot de passe (optionnel en modification)
     });
   setChangePassword(false);
@@ -774,6 +786,9 @@ const EmployeePage: React.FC = () => { // NOSONAR
               {user?.role === 'PDG' && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
               )}
+              {user?.role === 'PDG' && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Autorisations bons</th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montants en attente</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documents</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -832,6 +847,18 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
                     </td>
                   )}
+                  {user?.role === 'PDG' && (
+                    <td className="px-6 py-4 whitespace-nowrap text-xs">
+                      <div className="flex flex-col gap-1">
+                        <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">
+                          Plafond : {Number(employee.bon_plafond_autorisations || 0)}
+                        </span>
+                        <span className="rounded bg-red-100 px-2 py-1 text-red-800">
+                          Bloqué : {Number(employee.bon_client_bloque_autorisations || 0)}
+                        </span>
+                      </div>
+                    </td>
+                  )}
                   <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '200px' }}>
                     <PendingSalaryCell employeeId={employee.id} selectedMonth={selectedMonth} />
                   </td>
@@ -887,7 +914,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                 {/* Accordéon avec statistiques et aperçu des documents - PDG seulement */}
                 {user?.role === 'PDG' && expandedEmployee === employee.id && (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 bg-gray-50 border-t">
+                    <td colSpan={9} className="px-6 py-4 bg-gray-50 border-t">
                       <EmployeeAccordionContent employee={employee} selectedMonth={selectedMonth} salaryMap={salaryMap} />
                     </td>
                   </tr>
@@ -951,7 +978,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">
               {editingEmployee ? 'Modifier l\'employé' : 'Nouvel employé'}
             </h2>
@@ -990,6 +1017,51 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     <p className="text-red-500 text-sm mt-1">{String((formik.errors as any).salaire)}</p>
                   )}
                 </div>
+
+                {user?.role === 'PDG' && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <div className="mb-3">
+                      <h3 className="font-semibold text-amber-900">Autorisations exceptionnelles pour les bons</h3>
+                      <p className="text-xs text-amber-700">
+                        Une autorisation est déduite à chaque bon créé pour le cas correspondant.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label htmlFor="bon_plafond_autorisations" className="block text-sm font-medium text-gray-700 mb-1">
+                          Dépasser le plafond
+                        </label>
+                        <input
+                          id="bon_plafond_autorisations"
+                          type="number"
+                          min="0"
+                          step="1"
+                          name="bon_plafond_autorisations"
+                          value={formik.values.bon_plafond_autorisations}
+                          onChange={formik.handleChange}
+                          onBlur={formik.handleBlur}
+                          className="w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="bon_client_bloque_autorisations" className="block text-sm font-medium text-gray-700 mb-1">
+                          Client bloqué
+                        </label>
+                        <input
+                          id="bon_client_bloque_autorisations"
+                          type="number"
+                          min="0"
+                          step="1"
+                          name="bon_client_bloque_autorisations"
+                          value={formik.values.bon_client_bloque_autorisations}
+                          onChange={formik.handleChange}
+                          onBlur={formik.handleBlur}
+                          className="w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label htmlFor="nom_complet" className="block text-sm font-medium text-gray-700 mb-1">Nom Complet</label>

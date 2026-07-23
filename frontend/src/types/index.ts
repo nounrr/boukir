@@ -32,6 +32,8 @@ export interface Employee {
   date_embauche?: string | null;
   role?: Role | null;
   salaire?: number | null;
+  bon_plafond_autorisations?: number | null;
+  bon_client_bloque_autorisations?: number | null;
   password?: string;
   created_by?: number;
   updated_by?: number;
@@ -46,6 +48,8 @@ export interface CreateEmployeeData {
   date_embauche?: string | null;
   role?: Role | null;
   salaire?: number | null;
+  bon_plafond_autorisations?: number;
+  bon_client_bloque_autorisations?: number;
   password: string;
 }
 
@@ -234,6 +238,7 @@ export interface Product {
   id: number;
   // reference is now id as string (derived from backend); keep optional for compatibility
   reference?: string;
+  reference_2?: string | null;
   designation: string;
   old_designation?: string | null;
   categorie_id: number;
@@ -299,6 +304,7 @@ export interface Product {
 
 export interface CreateProductData {
   designation?: string;
+  reference_2?: string | null;
   categorie_id?: number;
   quantite?: number;
   kg?: number | null;
@@ -491,6 +497,7 @@ export interface Bon {
   adresse_livraison?: string;
   montant_total: number;
   montant_ignorer?: number;
+  livre?: boolean | 0 | 1;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
   // Ecommerce (optional)
   customer_email?: string;

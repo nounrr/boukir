@@ -96,6 +96,11 @@ function normalizeSearchText(value) {
     .trim();
 }
 
+function normalizeOptionalReference2(value) {
+  const normalized = String(value ?? '').trim().slice(0, 255);
+  return normalized || null;
+}
+
 function accentFoldSql(expression) {
   const replacements = [
     ['à', 'a'], ['á', 'a'], ['â', 'a'], ['ã', 'a'], ['ä', 'a'], ['å', 'a'],
@@ -262,6 +267,15 @@ async function ensureProductsColumns() {
   );
   if (!colsOldDes.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN old_designation VARCHAR(255) DEFAULT NULL`);
+  }
+
+  // Check reference_2 (optional secondary product reference)
+  const [colsReference2] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'reference_2'`
+  );
+  if (!colsReference2.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN reference_2 VARCHAR(255) DEFAULT NULL`);
   }
 
   // Check description multilingual
@@ -713,7 +727,7 @@ async function runProductSearch(query) {
 
     if (qTerms.length > 0) {
       const termConditions = qTerms.map(() => `(
-        ${accentFoldSql("CONCAT_WS(' ', p.id, p.designation, p.old_designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
+        ${accentFoldSql("CONCAT_WS(' ', p.id, p.reference_2, p.designation, p.old_designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
         OR EXISTS (
           SELECT 1 FROM product_variants pv_search
           WHERE pv_search.product_id = p.id
@@ -815,8 +829,10 @@ async function runProductSearch(query) {
         ORDER BY
           CASE
             ${exactIdSql}
-            WHEN ${accentFoldSql('p.designation')} = ? THEN 1
+            WHEN ${accentFoldSql('p.designation')} = ?
+              OR ${accentFoldSql('p.reference_2')} = ? THEN 1
             WHEN ${accentFoldSql('p.designation')} LIKE ?
+              OR ${accentFoldSql('p.reference_2')} LIKE ?
               OR EXISTS (
                 SELECT 1 FROM product_variants pv_order
                 WHERE pv_order.product_id = p.id
@@ -827,6 +843,7 @@ async function runProductSearch(query) {
                   )
               ) THEN 2
             WHEN ${accentFoldSql('p.designation')} LIKE ?
+              OR ${accentFoldSql('p.reference_2')} LIKE ?
               OR CAST(p.id AS CHAR) LIKE ?
               OR EXISTS (
                 SELECT 1 FROM product_variants pv_order
@@ -841,7 +858,19 @@ async function runProductSearch(query) {
           END,
           p.id DESC
       `;
-      orderParams.push(qNormalized, qPrefix, qPrefix, qPrefix, qWild, qWild, qWild, qWild);
+      orderParams.push(
+        qNormalized,
+        qNormalized,
+        qPrefix,
+        qPrefix,
+        qPrefix,
+        qPrefix,
+        qWild,
+        qWild,
+        qWild,
+        qWild,
+        qWild
+      );
     }
 
     const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM products p ${whereSql}`, params);
@@ -979,6 +1008,7 @@ async function runProductSearch(query) {
       return {
         id: r.id,
         reference: String(r.id),
+        reference_2: r.reference_2 ?? null,
         designation: r.designation,
         old_designation: r.old_designation ?? null,
         designation_ar: r.designation_ar,
@@ -1267,7 +1297,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       if (qTerms.length === 0) return { sql: '', params: [] };
       const termSql = qTerms.map(() => {
         return `(
-          ${accentFoldSql(`CONCAT_WS(' ', ${alias}.id, ${alias}.designation, ${alias}.old_designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)`)} LIKE ?
+          ${accentFoldSql(`CONCAT_WS(' ', ${alias}.id, ${alias}.reference_2, ${alias}.designation, ${alias}.old_designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)`)} LIKE ?
           OR EXISTS (
             SELECT 1 FROM product_variants pv_search
             WHERE pv_search.product_id = ${alias}.id
@@ -1288,7 +1318,7 @@ router.get('/with-snapshots', async (req, res, next) => {
     if (!useSnapshot) {
       // Fallback: just return normal product list without snapshot expansion
       const [rows] = await pool.query(
-        `SELECT p.id, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
+        `SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
                 p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
                 p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
                 p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
@@ -1299,6 +1329,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       return res.json(rows.map(r => ({
         ...r,
         reference: String(r.id),
+        reference_2: r.reference_2 ?? null,
         snapshot_id: null,
         snapshot_quantite: null,
         snapshot_prix_achat: null,
@@ -1340,6 +1371,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         ) AS snapshot_commande_quantite,
         ps.bon_commande_id,
         ps.created_at AS snapshot_created_at,
+        p.reference_2,
         p.designation,
         p.old_designation,
         p.image_url,
@@ -1371,7 +1403,7 @@ router.get('/with-snapshots', async (req, res, next) => {
 
     // Also get all products (for items that don't have snapshots, or services)
     const [allProducts] = await pool.query(`
-      SELECT p.id, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
+      SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
              p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
              p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
              p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
@@ -1433,6 +1465,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       result.push({
         id: snap.product_id,
         reference: String(snap.product_id),
+        reference_2: snap.reference_2 ?? null,
         designation: snap.designation,
         old_designation: snap.old_designation ?? null,
         variant_id: snap.variant_id || null,
@@ -1483,6 +1516,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       result.push({
         id: p.id,
         reference: String(p.id),
+        reference_2: p.reference_2 ?? null,
         designation: p.designation,
         old_designation: p.old_designation ?? null,
         variant_id: null,
@@ -1655,6 +1689,7 @@ router.get('/', async (req, res, next) => {
         id: r.id,
         // reference is now derived from id for compatibility with frontend displays
         reference: String(r.id),
+        reference_2: r.reference_2 ?? null,
         designation: r.designation,
         categorie_id: r.categorie_id || 0,
         categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
@@ -1801,6 +1836,7 @@ router.get('/archived/list', async (_req, res, next) => {
     res.json(rows.map((r) => ({
       id: r.id,
       reference: String(r.id),
+      reference_2: r.reference_2 ?? null,
       designation: r.designation,
       categorie_id: 0, // Archived list simplified
       categorie: undefined,
@@ -2184,6 +2220,7 @@ router.get('/:id(\\d+)', async (req, res, next) => {
     res.json({
       id: r.id,
       reference: String(r.id),
+      reference_2: r.reference_2 ?? null,
       designation: r.designation,
       designation_ar: r.designation_ar,
       designation_en: r.designation_en,
@@ -2268,6 +2305,7 @@ router.post('/', upload.fields([
     await ensureProductsColumns();
     const {
       designation,
+      reference_2,
       designation_ar,
       designation_en,
       designation_zh,
@@ -2301,6 +2339,7 @@ router.post('/', upload.fields([
     } = req.body;
 
     const image_url = req.files?.['image']?.[0] ? `/uploads/products/${req.files['image'][0].filename}` : null;
+    const normalizedReference2 = normalizeOptionalReference2(reference_2);
     const fiche_technique = req.body?.fiche_technique ?? null;
     const fiche_technique_ar = req.body?.fiche_technique_ar ?? null;
     const fiche_technique_en = req.body?.fiche_technique_en ?? null;
@@ -2376,10 +2415,11 @@ router.post('/', upload.fields([
 
     const [result] = await pool.query(
       `INSERT INTO products
-      (designation, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, est_service, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (designation, reference_2, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, est_service, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
+        normalizedReference2,
         designation_ar || null,
         designation_en || null,
         designation_zh || null,
@@ -2535,6 +2575,7 @@ router.post('/', upload.fields([
     return res.json({
       id: r.id,
       reference: String(r.id),
+      reference_2: r.reference_2 ?? null,
       designation: r.designation,
       categorie_id: r.categorie_id || 0,
       categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
@@ -2616,6 +2657,7 @@ router.put('/:id', upload.fields([
 
     const {
       designation,
+      reference_2,
       designation_ar,
       designation_en,
       designation_zh,
@@ -2784,6 +2826,7 @@ router.put('/:id', upload.fields([
     // Compute other fields
     const payload = {
       designation: (designation !== undefined) ? ((String(designation).trim()) || 'Sans désignation') : existing.designation,
+      reference_2: reference_2 !== undefined ? normalizeOptionalReference2(reference_2) : existing.reference_2,
       designation_ar: (designation_ar !== undefined) ? designation_ar : existing.designation_ar,
       designation_en: (designation_en !== undefined) ? designation_en : existing.designation_en,
       designation_zh: (designation_zh !== undefined) ? designation_zh : existing.designation_zh,
@@ -3110,6 +3153,7 @@ router.put('/:id', upload.fields([
     res.json({
       id: r.id,
       reference: String(r.id),
+      reference_2: r.reference_2 ?? null,
       designation: r.designation,
       categorie_id: r.categorie_id || 0,
       categorie: r.c_id ? { id: r.c_id, nom: r.c_nom } : undefined,

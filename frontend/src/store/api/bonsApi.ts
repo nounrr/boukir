@@ -5,6 +5,18 @@ import type { Bon } from '../../types';
 type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'AvoirCharge' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'Vehicule' | 'Ecommerce';
 type PagedBonType = AnyBonType | 'ComptantNonPaye' | 'VendreFournisseur' | 'AvoirVendreFournisseur';
 
+const normalizeBonType = (type: PagedBonType): AnyBonType => {
+  if (type === 'ComptantNonPaye') return 'Comptant';
+  if (type === 'VendreFournisseur') return 'Sortie';
+  if (type === 'AvoirVendreFournisseur') return 'Avoir';
+  return type;
+};
+
+const getBonTagType = (type: PagedBonType) => {
+  const normalizedType = normalizeBonType(type);
+  return normalizedType === 'Avoir' ? 'AvoirClient' : normalizedType;
+};
+
 type PagedBonsArgs = {
   type: PagedBonType;
   page: number;
@@ -103,6 +115,7 @@ export const bonsApi = api.injectEndpoints({
               ? `${o.shipping_address.line1 || ''}${o.shipping_address.line2 ? `, ${o.shipping_address.line2}` : ''}, ${o.shipping_address.city}`
               : (o.shipping_address?.line1 || o.shipping_address_line1 || ''),
             montant_total: Number(o.total_amount || 0),
+            livre: o.livre === true || Number(o.livre) === 1,
             // Keep raw e-commerce order status values for consistent UI/actions
             statut: o.status || 'pending',
             ecommerce_status: o.status || 'pending',
@@ -214,6 +227,7 @@ export const bonsApi = api.injectEndpoints({
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id: 'LIST' },
           { type: 'Product', id: 'LIST' },
+          { type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' },
           'Contact', // Solde cumulé dépend des bons
         ];
       }
@@ -301,6 +315,7 @@ export const bonsApi = api.injectEndpoints({
           { type: 'Bon', id },
           { type: 'Bon', id: 'LIST' },
           { type: 'Product', id: 'LIST' },
+          { type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' },
           'Contact',
         ];
         if (type === 'Comptant') {
@@ -352,6 +367,7 @@ export const bonsApi = api.injectEndpoints({
               ? `${o.shipping_address.line1 || ''}${o.shipping_address.line2 ? `, ${o.shipping_address.line2}` : ''}, ${o.shipping_address.city}`
               : (o.shipping_address?.line1 || o.shipping_address_line1 || ''),
             montant_total: Number(o.total_amount || 0),
+            livre: o.livre === true || Number(o.livre) === 1,
             statut: o.status || 'pending',
             ecommerce_status: o.status || 'pending',
             items: (o.items || []).map((i: any) => ({
@@ -515,6 +531,26 @@ export const bonsApi = api.injectEndpoints({
           { type: 'Bon', id: 'LIST' },
           { type: 'Product', id: 'LIST' },
           'Contact',
+        ];
+      },
+    }),
+
+    updateBonLivre: builder.mutation<
+      { id: number; type: AnyBonType; livre: boolean },
+      { id: number; type: PagedBonType; livre: boolean }
+    >({
+      query: ({ id, type, livre }) => ({
+        url: `/bons/${normalizeBonType(type)}/${id}/livre`,
+        method: 'PATCH',
+        body: { livre },
+      }),
+      invalidatesTags: (_result, _error, { id, type }) => {
+        const tagType = getBonTagType(type);
+        return [
+          { type: tagType, id },
+          { type: tagType, id: 'LIST' },
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' },
         ];
       },
     }),
@@ -777,6 +813,7 @@ export const {
   useCreateBonMutation,
   useUpdateBonMutation,
   useDeleteBonMutation,
+  useUpdateBonLivreMutation,
   useUpdateBonStatusMutation,
   useTransformDevisMutation,
   useMarkBonAsAvoirMutation,

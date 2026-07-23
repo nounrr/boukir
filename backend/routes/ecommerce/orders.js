@@ -1856,6 +1856,7 @@ router.get('/', async (req, res, next) => {
         o.remise_earned_at,
 
         o.status,
+        o.livre,
         o.payment_status,
         o.payment_method,
         o.is_solde,
@@ -1981,6 +1982,7 @@ router.get('/', async (req, res, next) => {
           total_amount: Number(order.total_amount || 0),
 
           status: order.status,
+          livre: Number(order.livre) === 1,
           payment_status: order.payment_status,
           payment_method: order.payment_method,
           is_solde: computedIsSolde,

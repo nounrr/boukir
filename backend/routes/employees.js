@@ -17,24 +17,74 @@ function clean(value) {
   return value;
 }
 
+function parseAuthorizationCount(value, fieldName) {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number > 100000) {
+    const error = new Error(`${fieldName} doit être un entier entre 0 et 100000`);
+    error.status = 400;
+    error.statusCode = 400;
+    throw error;
+  }
+  return number;
+}
+
+const EMPLOYEE_SELECT = `
+  id, nom_complet, cin, date_embauche, role, salaire,
+  bon_plafond_autorisations, bon_client_bloque_autorisations,
+  created_by, updated_by, created_at, updated_at
+`;
+
 router.get('/', requireRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE deleted_at IS NULL ORDER BY id DESC');
+    const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE deleted_at IS NULL ORDER BY id DESC`);
     if (req.user?.role !== 'PDG') {
-      rows.forEach((employee) => { employee.salaire = null; });
+      rows.forEach((employee) => {
+        employee.salaire = null;
+        employee.bon_plafond_autorisations = null;
+        employee.bon_client_bloque_autorisations = null;
+      });
     }
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.get('/me/bon-authorizations', async (req, res, next) => {
+  try {
+    if (!req.user?.role) {
+      return res.status(403).json({ message: 'Accès réservé aux employés' });
+    }
+    if (req.user?.role === 'PDG') {
+      return res.json({
+        unlimited: true,
+        bon_plafond_autorisations: null,
+        bon_client_bloque_autorisations: null,
+      });
+    }
+    const [rows] = await pool.query(
+      `SELECT bon_plafond_autorisations, bon_client_bloque_autorisations
+       FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+      [Number(req.user?.id)]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'Employé introuvable' });
+    res.json({
+      unlimited: false,
+      bon_plafond_autorisations: Number(rows[0].bon_plafond_autorisations || 0),
+      bon_client_bloque_autorisations: Number(rows[0].bon_client_bloque_autorisations || 0),
+    });
   } catch (err) { next(err); }
 });
 
 router.get('/:id(\\d+)', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
+    const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE id = ? AND deleted_at IS NULL`, [id]);
     const emp = rows[0];
     if (!emp) return res.status(404).json({ message: 'Employé introuvable' });
     if (req.user?.role !== 'PDG' && Number(req.user?.id) !== id) {
       emp.salaire = null;
+      emp.bon_plafond_autorisations = null;
+      emp.bon_client_bloque_autorisations = null;
     }
     res.json(emp);
   } catch (err) { next(err); }
@@ -42,7 +92,10 @@ router.get('/:id(\\d+)', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, r
 
 router.post('/', requireRole('PDG'), async (req, res, next) => {
   try {
-  const { nom_complet, cin, date_embauche, role, salaire, password } = req.body;
+  const {
+    nom_complet, cin, date_embauche, role, salaire, password,
+    bon_plafond_autorisations, bon_client_bloque_autorisations,
+  } = req.body;
 
     // Required: CIN and password
     const cinTrim = typeof cin === 'string' ? cin.trim() : cin;
@@ -59,12 +112,19 @@ router.post('/', requireRole('PDG'), async (req, res, next) => {
 
     const now = new Date();
     const hashed = await bcrypt.hash(password.trim(), 10);
+    const plafondCount = parseAuthorizationCount(bon_plafond_autorisations ?? 0, 'Autorisations plafond');
+    const blockedCount = parseAuthorizationCount(bon_client_bloque_autorisations ?? 0, 'Autorisations client bloqué');
     const [result] = await pool.query(
-      'INSERT INTO employees (nom_complet, cin, date_embauche, role, salaire, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), clean(salaire), hashed, req.user.id, now, now]
+      `INSERT INTO employees
+       (nom_complet, cin, date_embauche, role, salaire, password,
+        bon_plafond_autorisations, bon_client_bloque_autorisations,
+        created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), clean(salaire), hashed,
+        plafondCount, blockedCount, req.user.id, now, now]
     );
     const id = result.insertId;
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+    const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE id = ?`, [id]);
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -72,7 +132,10 @@ router.post('/', requireRole('PDG'), async (req, res, next) => {
 router.put('/:id', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { nom_complet, cin, date_embauche, role, salaire, password } = req.body;
+    const {
+      nom_complet, cin, date_embauche, role, salaire, password,
+      bon_plafond_autorisations, bon_client_bloque_autorisations,
+    } = req.body;
     const [rows0] = await pool.query('SELECT * FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
     if (rows0.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
     if (cin !== undefined) {
@@ -89,6 +152,16 @@ router.put('/:id', requireRole('PDG'), async (req, res, next) => {
     if (date_embauche !== undefined) { fields.push('date_embauche = ?'); values.push(clean(date_embauche)); }
     if (role !== undefined) { fields.push('role = ?'); values.push(clean(role)); }
   if (salaire !== undefined) { fields.push('salaire = ?'); values.push(clean(salaire)); }
+    const plafondCount = parseAuthorizationCount(bon_plafond_autorisations, 'Autorisations plafond');
+    const blockedCount = parseAuthorizationCount(bon_client_bloque_autorisations, 'Autorisations client bloqué');
+    if (plafondCount !== undefined) {
+      fields.push('bon_plafond_autorisations = ?');
+      values.push(plafondCount);
+    }
+    if (blockedCount !== undefined) {
+      fields.push('bon_client_bloque_autorisations = ?');
+      values.push(blockedCount);
+    }
     if (password && typeof password === 'string' && password.trim()) {
       const hashed = await bcrypt.hash(password.trim(), 10);
       fields.push('password = ?'); values.push(hashed);
@@ -102,7 +175,19 @@ router.put('/:id', requireRole('PDG'), async (req, res, next) => {
     const sql = `UPDATE employees SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id);
     await pool.query(sql, values);
-  const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+    const authorizationChanges = [
+      ['PLAFOND', plafondCount, Number(rows0[0].bon_plafond_autorisations || 0)],
+      ['CLIENT_BLOQUE', blockedCount, Number(rows0[0].bon_client_bloque_autorisations || 0)],
+    ].filter(([, nextValue, oldValue]) => nextValue !== undefined && nextValue !== oldValue);
+    for (const [authorizationType, nextValue, oldValue] of authorizationChanges) {
+      await pool.query(
+        `INSERT INTO employee_bon_authorization_events
+         (employee_id, authorization_type, action, quantity, balance_after, performed_by)
+         VALUES (?, ?, 'SET', ?, ?, ?)`,
+        [id, authorizationType, nextValue - oldValue, nextValue, req.user.id]
+      );
+    }
+  const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE id = ?`, [id]);
     res.json(rows[0]);
   } catch (err) { next(err); }
 });

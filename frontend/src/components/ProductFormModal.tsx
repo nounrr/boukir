@@ -92,6 +92,7 @@ const flattenErrorMessages = (value: unknown, path = ''): string[] => {
 // Schema de validation (tous champs optionnels, qte >= 0)
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
+  reference_2: Yup.string().max(255, 'La Réf 2 ne peut pas dépasser 255 caractères').optional(),
   categorie_id: Yup.number().transform(numberTransform()).optional(),
   brand_id: Yup.number().transform(numberTransform(null)).nullable().optional(),
   quantite: Yup.number().transform(numberTransform()).min(0, 'La quantité ne peut pas être négative').optional(),
@@ -501,6 +502,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const initialValues = {
     designation: '',
+    reference_2: '',
     designation_ar: '',
     designation_en: '',
     designation_zh: '',
@@ -594,6 +596,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     initialValues: baseEdit
       ? {
           ...baseEdit,
+          reference_2: (baseEdit as any).reference_2 ?? '',
           designation_ar: (baseEdit as any).designation_ar ?? '',
           designation_en: (baseEdit as any).designation_en ?? '',
           designation_zh: (baseEdit as any).designation_zh ?? '',
@@ -736,6 +739,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         if (editingProduct) {
           const formData = new FormData();
           formData.append('designation', productData.designation || '');
+          formData.append('reference_2', String(productData.reference_2 ?? '').trim());
           formData.append('designation_ar', productData.designation_ar || '');
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
@@ -831,6 +835,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         } else {
           const formData = new FormData();
           formData.append('designation', productData.designation || '');
+          formData.append('reference_2', String(productData.reference_2 ?? '').trim());
           formData.append('designation_ar', productData.designation_ar || '');
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
@@ -896,6 +901,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             const created: any = {
               ...res,
               designation: res?.designation ?? productData.designation ?? '',
+              reference_2: res?.reference_2 ?? productData.reference_2 ?? null,
               categorie_id: res?.categorie_id ?? productData.categorie_id ?? 0,
               quantite: res?.quantite ?? qteNum ?? 0,
               kg: res?.kg ?? (kgNum ?? 0),
@@ -1297,6 +1303,31 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               )}
               {activeLang === 'fr' && formik.touched.designation && !!asStringError(formik.errors.designation) && (
                 <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.designation)}</p>
+              )}
+            </div>
+
+            {/* Secondary product reference (shared by every language and variant) */}
+            <div>
+              <label htmlFor="reference_2" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                Réf 2 <span className="font-normal normal-case text-gray-400">(facultatif)</span>
+              </label>
+              <input
+                id="reference_2"
+                type="text"
+                name="reference_2"
+                value={formik.values.reference_2}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                maxLength={255}
+                autoComplete="off"
+                className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all placeholder:text-gray-400"
+                placeholder="Ex: Référence fournisseur"
+                aria-describedby={formik.touched.reference_2 && formik.errors.reference_2 ? 'reference_2-error' : undefined}
+              />
+              {formik.touched.reference_2 && !!asStringError(formik.errors.reference_2) && (
+                <p id="reference_2-error" className="text-red-500 text-sm mt-1" role="alert">
+                  {asStringError(formik.errors.reference_2)}
+                </p>
               )}
             </div>
 

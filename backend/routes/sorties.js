@@ -6,7 +6,12 @@ import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { syncBonItemRemises } from '../utils/syncBonItemRemises.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
-import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
+import {
+  BonAuthorizationError,
+  bonAuthorizationErrorPayload,
+  recordBonExceptionAuthorizationUsage,
+  reserveBonExceptionAuthorizations,
+} from '../utils/bonExceptionAuthorization.js';
 
 const router = express.Router();
 
@@ -301,11 +306,14 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Client requis' });
     }
-    const blockedClient = await findBlockedClient(connection, cId);
-    if (blockedClient) {
-      await connection.rollback();
-      return res.status(400).json(blockedClientPayload(blockedClient));
-    }
+    const exceptionReservation = await reserveBonExceptionAuthorizations({
+      db: connection,
+      user: req.user,
+      clientId: cId,
+      amount: montant_total,
+      bonType: 'Sortie',
+      requested: req.body?.use_exception_authorization,
+    });
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
@@ -346,6 +354,13 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     ]);
 
     const sortieId = sortieResult.insertId;
+    await recordBonExceptionAuthorizationUsage({
+      db: connection,
+      reservation: exceptionReservation,
+      user: req.user,
+      bonType: 'Sortie',
+      bonId: sortieId,
+    });
 
     // Optional livraisons insert (multi vehicules + chauffeur)
     if (Array.isArray(livraisons) && livraisons.length) {
@@ -449,6 +464,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   res.status(201).json({ message: 'Bon de sortie créé avec succès', id: sortieId, numero });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('Erreur POST /sorties:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message || String(error) });
   } finally {
@@ -581,11 +599,16 @@ router.put('/:id', async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Client requis' });
     }
-    const blockedClient = await findBlockedClient(connection, cId);
-    if (blockedClient) {
-      await connection.rollback();
-      return res.status(400).json(blockedClientPayload(blockedClient));
-    }
+    const exceptionReservation = await reserveBonExceptionAuthorizations({
+      db: connection,
+      user: req.user,
+      clientId: cId,
+      amount: montant_total,
+      bonType: 'Sortie',
+      bonId: Number(id),
+      existingBon: oldBon,
+      requested: req.body?.use_exception_authorization,
+    });
 
     const resolved = isChefChauffeur
       ? { remise_is_client: oldBon.remise_is_client ?? null, remise_id: oldBon.remise_id ?? null }
@@ -623,6 +646,13 @@ router.put('/:id', async (req, res) => {
       resolved.remise_id,
       id,
     ]);
+    await recordBonExceptionAuthorizationUsage({
+      db: connection,
+      reservation: exceptionReservation,
+      user: req.user,
+      bonType: 'Sortie',
+      bonId: Number(id),
+    });
 
     await connection.execute('DELETE FROM sortie_items WHERE bon_sortie_id = ?', [id]);
     if (Array.isArray(livraisons)) {
@@ -735,6 +765,9 @@ router.put('/:id', async (req, res) => {
     res.json({ message: 'Bon de sortie mis à jour avec succès' });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('Erreur PUT /sorties/:id:', error);
     const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
     const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
 import { api } from '../store/api/apiSlice';
@@ -17,6 +17,7 @@ import { api } from '../store/api/apiSlice';
   import { 
     useGetBonsByTypePagedQuery,
     useDeleteBonMutation, 
+    useUpdateBonLivreMutation,
     useUpdateBonStatusMutation,
     useUpdateEcommerceOrderStatusMutation,
     useUpdateEcommerceOrderRemisesMutation,
@@ -181,6 +182,8 @@ const BonsPage = () => {
   const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
   const statusUpdateInProgressRef = useRef<Set<string>>(new Set());
   const [updatingStatusKeys, setUpdatingStatusKeys] = useState<Set<string>>(new Set());
+  const livreUpdateInProgressRef = useRef<Set<string>>(new Set());
+  const [updatingLivreKeys, setUpdatingLivreKeys] = useState<Set<string>>(new Set());
   const [pendingOpenAvoirEcommercePicker, setPendingOpenAvoirEcommercePicker] = useState(false);
 
   // Pagination
@@ -197,6 +200,7 @@ const BonsPage = () => {
   const isPdg = currentUser?.role === 'PDG';
   const isEmployee = currentUser?.role === 'Employé';
   const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
+  const canMarkLivre = Boolean(currentUser);
   const canSeeEcommerce = (uiSettings?.toggles?.showEcommerceBons ?? true) && (isPdg || isChefChauffeur);
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
@@ -334,6 +338,7 @@ const BonsPage = () => {
   // Snapshot-expanded products (with historic prix_achat/cout_revient per bon de commande)
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !needsReferenceData });
   const [deleteBonMutation] = useDeleteBonMutation();
+  const [updateBonLivre] = useUpdateBonLivreMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
   const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
@@ -379,14 +384,14 @@ const BonsPage = () => {
       if (showAuditCols) {
         base.push('140','140');
       }
-      base.push('180','120','140','120');
+      base.push('180','110','120','140','120');
       return base.map(v => `${v}px`);
     }
     const base = ['120','120','220','160','220','120','80','120']; // numero,date,contact,téléphone,adresse,montant,poids,mouvement
     if (showAuditCols) {
       base.push('140','140'); // created_by, updated_by
     }
-    base.push('180','120','140','120'); // lié, statut, payment_status, actions
+    base.push('180','110','120','140','120'); // lié, livré, statut, payment_status, actions
     return base.map(v => `${v}px`);
   }, [showAuditCols, showContactRefCol]);
 
@@ -498,6 +503,35 @@ const BonsPage = () => {
   }, [colWidths, onMouseMove, stopResize]);
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   const getStatusUpdateKey = useCallback((bon: any) => `${bon?.type || effectiveCurrentTab}:${bon?.id}`, [effectiveCurrentTab]);
+  const getLivreUpdateKey = useCallback((bon: any) => `${bon?.type || effectiveCurrentTab}:${bon?.id}`, [effectiveCurrentTab]);
+  const handleToggleLivre = async (bon: any) => {
+    if (!canMarkLivre) return;
+
+    const updateKey = getLivreUpdateKey(bon);
+    if (livreUpdateInProgressRef.current.has(updateKey)) return;
+
+    const nextLivre = !(bon?.livre === true || Number(bon?.livre) === 1);
+    livreUpdateInProgressRef.current.add(updateKey);
+    setUpdatingLivreKeys((prev) => new Set(prev).add(updateKey));
+
+    try {
+      await updateBonLivre({
+        id: Number(bon.id),
+        type: (bon?.type || currentTab) as BonTabKey,
+        livre: nextLivre,
+      }).unwrap();
+      showSuccess(nextLivre ? 'Bon marqué comme livré.' : 'Bon marqué comme non livré.');
+    } catch (error: any) {
+      showError(error?.data?.message || 'Erreur lors de la mise à jour de la livraison.');
+    } finally {
+      livreUpdateInProgressRef.current.delete(updateKey);
+      setUpdatingLivreKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(updateKey);
+        return next;
+      });
+    }
+  };
   const refreshAfterStatusChange = useCallback(() => {
     dispatch(api.util.invalidateTags(['Product', 'Contact', { type: 'Bon', id: 'LIST' }]));
     void refetchBons();
@@ -2700,7 +2734,7 @@ const BonsPage = () => {
           <div className="responsive-table-container">
             <table
               className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
-              style={{ minWidth: showContactRefCol ? 1040 : 960, tableLayout: 'fixed', width: 'auto' }}
+              style={{ minWidth: showContactRefCol ? 1150 : 1070, tableLayout: 'fixed', width: 'auto' }}
             >
               {/* colgroup driven by colWidths so headers/cols can be resized */}
               <colgroup>
@@ -2873,15 +2907,15 @@ const BonsPage = () => {
                     />
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                    Statut
-                    <span 
+                    Livré
+                    <span
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
                       onMouseDown={(e) => startResize(e, (showAuditCols ? 11 : 9) + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                    Payment status
+                    Statut
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
                       onMouseDown={(e) => startResize(e, (showAuditCols ? 12 : 10) + contactRefColOffset)}
@@ -2889,10 +2923,18 @@ const BonsPage = () => {
                     />
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                    Actions
+                    Payment status
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
                       onMouseDown={(e) => startResize(e, (showAuditCols ? 13 : 11) + contactRefColOffset)}
+                      title="Glisser pour redimensionner"
+                    />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                    Actions
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, (showAuditCols ? 14 : 12) + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2901,7 +2943,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={(showAuditCols ? 14 : 12) + contactRefColOffset} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={(showAuditCols ? 15 : 13) + contactRefColOffset} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTabLabel}
                     </td>
                   </tr>
@@ -3241,6 +3283,19 @@ const BonsPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-2">
+                        {bon?.livre === true || Number(bon?.livre) === 1 ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">
+                            <CheckCircle2 size={14} aria-hidden="true" />
+                            true
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                            <Package size={14} aria-hidden="true" />
+                            false
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
                         <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
                           {getStatusIcon(bon.statut)}
                           {bon.statut || '-'}
@@ -3272,6 +3327,28 @@ const BonsPage = () => {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2 items-center relative">
+                          {canMarkLivre && (() => {
+                            const isLivre = bon?.livre === true || Number(bon?.livre) === 1;
+                            const isUpdatingLivre = updatingLivreKeys.has(getLivreUpdateKey(bon));
+                            const label = isLivre ? 'Marquer comme non livré' : 'Marquer comme livré';
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLivre(bon)}
+                                disabled={isUpdatingLivre}
+                                className={`rounded p-1 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  isLivre
+                                    ? 'text-green-600 hover:bg-green-50 hover:text-green-800 focus:ring-green-500'
+                                    : 'text-amber-600 hover:bg-amber-50 hover:text-amber-800 focus:ring-amber-500'
+                                }`}
+                                title={isUpdatingLivre ? 'Mise à jour de la livraison…' : label}
+                                aria-label={isUpdatingLivre ? 'Mise à jour de la livraison en cours' : label}
+                                aria-busy={isUpdatingLivre}
+                              >
+                                <PackageCheck size={ACTION_ICON_SIZE} />
+                              </button>
+                            );
+                          })()}
                           {/* Always visible: Print thermal */}
                           <button
                             onClick={() => { 

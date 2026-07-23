@@ -7,6 +7,12 @@ import type {
   SalairesByMonthResponse,
 } from '../../types';
 
+export interface MyBonAuthorizations {
+  unlimited: boolean;
+  bon_plafond_autorisations: number | null;
+  bon_client_bloque_autorisations: number | null;
+}
+
 export const employeesServerApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getEmployees: builder.query<Employee[], void>({
@@ -16,6 +22,10 @@ export const employeesServerApi = api.injectEndpoints({
     getEmployee: builder.query<Employee, number>({
       query: (id) => ({ url: `/employees/${id}`, method: 'GET' }),
       providesTags: (_r, _e, id) => [{ type: 'Employee', id }],
+    }),
+    getMyBonAuthorizations: builder.query<MyBonAuthorizations, void>({
+      query: () => ({ url: '/employees/me/bon-authorizations', method: 'GET' }),
+      providesTags: [{ type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' }],
     }),
     createEmployee: builder.mutation<Employee, CreateEmployeeData & { created_by: number }>({
       query: (body) => ({ url: '/employees', method: 'POST', body }),
@@ -75,6 +85,7 @@ export const employeesServerApi = api.injectEndpoints({
 export const {
   useGetEmployeesQuery: useGetEmployeesQueryServer,
   useGetEmployeeQuery: useGetEmployeeQueryServer,
+  useGetMyBonAuthorizationsQuery: useGetMyBonAuthorizationsQueryServer,
   useCreateEmployeeMutation: useCreateEmployeeMutationServer,
   useUpdateEmployeeMutation: useUpdateEmployeeMutationServer,
   useDeleteEmployeeMutation: useDeleteEmployeeMutationServer,

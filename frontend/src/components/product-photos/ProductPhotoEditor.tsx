@@ -16,12 +16,14 @@ import type { ProductPhotoTransform } from '../../utils/productPhotoTransforms';
 type Tool = 'crop' | 'rotate' | 'flip' | 'expand' | 'perspective';
 
 interface EditorAsset {
+  shoot: PhotoShoot;
   image: PhotoShootImage;
   originalUrl: string;
 }
 
 interface Props {
-  shoot: PhotoShoot;
+  shoots: PhotoShoot[];
+  initialShootId: number;
   initialImageId: number;
   onClose: () => void;
 }
@@ -30,28 +32,33 @@ const toolButton = 'min-h-11 min-w-11 px-3 py-2 rounded-lg border text-xs font-m
 const iconButton = 'h-11 w-11 inline-flex items-center justify-center rounded-lg text-gray-300 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:opacity-30';
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
-export const ProductPhotoEditor: React.FC<Props> = ({ shoot, initialImageId, onClose }) => {
+export const ProductPhotoEditor: React.FC<Props> = ({ shoots, initialShootId, initialImageId, onClose }) => {
   const assets = useMemo<EditorAsset[]>(() => {
-    const originalById = new Map(shoot.originals.map((item) => [item.id, item]));
-    const processedBySource = new Map<number, PhotoShootImage>();
-    shoot.processed.forEach((image) => {
-      if (image.source_image_id) processedBySource.set(image.source_image_id, image);
+    return shoots.flatMap((shoot) => {
+      const originalById = new Map(shoot.originals.map((item) => [item.id, item]));
+      const processedBySource = new Map<number, PhotoShootImage>();
+      shoot.processed.forEach((image) => {
+        if (image.source_image_id) processedBySource.set(image.source_image_id, image);
+      });
+      const used = new Set<number>();
+      const paired = shoot.originals.map((original) => {
+        const image = processedBySource.get(original.id) || original;
+        used.add(image.id);
+        return { shoot, image, originalUrl: original.image_url };
+      });
+      const unpaired = shoot.processed
+        .filter((image) => !used.has(image.id))
+        .map((image) => ({
+          shoot,
+          image,
+          originalUrl: (image.source_image_id ? originalById.get(image.source_image_id)?.image_url : null) || image.image_url,
+        }));
+      return [...paired, ...unpaired];
     });
-    const used = new Set<number>();
-    const paired = shoot.originals.map((original) => {
-      const image = processedBySource.get(original.id) || original;
-      used.add(image.id);
-      return { image, originalUrl: original.image_url };
-    });
-    const unpaired = shoot.processed
-      .filter((image) => !used.has(image.id))
-      .map((image) => ({
-        image,
-        originalUrl: (image.source_image_id ? originalById.get(image.source_image_id)?.image_url : null) || image.image_url,
-      }));
-    return [...paired, ...unpaired];
-  }, [shoot]);
-  const initialIndex = Math.max(0, assets.findIndex((asset) => asset.image.id === initialImageId));
+  }, [shoots]);
+  const initialIndex = Math.max(0, assets.findIndex(
+    (asset) => asset.shoot.id === initialShootId && asset.image.id === initialImageId
+  ));
   const [index, setIndex] = useState(initialIndex);
   const [tool, setTool] = useState<Tool>('crop');
   const [transform, setTransform] = useState<ProductPhotoTransform>(() => clonePhotoTransform(DEFAULT_PHOTO_TRANSFORM));
@@ -168,7 +175,7 @@ export const ProductPhotoEditor: React.FC<Props> = ({ shoot, initialImageId, onC
       const blob = await canvasToJpeg(canvas, 0.92);
       const body = new FormData();
       body.append('image', new File([blob], `photo-editee-${current.image.id}.jpg`, { type: 'image/jpeg' }));
-      await replaceImage({ shootId: shoot.id, imageId: current.image.id, body }).unwrap();
+      await replaceImage({ shootId: current.shoot.id, imageId: current.image.id, body }).unwrap();
       setTransform(clonePhotoTransform(DEFAULT_PHOTO_TRANSFORM));
       setUndoStack([]);
       setRedoStack([]);
@@ -178,7 +185,7 @@ export const ProductPhotoEditor: React.FC<Props> = ({ shoot, initialImageId, onC
       await Swal.fire({ icon: 'error', title: 'Enregistrement impossible', text: error?.data?.message || error?.message || 'L’image n’a pas pu être exportée.' });
       return false;
     }
-  }, [current, replaceImage, saving, shoot.id, transform]);
+  }, [current, replaceImage, saving, transform]);
 
   const confirmDirty = useCallback(async () => {
     if (!dirty) return 'discard' as const;
@@ -324,9 +331,9 @@ export const ProductPhotoEditor: React.FC<Props> = ({ shoot, initialImageId, onC
     <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[80] flex flex-col bg-[#090a0c] text-white outline-none motion-reduce:[&_*]:!transition-none" role="dialog" aria-modal="true" aria-label="Éditeur de photos produit">
       <header className="flex min-h-16 items-center gap-2 border-b border-white/10 bg-[#101216] px-3 sm:px-5">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold sm:text-base">{shoot.product_designation}</h2>
+          <h2 className="truncate text-sm font-semibold sm:text-base">{current.shoot.product_designation}</h2>
           <p className="truncate text-[11px] text-gray-400 sm:text-xs">
-            Réf. {shoot.variant_reference || shoot.product_id}{shoot.variant_name ? ` · ${shoot.variant_name}` : ''} · Image {index + 1} / {assets.length}
+            Réf. {current.shoot.variant_reference || current.shoot.product_id}{current.shoot.variant_name ? ` · ${current.shoot.variant_name}` : ''} · Image {index + 1} / {assets.length}
           </p>
         </div>
         <button className={iconButton} onClick={undo} disabled={!undoStack.length} aria-label="Annuler la dernière modification"><Undo2 className="h-5 w-5" /></button>
@@ -396,7 +403,7 @@ export const ProductPhotoEditor: React.FC<Props> = ({ shoot, initialImageId, onC
           <div className="border-t border-white/10 bg-[#101216] px-3 py-2">
             <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto pb-1">
               {assets.map((asset, assetIndex) => (
-                <button key={asset.image.id} onClick={() => void selectImage(assetIndex)} className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${assetIndex === index ? 'border-orange-400' : 'border-transparent opacity-60 hover:opacity-100'}`} aria-label={`Ouvrir l’image ${assetIndex + 1}`} aria-current={assetIndex === index ? 'true' : undefined}>
+                <button key={`${asset.shoot.id}-${asset.image.id}`} onClick={() => void selectImage(assetIndex)} className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${assetIndex === index ? 'border-orange-400' : 'border-transparent opacity-60 hover:opacity-100'}`} aria-label={`Ouvrir l’image ${assetIndex + 1} de ${asset.shoot.product_designation}, référence ${asset.shoot.variant_reference || asset.shoot.product_id}`} aria-current={assetIndex === index ? 'true' : undefined} title={`${asset.shoot.product_designation} · Réf. ${asset.shoot.variant_reference || asset.shoot.product_id}`}>
                   <img src={asset.image.image_url} alt="" className="h-full w-full object-cover" />
                   <span className="absolute bottom-0 right-0 bg-black/75 px-1 text-[10px] tabular-nums">{assetIndex + 1}</span>
                 </button>
