@@ -717,30 +717,33 @@ async function runProductSearch(query) {
     const { category_id, brand_id, missing_lang, type } = query;
     const sortBy = String(query.sortBy || 'id').trim();
     const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-    const qRaw = String(query.q ?? '').trim();
-    const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
-    const qNormalized = normalizeSearchText(q);
-    const qTerms = qNormalized.split(/\s+/).filter(Boolean);
-
     const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
-    if (qTerms.length > 0) {
-      const termConditions = qTerms.map(() => `(
-        ${accentFoldSql("CONCAT_WS(' ', p.id, p.reference_2, p.designation, p.old_designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
-        OR EXISTS (
-          SELECT 1 FROM product_variants pv_search
-          WHERE pv_search.product_id = p.id
-            AND COALESCE(pv_search.is_deleted, 0) = 0
-            AND ${accentFoldSql("CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)")} LIKE ?
-        )
-      )`);
+    const searchClauses = [];
+    for (const rawSearchValue of [query.q, query.q2]) {
+      const rawValue = String(rawSearchValue ?? '').trim().slice(0, 100);
+      const terms = normalizeSearchText(rawValue).split(/\s+/).filter(Boolean);
+      if (terms.length === 0) continue;
 
-      conditions.push(`(${termConditions.join(' AND ')})`);
-      for (const term of qTerms) {
-        const termWild = `%${term}%`;
-        params.push(termWild, termWild);
+      const termConditions = terms.map(() => `(
+          ${accentFoldSql("CONCAT_WS(' ', p.id, p.reference_2, p.designation, p.old_designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
+          OR EXISTS (
+            SELECT 1 FROM product_variants pv_search
+            WHERE pv_search.product_id = p.id
+              AND COALESCE(pv_search.is_deleted, 0) = 0
+              AND ${accentFoldSql("CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)")} LIKE ?
+          )
+        )`);
+
+      searchClauses.push(`(${termConditions.join(' AND ')})`);
+      for (const term of terms) {
+        const wildcardTerm = `%${term}%`;
+        params.push(wildcardTerm, wildcardTerm);
       }
+    }
+    if (searchClauses.length > 0) {
+      conditions.push(`(${searchClauses.join(' OR ')})`);
     }
 
     if (category_id) {

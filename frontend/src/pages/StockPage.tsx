@@ -19,7 +19,9 @@ const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
   const authToken = useSelector((state: any) => state.auth?.token);
   const [searchInput, setSearchInput] = useState('');
+  const [searchInput2, setSearchInput2] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm2, setSearchTerm2] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,6 +40,7 @@ const StockPage: React.FC = () => {
     page: currentPage,
     limit: itemsPerPage,
     q: searchTerm || undefined,
+    q2: searchTerm2 || undefined,
     category_id: filterCategory || undefined,
     type: productType,
     sortBy: sortMode === 'recent' ? 'id' : 'quantite',
@@ -384,6 +387,7 @@ const StockPage: React.FC = () => {
       const params = new URLSearchParams();
       params.set('type', productType);
       if (searchTerm) params.set('q', searchTerm);
+      if (searchTerm2) params.set('q2', searchTerm2);
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (categoryLabel) params.set('category_label', categoryLabel);
 
@@ -424,6 +428,7 @@ const StockPage: React.FC = () => {
       const params = new URLSearchParams();
       params.set('type', productType);
       if (searchTerm) params.set('q', searchTerm);
+      if (searchTerm2) params.set('q2', searchTerm2);
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (categoryLabel) params.set('category_label', categoryLabel);
 
@@ -460,11 +465,12 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterCategory, activeTab, itemsPerPage, sortMode]);
+  }, [searchTerm, searchTerm2, filterCategory, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput.trim());
+    setSearchTerm2(searchInput2.trim());
   };
 
   const handleProductImageDrop = async (
@@ -1052,18 +1058,37 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_1fr] gap-4">
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_1fr_1fr] gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
-            placeholder="Rechercher par ID, Réf 2, désignation, ancienne désignation ou nom arabe…"
+            placeholder="Recherche 1 : ID, Réf 2 ou désignation…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleSearch();
             }}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+        <div className="hidden xl:flex items-center justify-center">
+          <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700">OU</span>
+        </div>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 xl:hidden">
+            OU
+          </span>
+          <Search className="absolute left-12 top-1/2 -translate-y-1/2 text-gray-400 xl:left-3" size={20} />
+          <input
+            type="text"
+            placeholder="Recherche 2 facultative…"
+            value={searchInput2}
+            onChange={(e) => setSearchInput2(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSearch();
+            }}
+            className="w-full py-2 pl-20 pr-4 border border-violet-300 rounded-md focus:ring-2 focus:ring-violet-500 focus:border-violet-500 xl:pl-10"
           />
         </div>
         <button
