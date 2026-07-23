@@ -710,7 +710,7 @@ async function runProductSearch(query) {
     await ensureProductsColumns();
 
     const page = Math.max(parseInt(query.page) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(query.limit) || 50, 1), 200);
+    const limit = Math.min(Math.max(parseInt(query.limit) || 50, 1), 500);
     const offset = (page - 1) * limit;
     const useSnapshot = await hasProductSnapshotTable();
 
@@ -2203,8 +2203,8 @@ router.post('/convert-to-variants', async (req, res, next) => {
   }
 });
 
-// Replace the main image and gallery of several active products with the
-// photos of one active source product. Database references are cloned; the
+// Replace the main image and gallery of active products and/or variants with
+// the photos of one active source product. Database references are cloned; the
 // physical files remain shared and are deleted only when no row references them.
 router.post('/clone-photos', async (req, res, next) => {
   let connection;
@@ -2212,18 +2212,24 @@ router.post('/clone-photos', async (req, res, next) => {
   try {
     await ensureProductsColumns();
 
-    const targetIds = [...new Set(
+    const targetProductIds = [...new Set(
       (Array.isArray(req.body?.productIds) ? req.body.productIds : [])
         .map(Number)
         .filter((id) => Number.isInteger(id) && id > 0)
     )];
+    const targetVariantIds = [...new Set(
+      (Array.isArray(req.body?.variantIds) ? req.body.variantIds : [])
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
     const sourceReference = String(req.body?.sourceReference ?? '').trim().slice(0, 255);
+    const targetCount = targetProductIds.length + targetVariantIds.length;
 
-    if (targetIds.length === 0) {
-      return res.status(400).json({ message: 'Sélectionnez au moins un produit cible.' });
+    if (targetCount === 0) {
+      return res.status(400).json({ message: 'Sélectionnez au moins un produit ou une variante cible.' });
     }
-    if (targetIds.length > 100) {
-      return res.status(400).json({ message: 'Vous pouvez cloner les photos vers 100 produits au maximum.' });
+    if (targetCount > 100) {
+      return res.status(400).json({ message: 'Vous pouvez cloner les photos vers 100 produits ou variantes au maximum.' });
     }
     if (!sourceReference) {
       return res.status(400).json({ message: 'La référence du produit source est obligatoire.' });
@@ -2260,27 +2266,53 @@ router.post('/clone-photos', async (req, res, next) => {
       });
     }
 
-    if (targetIds.includes(Number(sourceProduct.id))) {
+    if (targetProductIds.includes(Number(sourceProduct.id))) {
       await connection.rollback();
       return res.status(400).json({
         message: 'Le produit source ne doit pas faire partie des produits cibles sélectionnés.',
       });
     }
 
-    const [targetProducts] = await connection.query(
-      `SELECT id, image_url
-       FROM products
-       WHERE id IN (?) AND COALESCE(is_deleted, 0) = 0
-       ORDER BY id
-       FOR UPDATE`,
-      [targetIds]
-    );
-    if (targetProducts.length !== targetIds.length) {
+    let targetProducts = [];
+    if (targetProductIds.length > 0) {
+      [targetProducts] = await connection.query(
+        `SELECT id, image_url
+         FROM products
+         WHERE id IN (?) AND COALESCE(is_deleted, 0) = 0
+         ORDER BY id
+         FOR UPDATE`,
+        [targetProductIds]
+      );
+    }
+    if (targetProducts.length !== targetProductIds.length) {
       const foundIds = new Set(targetProducts.map((row) => Number(row.id)));
-      const missingIds = targetIds.filter((id) => !foundIds.has(id));
+      const missingIds = targetProductIds.filter((id) => !foundIds.has(id));
       await connection.rollback();
       return res.status(404).json({
         message: `Produit(s) cible(s) actif(s) introuvable(s) : ${missingIds.join(', ')}.`,
+      });
+    }
+
+    let targetVariants = [];
+    if (targetVariantIds.length > 0) {
+      [targetVariants] = await connection.query(
+        `SELECT pv.id, pv.image_url
+         FROM product_variants pv
+         INNER JOIN products p ON p.id = pv.product_id
+         WHERE pv.id IN (?)
+           AND COALESCE(pv.is_deleted, 0) = 0
+           AND COALESCE(p.is_deleted, 0) = 0
+         ORDER BY pv.id
+         FOR UPDATE`,
+        [targetVariantIds]
+      );
+    }
+    if (targetVariants.length !== targetVariantIds.length) {
+      const foundIds = new Set(targetVariants.map((row) => Number(row.id)));
+      const missingIds = targetVariantIds.filter((id) => !foundIds.has(id));
+      await connection.rollback();
+      return res.status(404).json({
+        message: `Variante(s) cible(s) active(s) introuvable(s) : ${missingIds.join(', ')}.`,
       });
     }
 
@@ -2298,30 +2330,56 @@ router.post('/clone-photos', async (req, res, next) => {
       });
     }
 
-    const [oldGallery] = await connection.query(
-      'SELECT image_url FROM product_images WHERE product_id IN (?)',
-      [targetIds]
-    );
+    let oldProductGallery = [];
+    if (targetProductIds.length > 0) {
+      [oldProductGallery] = await connection.query(
+        'SELECT image_url FROM product_images WHERE product_id IN (?)',
+        [targetProductIds]
+      );
+    }
+    let oldVariantGallery = [];
+    if (targetVariantIds.length > 0) {
+      [oldVariantGallery] = await connection.query(
+        'SELECT image_url FROM variant_images WHERE variant_id IN (?)',
+        [targetVariantIds]
+      );
+    }
     oldImageUrls = [
       ...targetProducts.map((product) => product.image_url),
-      ...oldGallery.map((image) => image.image_url),
+      ...targetVariants.map((variant) => variant.image_url),
+      ...oldProductGallery.map((image) => image.image_url),
+      ...oldVariantGallery.map((image) => image.image_url),
     ].filter(Boolean);
 
     const now = new Date();
     const updatedBy = req.user?.id || null;
-    await connection.query(
-      `UPDATE products
-       SET image_url = ?, updated_by = ?, updated_at = ?
-       WHERE id IN (?)`,
-      [sourceProduct.image_url || null, updatedBy, now, targetIds]
-    );
-    await connection.query(
-      'DELETE FROM product_images WHERE product_id IN (?)',
-      [targetIds]
-    );
+    if (targetProductIds.length > 0) {
+      await connection.query(
+        `UPDATE products
+         SET image_url = ?, updated_by = ?, updated_at = ?
+         WHERE id IN (?)`,
+        [sourceProduct.image_url || null, updatedBy, now, targetProductIds]
+      );
+      await connection.query(
+        'DELETE FROM product_images WHERE product_id IN (?)',
+        [targetProductIds]
+      );
+    }
+    if (targetVariantIds.length > 0) {
+      await connection.query(
+        `UPDATE product_variants
+         SET image_url = ?, updated_at = ?
+         WHERE id IN (?)`,
+        [sourceProduct.image_url || null, now, targetVariantIds]
+      );
+      await connection.query(
+        'DELETE FROM variant_images WHERE variant_id IN (?)',
+        [targetVariantIds]
+      );
+    }
 
     if (sourceGallery.length > 0) {
-      for (const targetId of targetIds) {
+      for (const targetId of targetProductIds) {
         await connection.query(
           `INSERT INTO product_images (product_id, image_url, position, created_at, updated_at)
            SELECT ?, image_url, position, ?, ?
@@ -2329,6 +2387,16 @@ router.post('/clone-photos', async (req, res, next) => {
            WHERE product_id = ?
            ORDER BY position ASC, id ASC`,
           [targetId, now, now, sourceProduct.id]
+        );
+      }
+      for (const targetVariantId of targetVariantIds) {
+        await connection.query(
+          `INSERT INTO variant_images (variant_id, image_url, position, created_at, updated_at)
+           SELECT ?, image_url, position, ?, ?
+           FROM product_images
+           WHERE product_id = ?
+           ORDER BY position ASC, id ASC`,
+          [targetVariantId, now, now, sourceProduct.id]
         );
       }
     }
@@ -2350,7 +2418,8 @@ router.post('/clone-photos', async (req, res, next) => {
         reference_2: sourceProduct.reference_2 ?? null,
         designation: sourceProduct.designation,
       },
-      updatedProductIds: targetIds,
+      updatedProductIds: targetProductIds,
+      updatedVariantIds: targetVariantIds,
       mainImageCloned: Boolean(sourceProduct.image_url),
       galleryImagesCloned: sourceGallery.length,
     });

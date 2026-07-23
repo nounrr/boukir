@@ -77,10 +77,11 @@ const productsApi = api.injectEndpoints({
         success: boolean;
         sourceProduct: { id: number; reference: string; reference_2?: string | null; designation: string };
         updatedProductIds: number[];
+        updatedVariantIds: number[];
         mainImageCloned: boolean;
         galleryImagesCloned: number;
       },
-      { productIds: number[]; sourceReference: string }
+      { productIds: number[]; variantIds: number[]; sourceReference: string }
     >({
       query: (body) => ({
         url: '/products/clone-photos',

@@ -1338,7 +1338,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               </label>
               <CategoryTreeSelect
                 categories={categories}
-                selectedId={formik.values.categorie_id || null}
+                selectedId={formik.values.categorie_id ?? 0}
                 onChange={(id) => {
                   formik.setFieldValue('categorie_id', id);
                   // Clear legacy array if needed, or sync it

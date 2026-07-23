@@ -33,6 +33,7 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
 
   // Get selected category name
   const selectedCategory = categories.find(c => c.id === selectedId);
+  const isUncategorized = !selectedId;
 
   // Filter categories by search term
   const filteredCategories = useMemo(() => {
@@ -153,8 +154,8 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
         onClick={() => setIsOpen(!isOpen)}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-left flex items-center justify-between"
       >
-        <span className={selectedCategory ? 'text-gray-900' : 'text-gray-500'}>
-          {selectedCategory ? selectedCategory.nom : 'Sélectionner une catégorie'}
+        <span className="text-gray-900">
+          {selectedCategory ? selectedCategory.nom : 'Uncategorized'}
         </span>
         <div className="flex items-center gap-1">
           {selectedCategory && (
@@ -187,6 +188,17 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
 
           {/* Category List */}
           <div className="overflow-y-auto flex-1">
+            {!searchTerm && (
+              <button
+                type="button"
+                onClick={() => handleSelect(0)}
+                className={`w-full border-b border-gray-100 px-3 py-2 text-left transition-colors hover:bg-blue-50 ${
+                  isUncategorized ? 'bg-blue-100 font-medium text-blue-700' : 'text-gray-900'
+                }`}
+              >
+                Uncategorized
+              </button>
+            )}
             {filteredCategories.length === 0 ? (
               <div className="p-4 text-center text-gray-500">Aucune catégorie trouvée</div>
             ) : searchTerm ? (

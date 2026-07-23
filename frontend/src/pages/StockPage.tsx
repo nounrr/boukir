@@ -89,8 +89,10 @@ const StockPage: React.FC = () => {
   const [cloneProductPhotos] = useCloneProductPhotosMutation();
   const [uploadProductMainAndGalleryImage] = useUploadProductMainAndGalleryImageMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set());
   const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
   const [isCloningPhotos, setIsCloningPhotos] = useState(false);
+  const [isCloningToOwnVariants, setIsCloningToOwnVariants] = useState(false);
   const [dragOverProductId, setDragOverProductId] = useState<string | null>(null);
   const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -101,6 +103,17 @@ const StockPage: React.FC = () => {
   const [translateProducts] = useTranslateProductsMutation();
   const [generateSpecs] = useGenerateSpecsMutation();
   const [toggleEcomStock] = useToggleEcomStockMutation();
+  const selectedPhotoTargetCount = selectedIds.size + selectedVariantIds.size;
+  const selectedProductForVariantClone = useMemo(() => {
+    if (selectedIds.size !== 1) return null;
+    const selectedProductId = Array.from(selectedIds)[0];
+    const selectedProduct = (products || []).find((product: any) => (
+      Number(product.id) === Number(selectedProductId)
+    ));
+    return selectedProduct && Array.isArray(selectedProduct.variants) && selectedProduct.variants.length > 0
+      ? selectedProduct
+      : null;
+  }, [products, selectedIds]);
 
   // Unit display selection per product (keyed by product id or originalId for variants)
   const [unitSelection, setUnitSelection] = useState<Record<string, string>>({});
@@ -615,6 +628,7 @@ const StockPage: React.FC = () => {
               onClick={() => {
                 setActiveTab('Produits');
                 setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
               }}
               className={`px-4 py-2 text-sm font-medium ${activeTab === 'Produits'
                 ? 'bg-blue-600 text-white'
@@ -628,6 +642,7 @@ const StockPage: React.FC = () => {
               onClick={() => {
                 setActiveTab('Services');
                 setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
               }}
               className={`px-4 py-2 text-sm font-medium ${activeTab === 'Services'
                 ? 'bg-blue-600 text-white'
@@ -641,6 +656,7 @@ const StockPage: React.FC = () => {
               onClick={() => {
                 setActiveTab('Produits non stockables');
                 setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
               }}
               className={`px-4 py-2 text-sm font-medium ${activeTab === 'Produits non stockables'
                 ? 'bg-blue-600 text-white'
@@ -762,6 +778,7 @@ const StockPage: React.FC = () => {
                 const skipped = res?.results?.filter((r: any) => r.status === 'skipped').length ?? 0;
                 showSuccess(`Traduction: ${ok} ok, ${skipped} ignoré(s), ${errs} erreur(s)`);
                 setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
                 refetchProducts?.();
               } catch (e) {
                 console.error(e);
@@ -818,6 +835,7 @@ const StockPage: React.FC = () => {
                   `${result.converted.length} produit(s) converti(s) en variantes de « ${result.originalProduct.designation} » (ID ${result.originalProduct.id}).`
                 );
                 setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
                 refetchProducts?.();
               } catch (error: any) {
                 console.error('Erreur conversion en variantes:', error);
@@ -840,13 +858,13 @@ const StockPage: React.FC = () => {
 
           <button
             onClick={async () => {
-              if (selectedIds.size === 0) return;
+              if (selectedPhotoTargetCount === 0) return;
 
               const { isConfirmed, value } = await Swal.fire({
                 title: 'Cloner les photos',
                 html: `
-                  <p>L’image principale et toute la galerie du produit source seront copiées vers les ${selectedIds.size} produit(s) sélectionné(s).</p>
-                  <p class="text-sm text-red-600 mt-2">Les photos actuelles des produits sélectionnés seront remplacées.</p>
+                  <p>L’image principale et toute la galerie du produit source seront copiées vers ${selectedIds.size} produit(s) et ${selectedVariantIds.size} variante(s) sélectionné(s).</p>
+                  <p class="text-sm text-red-600 mt-2">Les photos actuelles des produits et variantes sélectionnés seront remplacées.</p>
                 `,
                 input: 'text',
                 inputLabel: 'ID ou Réf 2 du produit source',
@@ -873,12 +891,14 @@ const StockPage: React.FC = () => {
               try {
                 const result = await cloneProductPhotos({
                   productIds: Array.from(selectedIds),
+                  variantIds: Array.from(selectedVariantIds),
                   sourceReference,
                 }).unwrap();
                 showSuccess(
-                  `Photos de « ${result.sourceProduct.designation} » clonées vers ${result.updatedProductIds.length} produit(s) : ${result.mainImageCloned ? 'image principale' : 'sans image principale'} et ${result.galleryImagesCloned} image(s) de galerie.`
+                  `Photos de « ${result.sourceProduct.designation} » clonées vers ${result.updatedProductIds.length} produit(s) et ${result.updatedVariantIds.length} variante(s) : ${result.mainImageCloned ? 'image principale' : 'sans image principale'} et ${result.galleryImagesCloned} image(s) de galerie.`
                 );
                 setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
                 refetchProducts?.();
               } catch (error: any) {
                 console.error('Erreur clonage photos:', error);
@@ -891,12 +911,64 @@ const StockPage: React.FC = () => {
                 setIsCloningPhotos(false);
               }
             }}
-            disabled={selectedIds.size === 0 || isCloningPhotos}
+            disabled={selectedPhotoTargetCount === 0 || isCloningPhotos || isCloningToOwnVariants}
             className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
-            title="Remplacer les photos des produits sélectionnés par celles d’un produit source"
+            title="Remplacer les photos des produits et variantes sélectionnés par celles d’un produit source"
           >
             <Images size={18} />
             {isCloningPhotos ? 'Clonage...' : 'Cloner les photos'}
+          </button>
+
+          <button
+            onClick={async () => {
+              if (!selectedProductForVariantClone) return;
+
+              const variantIds = selectedProductForVariantClone.variants
+                .map((variant: any) => Number(variant.id))
+                .filter((id: number) => Number.isInteger(id) && id > 0);
+              if (variantIds.length === 0) return;
+
+              const { isConfirmed } = await Swal.fire({
+                title: 'Cloner vers ses variantes',
+                text: `L’image principale et toute la galerie de « ${selectedProductForVariantClone.designation} » seront copiées vers ses ${variantIds.length} variante(s). Les photos actuelles de toutes ses variantes seront remplacées.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#2563eb',
+                confirmButtonText: 'Cloner vers les variantes',
+                cancelButtonText: 'Annuler',
+              });
+              if (!isConfirmed) return;
+
+              setIsCloningToOwnVariants(true);
+              try {
+                const result = await cloneProductPhotos({
+                  productIds: [],
+                  variantIds,
+                  sourceReference: String(selectedProductForVariantClone.id),
+                }).unwrap();
+                showSuccess(
+                  `Les photos de « ${result.sourceProduct.designation} » ont été clonées vers ${result.updatedVariantIds.length} variante(s).`
+                );
+                setSelectedIds(new Set());
+                setSelectedVariantIds(new Set());
+                refetchProducts?.();
+              } catch (error: any) {
+                console.error('Erreur clonage vers les variantes:', error);
+                showError(
+                  error?.data?.message
+                  || error?.error
+                  || 'Erreur lors du clonage des photos vers les variantes'
+                );
+              } finally {
+                setIsCloningToOwnVariants(false);
+              }
+            }}
+            disabled={!selectedProductForVariantClone || isCloningToOwnVariants || isCloningPhotos}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Cloner les photos du produit sélectionné vers toutes ses variantes"
+          >
+            <Images size={18} />
+            {isCloningToOwnVariants ? 'Clonage variantes...' : 'Cloner vers ses variantes'}
           </button>
 
           <button
@@ -933,6 +1005,7 @@ const StockPage: React.FC = () => {
               }
 
               setSelectedIds(new Set());
+              setSelectedVariantIds(new Set());
               refetchProducts?.();
             }}
             disabled={selectedIds.size === 0}
@@ -1092,6 +1165,7 @@ const StockPage: React.FC = () => {
               <option value={30}>30</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
+              <option value={500}>500</option>
             </select>
           </div>
         </div>
@@ -1104,23 +1178,32 @@ const StockPage: React.FC = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3">
-                  {/* Select all on current page (main products only) */}
+                  {/* Select all products and variants on the current page */}
                   <input
                     type="checkbox"
-                    checked={paginatedProducts.every((p: any) => p.isVariantRow ? true : selectedIds.has(p.id)) && paginatedProducts.some((p: any) => !p.isVariantRow)}
+                    checked={paginatedProducts.length > 0 && paginatedProducts.every((p: any) => (
+                      p.isVariantRow
+                        ? selectedVariantIds.has(Number(p.variantId))
+                        : selectedIds.has(Number(p.id))
+                    ))}
                     onChange={(e) => {
                       const next = new Set(selectedIds);
+                      const nextVariants = new Set(selectedVariantIds);
                       if (e.target.checked) {
                         paginatedProducts.forEach((p: any) => {
-                          if (!p.isVariantRow) next.add(p.id);
+                          if (p.isVariantRow) nextVariants.add(Number(p.variantId));
+                          else next.add(Number(p.id));
                         });
                       } else {
                         paginatedProducts.forEach((p: any) => {
-                          if (!p.isVariantRow) next.delete(p.id);
+                          if (p.isVariantRow) nextVariants.delete(Number(p.variantId));
+                          else next.delete(Number(p.id));
                         });
                       }
                       setSelectedIds(next);
+                      setSelectedVariantIds(nextVariants);
                     }}
+                    title="Sélectionner tous les produits et variantes de cette page"
                   />
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
@@ -1177,18 +1260,26 @@ const StockPage: React.FC = () => {
                   }`}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {!product.isVariantRow && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(product.id)}
-                        onChange={(e) => {
+                    <input
+                      type="checkbox"
+                      checked={product.isVariantRow
+                        ? selectedVariantIds.has(Number(product.variantId))
+                        : selectedIds.has(Number(product.id))}
+                      onChange={(e) => {
+                        if (product.isVariantRow) {
+                          const nextVariants = new Set(selectedVariantIds);
+                          if (e.target.checked) nextVariants.add(Number(product.variantId));
+                          else nextVariants.delete(Number(product.variantId));
+                          setSelectedVariantIds(nextVariants);
+                        } else {
                           const next = new Set(selectedIds);
-                          if (e.target.checked) next.add(product.id);
-                          else next.delete(product.id);
+                          if (e.target.checked) next.add(Number(product.id));
+                          else next.delete(Number(product.id));
                           setSelectedIds(next);
-                        }}
-                      />
-                    )}
+                        }
+                      }}
+                      title={product.isVariantRow ? 'Sélectionner cette variante' : 'Sélectionner ce produit'}
+                    />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-1">
@@ -1275,7 +1366,22 @@ const StockPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+                      <span>{product.reference ?? product.id}</span>
+                      {!product.isVariantRow && (
+                        product.isObligatoireVariant === true
+                        || product.is_obligatoire_variant === true
+                        || product.is_obligatoire_variant === 1
+                      ) && (
+                        <span
+                          className="inline-flex items-center justify-center rounded-full bg-violet-100 p-1 text-violet-700"
+                          title="Variante obligatoire"
+                          aria-label="Variante obligatoire"
+                        >
+                          <GitMerge size={13} />
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {product.reference_2 ? (
