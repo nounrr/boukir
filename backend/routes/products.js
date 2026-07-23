@@ -3740,6 +3740,109 @@ router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, 
   }
 });
 
+// Same drag-and-drop behavior for a product variant: one stored file becomes
+// both the variant's main image and a new variant gallery image.
+router.post('/:id/variants/:variantId/image-main-gallery', upload.single('image'), async (req, res, next) => {
+  let connection;
+  let newImageUrl = req.file ? `/uploads/products/${req.file.filename}` : null;
+  try {
+    await validateProductUploadFiles(req.file ? [req.file] : []);
+    await ensureProductsColumns();
+
+    const productId = Number(req.params.id);
+    const variantId = Number(req.params.variantId);
+    if (
+      !Number.isInteger(productId) || productId <= 0
+      || !Number.isInteger(variantId) || variantId <= 0
+    ) {
+      if (newImageUrl) await deleteProductUploadIfUnreferenced(newImageUrl);
+      newImageUrl = null;
+      return res.status(400).json({ message: 'ID produit ou variante invalide.' });
+    }
+    if (!req.file || !newImageUrl) {
+      return res.status(400).json({ message: 'Sélectionnez une image JPG, PNG ou WebP.' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [variants] = await connection.query(
+      `SELECT
+         pv.id,
+         pv.variant_name,
+         pv.image_url,
+         p.designation AS product_designation
+       FROM product_variants pv
+       JOIN products p ON p.id = pv.product_id
+       WHERE pv.id = ?
+         AND pv.product_id = ?
+         AND COALESCE(pv.is_deleted, 0) = 0
+         AND COALESCE(p.is_deleted, 0) = 0
+       FOR UPDATE`,
+      [variantId, productId]
+    );
+    if (variants.length === 0) {
+      await connection.rollback();
+      connection.release();
+      connection = null;
+      await deleteProductUploadIfUnreferenced(newImageUrl);
+      newImageUrl = null;
+      return res.status(404).json({ message: 'Variante active introuvable.' });
+    }
+
+    const variant = variants[0];
+    const [[positionRow]] = await connection.query(
+      'SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM variant_images WHERE variant_id = ?',
+      [variantId]
+    );
+    const nextPosition = Number(positionRow?.next_position || 0);
+    const now = new Date();
+
+    await connection.query(
+      'UPDATE product_variants SET image_url = ?, updated_at = ? WHERE id = ? AND product_id = ?',
+      [newImageUrl, now, variantId, productId]
+    );
+    const [galleryInsert] = await connection.query(
+      `INSERT INTO variant_images (variant_id, image_url, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [variantId, newImageUrl, nextPosition, now, now]
+    );
+
+    await connection.commit();
+    connection.release();
+    connection = null;
+
+    if (variant.image_url && variant.image_url !== newImageUrl) {
+      await deleteProductUploadIfUnreferenced(variant.image_url);
+    }
+
+    res.json({
+      success: true,
+      product: {
+        id: productId,
+        variant_id: variantId,
+        designation: `${variant.product_designation} - ${variant.variant_name}`,
+        image_url: newImageUrl,
+      },
+      galleryImage: {
+        id: Number(galleryInsert.insertId),
+        image_url: newImageUrl,
+        position: nextPosition,
+      },
+    });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    if (newImageUrl) {
+      await deleteProductUploadIfUnreferenced(newImageUrl);
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
 // Toggle ecom stock (checkbox from stock page)
 // When enabled: ecom_published = 1, stock_partage_ecom = 1, stock_partage_ecom_qty = quantite (max stock)
 // When disabled: ecom_published = 0, stock_partage_ecom = 0, stock_partage_ecom_qty = 0

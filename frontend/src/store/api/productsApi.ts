@@ -93,16 +93,18 @@ const productsApi = api.injectEndpoints({
     uploadProductMainAndGalleryImage: builder.mutation<
       {
         success: boolean;
-        product: { id: number; designation: string; image_url: string };
+        product: { id: number; variant_id?: number; designation: string; image_url: string };
         galleryImage: { id: number; image_url: string; position: number };
       },
-      { id: number; image: File }
+      { id: number; variantId?: number; image: File }
     >({
-      query: ({ id, image }) => {
+      query: ({ id, variantId, image }) => {
         const body = new FormData();
         body.append('image', image);
         return {
-          url: `/products/${id}/image-main-gallery`,
+          url: variantId
+            ? `/products/${id}/variants/${variantId}/image-main-gallery`
+            : `/products/${id}/image-main-gallery`,
           method: 'POST',
           body,
         };

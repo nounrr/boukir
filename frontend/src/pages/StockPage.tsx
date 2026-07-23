@@ -91,8 +91,8 @@ const StockPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
   const [isCloningPhotos, setIsCloningPhotos] = useState(false);
-  const [dragOverProductId, setDragOverProductId] = useState<number | null>(null);
-  const [uploadingImageProductId, setUploadingImageProductId] = useState<number | null>(null);
+  const [dragOverProductId, setDragOverProductId] = useState<string | null>(null);
+  const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isGeneratingSpecs, setIsGeneratingSpecs] = useState(false);
   const [isExportingStockExcel, setIsExportingStockExcel] = useState(false);
@@ -335,6 +335,7 @@ const StockPage: React.FC = () => {
             ...product,
             id: `var-${variant.id}`,
             originalId: product.id,
+            variantId: Number(variant.id),
             designation: `${product.designation} - ${variant.variant_name}`,
             parent_designation: product.designation,
             variant_name: variant.variant_name,
@@ -461,7 +462,7 @@ const StockPage: React.FC = () => {
     event.stopPropagation();
     setDragOverProductId(null);
 
-    if (product.isVariantRow || uploadingImageProductId !== null) return;
+    if (uploadingImageProductId !== null) return;
 
     const image = Array.from(event.dataTransfer.files || []).find((file) => {
       const extensionIsAllowed = /\.(jpe?g|png|webp)$/i.test(file.name);
@@ -476,12 +477,15 @@ const StockPage: React.FC = () => {
       return;
     }
 
-    const productId = Number(product.id);
-    setUploadingImageProductId(productId);
+    const rowId = String(product.id);
+    const productId = Number(product.isVariantRow ? product.originalId : product.id);
+    const variantId = product.isVariantRow ? Number(product.variantId) : undefined;
+    setUploadingImageProductId(rowId);
     setHoverPreview(null);
     try {
       const result = await uploadProductMainAndGalleryImage({
         id: productId,
+        variantId,
         image,
       }).unwrap();
       showSuccess(
@@ -1141,23 +1145,23 @@ const StockPage: React.FC = () => {
                 <tr
                   key={product.id}
                   onDragEnter={(event) => {
-                    if (product.isVariantRow || uploadingImageProductId !== null) return;
+                    if (uploadingImageProductId !== null) return;
                     if (Array.from(event.dataTransfer.types || []).includes('Files')) {
                       event.preventDefault();
-                      setDragOverProductId(Number(product.id));
+                      setDragOverProductId(String(product.id));
                     }
                   }}
                   onDragOver={(event) => {
-                    if (product.isVariantRow || uploadingImageProductId !== null) return;
+                    if (uploadingImageProductId !== null) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = 'copy';
-                    setDragOverProductId(Number(product.id));
+                    setDragOverProductId(String(product.id));
                   }}
                   onDragLeave={(event) => {
                     const nextTarget = event.relatedTarget as Node | null;
                     if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
                       setDragOverProductId((current) => (
-                        current === Number(product.id) ? null : current
+                        current === String(product.id) ? null : current
                       ));
                     }
                   }}
@@ -1165,11 +1169,11 @@ const StockPage: React.FC = () => {
                   className={`transition-colors hover:bg-gray-50 ${
                     product.isVariantRow ? 'bg-blue-50/30' : ''
                   } ${
-                    dragOverProductId === Number(product.id)
+                    dragOverProductId === String(product.id)
                       ? 'bg-cyan-50 outline outline-2 outline-cyan-500 outline-offset-[-2px]'
                       : ''
                   } ${
-                    uploadingImageProductId === Number(product.id) ? 'bg-cyan-50/70' : ''
+                    uploadingImageProductId === String(product.id) ? 'bg-cyan-50/70' : ''
                   }`}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -1188,12 +1192,12 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-1">
-                      {dragOverProductId === Number(product.id) && !product.isVariantRow ? (
+                      {dragOverProductId === String(product.id) ? (
                         <div className="flex h-12 min-w-[92px] items-center justify-center gap-1 rounded-md border-2 border-dashed border-cyan-500 bg-cyan-50 px-2 text-xs font-semibold text-cyan-700">
                           <UploadCloud size={18} />
                           Déposer
                         </div>
-                      ) : uploadingImageProductId === Number(product.id) ? (
+                      ) : uploadingImageProductId === String(product.id) ? (
                         <div className="flex h-12 min-w-[92px] items-center justify-center gap-1 rounded-md bg-cyan-50 px-2 text-xs font-semibold text-cyan-700">
                           <LoaderCircle className="animate-spin" size={18} />
                           Envoi...
