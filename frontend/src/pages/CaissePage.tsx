@@ -2956,7 +2956,7 @@ const paymentValidationSchema = Yup.object({
                           <input
                             id="file_input"
                             type="file"
-                            accept="image/jpeg,image/jpg,image/png,image/gif"
+                            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
                             onChange={handleImageUpload}
                             disabled={uploadingImage}
                             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"

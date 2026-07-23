@@ -28,8 +28,8 @@ const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
-    if (!['image/jpeg', 'image/png'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png'].includes(extension)) {
-      return cb(new Error('Seules les images JPG et PNG sont autorisées'));
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+      return cb(new Error('Seules les images JPG, PNG et WebP sont autorisées'));
     }
     cb(null, true);
   },
@@ -71,7 +71,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', upload.single('image'), async (req, res, next) => {
   try {
-    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
     await ensureBrandsTable();
     const { nom, description } = req.body;
     const image_url = req.file ? `/uploads/brands/${req.file.filename}` : null;
@@ -91,7 +91,7 @@ router.post('/', upload.single('image'), async (req, res, next) => {
 
 router.put('/:id', upload.single('image'), async (req, res, next) => {
   try {
-    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
     await ensureBrandsTable();
     const id = Number(req.params.id);
     const { nom, description } = req.body;

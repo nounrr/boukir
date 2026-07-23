@@ -209,7 +209,7 @@ const EmployeeDocumentsPage: React.FC = () => {
                 <input 
                   id="docFile" 
                   type="file" 
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
                   onChange={onUpload}
                   disabled={isUploading}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 file:mr-4 file:py-1 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"

@@ -32,8 +32,8 @@ const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
-    const allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
-    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
     if (!allowedMimes.includes(file.mimetype) || !allowedExtensions.includes(extension)) {
       return cb(new Error('Type de fichier non supporte'));
     }
@@ -45,7 +45,7 @@ const upload = multer({
 router.post('/payment-image', upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier recu' });
-    await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
     const rel = `/uploads/payments/${req.file.filename}`;
     return res.status(201).json({ success: true, imageUrl: rel, filename: req.file.filename, message: 'Image uploadee' });
   } catch (err) { return next(err); }
@@ -54,7 +54,7 @@ router.post('/payment-image', upload.single('image'), async (req, res, next) => 
 router.post('/employee-doc', requireRole('PDG'), upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier recu' });
-    await assertUploadedFileKind(req.file, ['jpeg', 'png', 'pdf']);
+    await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp', 'pdf']);
     const rel = `/uploads/employee_docs/${req.file.filename}`;
     return res.status(201).json({ success: true, fileUrl: rel, filename: req.file.filename, message: 'Document uploade' });
   } catch (err) { return next(err); }

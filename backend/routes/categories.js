@@ -40,8 +40,8 @@ const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
-    if (!['image/jpeg', 'image/png'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png'].includes(extension)) {
-      return cb(new Error('Seules les images JPG et PNG sont autorisées'));
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+      return cb(new Error('Seules les images JPG, PNG et WebP sont autorisées'));
     }
     cb(null, true);
   },
@@ -92,7 +92,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
   try {
-    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
     const { nom, nom_ar, nom_en, nom_zh, description, parent_id, created_by, image_url: image_url_body } = req.body;
     if (!nom || !nom.trim()) return res.status(400).json({ message: 'Nom requis' });
 
@@ -139,7 +139,7 @@ router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
 
 router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
   try {
-    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
     const { nom, nom_ar, nom_en, nom_zh, description, parent_id, updated_by, image_url: image_url_body } = req.body;

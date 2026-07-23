@@ -56,6 +56,60 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    convertProductsToVariants: builder.mutation<
+      {
+        success: boolean;
+        originalProduct: { id: number; reference: string; reference_2?: string | null; designation: string };
+        converted: Array<{ id: number; source_product_id: number; variant_name: string; reference: string }>;
+      },
+      { productIds: number[]; originalReference: string }
+    >({
+      query: (body) => ({
+        url: '/products/convert-to-variants',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
+    cloneProductPhotos: builder.mutation<
+      {
+        success: boolean;
+        sourceProduct: { id: number; reference: string; reference_2?: string | null; designation: string };
+        updatedProductIds: number[];
+        mainImageCloned: boolean;
+        galleryImagesCloned: number;
+      },
+      { productIds: number[]; sourceReference: string }
+    >({
+      query: (body) => ({
+        url: '/products/clone-photos',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
+    uploadProductMainAndGalleryImage: builder.mutation<
+      {
+        success: boolean;
+        product: { id: number; designation: string; image_url: string };
+        galleryImage: { id: number; image_url: string; position: number };
+      },
+      { id: number; image: File }
+    >({
+      query: ({ id, image }) => {
+        const body = new FormData();
+        body.append('image', image);
+        return {
+          url: `/products/${id}/image-main-gallery`,
+          method: 'POST',
+          body,
+        };
+      },
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
+    }),
+
     updateStock: builder.mutation<Product, { id: number; quantite: number; updated_by?: number }>({
       query: ({ id, ...body }) => ({
         url: `/products/${id}/stock`,
@@ -157,6 +211,9 @@ export const {
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,
+  useConvertProductsToVariantsMutation,
+  useCloneProductPhotosMutation,
+  useUploadProductMainAndGalleryImageMutation,
   useUpdateStockMutation,
   useGetArchivedProductsQuery,
   useRestoreProductMutation,

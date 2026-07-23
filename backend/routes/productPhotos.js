@@ -57,7 +57,11 @@ const manualStorage = multer.diskStorage({
   },
   filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = file.mimetype === 'image/png' ? '.png' : '.jpg';
+    const ext = file.mimetype === 'image/png'
+      ? '.png'
+      : file.mimetype === 'image/webp'
+        ? '.webp'
+        : '.jpg';
     cb(null, `manual-${uniqueSuffix}${ext}`);
   },
 });
@@ -807,7 +811,7 @@ router.post('/manual-products/images/batch', receiveManualImages, async (req, re
       error.status = 400;
       throw error;
     }
-    for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png']);
+    for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png', 'webp']);
 
     const uploads = files.map((file, index) => {
       const originalName = String(file.originalname || '').trim();
@@ -955,7 +959,7 @@ router.post('/manual-products/:productId/images', receiveManualImages, async (re
       error.status = 400;
       throw error;
     }
-    for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png']);
+    for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png', 'webp']);
 
     conn = await pool.getConnection();
     await conn.beginTransaction();
@@ -1390,7 +1394,7 @@ router.put('/shoots/:shootId/images/:imageId', receiveEditedImage, async (req, r
       error.status = 400;
       throw error;
     }
-    await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
 
     conn = await pool.getConnection();
     await conn.beginTransaction();

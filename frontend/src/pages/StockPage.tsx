@@ -2,11 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, UploadCloud, LoaderCircle } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsPaginatedQuery, useDeleteProductMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
+import { useGetProductsPaginatedQuery, useDeleteProductMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -85,7 +85,14 @@ const StockPage: React.FC = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteProductMutation] = useDeleteProductMutation();
+  const [convertProductsToVariants] = useConvertProductsToVariantsMutation();
+  const [cloneProductPhotos] = useCloneProductPhotosMutation();
+  const [uploadProductMainAndGalleryImage] = useUploadProductMainAndGalleryImageMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
+  const [isCloningPhotos, setIsCloningPhotos] = useState(false);
+  const [dragOverProductId, setDragOverProductId] = useState<number | null>(null);
+  const [uploadingImageProductId, setUploadingImageProductId] = useState<number | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isGeneratingSpecs, setIsGeneratingSpecs] = useState(false);
   const [isExportingStockExcel, setIsExportingStockExcel] = useState(false);
@@ -446,6 +453,53 @@ const StockPage: React.FC = () => {
     setSearchTerm(searchInput.trim());
   };
 
+  const handleProductImageDrop = async (
+    event: React.DragEvent<HTMLTableRowElement>,
+    product: any
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverProductId(null);
+
+    if (product.isVariantRow || uploadingImageProductId !== null) return;
+
+    const image = Array.from(event.dataTransfer.files || []).find((file) => {
+      const extensionIsAllowed = /\.(jpe?g|png|webp)$/i.test(file.name);
+      return ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || extensionIsAllowed;
+    });
+    if (!image) {
+      showError('Déposez une image JPG, PNG ou WebP.');
+      return;
+    }
+    if (image.size > 10 * 1024 * 1024) {
+      showError('L’image ne doit pas dépasser 10 Mo.');
+      return;
+    }
+
+    const productId = Number(product.id);
+    setUploadingImageProductId(productId);
+    setHoverPreview(null);
+    try {
+      const result = await uploadProductMainAndGalleryImage({
+        id: productId,
+        image,
+      }).unwrap();
+      showSuccess(
+        `Image ajoutée comme photo principale et dans la galerie de « ${result.product.designation} ».`
+      );
+      refetchProducts?.();
+    } catch (error: any) {
+      console.error('Erreur dépôt image produit:', error);
+      showError(
+        error?.data?.message
+        || error?.error
+        || 'Erreur lors de l’envoi de l’image'
+      );
+    } finally {
+      setUploadingImageProductId(null);
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Hover image preview (fixed overlay so it isn't clipped by table overflow) */}
@@ -548,7 +602,7 @@ const StockPage: React.FC = () => {
       })()}
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col xl:flex-row xl:justify-between xl:items-center gap-4 mb-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
           <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden w-fit">
@@ -593,7 +647,7 @@ const StockPage: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 xl:justify-end">
           {/* Generate Specs Button */}
           <button
             onClick={async () => {
@@ -717,6 +771,128 @@ const StockPage: React.FC = () => {
             title="Traduire les désignations sélectionnées"
           >
             {isTranslating ? 'Traduction...' : 'Traduire'}
+          </button>
+
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+
+              const { isConfirmed, value } = await Swal.fire({
+                title: 'Convertir en variantes',
+                html: `
+                  <p>Les ${selectedIds.size} produit(s) sélectionné(s) seront ajoutés comme variantes du produit original.</p>
+                  <p class="text-sm text-gray-500 mt-2">Les anciens produits seront archivés afin de conserver leurs bons et historiques.</p>
+                `,
+                input: 'text',
+                inputLabel: 'ID ou Réf 2 du produit original',
+                inputPlaceholder: 'Ex. 1250',
+                inputAttributes: {
+                  autocapitalize: 'off',
+                  autocomplete: 'off',
+                },
+                showCancelButton: true,
+                confirmButtonColor: '#d97706',
+                confirmButtonText: 'Convertir',
+                cancelButtonText: 'Annuler',
+                inputValidator: (inputValue) => (
+                  String(inputValue || '').trim()
+                    ? undefined
+                    : 'Saisissez la référence du produit original.'
+                ),
+              });
+
+              const originalReference = String(value || '').trim();
+              if (!isConfirmed || !originalReference) return;
+
+              setIsConvertingToVariants(true);
+              try {
+                const result = await convertProductsToVariants({
+                  productIds: Array.from(selectedIds),
+                  originalReference,
+                }).unwrap();
+                showSuccess(
+                  `${result.converted.length} produit(s) converti(s) en variantes de « ${result.originalProduct.designation} » (ID ${result.originalProduct.id}).`
+                );
+                setSelectedIds(new Set());
+                refetchProducts?.();
+              } catch (error: any) {
+                console.error('Erreur conversion en variantes:', error);
+                showError(
+                  error?.data?.message
+                  || error?.error
+                  || 'Erreur lors de la conversion des produits en variantes'
+                );
+              } finally {
+                setIsConvertingToVariants(false);
+              }
+            }}
+            disabled={selectedIds.size === 0 || isConvertingToVariants || activeTab === 'Services'}
+            className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Convertir les produits sélectionnés en variantes d’un produit original"
+          >
+            <GitMerge size={18} />
+            {isConvertingToVariants ? 'Conversion...' : 'Convertir en variantes'}
+          </button>
+
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+
+              const { isConfirmed, value } = await Swal.fire({
+                title: 'Cloner les photos',
+                html: `
+                  <p>L’image principale et toute la galerie du produit source seront copiées vers les ${selectedIds.size} produit(s) sélectionné(s).</p>
+                  <p class="text-sm text-red-600 mt-2">Les photos actuelles des produits sélectionnés seront remplacées.</p>
+                `,
+                input: 'text',
+                inputLabel: 'ID ou Réf 2 du produit source',
+                inputPlaceholder: 'Ex. 1250',
+                inputAttributes: {
+                  autocapitalize: 'off',
+                  autocomplete: 'off',
+                },
+                showCancelButton: true,
+                confirmButtonColor: '#0891b2',
+                confirmButtonText: 'Cloner les photos',
+                cancelButtonText: 'Annuler',
+                inputValidator: (inputValue) => (
+                  String(inputValue || '').trim()
+                    ? undefined
+                    : 'Saisissez la référence du produit source.'
+                ),
+              });
+
+              const sourceReference = String(value || '').trim();
+              if (!isConfirmed || !sourceReference) return;
+
+              setIsCloningPhotos(true);
+              try {
+                const result = await cloneProductPhotos({
+                  productIds: Array.from(selectedIds),
+                  sourceReference,
+                }).unwrap();
+                showSuccess(
+                  `Photos de « ${result.sourceProduct.designation} » clonées vers ${result.updatedProductIds.length} produit(s) : ${result.mainImageCloned ? 'image principale' : 'sans image principale'} et ${result.galleryImagesCloned} image(s) de galerie.`
+                );
+                setSelectedIds(new Set());
+                refetchProducts?.();
+              } catch (error: any) {
+                console.error('Erreur clonage photos:', error);
+                showError(
+                  error?.data?.message
+                  || error?.error
+                  || 'Erreur lors du clonage des photos'
+                );
+              } finally {
+                setIsCloningPhotos(false);
+              }
+            }}
+            disabled={selectedIds.size === 0 || isCloningPhotos}
+            className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Remplacer les photos des produits sélectionnés par celles d’un produit source"
+          >
+            <Images size={18} />
+            {isCloningPhotos ? 'Clonage...' : 'Cloner les photos'}
           </button>
 
           <button
@@ -962,7 +1138,40 @@ const StockPage: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedProducts.map((product: any) => (
-                <tr key={product.id} className={`hover:bg-gray-50 ${product.isVariantRow ? 'bg-blue-50/30' : ''}`}>
+                <tr
+                  key={product.id}
+                  onDragEnter={(event) => {
+                    if (product.isVariantRow || uploadingImageProductId !== null) return;
+                    if (Array.from(event.dataTransfer.types || []).includes('Files')) {
+                      event.preventDefault();
+                      setDragOverProductId(Number(product.id));
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    if (product.isVariantRow || uploadingImageProductId !== null) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'copy';
+                    setDragOverProductId(Number(product.id));
+                  }}
+                  onDragLeave={(event) => {
+                    const nextTarget = event.relatedTarget as Node | null;
+                    if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+                      setDragOverProductId((current) => (
+                        current === Number(product.id) ? null : current
+                      ));
+                    }
+                  }}
+                  onDrop={(event) => handleProductImageDrop(event, product)}
+                  className={`transition-colors hover:bg-gray-50 ${
+                    product.isVariantRow ? 'bg-blue-50/30' : ''
+                  } ${
+                    dragOverProductId === Number(product.id)
+                      ? 'bg-cyan-50 outline outline-2 outline-cyan-500 outline-offset-[-2px]'
+                      : ''
+                  } ${
+                    uploadingImageProductId === Number(product.id) ? 'bg-cyan-50/70' : ''
+                  }`}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     {!product.isVariantRow && (
                       <input
@@ -979,7 +1188,17 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-1">
-                      {(() => {
+                      {dragOverProductId === Number(product.id) && !product.isVariantRow ? (
+                        <div className="flex h-12 min-w-[92px] items-center justify-center gap-1 rounded-md border-2 border-dashed border-cyan-500 bg-cyan-50 px-2 text-xs font-semibold text-cyan-700">
+                          <UploadCloud size={18} />
+                          Déposer
+                        </div>
+                      ) : uploadingImageProductId === Number(product.id) ? (
+                        <div className="flex h-12 min-w-[92px] items-center justify-center gap-1 rounded-md bg-cyan-50 px-2 text-xs font-semibold text-cyan-700">
+                          <LoaderCircle className="animate-spin" size={18} />
+                          Envoi...
+                        </div>
+                      ) : (() => {
                         const imgUrl = product.isVariantRow ? product.variant_image_url : product.image_url;
                         if (imgUrl) {
                           return (

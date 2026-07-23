@@ -74,8 +74,8 @@ const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
-    if (!['image/jpeg', 'image/png'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png'].includes(extension)) {
-      return cb(new Error('Seules les images JPG et PNG sont autorisées'));
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+      return cb(new Error('Seules les images JPG, PNG et WebP sont autorisées'));
     }
     cb(null, true);
   },
@@ -84,7 +84,7 @@ const upload = multer({
 
 async function validateProductUploadFiles(files) {
   const list = Array.isArray(files) ? files : Object.values(files || {}).flat();
-  await Promise.all(list.map((file) => assertUploadedFileKind(file, ['jpeg', 'png'])));
+  await Promise.all(list.map((file) => assertUploadedFileKind(file, ['jpeg', 'png', 'webp'])));
 }
 
 function normalizeSearchText(value) {
@@ -1953,6 +1953,417 @@ router.get('/translations/:id', async (req, res, next) => {
   }
 });
 
+// Convert active standalone products into variants of another active product.
+// The source products are archived instead of being deleted so existing bons,
+// snapshots and other historical records keep pointing at their original rows.
+router.post('/convert-to-variants', async (req, res, next) => {
+  let connection;
+  try {
+    await ensureProductsColumns();
+
+    const sourceIds = [...new Set(
+      (Array.isArray(req.body?.productIds) ? req.body.productIds : [])
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const originalReference = String(req.body?.originalReference ?? '').trim().slice(0, 255);
+
+    if (sourceIds.length === 0) {
+      return res.status(400).json({ message: 'Sélectionnez au moins un produit à convertir.' });
+    }
+    if (sourceIds.length > 100) {
+      return res.status(400).json({ message: 'Vous pouvez convertir au maximum 100 produits à la fois.' });
+    }
+    if (!originalReference) {
+      return res.status(400).json({ message: 'La référence du produit original est obligatoire.' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const numericOriginalId = /^\d+$/.test(originalReference) ? Number(originalReference) : null;
+    const [originalCandidates] = await connection.query(
+      `SELECT *
+       FROM products
+       WHERE COALESCE(is_deleted, 0) = 0
+         AND (CAST(id AS CHAR) = ? OR reference_2 = ?)
+       FOR UPDATE`,
+      [originalReference, originalReference]
+    );
+
+    const originalProduct = (
+      numericOriginalId !== null
+        ? originalCandidates.find((row) => Number(row.id) === numericOriginalId)
+        : null
+    ) || (originalCandidates.length === 1 ? originalCandidates[0] : null);
+
+    if (!originalProduct) {
+      if (originalCandidates.length > 1) {
+        await connection.rollback();
+        return res.status(409).json({
+          message: 'Cette Réf 2 correspond à plusieurs produits. Utilisez l’ID exact du produit original.',
+        });
+      }
+      await connection.rollback();
+      return res.status(404).json({
+        message: `Aucun produit actif trouvé avec la référence « ${originalReference} ».`,
+      });
+    }
+
+    if (sourceIds.includes(Number(originalProduct.id))) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Le produit original ne peut pas faire partie des produits à convertir.',
+      });
+    }
+    if (Number(originalProduct.est_service) === 1) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Un service ne peut pas être utilisé comme produit original.',
+      });
+    }
+
+    const [sourceProducts] = await connection.query(
+      `SELECT *
+       FROM products
+       WHERE id IN (?) AND COALESCE(is_deleted, 0) = 0
+       ORDER BY id
+       FOR UPDATE`,
+      [sourceIds]
+    );
+
+    if (sourceProducts.length !== sourceIds.length) {
+      const foundIds = new Set(sourceProducts.map((row) => Number(row.id)));
+      const missingIds = sourceIds.filter((id) => !foundIds.has(id));
+      await connection.rollback();
+      return res.status(404).json({
+        message: `Produit(s) actif(s) introuvable(s) : ${missingIds.join(', ')}.`,
+      });
+    }
+
+    const invalidServiceIds = sourceProducts
+      .filter((product) => Number(product.est_service) === 1)
+      .map((product) => product.id);
+    if (invalidServiceIds.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: `Les services ne peuvent pas être convertis en variantes : ${invalidServiceIds.join(', ')}.`,
+      });
+    }
+
+    const originalIsNonStockable = Number(originalProduct.non_stockable) === 1;
+    const incompatibleTypeIds = sourceProducts
+      .filter((product) => (Number(product.non_stockable) === 1) !== originalIsNonStockable)
+      .map((product) => product.id);
+    if (incompatibleTypeIds.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: `Le produit original et les produits sélectionnés doivent être du même type de stock : ${incompatibleTypeIds.join(', ')}.`,
+      });
+    }
+
+    const productsWithVariants = sourceProducts
+      .filter((product) => Number(product.has_variants) === 1)
+      .map((product) => product.id);
+    if (productsWithVariants.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: `Ces produits possèdent déjà des variantes et ne peuvent pas être convertis : ${productsWithVariants.join(', ')}.`,
+      });
+    }
+
+    const sourceReferences = sourceProducts.map((product) => String(product.id));
+    const [duplicateReferences] = await connection.query(
+      `SELECT reference
+       FROM product_variants
+       WHERE product_id = ?
+         AND COALESCE(is_deleted, 0) = 0
+         AND reference IN (?)`,
+      [originalProduct.id, sourceReferences]
+    );
+    if (duplicateReferences.length > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: `Une variante du produit original utilise déjà la référence : ${duplicateReferences.map((row) => row.reference).join(', ')}.`,
+      });
+    }
+
+    const snapshotStockByProductId = new Map();
+    if (await hasProductSnapshotTable()) {
+      const [snapshotStocks] = await connection.query(
+        `SELECT product_id, SUM(quantite) AS stock_quantity
+         FROM product_snapshot
+         WHERE product_id IN (?)
+         GROUP BY product_id`,
+        [sourceIds]
+      );
+      for (const row of snapshotStocks) {
+        snapshotStockByProductId.set(Number(row.product_id), Number(row.stock_quantity || 0));
+      }
+    }
+
+    const now = new Date();
+    const updatedBy = req.user?.id || null;
+    const createdVariants = [];
+
+    for (const source of sourceProducts) {
+      // The product's primary reference is its ID throughout the stock UI.
+      // Keep that reference on the new variant; reference_2 belongs to the parent product.
+      const reference = String(source.id);
+      const [insertResult] = await connection.query(
+        `INSERT INTO product_variants (
+           product_id,
+           variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+           variant_type, reference,
+           prix_achat, cout_revient, cout_revient_pourcentage,
+           prix_gros, prix_gros_pourcentage,
+           prix_vente_pourcentage, prix_vente, prix_vente_2,
+           remise_client, remise_artisan, stock_quantity,
+           image_url, is_deleted, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 'Autre', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        [
+          originalProduct.id,
+          source.designation,
+          source.designation_ar,
+          source.designation_en,
+          source.designation_zh,
+          reference,
+          source.prix_achat,
+          source.cout_revient,
+          source.cout_revient_pourcentage,
+          source.prix_gros,
+          source.prix_gros_pourcentage,
+          source.prix_vente_pourcentage,
+          source.prix_vente,
+          source.prix_vente_2,
+          source.remise_client,
+          source.remise_artisan,
+          snapshotStockByProductId.has(Number(source.id))
+            ? snapshotStockByProductId.get(Number(source.id))
+            : source.quantite,
+          source.image_url,
+          now,
+          now,
+        ]
+      );
+
+      const variantId = Number(insertResult.insertId);
+      await connection.query(
+        `INSERT INTO variant_images (variant_id, image_url, position, created_at, updated_at)
+         SELECT ?, image_url, position, ?, ?
+         FROM product_images
+         WHERE product_id = ?`,
+        [variantId, now, now, source.id]
+      );
+
+      createdVariants.push({
+        id: variantId,
+        source_product_id: Number(source.id),
+        variant_name: source.designation,
+        reference,
+      });
+    }
+
+    await connection.query(
+      `UPDATE products
+       SET has_variants = 1, updated_by = ?, updated_at = ?
+       WHERE id = ?`,
+      [updatedBy, now, originalProduct.id]
+    );
+    await connection.query(
+      `UPDATE products
+       SET is_deleted = 1,
+           ecom_published = 0,
+           stock_partage_ecom = 0,
+           stock_partage_ecom_qty = 0,
+           updated_by = ?,
+           updated_at = ?
+       WHERE id IN (?)`,
+      [updatedBy, now, sourceIds]
+    );
+
+    await connection.commit();
+    res.json({
+      success: true,
+      originalProduct: {
+        id: Number(originalProduct.id),
+        reference: String(originalProduct.id),
+        reference_2: originalProduct.reference_2 ?? null,
+        designation: originalProduct.designation,
+      },
+      converted: createdVariants,
+    });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
+// Replace the main image and gallery of several active products with the
+// photos of one active source product. Database references are cloned; the
+// physical files remain shared and are deleted only when no row references them.
+router.post('/clone-photos', async (req, res, next) => {
+  let connection;
+  let oldImageUrls = [];
+  try {
+    await ensureProductsColumns();
+
+    const targetIds = [...new Set(
+      (Array.isArray(req.body?.productIds) ? req.body.productIds : [])
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const sourceReference = String(req.body?.sourceReference ?? '').trim().slice(0, 255);
+
+    if (targetIds.length === 0) {
+      return res.status(400).json({ message: 'Sélectionnez au moins un produit cible.' });
+    }
+    if (targetIds.length > 100) {
+      return res.status(400).json({ message: 'Vous pouvez cloner les photos vers 100 produits au maximum.' });
+    }
+    if (!sourceReference) {
+      return res.status(400).json({ message: 'La référence du produit source est obligatoire.' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const numericSourceId = /^\d+$/.test(sourceReference) ? Number(sourceReference) : null;
+    const [sourceCandidates] = await connection.query(
+      `SELECT id, reference_2, designation, image_url
+       FROM products
+       WHERE COALESCE(is_deleted, 0) = 0
+         AND (CAST(id AS CHAR) = ? OR reference_2 = ?)
+       FOR UPDATE`,
+      [sourceReference, sourceReference]
+    );
+    const sourceProduct = (
+      numericSourceId !== null
+        ? sourceCandidates.find((row) => Number(row.id) === numericSourceId)
+        : null
+    ) || (sourceCandidates.length === 1 ? sourceCandidates[0] : null);
+
+    if (!sourceProduct) {
+      if (sourceCandidates.length > 1) {
+        await connection.rollback();
+        return res.status(409).json({
+          message: 'Cette Réf 2 correspond à plusieurs produits. Utilisez l’ID exact du produit source.',
+        });
+      }
+      await connection.rollback();
+      return res.status(404).json({
+        message: `Aucun produit actif trouvé avec la référence « ${sourceReference} ».`,
+      });
+    }
+
+    if (targetIds.includes(Number(sourceProduct.id))) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Le produit source ne doit pas faire partie des produits cibles sélectionnés.',
+      });
+    }
+
+    const [targetProducts] = await connection.query(
+      `SELECT id, image_url
+       FROM products
+       WHERE id IN (?) AND COALESCE(is_deleted, 0) = 0
+       ORDER BY id
+       FOR UPDATE`,
+      [targetIds]
+    );
+    if (targetProducts.length !== targetIds.length) {
+      const foundIds = new Set(targetProducts.map((row) => Number(row.id)));
+      const missingIds = targetIds.filter((id) => !foundIds.has(id));
+      await connection.rollback();
+      return res.status(404).json({
+        message: `Produit(s) cible(s) actif(s) introuvable(s) : ${missingIds.join(', ')}.`,
+      });
+    }
+
+    const [sourceGallery] = await connection.query(
+      `SELECT image_url, position
+       FROM product_images
+       WHERE product_id = ?
+       ORDER BY position ASC, id ASC`,
+      [sourceProduct.id]
+    );
+    if (!sourceProduct.image_url && sourceGallery.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: `Le produit source « ${sourceProduct.designation} » ne possède aucune photo à cloner.`,
+      });
+    }
+
+    const [oldGallery] = await connection.query(
+      'SELECT image_url FROM product_images WHERE product_id IN (?)',
+      [targetIds]
+    );
+    oldImageUrls = [
+      ...targetProducts.map((product) => product.image_url),
+      ...oldGallery.map((image) => image.image_url),
+    ].filter(Boolean);
+
+    const now = new Date();
+    const updatedBy = req.user?.id || null;
+    await connection.query(
+      `UPDATE products
+       SET image_url = ?, updated_by = ?, updated_at = ?
+       WHERE id IN (?)`,
+      [sourceProduct.image_url || null, updatedBy, now, targetIds]
+    );
+    await connection.query(
+      'DELETE FROM product_images WHERE product_id IN (?)',
+      [targetIds]
+    );
+
+    if (sourceGallery.length > 0) {
+      for (const targetId of targetIds) {
+        await connection.query(
+          `INSERT INTO product_images (product_id, image_url, position, created_at, updated_at)
+           SELECT ?, image_url, position, ?, ?
+           FROM product_images
+           WHERE product_id = ?
+           ORDER BY position ASC, id ASC`,
+          [targetId, now, now, sourceProduct.id]
+        );
+      }
+    }
+
+    await connection.commit();
+    connection.release();
+    connection = null;
+
+    // Clean only files that became unreferenced. Shared source files remain intact.
+    for (const imageUrl of [...new Set(oldImageUrls)]) {
+      await deleteProductUploadIfUnreferenced(imageUrl);
+    }
+
+    res.json({
+      success: true,
+      sourceProduct: {
+        id: Number(sourceProduct.id),
+        reference: String(sourceProduct.id),
+        reference_2: sourceProduct.reference_2 ?? null,
+        designation: sourceProduct.designation,
+      },
+      updatedProductIds: targetIds,
+      mainImageCloned: Boolean(sourceProduct.image_url),
+      galleryImagesCloned: sourceGallery.length,
+    });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
 // Restore a soft-deleted product
 router.post('/:id/restore', async (req, res, next) => {
   try {
@@ -3237,6 +3648,98 @@ router.patch('/:id/stock', async (req, res, next) => {
     res.json({ ...r, categories, gallery, reference: String(r.id) });
   } catch (err) { next(err); }
 });
+
+// Drag-and-drop upload from the stock table. The uploaded file is stored once
+// and referenced both as the product's main image and as a new gallery image.
+router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, next) => {
+  let connection;
+  let newImageUrl = req.file ? `/uploads/products/${req.file.filename}` : null;
+  try {
+    await validateProductUploadFiles(req.file ? [req.file] : []);
+    await ensureProductsColumns();
+
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      if (newImageUrl) await deleteProductUploadIfUnreferenced(newImageUrl);
+      newImageUrl = null;
+      return res.status(400).json({ message: 'ID produit invalide.' });
+    }
+    if (!req.file || !newImageUrl) {
+      return res.status(400).json({ message: 'Sélectionnez une image JPG, PNG ou WebP.' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [products] = await connection.query(
+      `SELECT id, designation, image_url
+       FROM products
+       WHERE id = ? AND COALESCE(is_deleted, 0) = 0
+       FOR UPDATE`,
+      [id]
+    );
+    if (products.length === 0) {
+      await connection.rollback();
+      connection.release();
+      connection = null;
+      await deleteProductUploadIfUnreferenced(newImageUrl);
+      newImageUrl = null;
+      return res.status(404).json({ message: 'Produit actif introuvable.' });
+    }
+
+    const product = products[0];
+    const [[positionRow]] = await connection.query(
+      'SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM product_images WHERE product_id = ?',
+      [id]
+    );
+    const nextPosition = Number(positionRow?.next_position || 0);
+    const now = new Date();
+    const updatedBy = req.user?.id || null;
+
+    await connection.query(
+      'UPDATE products SET image_url = ?, updated_by = ?, updated_at = ? WHERE id = ?',
+      [newImageUrl, updatedBy, now, id]
+    );
+    const [galleryInsert] = await connection.query(
+      `INSERT INTO product_images (product_id, image_url, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, newImageUrl, nextPosition, now, now]
+    );
+
+    await connection.commit();
+    connection.release();
+    connection = null;
+
+    if (product.image_url && product.image_url !== newImageUrl) {
+      await deleteProductUploadIfUnreferenced(product.image_url);
+    }
+
+    res.json({
+      success: true,
+      product: {
+        id,
+        designation: product.designation,
+        image_url: newImageUrl,
+      },
+      galleryImage: {
+        id: Number(galleryInsert.insertId),
+        image_url: newImageUrl,
+        position: nextPosition,
+      },
+    });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    if (newImageUrl) {
+      await deleteProductUploadIfUnreferenced(newImageUrl);
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
 // Toggle ecom stock (checkbox from stock page)
 // When enabled: ecom_published = 1, stock_partage_ecom = 1, stock_partage_ecom_qty = quantite (max stock)
 // When disabled: ecom_published = 0, stock_partage_ecom = 0, stock_partage_ecom_qty = 0
