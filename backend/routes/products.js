@@ -720,10 +720,14 @@ async function runProductSearch(query) {
     const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
+    const normalizedSearchValues = [query.q, query.q2]
+      .map((rawSearchValue) => (
+        normalizeSearchText(String(rawSearchValue ?? '').trim().slice(0, 100))
+      ))
+      .filter(Boolean);
     const searchClauses = [];
-    for (const rawSearchValue of [query.q, query.q2]) {
-      const rawValue = String(rawSearchValue ?? '').trim().slice(0, 100);
-      const terms = normalizeSearchText(rawValue).split(/\s+/).filter(Boolean);
+    for (const normalizedSearchValue of normalizedSearchValues) {
+      const terms = normalizedSearchValue.split(/\s+/).filter(Boolean);
       if (terms.length === 0) continue;
 
       const termConditions = terms.map(() => `(
@@ -820,11 +824,12 @@ async function runProductSearch(query) {
       orderBySql = `ORDER BY ${stockQuantityOrderSql} ${sortDir}, p.id DESC`;
     }
 
-    if (qTerms.length > 0 && sortBy !== 'quantite') {
-      const qPrefix = `${qNormalized}%`;
-      const qWild = `%${qNormalized}%`;
-      const qNum = Number(q);
-      const hasNumericQ = q !== '' && Number.isFinite(qNum);
+    const rankingSearchValue = normalizedSearchValues[0] || '';
+    if (rankingSearchValue && sortBy !== 'quantite') {
+      const qPrefix = `${rankingSearchValue}%`;
+      const qWild = `%${rankingSearchValue}%`;
+      const qNum = Number(rankingSearchValue);
+      const hasNumericQ = Number.isFinite(qNum);
       const exactIdSql = hasNumericQ ? 'WHEN p.id = ? THEN 0' : '';
       if (hasNumericQ) orderParams.push(qNum);
 
@@ -862,8 +867,8 @@ async function runProductSearch(query) {
           p.id DESC
       `;
       orderParams.push(
-        qNormalized,
-        qNormalized,
+        rankingSearchValue,
+        rankingSearchValue,
         qPrefix,
         qPrefix,
         qPrefix,
