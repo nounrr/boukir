@@ -1358,7 +1358,8 @@ router.get('/chiffre-affaires', async (req, res) => {
 
         const profitSansCharges = ventesProfitNet - avoirsProfitNet;
         const profitNetApresCharges = profitSansCharges - chargesNet;
-        const chiffreAffaires = ventesCA - avoirsCA - chargesNet;
+        const chiffreAffairesSansCharges = ventesCA - avoirsCA;
+        const chiffreAffaires = chiffreAffairesSansCharges - chargesNet;
         const chiffreAffairesAchat = ventesProfitNet - avoirsProfitNet - chargesNet;
         const chiffreAffairesAchatBrut = ventesProfitBrut - avoirsProfitBrut - chargesNet;
         const totalRemises = ventesRemises - avoirsRemises;
@@ -1366,6 +1367,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         return {
           date: formatDayKey(day),
           chiffreAffaires,
+          chiffreAffairesSansCharges,
           chiffreAffairesAchat,
           chiffreAffairesAchatBrut,
           profitSansCharges,
@@ -1398,6 +1400,7 @@ router.get('/chiffre-affaires', async (req, res) => {
           );
 
     const totalChiffreAffaires = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffaires), 0);
+    const totalChiffreAffairesSansCharges = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffairesSansCharges), 0);
     const totalChiffreAffairesAchat = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffairesAchat), 0);
     const totalChiffreAchats = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAchats), 0);
     const totalVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.ca), 0);
@@ -1484,6 +1487,7 @@ router.get('/chiffre-affaires', async (req, res) => {
 
     res.json({
       totalChiffreAffaires,
+      totalChiffreAffairesSansCharges,
       totalChiffreAffairesAchat,
       totalChiffreAchats,
       totalVentesFournisseur,
@@ -1990,6 +1994,10 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       ...vehiculeCalculs,
     ];
     const caNetTotal = caNetCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
+    const caSansChargesTotal = [
+      ...ventesCalculs,
+      ...avoirsCalculs.map((c) => ({ ...c, totalBon: -roundSafe(c.totalBon) })),
+    ].reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
     const beneficiaireCalculs = [
       ...ventesCalculs,
@@ -2028,6 +2036,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         type: 'CA_NET',
         title: "Chiffre d'Affaires Net",
         total: caNetTotal,
+        totalSansCharges: caSansChargesTotal,
         bons: caNetCalculs.map((c) => ({ id: c.bonId })),
         calculs: caNetCalculs,
       },

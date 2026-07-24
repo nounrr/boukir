@@ -1,10 +1,34 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
-import { verifyToken, requireRole } from '../middleware/auth.js';
+import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
-router.use(verifyToken, requireRole('PDG'));
+const AUDIT_META_TABLES = new Set([
+  'bons_commande',
+  'bons_sortie',
+  'bons_comptant',
+  'bons_charge',
+  'avoirs_charge',
+  'devis',
+  'avoirs_client',
+  'avoirs_fournisseur',
+  'avoirs_comptant',
+  'avoirs_ecommerce',
+  'ecommerce_orders',
+  'bons_vehicule',
+]);
+
+const requirePdg = requireRole('PDG');
+const requireAuditMetaRole = requireRoles('PDG', 'Manager', 'ManagerPlus');
+
+router.use(verifyToken);
+router.use((req, res, next) => {
+  if (req.method === 'GET' && req.path === '/meta') {
+    return requireAuditMetaRole(req, res, next);
+  }
+  return requirePdg(req, res, next);
+});
 
 // Helper function to build pk filtering conditions
 function buildPkFilter(pk, tables, table, where, params) {
@@ -197,6 +221,9 @@ router.get('/meta', async (req, res, next) => {
       .map(s => Number(s))
       .filter(n => Number.isFinite(n));
     if (!t || !idList.length) return res.json({});
+    if (!AUDIT_META_TABLES.has(t)) {
+      return res.status(400).json({ message: 'Table audit non autorisée' });
+    }
 
     // Build placeholders safely
     const placeholders = idList.map(() => '?').join(',');
@@ -236,6 +263,72 @@ router.get('/meta', async (req, res, next) => {
         updated_at: r.updated_at || null,
       };
     }
+
+    // Older bons can predate the audit triggers. Their creator is still stored
+    // directly on the business row, so use it as a reliable fallback.
+    const [columnRows] = await pool.query(
+      `SELECT COLUMN_NAME
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME IN ('created_by', 'updated_by', 'created_at', 'updated_at', 'user_id', 'customer_name')`,
+      [t]
+    );
+    const columns = new Set(columnRows.map((row) => row.COLUMN_NAME));
+    const hasCreatedBy = columns.has('created_by');
+    const hasUpdatedBy = columns.has('updated_by');
+    const isEcommerceOrders = t === 'ecommerce_orders';
+
+    if (hasCreatedBy || hasUpdatedBy || isEcommerceOrders) {
+      const ecommerceCreatedNameParts = [
+        columns.has('user_id') ? 'order_contact.nom_complet' : '',
+        columns.has('customer_name') ? "NULLIF(b.customer_name, '')" : '',
+      ].filter(Boolean);
+      const directCreatedNameSql = hasCreatedBy
+        ? 'COALESCE(created_employee.nom_complet, CAST(b.created_by AS CHAR))'
+        : isEcommerceOrders && ecommerceCreatedNameParts.length
+          ? (ecommerceCreatedNameParts.length === 1
+            ? ecommerceCreatedNameParts[0]
+            : `COALESCE(${ecommerceCreatedNameParts.join(', ')})`)
+          : 'NULL';
+      const directUpdatedNameSql = hasUpdatedBy
+        ? 'COALESCE(updated_employee.nom_complet, CAST(b.updated_by AS CHAR))'
+        : 'NULL';
+      const directCreatedAtSql = columns.has('created_at') ? 'b.created_at' : 'NULL';
+      const directUpdatedAtSql = columns.has('updated_at') ? 'b.updated_at' : 'NULL';
+      const directJoins = [
+        hasCreatedBy ? 'LEFT JOIN employees created_employee ON created_employee.id = b.created_by' : '',
+        hasUpdatedBy ? 'LEFT JOIN employees updated_employee ON updated_employee.id = b.updated_by' : '',
+        isEcommerceOrders && columns.has('user_id')
+          ? 'LEFT JOIN contacts order_contact ON order_contact.id = b.user_id'
+          : '',
+      ].filter(Boolean).join('\n');
+
+      const directSql = `
+        SELECT
+          b.id AS rid,
+          ${directCreatedNameSql} AS created_by_name,
+          ${directUpdatedNameSql} AS updated_by_name,
+          ${directCreatedAtSql} AS created_at,
+          ${directUpdatedAtSql} AS updated_at
+        FROM \`${t}\` b
+        ${directJoins}
+        WHERE b.id IN (${placeholders})
+      `;
+      const [directRows] = await pool.query(directSql, idList);
+
+      for (const row of directRows) {
+        const key = String(row.rid);
+        const auditRow = out[key] || {};
+        out[key] = {
+          created_by_name: row.created_by_name || auditRow.created_by_name || null,
+          created_at: row.created_at || auditRow.created_at || null,
+          updated_by_name: row.updated_by_name || auditRow.updated_by_name || null,
+          updated_at: row.updated_at || auditRow.updated_at || null,
+        };
+      }
+    }
+
     res.json(out);
   } catch (e) { next(e); }
 });

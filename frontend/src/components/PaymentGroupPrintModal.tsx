@@ -46,6 +46,26 @@ const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
 const paidDisplayAmountOf = (p: any) => Math.max(amountOf(p) - ignoredAmountOf(p), 0);
 const balanceAmountOf = (p: any) => amountOf(p);
 
+const paymentDateMs = (payment: any): number => {
+  const raw = payment?.date_paiement || payment?.created_at;
+  if (!raw) return 0;
+  const parsed = new Date(String(raw).replace(' ', 'T'));
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+// Le tableau de caisse peut être trié du plus récent au plus ancien.
+// Pour un reçu groupé, le solde initial doit toujours être celui qui précède
+// le tout premier paiement du groupe dans l'ordre du grand livre.
+const getFirstLedgerPayment = (payments: any[]): any => {
+  return payments.reduce((first, candidate) => {
+    if (!first) return candidate;
+    const dateDifference = paymentDateMs(candidate) - paymentDateMs(first);
+    if (dateDifference < 0) return candidate;
+    if (dateDifference > 0) return first;
+    return Number(candidate?.id || 0) < Number(first?.id || 0) ? candidate : first;
+  }, null as any);
+};
+
 const formatDateTime = (val: any): string => {
   if (!val) return '';
   let s = String(val).trim();
@@ -106,7 +126,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
-  const firstPayment = payments[0] || {};
+  const firstPayment = getFirstLedgerPayment(payments) || {};
   const { data: printBalance } = useGetPaymentPrintBalanceQuery(Number(firstPayment?.id), {
     skip: !isOpen || !firstPayment?.id,
   });

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useGetChiffreAffairesStatsQuery, useGetDashboardSummaryQuery } from '../store/api/statsApi';
 import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
+import ChiffreAffairesMonthlyCharts from '../components/ChiffreAffairesMonthlyCharts';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -186,8 +187,21 @@ const DashboardPage: React.FC = () => {
             <div className="flex items-center">
               <DollarSign className="text-yellow-500" size={24} />
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">Chiffre d'affaires net (aujourd'hui)</p>
-                <p className="text-2xl font-semibold text-gray-900">{formatAmount(todayFinancialStats?.totalChiffreAffaires ?? 0)} DH</p>
+                <p className="text-sm font-medium text-gray-500">Chiffre d'affaires normal (aujourd'hui)</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {formatAmount(
+                    todayFinancialStats?.totalChiffreAffairesSansCharges ??
+                    (todayFinancialStats?.totalChiffreAffaires ?? 0) + (todayFinancialStats?.totalCharges ?? 0)
+                  )} DH
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Avant déduction des charges</p>
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <p className="text-sm font-medium text-gray-500">Chiffre d'affaires net</p>
+                  <p className="text-2xl font-semibold text-gray-900">
+                    {formatAmount(todayFinancialStats?.totalChiffreAffaires ?? 0)} DH
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Après déduction des charges nettes</p>
+                </div>
               </div>
             </div>
           </button>
@@ -224,6 +238,12 @@ const DashboardPage: React.FC = () => {
               </div>
             </div>
           </button>
+        </div>
+      )}
+
+      {user?.role === 'PDG' && (
+        <div className="mt-6">
+          <ChiffreAffairesMonthlyCharts compact />
         </div>
       )}
 

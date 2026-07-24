@@ -5,6 +5,7 @@ export type StatsFilterType = 'all' | 'day' | 'period' | 'month';
 export interface ChiffreAffairesDayRow {
   date: string;
   chiffreAffaires: number;
+  chiffreAffairesSansCharges: number;
   chiffreAffairesAchat: number;
   chiffreAffairesAchatBrut: number;
   profitSansCharges?: number;
@@ -22,6 +23,7 @@ export interface ChiffreAffairesDayRow {
 
 export interface ChiffreAffairesStatsResponse {
   totalChiffreAffaires: number;
+  totalChiffreAffairesSansCharges: number;
   totalChiffreAffairesAchat: number;
   totalChiffreAchats: number;
   totalVentesFournisseur?: number;
@@ -74,6 +76,7 @@ export interface ChiffreDetailSection {
   type: 'CA_NET' | 'BENEFICIAIRE' | 'ACHATS' | 'CHARGES';
   title: string;
   total: number;
+  totalSansCharges?: number;
   bons: Array<{ id: number }>;
   calculs: ChiffreDetailCalcul[];
 }

@@ -23,6 +23,7 @@ interface ChiffreDetail {
   icon: React.ReactNode;
   color: string;
   total: number;
+  totalSansCharges?: number;
   bons: BonDetail[];
   calculs: Array<{
   bonId: number;
@@ -421,9 +422,26 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                 </h3>
               </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">
-              {formatAmount(chiffre.total)} DH
-            </div>
+            {chiffre.type === 'CA_NET' ? (
+              <div className="mb-2">
+                <div className="text-sm font-medium text-gray-500">Chiffre d'affaires normal</div>
+                <div className="text-3xl font-bold text-gray-900">
+                  {formatAmount(chiffre.totalSansCharges ?? chiffre.total)} DH
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Avant déduction des charges</div>
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="text-sm font-medium text-gray-500">Chiffre d'affaires net</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {formatAmount(chiffre.total)} DH
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">Après déduction des charges nettes</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-3xl font-bold text-gray-900 mb-2">
+                {formatAmount(chiffre.total)} DH
+              </div>
+            )}
             {chiffre.type === 'BENEFICIAIRE' && (
               <div className="mt-3 pt-3 border-t border-gray-200">
                 <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit jour</div>

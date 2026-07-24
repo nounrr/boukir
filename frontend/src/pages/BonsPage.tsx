@@ -1831,8 +1831,44 @@ const BonsPage = () => {
     }
   };
   useEffect(() => {
+    if (!showAuditCols) {
+      setAuditMeta({});
+      return;
+    }
+
+    const table = tableForType(effectiveCurrentTab);
+    if (!table || !paginatedBonsIdsKey) {
+      setAuditMeta({});
+      return;
+    }
+
     setAuditMeta({});
-  }, [currentTab, startIndex, endIndex, sortedBons.length, token, showAuditCols]);
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      table,
+      ids: paginatedBonsIdsKey,
+    });
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    fetch(`/api/audit/meta?${params.toString()}`, {
+      signal: controller.signal,
+      headers,
+    })
+      .then(async (response) => {
+        if (response.ok) return response.json();
+        const message = await response.text();
+        throw new Error(message || `Erreur audit (${response.status})`);
+      })
+      .then((data) => setAuditMeta(data || {}))
+      .catch((error) => {
+        if (error?.name === 'AbortError') return;
+        console.error('Erreur lors du chargement des créateurs des bons:', error);
+        setAuditMeta({});
+      });
+
+    return () => controller.abort();
+  }, [effectiveCurrentTab, paginatedBonsIdsKey, token, showAuditCols]);
 
   // Handle click outside to close menu
   useEffect(() => {
