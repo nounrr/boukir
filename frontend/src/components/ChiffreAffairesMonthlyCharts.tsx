@@ -97,7 +97,7 @@ const formatAxisAmount = (amount: number): string => {
   return amountFormatter.format(amount);
 };
 
-const RevenueTooltip: React.FC<ChartTooltipProps> = ({ active, payload }) => {
+const RevenueChargesTooltip: React.FC<ChartTooltipProps> = ({ active, payload }) => {
   const point = payload?.[0]?.payload;
   if (!active || !point) return null;
 
@@ -110,10 +110,6 @@ const RevenueTooltip: React.FC<ChartTooltipProps> = ({ active, payload }) => {
           <span className="font-semibold tabular-nums text-blue-700">{formatAmount(point.normalRevenue)}</span>
         </p>
         <p className="flex items-center justify-between gap-4 text-slate-600">
-          <span>CA net</span>
-          <span className="font-semibold tabular-nums text-emerald-700">{formatAmount(point.netRevenue)}</span>
-        </p>
-        <p className="flex items-center justify-between gap-4 border-t border-slate-100 pt-1.5 text-slate-600">
           <span>Charges nettes</span>
           <span className="font-semibold tabular-nums text-amber-700">{formatAmount(point.charges)}</span>
         </p>
@@ -370,20 +366,20 @@ const ChiffreAffairesMonthlyCharts: React.FC<ChiffreAffairesMonthlyChartsProps> 
               <figcaption className="mb-4">
                 <div className="flex items-center gap-2">
                   <WalletCards className="text-blue-600" size={18} aria-hidden="true" />
-                  <h3 className="font-semibold text-slate-900">CA normal vs CA net</h3>
+                  <h3 className="font-semibold text-slate-900">CA normal vs charges nettes</h3>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Comparaison mensuelle en dirhams</p>
+                <p className="mt-1 text-xs text-slate-500">Poids mensuel des charges face au chiffre d'affaires normal, en dirhams</p>
               </figcaption>
-              <div style={{ height: chartHeight }} role="img" aria-label="Graphique en barres du chiffre d'affaires normal et net par mois">
+              <div style={{ height: chartHeight }} role="img" aria-label="Graphique en barres comparant le chiffre d'affaires normal et les charges nettes par mois">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthlyData} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
                     <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="monthLabel" tick={{ fill: '#475569', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#cbd5e1' }} />
                     <YAxis width={54} tickFormatter={formatAxisAmount} tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <Tooltip content={<RevenueTooltip />} cursor={{ fill: '#e2e8f0', opacity: 0.35 }} />
+                    <Tooltip content={<RevenueChargesTooltip />} cursor={{ fill: '#e2e8f0', opacity: 0.35 }} />
                     <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                     <Bar dataKey="normalRevenue" name="CA normal" fill="#2563eb" radius={[3, 3, 0, 0]} maxBarSize={34} />
-                    <Bar dataKey="netRevenue" name="CA net" fill="#059669" radius={[3, 3, 0, 0]} maxBarSize={34} />
+                    <Bar dataKey="charges" name="Charges nettes" fill="#d97706" radius={[3, 3, 0, 0]} maxBarSize={34} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
