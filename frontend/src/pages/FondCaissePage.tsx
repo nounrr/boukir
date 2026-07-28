@@ -186,6 +186,7 @@ const FondCaissePage = () => {
   const [mode, setMode] = useState<PaymentMode>('Espece');
   const [openedAt, setOpenedAt] = useState<string>(nowLocalInput);
   const [sourcePoche, setSourcePoche] = useState<'caisse' | 'coffre'>('caisse');
+  const [observationTransfert, setObservationTransfert] = useState('');
   const [descriptionPoche, setDescriptionPoche] = useState('');
   const [descriptionLibre, setDescriptionLibre] = useState('');
   const [descriptionRemise, setDescriptionRemise] = useState('');
@@ -445,6 +446,7 @@ const FondCaissePage = () => {
     setMode('Espece');
     setOpenedAt(nowLocalInput());
     setSourcePoche('caisse');
+    setObservationTransfert('');
     setDescriptionPoche('');
     setDescriptionLibre('');
     setDescriptionRemise('');
@@ -523,6 +525,8 @@ const FondCaissePage = () => {
           modePaiement: mode,
           note: activeModal === 'poche'
             ? descriptionPoche
+            : activeModal === 'transfert'
+              ? observationTransfert
             : activeModal === 'libre'
               ? descriptionLibre
               : activeModal === 'sortie_remise'
@@ -943,6 +947,24 @@ const FondCaissePage = () => {
                     placeholder="Description"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2"
                   />
+                </div>
+              )}
+              {activeModal === 'transfert' && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Note / Observation
+                  </label>
+                  <textarea
+                    value={observationTransfert}
+                    onChange={(e) => setObservationTransfert(e.target.value)}
+                    maxLength={255}
+                    rows={4}
+                    placeholder="Ajouter une note ou une observation concernant ce transfert"
+                    className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2"
+                  />
+                  <div className="mt-1 text-right text-xs text-gray-400">
+                    {observationTransfert.length}/255
+                  </div>
                 </div>
               )}
               {activeModal === 'poche' && (

@@ -220,7 +220,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
                 const total = Number(item.total ?? (qte * pu));
-                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
+                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products, prefix === 'CMD' ? 'Commande' : undefined) ?? 0), 0);
                 const variantLabel = getHistoryVariantLabel(item, products);
                 const unitLabel = getHistoryUnitLabel(item, products);
 
@@ -279,7 +279,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
             {fmt(bons.reduce((s: number, b: any) => s + (b.montant_total ?? 0), 0))}
           </td>
           {detail && <td className="px-3 py-2.5 text-right font-bold text-emerald-700 bg-emerald-50/20">
-            {fmt(bons.reduce((s, b) => s + (Array.isArray(b.items) ? b.items.reduce((is: number, i: any) => is + (computeHistoryItemBenefice(i, products) ?? 0), 0) : 0), 0))}
+            {fmt(bons.reduce((s, b) => s + (Array.isArray(b.items) ? b.items.reduce((is: number, i: any) => is + (computeHistoryItemBenefice(i, products, prefix === 'CMD' ? 'Commande' : undefined) ?? 0), 0) : 0), 0))}
           </td>}
           <td />
         </tr>
@@ -401,9 +401,9 @@ function resolveHistoryItemCost(item: any, products: any[]): number {
   return 0;
 }
 
-function computeHistoryItemBenefice(item: any, products: any[]): number | null {
+function computeHistoryItemBenefice(item: any, products: any[], bonType?: string): number | null {
   if (!item) return null;
-  if (isProductNonCalcule(item, products)) return 0;
+  if (isProductNonCalcule(item, products, bonType)) return 0;
   const qte = Number(item.quantite ?? 0) || 0;
   const prixUnit = Number(item.prix_unitaire ?? item.prix_achat ?? item.prix ?? 0) || 0;
   const product = findHistoryProduct(item, products);
@@ -883,7 +883,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
                 const total = Number(item.total ?? (qte * pu));
-                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
+                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products, row.kind === 'commande' ? 'Commande' : undefined) ?? 0), 0);
                 const variantLabel = getHistoryVariantLabel(item, products);
                 const unitLabel = getHistoryUnitLabel(item, products);
                 const sourceKeys = sourceIndices.map((sourceIdx) => `${bonKey}-item-${sourceIdx}`);
@@ -1008,7 +1008,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
               {fmt(rows.reduce((s, row) => {
                 if (row.kind === 'paiement') return s;
                 const items = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
-                return s + items.reduce((is, i) => is + (computeHistoryItemBenefice(i, products) ?? 0), 0);
+                return s + items.reduce((is, i) => is + (computeHistoryItemBenefice(i, products, row.kind === 'commande' ? 'Commande' : undefined) ?? 0), 0);
               }, 0))}
             </td>
           )}

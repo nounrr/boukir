@@ -230,7 +230,8 @@ router.post('/', verifyToken, async (req, res) => {
     livraisons
     } = req.body || {}; // 👈 évite le crash si req.body est undefined
     const phone = req.body?.phone ?? null;
-    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    // Un bon de commande est toujours calcule normalement.
+    const isNotCalculated = null;
     const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
     const normalizedItems = await normalizeServiceCommandeItems(connection, items);
     const effectiveMontantTotal = normalizedItems.length
@@ -814,7 +815,8 @@ router.put('/:id', verifyToken, async (req, res) => {
       livraisons,
     } = req.body || {};
     let phone = req.body?.phone ?? null;
-    let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    // Un bon de commande est toujours calcule normalement.
+    let isNotCalculated = null;
     let inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
 
     // Verrouiller la commande et récupérer l'ancien statut (pour stock) + champs nécessaires
@@ -891,7 +893,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       statut = oldStatut;
       // lock booleans/phone
       phone = oldBon.phone;
-      isNotCalculated = oldBon.isNotCalculated;
+      isNotCalculated = null;
       inclusEnCaisse = oldBon.inclus_en_caisse ? 1 : 0;
       // ignore livraisons changes
       livraisons = undefined;

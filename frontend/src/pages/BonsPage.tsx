@@ -1205,7 +1205,7 @@ const BonsPage = () => {
     let profit = 0; let costBase = 0;
     const type = bon?.type || currentTab;
     for (const it of items) {
-      if (isProductNonCalcule(it, products as any[])) continue;
+      if (isProductNonCalcule(it, products as any[], type)) continue;
       const q = Number(it.quantite ?? it.qty ?? 0) || 0;
       if (!q) continue;
       const prixVente = Number(it.prix_unitaire ?? 0) || 0;
@@ -3193,7 +3193,7 @@ const BonsPage = () => {
                           {(() => {
                             const productItems = parseItemsSafe(bon?.items).filter((item: any) => item?.product_id);
                             const profit = productItems.reduce((sum: number, item: any) => {
-                              if (isProductNonCalcule(item, products as any[])) return sum;
+                              if (isProductNonCalcule(item, products as any[], bon?.type || effectiveCurrentTab)) return sum;
                               const q = Number(item?.quantite ?? item?.qty ?? 0) || 0;
                               const pv = Number(item?.prix_unitaire ?? 0) || 0;
                               return sum + (pv - resolveCostWithVariantUnit(item)) * q;

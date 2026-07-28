@@ -155,6 +155,15 @@ async function ensureCoffreTable(db = pool) {
   `);
 
   try {
+    const [noteCols] = await db.query("SHOW COLUMNS FROM coffre LIKE 'note'");
+    if (!Array.isArray(noteCols) || noteCols.length === 0) {
+      await db.query("ALTER TABLE coffre ADD COLUMN note VARCHAR(255) NULL AFTER entry_type");
+    }
+  } catch (error) {
+    console.error('ensureCoffreTable note:', error);
+  }
+
+  try {
     const [modeCols] = await db.query("SHOW COLUMNS FROM coffre LIKE 'mode_paiement'");
     if (!Array.isArray(modeCols) || modeCols.length === 0) {
       await db.query("ALTER TABLE coffre ADD COLUMN mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espece' AFTER note");

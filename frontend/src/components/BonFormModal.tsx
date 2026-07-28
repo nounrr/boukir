@@ -3023,7 +3023,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       lieu_chargement: values.lieu_charge || '',
   adresse_livraison: values.adresse_livraison || '',
   phone: values.phone || null,
-      isNotCalculated: values.isNotCalculated ? true : null,
+      isNotCalculated: requestType === 'Commande' ? null : (values.isNotCalculated ? true : null),
       statut: values.statut || 'Brouillon',
   vendre_au_fournisseur: (requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur ? 1 : undefined,
   client_id: (requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || ((requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
@@ -4401,6 +4401,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   <Field type="text" id="phone" name="phone" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
                 </div>
+                {values.type !== 'Commande' && (
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -4416,14 +4417,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     (Exclut ce bon des statistiques et des calculs de mouvement)
                   </span>
                 </div>
+                )}
                 {(() => {
-                  const reminderServices = (values.items || []).reduce((result: any[], item: any) => {
+                  if (values.type === 'Commande') return null;
+
+                  const reminderProducts = (values.items || []).reduce((result: any[], item: any) => {
                     const product = products.find((candidate: any) => (
                       String(candidate.id) === String(item?.product_id)
                     ));
                     if (
                       product
-                      && Boolean(product.est_service)
+                      && (Boolean(product.est_service) || Boolean(product.non_stockable))
                       && Boolean(product.rappel_non_calcule)
                       && !result.some((entry: any) => String(entry.id) === String(product.id))
                     ) {
@@ -4432,12 +4436,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     return result;
                   }, []);
 
-                  if (reminderServices.length === 0) return null;
+                  if (reminderProducts.length === 0) return null;
 
                   return (
                     <div className="md:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                       <span className="font-semibold">Produits non calculés :</span>{' '}
-                      {reminderServices.map((product: any) => product.designation || `Service ${product.id}`).join(', ')}.
+                      {reminderProducts.map((product: any) => product.designation || `Produit ${product.id}`).join(', ')}.
                       {' '}Leurs lignes restent dans le bon, mais sont exclues du mouvement, du chiffre d’affaires,
                       de la marge et des statistiques.
                     </div>
@@ -7173,7 +7177,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   <span className="text-md font-semibold text-green-700">
     {(() => {
       const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
-        if (isProductNonCalcule(item, products as any[])) return sum;
+        if (isProductNonCalcule(item, products as any[], values.type)) return sum;
         const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
         const itemCR =

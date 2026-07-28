@@ -2,7 +2,18 @@ const isTruthyFlag = (value: unknown): boolean => (
   value === true || value === 1 || value === '1' || value === 'true'
 );
 
-export const isProductNonCalcule = (item: any, products: any[] = []): boolean => {
+const isCommandeType = (bonType: unknown): boolean => (
+  String(bonType ?? '').trim().toLowerCase() === 'commande'
+);
+
+export const isProductNonCalcule = (
+  item: any,
+  products: any[] = [],
+  bonType?: unknown,
+): boolean => {
+  const effectiveBonType = bonType ?? item?.bon_type ?? item?.bonType;
+  if (isCommandeType(effectiveBonType)) return false;
+
   if ([
     item?.rappel_non_calcule,
     item?.product_non_calcule,
@@ -24,6 +35,7 @@ export const getCalculatedBonAmount = (
   rawItems: unknown,
   products: any[] = [],
   fallback = 0,
+  bonType?: unknown,
 ): number => {
   let items: any[] = [];
   if (Array.isArray(rawItems)) {
@@ -40,7 +52,7 @@ export const getCalculatedBonAmount = (
   if (items.length === 0) return fallback;
 
   return items.reduce((sum, item) => {
-    if (isProductNonCalcule(item, products)) return sum;
+    if (isProductNonCalcule(item, products, bonType)) return sum;
     const quantity = Number(item?.quantite ?? item?.quantity ?? item?.qty ?? 0) || 0;
     const lineTotal = Number(item?.total ?? item?.subtotal);
     if (Number.isFinite(lineTotal)) return sum + lineTotal;

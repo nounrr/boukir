@@ -4,6 +4,7 @@
 
 export const computeMouvementCalc = ({ type, items }) => {
   const safeItems = Array.isArray(items) ? items : [];
+  const isCommande = String(type || '').trim().toLowerCase() === 'commande';
 
   let profit = 0;
   let costBase = 0;
@@ -16,7 +17,7 @@ export const computeMouvementCalc = ({ type, items }) => {
       it?.product_non_calcule === true ||
       it?.product_non_calcule === 1 ||
       it?.product_non_calcule === '1';
-    if (isNonCalcule) continue;
+    if (!isCommande && isNonCalcule) continue;
 
     const q = Number(it?.quantite ?? it?.qty ?? 0) || 0;
     if (!q) continue;

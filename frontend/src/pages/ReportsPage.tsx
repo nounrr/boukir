@@ -132,10 +132,11 @@ const ReportsPage: React.FC = () => {
 
   /** ---------- Normalisation ---------- */
   const getAnalyticalAmount = useCallback(
-    (bon: any) => getCalculatedBonAmount(
+    (bon: any, bonType?: string) => getCalculatedBonAmount(
       bon?.items,
       products as any[],
       toNumber(bon?.montant_total ?? bon?.total ?? 0),
+      bonType ?? bon?.type,
     ),
     [products],
   );
@@ -147,7 +148,7 @@ const ReportsPage: React.FC = () => {
       type: "Comptant",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: getAnalyticalAmount(b),
+      montant: getAnalyticalAmount(b, 'Comptant'),
       statut: b.statut || b.status || "Validé",
     });
 
@@ -157,7 +158,7 @@ const ReportsPage: React.FC = () => {
       type: "Sortie",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: getAnalyticalAmount(b),
+      montant: getAnalyticalAmount(b, 'Sortie'),
       statut: b.statut || b.status || "Livré",
     });
 
@@ -167,7 +168,7 @@ const ReportsPage: React.FC = () => {
       type: "Commande",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: getAnalyticalAmount(b),
+      montant: getAnalyticalAmount(b, 'Commande'),
       statut: b.statut || b.status || "Validé",
     });
 
@@ -181,10 +182,10 @@ const ReportsPage: React.FC = () => {
       statut: b.statut || b.status || "Validé",
     });
 
-    // Exclure les bons avec isNotCalculated = true
+    // Les bons de commande restent toujours calcules normalement.
     const filteredComptant = bonsComptant.filter((b: any) => !b.isNotCalculated);
     const filteredSortie = bonsSortie.filter((b: any) => !b.isNotCalculated);
-    const filteredCommande = bonsCommande.filter((b: any) => !b.isNotCalculated);
+    const filteredCommande = bonsCommande;
     const filteredVehicule = bonsVehicule.filter((b: any) => !b.isNotCalculated);
 
     return [...filteredComptant.map(mapComptant), ...filteredSortie.map(mapSortie), ...filteredCommande.map(mapCommande), ...filteredVehicule.map(mapVehicule)];
@@ -198,7 +199,7 @@ const ReportsPage: React.FC = () => {
       type: "Avoir",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: getAnalyticalAmount(b),
+      montant: getAnalyticalAmount(b, 'Avoir'),
       statut: b.statut || b.status || "Avoir",
     });
     const list = Array.isArray(avoirsClientRaw) ? avoirsClientRaw : (avoirsClientRaw as any)?.data ?? [];
@@ -214,7 +215,7 @@ const ReportsPage: React.FC = () => {
       type: "AvoirFournisseur",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: getAnalyticalAmount(b),
+      montant: getAnalyticalAmount(b, 'AvoirFournisseur'),
       statut: b.statut || b.status || "Avoir",
     });
     const list = Array.isArray(avoirsFournisseurRaw) ? avoirsFournisseurRaw : (avoirsFournisseurRaw as any)?.data ?? [];
@@ -482,7 +483,7 @@ const ReportsPage: React.FC = () => {
   const items = parseBonItems(bon.items);
 
       for (const it of items) {
-        if (isProductNonCalcule(it, products as any[])) continue;
+        if (isProductNonCalcule(it, products as any[], bon?.type)) continue;
         const productId = String(it.product_id ?? it.id ?? "");
         if (!productId) continue;
         if (!stats[productId]) stats[productId] = { totalVendu: 0, chiffreAffaires: 0 };

@@ -1567,10 +1567,10 @@ const StockPage: React.FC = () => {
                       }`}>
                       {product.est_service ? 'Service' : product.non_stockable ? 'Non stockable' : 'Produit'}
                     </span>
-                    {product.est_service && product.rappel_non_calcule && (
+                    {(product.est_service || product.non_stockable) && product.rappel_non_calcule && (
                       <span
                         className="mt-1 block w-fit rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800"
-                        title="Exclu du mouvement, du chiffre d’affaires, de la marge et des statistiques"
+                        title="Exclu du mouvement, du chiffre d’affaires, de la marge et des statistiques, sauf dans les bons de commande"
                       >
                         Non calculé
                       </span>

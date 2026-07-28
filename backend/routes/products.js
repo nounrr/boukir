@@ -2854,13 +2854,13 @@ router.post('/', upload.fields([
     const pvp = Number(prix_vente_pourcentage ?? 0);
 
     const isService = est_service === 'true' || est_service === true || est_service === '1' || est_service === 1;
-    const isRappelNonCalcule = isService && (
+    const isNonStockable = non_stockable === 'true' || non_stockable === true || non_stockable === '1' || non_stockable === 1;
+    const isRappelNonCalcule = (isService || isNonStockable) && (
       rappel_non_calcule === 'true'
       || rappel_non_calcule === true
       || rappel_non_calcule === '1'
       || rappel_non_calcule === 1
     );
-    const isNonStockable = non_stockable === 'true' || non_stockable === true || non_stockable === '1' || non_stockable === 1;
     const isEcomPublished = ecom_published === 'true' || ecom_published === true || ecom_published === '1' || ecom_published === 1;
     const isStockPartage = stock_partage_ecom === 'true' || stock_partage_ecom === true || stock_partage_ecom === '1' || stock_partage_ecom === 1;
     const isHasVariants = has_variants === 'true' || has_variants === true || has_variants === '1' || has_variants === 1;
@@ -3231,7 +3231,10 @@ router.put('/:id', upload.fields([
     const isService = (est_service !== undefined)
       ? (est_service === 'true' || est_service === true || est_service === '1' || est_service === 1)
       : !!existing.est_service;
-    const isRappelNonCalcule = isService && (
+    const isNonStockable = (non_stockable !== undefined)
+      ? (non_stockable === 'true' || non_stockable === true || non_stockable === '1' || non_stockable === 1)
+      : !!existing.non_stockable;
+    const isRappelNonCalcule = (isService || isNonStockable) && (
       rappel_non_calcule !== undefined
         ? (
           rappel_non_calcule === 'true'
@@ -3241,9 +3244,6 @@ router.put('/:id', upload.fields([
         )
         : !!existing.rappel_non_calcule
     );
-    const isNonStockable = (non_stockable !== undefined)
-      ? (non_stockable === 'true' || non_stockable === true || non_stockable === '1' || non_stockable === 1)
-      : !!existing.non_stockable;
     const isEcomPublished = (ecom_published !== undefined)
       ? (ecom_published === 'true' || ecom_published === true || ecom_published === '1' || ecom_published === 1)
       : !!existing.ecom_published;

@@ -578,8 +578,8 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${unionText(numeroExpr)} AS bonNumero,
         ${headerAlias}.${dateCol} AS date_creation,
         ${unionText(type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`)} AS statut,
-        ${type === 'Ecommerce' ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
-        COALESCE(p.rappel_non_calcule, 0) AS productNonCalcule,
+        ${(type === 'Ecommerce' || type === 'Commande') ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
+        ${type === 'Commande' ? '0' : 'COALESCE(p.rappel_non_calcule, 0)'} AS productNonCalcule,
         ${unionText(contactIdExpr)} AS client_id,
         ${unionText(contactIdExpr)} AS fournisseur_id,
         ${unionText(contactNameExpr)} AS contact_nom,
@@ -900,8 +900,8 @@ router.get('/details', async (req, res) => {
       const bonType = String(raw.bonType || '');
       const bucket = bucketFor(bonType);
       counts[bucket].total += 1;
-      if (Number(raw.isNotCalculated || 0) === 1) continue;
-      if (Number(raw.productNonCalcule || 0) === 1) continue;
+      if (bonType !== 'Commande' && Number(raw.isNotCalculated || 0) === 1) continue;
+      if (bonType !== 'Commande' && Number(raw.productNonCalcule || 0) === 1) continue;
       if (!isStatsDetailStatusAllowed(bonType, raw.statut)) continue;
 
       const productId = raw.product_id == null ? '' : String(raw.product_id);
@@ -1282,13 +1282,11 @@ router.get('/chiffre-affaires', async (req, res) => {
 
     const commandesSql = `
       SELECT DATE_FORMAT(bcmd.date_creation, '%Y-%m-%d') AS day,
-             COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(ci.total, ci.prix_unitaire * ci.quantite) END), 0) AS total
+             COALESCE(SUM(COALESCE(ci.total, ci.prix_unitaire * ci.quantite)), 0) AS total
       FROM bons_commande bcmd
       LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
       LEFT JOIN products p ON p.id = ci.product_id
       WHERE LOWER(TRIM(COALESCE(bcmd.statut, ''))) IN ${VALID_STATUSES_SQL}
-        AND COALESCE(bcmd.isNotCalculated, 0) <> 1
-        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         ${commandeFilter.sql}
       GROUP BY day
       ORDER BY day DESC
@@ -1466,7 +1464,7 @@ router.get('/chiffre-affaires', async (req, res) => {
           tb.name === 'ecommerce_orders'
             ? `${baseWhere} AND LOWER(COALESCE(${tb.alias}.${tb.statutCol}, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}`
             : `${baseWhere} AND LOWER(TRIM(COALESCE(${tb.alias}.${tb.statutCol}, ''))) IN ${VALID_STATUSES_SQL}`;
-        const notCalcWhere = tb.name === 'bons_charge'
+        const notCalcWhere = ['bons_charge', 'bons_commande'].includes(tb.name)
           ? withStatusWhere
           : `${withStatusWhere} AND COALESCE(${tb.alias}.isNotCalculated, 0) <> 1`;
 
@@ -1778,8 +1776,6 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
       LEFT JOIN products p ON p.id = ci.product_id
       WHERE LOWER(TRIM(COALESCE(bcmd.statut, ''))) IN ${VALID_STATUSES_SQL}
-        AND COALESCE(bcmd.isNotCalculated, 0) <> 1
-        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(bcmd.date_creation) = ?
     `;
 

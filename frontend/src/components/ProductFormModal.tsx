@@ -1697,7 +1697,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <span className="text-sm font-medium text-gray-700">Service</span>
               </label>
 
-              {formik.values.est_service && (
+              {(formik.values.est_service || Boolean((formik.values as any).non_stockable)) && (
                 <label className="flex items-start gap-2.5 cursor-pointer px-3 py-2 rounded-lg border border-amber-200 bg-amber-50/70">
                   <input
                     type="checkbox"
@@ -1709,8 +1709,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <span>
                     <span className="block text-sm font-medium text-amber-900">Produit non calculé</span>
                     <span className="block mt-0.5 text-xs text-amber-800">
-                      Les lignes de ce service restent visibles et incluses dans le total du bon, mais elles sont exclues
-                      du mouvement, du chiffre d’affaires, de la marge et des statistiques.
+                      Les lignes de ce produit restent visibles et incluses dans le total du bon, mais elles sont exclues
+                      du mouvement, du chiffre d’affaires, de la marge et des statistiques, sauf dans les bons de commande.
                     </span>
                   </span>
                 </label>
@@ -1741,6 +1741,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   onChange={(e) => {
                     if (e.target.checked) {
                       formik.setFieldValue('est_service', false);
+                    } else {
                       formik.setFieldValue('rappel_non_calcule', false);
                     }
                     formik.setFieldValue('non_stockable', e.target.checked);
