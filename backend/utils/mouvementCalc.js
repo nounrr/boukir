@@ -9,6 +9,15 @@ export const computeMouvementCalc = ({ type, items }) => {
   let costBase = 0;
 
   for (const it of safeItems) {
+    const isNonCalcule =
+      it?.rappel_non_calcule === true ||
+      it?.rappel_non_calcule === 1 ||
+      it?.rappel_non_calcule === '1' ||
+      it?.product_non_calcule === true ||
+      it?.product_non_calcule === 1 ||
+      it?.product_non_calcule === '1';
+    if (isNonCalcule) continue;
+
     const q = Number(it?.quantite ?? it?.qty ?? 0) || 0;
     if (!q) continue;
 

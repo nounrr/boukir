@@ -257,6 +257,7 @@ export interface Product {
   prix_vente: number;
   prix_vente_2?: number;
   est_service: boolean;
+  rappel_non_calcule?: boolean;
   non_stockable?: boolean;
   image_url?: string | null;
   remise_client?: number;
@@ -314,6 +315,7 @@ export interface CreateProductData {
   prix_vente_pourcentage?: number;
   prix_vente_2?: number;
   est_service?: boolean;
+  rappel_non_calcule?: boolean;
   non_stockable?: boolean;
   remise_client?: number;
   remise_artisan?: number;

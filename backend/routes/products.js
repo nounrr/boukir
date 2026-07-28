@@ -379,6 +379,14 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE products ADD COLUMN est_service TINYINT(1) DEFAULT 0`);
   }
 
+  const [colsRappelNonCalcule] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'rappel_non_calcule'`
+  );
+  if (!colsRappelNonCalcule.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN rappel_non_calcule TINYINT(1) NOT NULL DEFAULT 0 AFTER est_service`);
+  }
+
   const [colsNonStockable] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'non_stockable'`
@@ -1040,6 +1048,7 @@ async function runProductSearch(query) {
         prix_vente_2: Number(r.prix_vente_2 ?? 0),
         snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
         est_service: !!r.est_service,
+        rappel_non_calcule: !!r.rappel_non_calcule,
         non_stockable: !!r.non_stockable,
         image_url: r.image_url,
         remise_client: Number(r.remise_client ?? 0),
@@ -1328,7 +1337,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       const [rows] = await pool.query(
         `SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
                 p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
-                p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
+                p.prix_vente_pourcentage, p.quantite, p.est_service, p.rappel_non_calcule, p.non_stockable, p.image_url,
                 p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
                 p.remise_client, p.remise_artisan
          FROM products p WHERE COALESCE(p.is_deleted, 0) = 0${productSearch.sql} ORDER BY p.id DESC ${limitSql}`,
@@ -1384,6 +1393,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         p.old_designation,
         p.image_url,
         p.est_service,
+        p.rappel_non_calcule,
         p.non_stockable,
         p.kg,
         p.base_unit,
@@ -1413,7 +1423,7 @@ router.get('/with-snapshots', async (req, res, next) => {
     const [allProducts] = await pool.query(`
       SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
              p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
-             p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
+             p.prix_vente_pourcentage, p.quantite, p.est_service, p.rappel_non_calcule, p.non_stockable, p.image_url,
              p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
              p.remise_client, p.remise_artisan,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
@@ -1503,6 +1513,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         prix_vente_pourcentage: originalPrixVentePourcentage,
         quantite: Number(snap.snapshot_quantite),
         est_service: !!snap.est_service,
+        rappel_non_calcule: !!snap.rappel_non_calcule,
         non_stockable: !!snap.non_stockable,
         image_url: snap.image_url,
         kg: snap.kg !== null ? Number(snap.kg) : null,
@@ -1544,6 +1555,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         prix_vente_pourcentage: Number(p.prix_vente_pourcentage || 0),
         quantite: Number(p.quantite),
         est_service: !!p.est_service,
+        rappel_non_calcule: !!p.rappel_non_calcule,
         non_stockable: !!p.non_stockable,
         image_url: p.image_url,
         kg: p.kg !== null ? Number(p.kg) : null,
@@ -1717,6 +1729,7 @@ router.get('/', async (req, res, next) => {
         prix_vente_2: Number(r.prix_vente_2 ?? 0),
         snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
         est_service: !!r.est_service,
+        rappel_non_calcule: !!r.rappel_non_calcule,
         non_stockable: !!r.non_stockable,
         image_url: r.image_url,
         remise_client: Number(r.remise_client ?? 0),
@@ -1941,7 +1954,7 @@ router.get('/translations/:id', async (req, res, next) => {
           p.designation, p.designation_en, p.designation_ar, p.designation_zh,
           p.description, p.description_en, p.description_ar, p.description_zh,
           p.fiche_technique, p.fiche_technique_en, p.fiche_technique_ar, p.fiche_technique_zh,
-          p.est_service, COALESCE(p.is_deleted,0) as is_deleted
+          p.est_service, p.rappel_non_calcule, COALESCE(p.is_deleted,0) as is_deleted
         FROM products p
         WHERE p.id = ?
         LIMIT 1
@@ -1955,6 +1968,7 @@ router.get('/translations/:id', async (req, res, next) => {
     res.json({
       ...r,
       est_service: !!r.est_service,
+      rappel_non_calcule: !!r.rappel_non_calcule,
     });
   } catch (err) {
     next(err);
@@ -2732,6 +2746,7 @@ router.get('/:id(\\d+)', async (req, res, next) => {
       prix_vente: Number(r.prix_vente),
       prix_vente_2: Number(r.prix_vente_2 ?? 0),
       est_service: !!r.est_service,
+      rappel_non_calcule: !!r.rappel_non_calcule,
       non_stockable: !!r.non_stockable,
       image_url: r.image_url,
       gallery: gallery,
@@ -2810,6 +2825,7 @@ router.post('/', upload.fields([
       remise_client,
       remise_artisan,
       est_service,
+      rappel_non_calcule,
       non_stockable,
       description,
       description_ar,
@@ -2838,6 +2854,12 @@ router.post('/', upload.fields([
     const pvp = Number(prix_vente_pourcentage ?? 0);
 
     const isService = est_service === 'true' || est_service === true || est_service === '1' || est_service === 1;
+    const isRappelNonCalcule = isService && (
+      rappel_non_calcule === 'true'
+      || rappel_non_calcule === true
+      || rappel_non_calcule === '1'
+      || rappel_non_calcule === 1
+    );
     const isNonStockable = non_stockable === 'true' || non_stockable === true || non_stockable === '1' || non_stockable === 1;
     const isEcomPublished = ecom_published === 'true' || ecom_published === true || ecom_published === '1' || ecom_published === 1;
     const isStockPartage = stock_partage_ecom === 'true' || stock_partage_ecom === true || stock_partage_ecom === '1' || stock_partage_ecom === 1;
@@ -2903,8 +2925,8 @@ router.post('/', upload.fields([
 
     const [result] = await pool.query(
       `INSERT INTO products
-      (designation, reference_2, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, est_service, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (designation, reference_2, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, est_service, rappel_non_calcule, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         normalizedReference2,
@@ -2926,6 +2948,7 @@ router.post('/', upload.fields([
         Number(remise_client ?? 0),
         Number(remise_artisan ?? 0),
         isService ? 1 : 0,
+        isRappelNonCalcule ? 1 : 0,
         isNonStockable ? 1 : 0,
         image_url,
         fiche_technique,
@@ -3079,6 +3102,7 @@ router.post('/', upload.fields([
       prix_vente: Number(r.prix_vente),
       prix_vente_2: Number(r.prix_vente_2 ?? 0),
       est_service: !!r.est_service,
+      rappel_non_calcule: !!r.rappel_non_calcule,
       non_stockable: !!r.non_stockable,
       image_url: r.image_url,
       gallery,
@@ -3162,6 +3186,7 @@ router.put('/:id', upload.fields([
       remise_client,
       remise_artisan,
       est_service,
+      rappel_non_calcule,
       non_stockable,
       description,
       description_ar,
@@ -3206,6 +3231,16 @@ router.put('/:id', upload.fields([
     const isService = (est_service !== undefined)
       ? (est_service === 'true' || est_service === true || est_service === '1' || est_service === 1)
       : !!existing.est_service;
+    const isRappelNonCalcule = isService && (
+      rappel_non_calcule !== undefined
+        ? (
+          rappel_non_calcule === 'true'
+          || rappel_non_calcule === true
+          || rappel_non_calcule === '1'
+          || rappel_non_calcule === 1
+        )
+        : !!existing.rappel_non_calcule
+    );
     const isNonStockable = (non_stockable !== undefined)
       ? (non_stockable === 'true' || non_stockable === true || non_stockable === '1' || non_stockable === 1)
       : !!existing.non_stockable;
@@ -3333,6 +3368,7 @@ router.put('/:id', upload.fields([
       remise_client: (remise_client !== undefined && remise_client !== null && remise_client !== '') ? Number(remise_client) : Number(existing.remise_client ?? 0),
       remise_artisan: (remise_artisan !== undefined && remise_artisan !== null && remise_artisan !== '') ? Number(remise_artisan) : Number(existing.remise_artisan ?? 0),
       est_service: isService ? 1 : 0,
+      rappel_non_calcule: isRappelNonCalcule ? 1 : 0,
       non_stockable: isNonStockable ? 1 : 0,
       image_url: image_url_val,
       fiche_technique: (fiche_technique !== undefined) ? fiche_technique : existing.fiche_technique,
@@ -3653,6 +3689,7 @@ router.put('/:id', upload.fields([
       prix_vente: Number(r.prix_vente),
       prix_vente_2: Number(r.prix_vente_2 ?? 0),
       est_service: !!r.est_service,
+      rappel_non_calcule: !!r.rappel_non_calcule,
       image_url: r.image_url,
       gallery: gallery,
       remise_client: Number(r.remise_client ?? 0),

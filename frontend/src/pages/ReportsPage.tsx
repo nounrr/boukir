@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import {
@@ -22,6 +22,7 @@ import { useGetReportsBonsContextQuery } from "../store/api/bonsApi";
 import { formatDateTimeWithHour } from "../utils/dateUtils";
 import { getBonNumeroDisplay } from "../utils/numero";
 import type { RootState } from "../store";
+import { getCalculatedBonAmount, isProductNonCalcule } from "../utils/productNonCalcule";
 
 /** ---------- Helpers ---------- */
 const toNumber = (value: any): number => {
@@ -130,6 +131,15 @@ const ReportsPage: React.FC = () => {
   const fournisseurIds = useMemo(() => new Set(fournisseurs.map((f: any) => String(f.id))), [fournisseurs]);
 
   /** ---------- Normalisation ---------- */
+  const getAnalyticalAmount = useCallback(
+    (bon: any) => getCalculatedBonAmount(
+      bon?.items,
+      products as any[],
+      toNumber(bon?.montant_total ?? bon?.total ?? 0),
+    ),
+    [products],
+  );
+
   const normalizedBons: BonLite[] = useMemo(() => {
     const mapComptant = (b: any): BonLite => ({
       id: b.id,
@@ -137,7 +147,7 @@ const ReportsPage: React.FC = () => {
       type: "Comptant",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: toNumber(b.montant_total ?? b.total ?? 0),
+      montant: getAnalyticalAmount(b),
       statut: b.statut || b.status || "Validé",
     });
 
@@ -147,7 +157,7 @@ const ReportsPage: React.FC = () => {
       type: "Sortie",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: toNumber(b.montant_total ?? b.total ?? 0),
+      montant: getAnalyticalAmount(b),
       statut: b.statut || b.status || "Livré",
     });
 
@@ -157,7 +167,7 @@ const ReportsPage: React.FC = () => {
       type: "Commande",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: toNumber(b.montant_total ?? b.total ?? 0),
+      montant: getAnalyticalAmount(b),
       statut: b.statut || b.status || "Validé",
     });
 
@@ -178,7 +188,7 @@ const ReportsPage: React.FC = () => {
     const filteredVehicule = bonsVehicule.filter((b: any) => !b.isNotCalculated);
 
     return [...filteredComptant.map(mapComptant), ...filteredSortie.map(mapSortie), ...filteredCommande.map(mapCommande), ...filteredVehicule.map(mapVehicule)];
-  }, [bonsComptant, bonsSortie, bonsCommande, bonsVehicule]);
+  }, [bonsComptant, bonsSortie, bonsCommande, bonsVehicule, getAnalyticalAmount]);
 
   // Normaliser Avoirs
   const normalizedAvoirsClient: BonLite[] = useMemo(() => {
@@ -188,14 +198,14 @@ const ReportsPage: React.FC = () => {
       type: "Avoir",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: toNumber(b.montant_total ?? b.total ?? 0),
+      montant: getAnalyticalAmount(b),
       statut: b.statut || b.status || "Avoir",
     });
     const list = Array.isArray(avoirsClientRaw) ? avoirsClientRaw : (avoirsClientRaw as any)?.data ?? [];
     // Exclure les avoirs avec isNotCalculated = true
     const filteredList = list.filter((b: any) => !b.isNotCalculated);
     return filteredList.map(mapAvoirC);
-  }, [avoirsClientRaw]);
+  }, [avoirsClientRaw, getAnalyticalAmount]);
 
   const normalizedAvoirsFournisseur: BonLite[] = useMemo(() => {
     const mapAvoirF = (b: any): BonLite => ({
@@ -204,14 +214,14 @@ const ReportsPage: React.FC = () => {
       type: "AvoirFournisseur",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.date_creation),
-      montant: toNumber(b.montant_total ?? b.total ?? 0),
+      montant: getAnalyticalAmount(b),
       statut: b.statut || b.status || "Avoir",
     });
     const list = Array.isArray(avoirsFournisseurRaw) ? avoirsFournisseurRaw : (avoirsFournisseurRaw as any)?.data ?? [];
     // Exclure les avoirs avec isNotCalculated = true
     const filteredList = list.filter((b: any) => !b.isNotCalculated);
     return filteredList.map(mapAvoirF);
-  }, [avoirsFournisseurRaw]);
+  }, [avoirsFournisseurRaw, getAnalyticalAmount]);
 
   // Function to display payment numbers with PAY prefix
   const getDisplayNumeroPayment = (payment: any) => {
@@ -472,6 +482,7 @@ const ReportsPage: React.FC = () => {
   const items = parseBonItems(bon.items);
 
       for (const it of items) {
+        if (isProductNonCalcule(it, products as any[])) continue;
         const productId = String(it.product_id ?? it.id ?? "");
         if (!productId) continue;
         if (!stats[productId]) stats[productId] = { totalVendu: 0, chiffreAffaires: 0 };
@@ -482,7 +493,7 @@ const ReportsPage: React.FC = () => {
       }
     }
     return stats;
-  }, [bonsComptant, bonsSortie]);
+  }, [bonsComptant, bonsSortie, products]);
 
   const topProducts = useMemo(() => {
     const rows = products.map((p: any) => {

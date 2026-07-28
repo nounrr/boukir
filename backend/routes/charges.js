@@ -361,6 +361,7 @@ const buildChargeSelect = (whereSql = '', params = [], operationType = 'charge')
           'designation', COALESCE(NULLIF(ci.designation_custom, ''), p.designation),
           'designation_custom', ci.designation_custom,
           'est_service', p.est_service,
+          'rappel_non_calcule', p.rappel_non_calcule,
           'quantite', ci.quantite,
           'prix_achat', ci.prix_achat,
           'cout_revient', ci.cout_revient,

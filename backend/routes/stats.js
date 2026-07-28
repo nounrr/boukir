@@ -579,6 +579,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${headerAlias}.${dateCol} AS date_creation,
         ${unionText(type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`)} AS statut,
         ${type === 'Ecommerce' ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
+        COALESCE(p.rappel_non_calcule, 0) AS productNonCalcule,
         ${unionText(contactIdExpr)} AS client_id,
         ${unionText(contactIdExpr)} AS fournisseur_id,
         ${unionText(contactNameExpr)} AS contact_nom,
@@ -677,6 +678,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         bch.date_creation AS date_creation,
         ${unionText('bch.statut')} AS statut,
         0 AS isNotCalculated,
+        COALESCE(p.rappel_non_calcule, 0) AS productNonCalcule,
         ${unionText('bch.client_id')} AS client_id,
         ${unionText('bch.client_id')} AS fournisseur_id,
         ${unionText('ct.nom_complet')} AS contact_nom,
@@ -778,6 +780,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ach.date_creation AS date_creation,
         ${unionText('ach.statut')} AS statut,
         0 AS isNotCalculated,
+        COALESCE(p.rappel_non_calcule, 0) AS productNonCalcule,
         ${unionText('ach.client_id')} AS client_id,
         ${unionText('ach.client_id')} AS fournisseur_id,
         ${unionText('ct.nom_complet')} AS contact_nom,
@@ -898,6 +901,7 @@ router.get('/details', async (req, res) => {
       const bucket = bucketFor(bonType);
       counts[bucket].total += 1;
       if (Number(raw.isNotCalculated || 0) === 1) continue;
+      if (Number(raw.productNonCalcule || 0) === 1) continue;
       if (!isStatsDetailStatusAllowed(bonType, raw.statut)) continue;
 
       const productId = raw.product_id == null ? '' : String(raw.product_id);
@@ -1060,7 +1064,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       FROM (
         SELECT DATE_FORMAT(bs.date_creation, '%Y-%m-%d') AS day,
                bs.id AS bon_id,
-               bs.montant_total AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(si.total, si.prix_unitaire * si.quantite) END), 0) AS totalBon,
            COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
            COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(si.remise_montant, 0) * si.quantite), 0) AS remiseBon,
@@ -1073,6 +1077,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN product_units pu ON pu.id = si.unit_id
         WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bs.isNotCalculated, 0) <> 1
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           ${sortieFilter.sql}
         GROUP BY bs.id, day
 
@@ -1080,7 +1085,7 @@ router.get('/chiffre-affaires', async (req, res) => {
 
         SELECT DATE_FORMAT(bc.date_creation, '%Y-%m-%d') AS day,
                bc.id AS bon_id,
-               bc.montant_total AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(ci.total, ci.prix_unitaire * ci.quantite) END), 0) AS totalBon,
            COALESCE(SUM((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
            COALESCE(SUM((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ci.remise_montant, 0) * ci.quantite), 0) AS remiseBon,
@@ -1093,6 +1098,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN product_units pu ON pu.id = ci.unit_id
         WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bc.isNotCalculated, 0) <> 1
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           ${comptantFilter.sql}
         GROUP BY bc.id, day
 
@@ -1100,7 +1106,7 @@ router.get('/chiffre-affaires', async (req, res) => {
 
         SELECT DATE_FORMAT(o.created_at, '%Y-%m-%d') AS day,
                o.id AS bon_id,
-               o.total_amount AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(oi.subtotal, oi.unit_price * oi.quantity) END), 0) AS totalBon,
            COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
            COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(oi.remise_amount, 0)), 0) AS remiseBon,
@@ -1112,6 +1118,7 @@ router.get('/chiffre-affaires', async (req, res) => {
          LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('oi', 'ps')}
         LEFT JOIN product_units pu ON pu.id = oi.unit_id
         WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           ${buildDateFilter(filterArgs, 'o', 'created_at').sql}
         GROUP BY o.id, day
       ) t
@@ -1127,7 +1134,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       FROM (
         SELECT DATE_FORMAT(bs.date_creation, '%Y-%m-%d') AS day,
                bs.id AS bon_id,
-               bs.montant_total AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(si.total, si.prix_unitaire * si.quantite) END), 0) AS totalBon,
                COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
                1 AS bonCount
         FROM bons_sortie bs
@@ -1138,6 +1145,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN product_units pu ON pu.id = si.unit_id
         WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bs.isNotCalculated, 0) <> 1
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           AND COALESCE(bs.vendre_au_fournisseur, 0) = 1
           ${sortieFilter.sql}
         GROUP BY bs.id, day
@@ -1155,7 +1163,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       FROM (
         SELECT DATE_FORMAT(ac.date_creation, '%Y-%m-%d') AS day,
                ac.id AS bon_id,
-               ac.montant_total AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(ai.total, ai.prix_unitaire * ai.quantite) END), 0) AS totalBon,
            COALESCE(SUM((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
            COALESCE(SUM((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai.remise_montant, 0) * ai.quantite), 0) AS remiseBon
@@ -1167,6 +1175,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN product_units pu ON pu.id = ai.unit_id
         WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ac.isNotCalculated, 0) <> 1
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           ${avoirClientFilter.sql}
         GROUP BY ac.id, day
       ) t
@@ -1183,7 +1192,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       FROM (
         SELECT DATE_FORMAT(ac2.date_creation, '%Y-%m-%d') AS day,
                ac2.id AS bon_id,
-               ac2.montant_total AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(ai2.total, ai2.prix_unitaire * ai2.quantite) END), 0) AS totalBon,
            COALESCE(SUM((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
            COALESCE(SUM((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai2.remise_montant, 0) * ai2.quantite), 0) AS remiseBon
@@ -1195,6 +1204,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN product_units pu ON pu.id = ai2.unit_id
         WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ac2.isNotCalculated, 0) <> 1
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           ${avoirComptantFilter.sql}
         GROUP BY ac2.id, day
       ) t
@@ -1211,7 +1221,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       FROM (
         SELECT DATE_FORMAT(ae.date_creation, '%Y-%m-%d') AS day,
                ae.id AS bon_id,
-               ae.montant_total AS totalBon,
+               COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(i.total, i.prix_unitaire * i.quantite) END), 0) AS totalBon,
            COALESCE(SUM((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
            COALESCE(SUM((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(i.remise_montant, 0) * i.quantite), 0) AS remiseBon
@@ -1223,6 +1233,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN product_units pu ON pu.id = i.unit_id
         WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ae.isNotCalculated, 0) <> 1
+          AND COALESCE(p.rappel_non_calcule, 0) <> 1
           ${buildDateFilter(filterArgs, 'ae').sql}
         GROUP BY ae.id, day
       ) t
@@ -1232,9 +1243,12 @@ router.get('/chiffre-affaires', async (req, res) => {
 
     const chargesSql = `
       SELECT DATE_FORMAT(bch.date_creation, '%Y-%m-%d') AS day,
-             COALESCE(SUM(bch.montant_total), 0) AS total
+             COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(chi.total, chi.prix_achat * chi.quantite) END), 0) AS total
       FROM bons_charge bch
+      LEFT JOIN charge_items chi ON chi.bon_charge_id = bch.id
+      LEFT JOIN products p ON p.id = chi.product_id
       WHERE LOWER(TRIM(COALESCE(bch.statut, ''))) IN ${VALID_STATUSES_SQL}
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         ${chargeFilter.sql}
       GROUP BY day
       ORDER BY day DESC
@@ -1242,9 +1256,12 @@ router.get('/chiffre-affaires', async (req, res) => {
 
     const avoirsChargeSql = `
       SELECT DATE_FORMAT(ach.date_creation, '%Y-%m-%d') AS day,
-             COALESCE(SUM(ach.montant_total), 0) AS total
+             COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(achi.total, achi.prix_achat * achi.quantite) END), 0) AS total
       FROM avoirs_charge ach
+      LEFT JOIN items_avoir_charge achi ON achi.avoir_charge_id = ach.id
+      LEFT JOIN products p ON p.id = achi.product_id
       WHERE LOWER(TRIM(COALESCE(ach.statut, ''))) IN ${VALID_STATUSES_SQL}
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         ${avoirChargeFilter.sql}
       GROUP BY day
       ORDER BY day DESC
@@ -1265,10 +1282,13 @@ router.get('/chiffre-affaires', async (req, res) => {
 
     const commandesSql = `
       SELECT DATE_FORMAT(bcmd.date_creation, '%Y-%m-%d') AS day,
-             COALESCE(SUM(bcmd.montant_total), 0) AS total
+             COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(ci.total, ci.prix_unitaire * ci.quantite) END), 0) AS total
       FROM bons_commande bcmd
+      LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
+      LEFT JOIN products p ON p.id = ci.product_id
       WHERE LOWER(TRIM(COALESCE(bcmd.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bcmd.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         ${commandeFilter.sql}
       GROUP BY day
       ORDER BY day DESC
@@ -1555,6 +1575,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
           LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ci', 'ps')}
       WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bc.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(bc.date_creation) = ?
 
             UNION ALL
@@ -1590,6 +1611,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('si', 'ps')}
       WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bs.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(bs.date_creation) = ?
 
             UNION ALL
@@ -1622,6 +1644,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             LEFT JOIN product_units pu ON pu.id = oi.unit_id
             LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('oi', 'ps')}
       WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(o.created_at) = ?
     `;
 
@@ -1657,6 +1680,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
           LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ai', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(ac.date_creation) = ?
 
             UNION ALL
@@ -1690,6 +1714,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ai2', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac2.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(ac2.date_creation) = ?
 
             UNION ALL
@@ -1723,6 +1748,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('i', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ae.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(ae.date_creation) = ?
     `;
 
@@ -1753,6 +1779,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       LEFT JOIN products p ON p.id = ci.product_id
       WHERE LOWER(TRIM(COALESCE(bcmd.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bcmd.isNotCalculated, 0) <> 1
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(bcmd.date_creation) = ?
     `;
 
@@ -1786,6 +1813,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       LEFT JOIN product_units pu ON pu.id = chi.unit_id
       LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('chi', 'ps')}
       WHERE LOWER(TRIM(COALESCE(bch.statut, ''))) IN ${VALID_STATUSES_SQL}
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(bch.date_creation) = ?
     `;
 
@@ -1819,6 +1847,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       LEFT JOIN product_units pu ON pu.id = achi.unit_id
       LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('achi', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ach.statut, ''))) IN ${VALID_STATUSES_SQL}
+        AND COALESCE(p.rappel_non_calcule, 0) <> 1
         AND DATE(ach.date_creation) = ?
     `;
 

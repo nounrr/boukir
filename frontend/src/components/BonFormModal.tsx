@@ -32,6 +32,7 @@ import BonPrintTemplate from './BonPrintTemplate';
 import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
 import { printProductTicket } from '../utils/productTicketPrint';
+import { isProductNonCalcule } from '../utils/productNonCalcule';
 
 /* -------------------------- Select avec recherche -------------------------- */
 interface SearchableSelectProps {
@@ -4411,8 +4412,37 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   <label htmlFor="isNotCalculated" className="text-sm font-medium text-gray-700">
                     Non calculé
                   </label>
-                  <span className="text-xs text-gray-500">(Cocher si ce bon ne doit pas être pris en compte dans les calculs)</span>
+                  <span className="text-xs text-gray-500">
+                    (Exclut ce bon des statistiques et des calculs de mouvement)
+                  </span>
                 </div>
+                {(() => {
+                  const reminderServices = (values.items || []).reduce((result: any[], item: any) => {
+                    const product = products.find((candidate: any) => (
+                      String(candidate.id) === String(item?.product_id)
+                    ));
+                    if (
+                      product
+                      && Boolean(product.est_service)
+                      && Boolean(product.rappel_non_calcule)
+                      && !result.some((entry: any) => String(entry.id) === String(product.id))
+                    ) {
+                      result.push(product);
+                    }
+                    return result;
+                  }, []);
+
+                  if (reminderServices.length === 0) return null;
+
+                  return (
+                    <div className="md:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      <span className="font-semibold">Produits non calculés :</span>{' '}
+                      {reminderServices.map((product: any) => product.designation || `Service ${product.id}`).join(', ')}.
+                      {' '}Leurs lignes restent dans le bon, mais sont exclues du mouvement, du chiffre d’affaires,
+                      de la marge et des statistiques.
+                    </div>
+                  );
+                })()}
                 {(values.type === 'Charge' || values.type === 'Commande') && (
                   <div className="flex items-center gap-2">
                     <input
@@ -7143,6 +7173,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   <span className="text-md font-semibold text-green-700">
     {(() => {
       const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
+        if (isProductNonCalcule(item, products as any[])) return sum;
         const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
         const itemCR =

@@ -53,6 +53,7 @@ import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
 import { sumRemiseItemsTotal } from '../utils/remisesClientTotals';
 import { computeContactSoldeCumule, computeAggregateSoldeCumule } from '../utils/soldeCalculator';
+import { isProductNonCalcule } from '../utils/productNonCalcule';
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
   nom_complet: Yup.string().nullable(),
@@ -878,10 +879,11 @@ const ContactsPage: React.FC = () => {
 
         const q = Number(it.quantite) || 0;
         const cost = resolveCost(it);
-        const mouvement = (prixUnit - cost) * q;
+        const nonCalcule = isProductNonCalcule(it, products as any[]);
+        const mouvement = nonCalcule ? 0 : (prixUnit - cost) * q;
         const remiseUnitaire = Number((it as any).remise_montant || (it as any).remise_valeur || 0) || 0;
         const remiseTotale = remiseUnitaire * q;
-        const benefice = mouvement - remiseTotale;
+        const benefice = nonCalcule ? 0 : mouvement - remiseTotale;
 
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
@@ -1458,11 +1460,12 @@ const ContactsPage: React.FC = () => {
           if (it.prix_achat != null) return Number(it.prix_achat) || 0;
           return 0;
         })();
-        const mouvement = (prixUnit - cost) * q;
+        const nonCalcule = isProductNonCalcule(it, products as any[]);
+        const mouvement = nonCalcule ? 0 : (prixUnit - cost) * q;
         const remise_m = Number((it as any).remise_montant ?? (it as any).remise_valeur ?? 0) || 0;
         const remiseUnitaire = remise_m > 0 ? remise_m : (prixUnit * (remise_pourcentage / 100));
         const remiseTotale = remiseUnitaire * q;
-        const benefice = mouvement - remiseTotale;
+        const benefice = nonCalcule ? 0 : mouvement - remiseTotale;
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
           id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
@@ -2321,10 +2324,11 @@ const ContactsPage: React.FC = () => {
 
             const q = Number(it.quantite) || 0;
             const cost = resolveCost(it);
-            const mouvement = (prixUnit - cost) * q;
+            const nonCalcule = isProductNonCalcule(it, products as any[]);
+            const mouvement = nonCalcule ? 0 : (prixUnit - cost) * q;
             const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0;
             const remiseTotale = remiseUnitaire * q;
-            const benefice = mouvement - remiseTotale;
+            const benefice = nonCalcule ? 0 : mouvement - remiseTotale;
 
             const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
             items.push({

@@ -105,6 +105,7 @@ const validationSchema = Yup.object({
   remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
   pourcentage_promo: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage promo ne peut pas être négatif').optional(),
   est_service: Yup.boolean(),
+  rappel_non_calcule: Yup.boolean(),
   non_stockable: Yup.boolean(),
   ecom_published: Yup.boolean().optional(),
   stock_partage_ecom: Yup.boolean().optional(),
@@ -516,6 +517,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     prix_vente_pourcentage: 25,
     prix_vente_2: 0,
     est_service: false,
+    rappel_non_calcule: false,
     non_stockable: defaultNonStockable,
     remise_client: 0,
     remise_artisan: 0,
@@ -610,6 +612,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           prix_vente_pourcentage: derivePct((baseEdit as any).prix_vente, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_vente_pourcentage ?? 25)),
           prix_vente_2: toNonNegativeNum((baseEdit as any).prix_vente_2 ?? 0),
           est_service: (baseEdit as any).est_service ?? false,
+          rappel_non_calcule: (baseEdit as any).rappel_non_calcule ?? false,
           non_stockable: (baseEdit as any).non_stockable ?? false,
           remise_client: toNonNegativeNum((baseEdit as any).remise_client ?? 0),
           remise_artisan: toNonNegativeNum((baseEdit as any).remise_artisan ?? 0),
@@ -758,6 +761,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_vente', String(productPrixVenteNum));
           formData.append('prix_vente_2', String(prixVente2Num));
           formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('rappel_non_calcule', (productData as any).rappel_non_calcule ? '1' : '0');
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
           formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
@@ -850,6 +854,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_vente', String(productPrixVenteNum));
           formData.append('prix_vente_2', String(prixVente2Num));
           formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('rappel_non_calcule', (productData as any).rappel_non_calcule ? '1' : '0');
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
           formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
@@ -1666,7 +1671,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   name="est_service"
                   checked={formik.values.est_service}
                   onChange={(e) => {
-                    if (e.target.checked) formik.setFieldValue('non_stockable', false);
+                    if (e.target.checked) {
+                      formik.setFieldValue('non_stockable', false);
+                    } else {
+                      formik.setFieldValue('rappel_non_calcule', false);
+                    }
                     formik.handleChange(e);
                     // Si c'est un service, la quantité devient 0, donc revalider
                     const isService = e.target.checked;
@@ -1688,6 +1697,25 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <span className="text-sm font-medium text-gray-700">Service</span>
               </label>
 
+              {formik.values.est_service && (
+                <label className="flex items-start gap-2.5 cursor-pointer px-3 py-2 rounded-lg border border-amber-200 bg-amber-50/70">
+                  <input
+                    type="checkbox"
+                    name="rappel_non_calcule"
+                    checked={Boolean((formik.values as any).rappel_non_calcule)}
+                    onChange={formik.handleChange}
+                    className="w-4 h-4 mt-0.5 text-amber-600 border-2 border-amber-300 rounded focus:ring-amber-500 transition-colors"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-amber-900">Produit non calculé</span>
+                    <span className="block mt-0.5 text-xs text-amber-800">
+                      Les lignes de ce service restent visibles et incluses dans le total du bon, mais elles sont exclues
+                      du mouvement, du chiffre d’affaires, de la marge et des statistiques.
+                    </span>
+                  </span>
+                </label>
+              )}
+
               <label className="flex items-center gap-2.5 cursor-pointer px-3 py-2 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-all">
                 <input
                   type="checkbox"
@@ -1696,6 +1724,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   onChange={(e) => {
                     if (!e.target.checked) return;
                     formik.setFieldValue('est_service', false);
+                    formik.setFieldValue('rappel_non_calcule', false);
                     formik.setFieldValue('non_stockable', false);
                     syncStockModeValidation(false, false);
                   }}
@@ -1710,7 +1739,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   name="non_stockable"
                   checked={Boolean((formik.values as any).non_stockable)}
                   onChange={(e) => {
-                    if (e.target.checked) formik.setFieldValue('est_service', false);
+                    if (e.target.checked) {
+                      formik.setFieldValue('est_service', false);
+                      formik.setFieldValue('rappel_non_calcule', false);
+                    }
                     formik.setFieldValue('non_stockable', e.target.checked);
                     const checked = e.target.checked;
                     const shareQty = toNum(formik.values.stock_partage_ecom_qty);

@@ -30,7 +30,7 @@ router.post('/mouvement', verifyToken, async (req, res) => {
     let productCostById = new Map();
     if (productIds.length) {
       const [rows] = await pool.query(
-        'SELECT id, prix_achat, cout_revient, est_service FROM products WHERE id IN (?)',
+        'SELECT id, prix_achat, cout_revient, est_service, rappel_non_calcule FROM products WHERE id IN (?)',
         [productIds]
       );
       productCostById = (rows || []).reduce((acc, r) => {
@@ -38,6 +38,7 @@ router.post('/mouvement', verifyToken, async (req, res) => {
           prix_achat: Number(r.prix_achat ?? 0) || 0,
           cout_revient: Number(r.cout_revient ?? 0) || 0,
           est_service: r.est_service === true || r.est_service === 1 || r.est_service === '1',
+          rappel_non_calcule: r.rappel_non_calcule === true || r.rappel_non_calcule === 1 || r.rappel_non_calcule === '1',
         });
         return acc;
       }, new Map());
@@ -204,6 +205,7 @@ router.post('/mouvement', verifyToken, async (req, res) => {
         prix_achat,
         cout_revient,
         est_service: isService,
+        rappel_non_calcule: fromCatalog?.rappel_non_calcule === true,
       };
     });
 

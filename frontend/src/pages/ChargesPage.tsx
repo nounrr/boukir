@@ -21,6 +21,7 @@ import { showConfirmation, showError, showSuccess } from '../utils/notifications
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import { printContactList } from '../utils/contactListPrint';
+import { isProductNonCalcule } from '../utils/productNonCalcule';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -379,6 +380,7 @@ function resolveHistoryItemCost(item: any, products: any[]): number {
 
 function computeHistoryItemBenefice(item: any, products: any[]): number | null {
   if (!item) return null;
+  if (isProductNonCalcule(item, products)) return 0;
   const qte = Number(item.quantite ?? 0) || 0;
   const prixUnit = Number(item.prix_unitaire ?? item.prix_achat ?? item.prix ?? 0) || 0;
   const cost = resolveHistoryItemCost(item, products);
