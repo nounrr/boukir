@@ -333,12 +333,17 @@ router.get('/', async (_req, res) => {
           const q = Number(it?.quantite || 0);
           const pv = Number(it?.prix_unitaire || 0);
           const isService = it?.est_service === true || it?.est_service === 1 || it?.est_service === '1';
+          const isNonCalcule =
+            it?.rappel_non_calcule === true ||
+            it?.rappel_non_calcule === 1 ||
+            it?.rappel_non_calcule === '1';
+          const isExcluded = isService || isNonCalcule;
           const cost = isService ? 0 : (it?.cout_revient ?? it?.prix_achat ?? 0);
-          const remise = Number(it?.remise_montant || 0) * q;
-          const itemProfit = (pv - Number(cost || 0)) * q;
+          const remise = isExcluded ? 0 : Number(it?.remise_montant || 0) * q;
+          const itemProfit = isExcluded ? 0 : (pv - Number(cost || 0)) * q;
           profit += itemProfit;
           totalRemise += remise;
-          costBase += Number(cost || 0) * q;
+          if (!isExcluded) costBase += Number(cost || 0) * q;
           return { ...it, profit: itemProfit - remise };
         });
         const totalBon = Number(b?.montant_total || 0);

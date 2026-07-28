@@ -6814,7 +6814,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       || 0;
 
     const pv = values.type === 'Charge' && itemRow?.product_id ? cr : enteredPrice;
-    const profit = (pv - cr) * q - remise * q;
+    const isExcludedFromCalculations = isProductNonCalcule(itemRow, products, values.type);
+    const profit = isExcludedFromCalculations ? 0 : (pv - cr) * q - remise * q;
     const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400';
     return (
       <div className={`text-sm font-semibold ${cls}`} title={`PV=${pv} CR=${cr} Q=${q} R=${remise}`}>

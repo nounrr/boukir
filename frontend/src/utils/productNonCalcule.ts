@@ -12,6 +12,33 @@ export const isProductNonCalcule = (
   bonType?: unknown,
 ): boolean => {
   const effectiveBonType = bonType ?? item?.bon_type ?? item?.bonType;
+  const productId = item?.product_id ?? item?.produit_id ?? item?.product?.id ?? item?.produit?.id;
+  const product = productId === null || productId === undefined || productId === ''
+    ? undefined
+    : products.find((candidate) => String(candidate?.id) === String(productId));
+
+  if ([
+    item?.est_service,
+    item?.is_service,
+    item?.service,
+    item?.product_est_service,
+    item?.produit_est_service,
+    item?.snapshot_est_service,
+    item?.product_snapshot_est_service,
+    item?.product?.est_service,
+    item?.product?.is_service,
+    item?.produit?.est_service,
+    item?.produit?.is_service,
+    item?.snapshot?.est_service,
+    item?.product_snapshot?.est_service,
+    product?.est_service,
+    product?.is_service,
+  ].some(isTruthyFlag)) {
+    return true;
+  }
+
+  // Les produits marques "non calcule" restent calcules normalement
+  // uniquement dans les bons de commande.
   if (isCommandeType(effectiveBonType)) return false;
 
   if ([
@@ -24,10 +51,6 @@ export const isProductNonCalcule = (
     return true;
   }
 
-  const productId = item?.product_id ?? item?.produit_id ?? item?.product?.id ?? item?.produit?.id;
-  if (productId === null || productId === undefined || productId === '') return false;
-
-  const product = products.find((candidate) => String(candidate?.id) === String(productId));
   return isTruthyFlag(product?.rappel_non_calcule);
 };
 

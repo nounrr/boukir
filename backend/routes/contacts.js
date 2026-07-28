@@ -1716,10 +1716,12 @@ router.get('/:id/history', async (req, res) => {
         const prixUnit = Number(it.prix_unitaire || 0) || 0;
         const total = Number(it.total ?? (q * prixUnit)) || 0;
         const isService = it?.est_service === true || it?.est_service === 1 || it?.est_service === '1';
-        const isNonCalcule = b.type !== 'Commande' && (
-          it?.rappel_non_calcule === true
+        const isNonCalcule = isService || (
+          b.type !== 'Commande' && (
+            it?.rappel_non_calcule === true
           || it?.rappel_non_calcule === 1
           || it?.rappel_non_calcule === '1'
+          )
         );
         const cost = isService ? 0 : (Number(it.cout_revient ?? it.prix_achat ?? 0) || 0);
         const remiseMontant = Number(it.remise_montant || 0) || 0;
