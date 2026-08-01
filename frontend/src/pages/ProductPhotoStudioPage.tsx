@@ -3,7 +3,7 @@ import Swal from 'sweetalert2';
 import {
   Camera, X, Trash2, Wand2, Search, ImagePlus, Check,
   Link2, RefreshCw, Star, ChevronLeft, ChevronRight, Loader2, History, Aperture, ZoomIn,
-  ImageOff, Upload, FolderUp, AlertTriangle, OctagonX
+  ImageOff, Upload, FolderUp, AlertTriangle, OctagonX, Zap
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -80,6 +80,14 @@ interface PendingPhoto {
   blob: Blob;
   previewUrl: string;
 }
+
+type TorchMediaTrackCapabilities = MediaTrackCapabilities & { torch?: boolean };
+type TorchMediaTrackSettings = MediaTrackSettings & { torch?: boolean };
+type TorchMediaTrackConstraintSet = MediaTrackConstraintSet & { torch?: boolean };
+
+const torchConstraints = (enabled: boolean): MediaTrackConstraints => ({
+  advanced: [{ torch: enabled } as TorchMediaTrackConstraintSet],
+});
 
 const makePendingPhoto = (blob: Blob): PendingPhoto => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -191,12 +199,18 @@ const CameraModal: React.FC<{
   const handedOffRef = useRef(false);
   const shotsRef = useRef<PendingPhoto[]>([]);
   const mountedRef = useRef(true);
+  const torchEnabledRef = useRef(false);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [shots, setShots] = useState<PendingPhoto[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState(false);
+  const [shutterFlashVisible, setShutterFlashVisible] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
+  const [torchBusy, setTorchBusy] = useState(false);
+  const [torchError, setTorchError] = useState<string | null>(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     let cancelled = false;
     (async () => {
       try {
@@ -209,6 +223,15 @@ const CameraModal: React.FC<{
           return;
         }
         streamRef.current = stream;
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
+          try {
+            const capabilities = videoTrack.getCapabilities() as TorchMediaTrackCapabilities;
+            setTorchSupported(capabilities.torch === true);
+          } catch {
+            setTorchSupported(false);
+          }
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
@@ -220,7 +243,12 @@ const CameraModal: React.FC<{
     return () => {
       cancelled = true;
       mountedRef.current = false;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      const stream = streamRef.current;
+      const videoTrack = stream?.getVideoTracks()[0];
+      if (videoTrack && torchEnabledRef.current) {
+        void videoTrack.applyConstraints(torchConstraints(false)).catch(() => {});
+      }
+      stream?.getTracks().forEach((t) => t.stop());
       if (!handedOffRef.current) {
         shotsRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
       }
@@ -231,6 +259,36 @@ const CameraModal: React.FC<{
     shotsRef.current = shots;
   }, [shots]);
 
+  useEffect(() => {
+    torchEnabledRef.current = torchEnabled;
+  }, [torchEnabled]);
+
+  const toggleTorch = async () => {
+    const videoTrack = streamRef.current?.getVideoTracks()[0];
+    if (!videoTrack || !torchSupported || torchBusy) return;
+
+    const nextEnabled = !torchEnabledRef.current;
+    setTorchBusy(true);
+    setTorchError(null);
+    try {
+      await videoTrack.applyConstraints(torchConstraints(nextEnabled));
+      const settings = videoTrack.getSettings() as TorchMediaTrackSettings;
+      const actualEnabled = settings.torch ?? nextEnabled;
+      torchEnabledRef.current = actualEnabled;
+      if (mountedRef.current) setTorchEnabled(actualEnabled);
+    } catch {
+      const settings = videoTrack.getSettings() as TorchMediaTrackSettings;
+      const actualEnabled = settings.torch ?? torchEnabledRef.current;
+      torchEnabledRef.current = actualEnabled;
+      if (mountedRef.current) {
+        setTorchEnabled(actualEnabled);
+        setTorchError("Impossible de modifier le flash sur cette caméra.");
+      }
+    } finally {
+      if (mountedRef.current) setTorchBusy(false);
+    }
+  };
+
   const capture = async () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth || shots.length >= maxPhotos || captureBusy) return;
@@ -239,8 +297,8 @@ const CameraModal: React.FC<{
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d')?.drawImage(video, 0, 0);
-    setFlash(true);
-    setTimeout(() => setFlash(false), 120);
+    setShutterFlashVisible(true);
+    setTimeout(() => setShutterFlashVisible(false), 120);
     const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.92));
     if (blob) {
       const compressed = await compressImage(blob);
@@ -269,7 +327,7 @@ const CameraModal: React.FC<{
           </span>
           <p className="mt-0.5 truncate text-xs text-gray-300">{targetLabel}</p>
         </div>
-        <button onClick={onClose} aria-label="Fermer sans conserver les photos" className="p-2 rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-orange-400">
+        <button type="button" onClick={onClose} aria-label="Fermer sans conserver les photos" className="p-2 rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-orange-400">
           <X className="w-6 h-6" />
         </button>
       </div>
@@ -284,7 +342,7 @@ const CameraModal: React.FC<{
         ) : (
           <video ref={videoRef} playsInline muted className="max-h-full max-w-full object-contain" />
         )}
-        {flash && <div className="absolute inset-0 bg-white/80" />}
+        {shutterFlashVisible && <div className="absolute inset-0 bg-white/80" aria-hidden="true" />}
       </div>
 
       {shots.length > 0 && (
@@ -293,8 +351,10 @@ const CameraModal: React.FC<{
             <div key={s.id} className="relative flex-shrink-0">
               <img src={s.previewUrl} className="h-16 w-16 object-cover rounded" alt="" />
               <button
+                type="button"
                 onClick={() => discardShot(s)}
-                className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5"
+                aria-label="Supprimer cette photo"
+                className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-red-400"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -303,19 +363,45 @@ const CameraModal: React.FC<{
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-8 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 bg-black p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="min-w-0 justify-self-end text-center">
+          <button
+            type="button"
+            onClick={() => void toggleTorch()}
+            disabled={!torchSupported || !!error || torchBusy}
+            aria-label={torchSupported ? (torchEnabled ? 'Désactiver le flash' : 'Activer le flash') : 'Flash indisponible sur cette caméra'}
+            aria-pressed={torchSupported ? torchEnabled : false}
+            className={`flex min-h-12 max-w-full items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed ${
+              torchSupported
+                ? torchEnabled
+                  ? 'border-orange-400 bg-orange-500 text-black hover:bg-orange-400'
+                  : 'border-gray-600 bg-gray-900 text-gray-100 hover:bg-gray-800'
+                : 'border-gray-800 bg-gray-950 text-gray-500 disabled:opacity-80'
+            }`}
+          >
+            {torchBusy ? <Loader2 className="h-4 w-4 flex-none animate-spin" /> : <Zap className={`h-4 w-4 flex-none ${torchEnabled ? 'fill-current' : ''}`} />}
+            <span className="leading-tight">
+              {torchSupported ? (torchEnabled ? 'Flash activé' : 'Flash désactivé') : 'Flash indisponible'}
+            </span>
+          </button>
+          {torchError && <p className="mt-1 max-w-36 text-[10px] leading-tight text-amber-300" role="status">{torchError}</p>}
+        </div>
         <button
+          type="button"
           onClick={capture}
           disabled={!!error || captureBusy || shots.length >= maxPhotos}
-          className="w-16 h-16 rounded-full bg-white border-4 border-gray-300 active:scale-95 disabled:opacity-40 flex items-center justify-center"
+          aria-label="Prendre une photo"
+          className="w-16 h-16 rounded-full bg-white border-4 border-gray-300 active:scale-95 disabled:opacity-40 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-black"
           title="Capturer"
         >
           <Aperture className="w-7 h-7 text-gray-700" />
         </button>
         <button
+          type="button"
           onClick={finish}
           disabled={shots.length === 0}
-          className="px-5 py-3 rounded-lg bg-green-600 text-white font-medium disabled:opacity-40 flex items-center gap-2"
+          aria-label={`Terminer et conserver ${shots.length} photo${shots.length > 1 ? 's' : ''}`}
+          className="justify-self-start px-3 sm:px-5 py-3 rounded-lg bg-green-600 text-white text-sm font-medium disabled:opacity-40 flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-black"
         >
           <Check className="w-5 h-5" /> Terminer ({shots.length})
         </button>
@@ -623,7 +709,6 @@ const LegacyCaptureTab: React.FC<{
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               className="hidden"
               onChange={(e) => onFiles(e.target.files)}
@@ -1136,7 +1221,7 @@ const BatchCaptureTab: React.FC<{
                     <div className="flex flex-wrap items-center gap-2">
                       <button type="button" onClick={() => setCameraTargetKey(target.key)} disabled={batchSaving || !!target.shootId || target.photos.length + target.compressionCount >= MAX_PHOTOS_PER_TARGET} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-orange-600 px-3 text-sm font-semibold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:bg-gray-300 sm:flex-none"><Camera className="h-4 w-4" />Caméra</button>
                       <button type="button" onClick={() => fileInputRefs.current.get(target.key)?.click()} disabled={batchSaving || !!target.shootId || target.photos.length + target.compressionCount >= MAX_PHOTOS_PER_TARGET} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-40 sm:flex-none"><FolderUp className="h-4 w-4" />Importer</button>
-                      <input id={`capture-upload-${target.key.replace(/:/g, '-')}`} ref={(element) => { if (element) fileInputRefs.current.set(target.key, element); else fileInputRefs.current.delete(target.key); }} type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(event) => void onFiles(target.key, event.target.files)} />
+                      <input id={`capture-upload-${target.key.replace(/:/g, '-')}`} ref={(element) => { if (element) fileInputRefs.current.set(target.key, element); else fileInputRefs.current.delete(target.key); }} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void onFiles(target.key, event.target.files)} />
                       <span className="ml-auto text-xs font-semibold text-gray-500">{target.compressionCount > 0 ? <span className="flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" />Compression…</span> : `${target.photos.length}/30 photos`}</span>
                     </div>
                     {target.photos.length > 0 && (
