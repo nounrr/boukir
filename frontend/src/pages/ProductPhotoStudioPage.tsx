@@ -181,11 +181,17 @@ const formatAiCostUsd = (value: number | string | null | undefined) => {
 // ----------------------------------------------------------------------------
 
 const CameraModal: React.FC<{
+  targetLabel?: string;
+  maxPhotos?: number;
   onClose: () => void;
   onCaptured: (photos: PendingPhoto[]) => void;
-}> = ({ onClose, onCaptured }) => {
+}> = ({ targetLabel = 'Produit sélectionné', maxPhotos = 30, onClose, onCaptured }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const handedOffRef = useRef(false);
+  const shotsRef = useRef<PendingPhoto[]>([]);
+  const mountedRef = useRef(true);
+  const [captureBusy, setCaptureBusy] = useState(false);
   const [shots, setShots] = useState<PendingPhoto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
@@ -213,13 +219,22 @@ const CameraModal: React.FC<{
     })();
     return () => {
       cancelled = true;
+      mountedRef.current = false;
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (!handedOffRef.current) {
+        shotsRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      }
     };
   }, []);
 
+  useEffect(() => {
+    shotsRef.current = shots;
+  }, [shots]);
+
   const capture = async () => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
+    if (!video || !video.videoWidth || shots.length >= maxPhotos || captureBusy) return;
+    setCaptureBusy(true);
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -229,22 +244,32 @@ const CameraModal: React.FC<{
     const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.92));
     if (blob) {
       const compressed = await compressImage(blob);
-      setShots((prev) => [...prev, makePendingPhoto(compressed)]);
+      if (mountedRef.current) setShots((prev) => [...prev, makePendingPhoto(compressed)].slice(0, maxPhotos));
     }
+    if (mountedRef.current) setCaptureBusy(false);
   };
 
   const finish = () => {
+    handedOffRef.current = true;
     onCaptured(shots);
     onClose();
+  };
+
+  const discardShot = (photo: PendingPhoto) => {
+    URL.revokeObjectURL(photo.previewUrl);
+    setShots((prev) => prev.filter((item) => item.id !== photo.id));
   };
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col">
       <div className="flex items-center justify-between p-3 text-white">
-        <span className="font-medium flex items-center gap-2">
-          <Camera className="w-5 h-5" /> Prise de photos ({shots.length})
-        </span>
-        <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10">
+        <div className="min-w-0">
+          <span className="font-medium flex items-center gap-2">
+            <Camera className="w-5 h-5 flex-none" /> Prise de photos ({shots.length}/{maxPhotos})
+          </span>
+          <p className="mt-0.5 truncate text-xs text-gray-300">{targetLabel}</p>
+        </div>
+        <button onClick={onClose} aria-label="Fermer sans conserver les photos" className="p-2 rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-orange-400">
           <X className="w-6 h-6" />
         </button>
       </div>
@@ -268,7 +293,7 @@ const CameraModal: React.FC<{
             <div key={s.id} className="relative flex-shrink-0">
               <img src={s.previewUrl} className="h-16 w-16 object-cover rounded" alt="" />
               <button
-                onClick={() => setShots((prev) => prev.filter((p) => p.id !== s.id))}
+                onClick={() => discardShot(s)}
                 className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5"
               >
                 <X className="w-3 h-3" />
@@ -281,7 +306,7 @@ const CameraModal: React.FC<{
       <div className="flex items-center justify-center gap-8 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black">
         <button
           onClick={capture}
-          disabled={!!error}
+          disabled={!!error || captureBusy || shots.length >= maxPhotos}
           className="w-16 h-16 rounded-full bg-white border-4 border-gray-300 active:scale-95 disabled:opacity-40 flex items-center justify-center"
           title="Capturer"
         >
@@ -295,6 +320,11 @@ const CameraModal: React.FC<{
           <Check className="w-5 h-5" /> Terminer ({shots.length})
         </button>
       </div>
+      {shots.length >= maxPhotos && (
+        <p className="bg-amber-950 px-4 py-2 text-center text-xs font-medium text-amber-100">
+          Limite de 30 photos atteinte pour cette référence.
+        </p>
+      )}
     </div>
   );
 };
@@ -327,6 +357,7 @@ const ProductPicker: React.FC<{
   }, [onClose]);
 
   useEffect(() => {
+    const opener = openerRef.current;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -355,7 +386,7 @@ const ProductPicker: React.FC<{
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      openerRef.current?.focus();
+      opener?.focus();
     };
   }, []);
 
@@ -480,7 +511,9 @@ const ProductPicker: React.FC<{
 // Onglet Capture
 // ----------------------------------------------------------------------------
 
-const CaptureTab: React.FC<{
+// Conservé temporairement pour faciliter le retour arrière du flux unitaire.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const LegacyCaptureTab: React.FC<{
   aiConfiguration: AiConfiguration;
   onAiConfigurationChange: (next: AiConfiguration) => void;
 }> = ({ aiConfiguration, onAiConfigurationChange }) => {
@@ -657,6 +690,487 @@ const CaptureTab: React.FC<{
         <CameraModal
           onClose={() => setCameraOpen(false)}
           onCaptured={(shots) => setPhotos((prev) => [...prev, ...shots])}
+        />
+      )}
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------------
+// File de capture multi-références
+// ----------------------------------------------------------------------------
+
+type CaptureLineStatus = 'missing' | 'ready' | 'saving' | 'saved' | 'error';
+
+interface CaptureTarget {
+  key: string;
+  instanceId: string;
+  product: Product;
+  variant: ProductVariant | null;
+  photos: PendingPhoto[];
+  compressionCount: number;
+  shootId?: number;
+  status: CaptureLineStatus;
+  error?: string;
+}
+
+const MAX_PHOTOS_PER_TARGET = 30;
+
+const validSortedVariants = (product: Product): Array<ProductVariant & { id: number }> =>
+  (product.variants || [])
+    .filter((variant): variant is ProductVariant & { id: number } => variant.id != null && Number.isFinite(Number(variant.id)) && Number(variant.id) > 0)
+    .sort((a, b) => {
+      const left = `${a.variant_name || ''}|${a.reference || ''}|${a.id}`;
+      const right = `${b.variant_name || ''}|${b.reference || ''}|${b.id}`;
+      return left.localeCompare(right, 'fr', { numeric: true, sensitivity: 'base' });
+    });
+
+const BatchProductPicker: React.FC<{
+  onAdd: (product: Product) => void;
+  onClose: () => void;
+  selectedProductIds: Set<number>;
+  selectedReferenceCount: number;
+  selectedLineCount: number;
+  busy: boolean;
+}> = ({ onAdd, onClose, selectedProductIds, selectedReferenceCount, selectedLineCount, busy }) => {
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const opener = openerRef.current;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedLineCount > 0 && !busy) onClose();
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        ) || []
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      opener?.focus();
+    };
+  }, [busy, onClose, selectedLineCount]);
+
+  const { data, isFetching, isError } = useSearchBonProductsQuery(
+    { q: debouncedQuery, limit: 30 },
+    { skip: debouncedQuery.length < 1 }
+  );
+  const products = data?.data || [];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/55 p-2 sm:items-center sm:p-6">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="batch-picker-title" className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="border-b p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 id="batch-picker-title" className="font-bold text-gray-900">Préparer le lot de références</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Ajoutez plusieurs produits. Leurs variantes seront créées comme lignes photo séparées.</p>
+            </div>
+            <button type="button" onClick={onClose} disabled={busy || selectedLineCount === 0} aria-label="Fermer la sélection" className="flex h-10 w-10 flex-none items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-30">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <label htmlFor="batch-product-search" className="sr-only">Référence ou désignation du produit ou de la variante</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input id="batch-product-search" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Référence produit, variante ou désignation…" className="min-h-11 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-gray-50/70 p-2">
+          {isFetching && <div className="flex items-center gap-2 p-4 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Recherche…</div>}
+          {isError && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"><OctagonX className="h-4 w-4" /> Recherche indisponible. Réessayez.</div>}
+          {!isFetching && !debouncedQuery && <div className="px-4 py-10 text-center text-sm text-gray-500">Recherchez la première référence à photographier.</div>}
+          {!isFetching && debouncedQuery && products.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-500">Aucun produit trouvé.</div>}
+
+          {products.map((product) => {
+            const variants = validSortedVariants(product);
+            const alreadyAdded = selectedProductIds.has(product.id);
+            const invalidVariantProduct = !!product.has_variants && variants.length === 0;
+            const actionLabel = alreadyAdded
+              ? 'Déjà ajouté'
+              : variants.length > 0
+                ? `Ajouter le produit et ses ${variants.length} variantes`
+                : 'Ajouter le produit';
+            return (
+              <article key={product.id} className="overflow-hidden rounded-lg border border-gray-200 border-l-[3px] border-l-orange-400 bg-white shadow-sm">
+                <div className="flex items-start gap-3 p-3">
+                  {product.image_url ? (
+                    <img src={product.image_url} alt="" className="h-12 w-12 flex-none rounded-lg border object-cover" />
+                  ) : (
+                    <div className="flex h-12 w-12 flex-none items-center justify-center rounded-lg border bg-gray-100 text-gray-400"><ImageOff className="h-5 w-5" /></div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="break-words font-semibold text-gray-900">{product.designation}</h3>
+                    <p className="mt-0.5 text-xs text-gray-500">Réf. produit : <span className="font-semibold text-gray-700">{product.reference || product.id}</span></p>
+                  </div>
+                  {alreadyAdded && <Check className="h-5 w-5 flex-none text-green-600" />}
+                </div>
+                {variants.length > 0 && (
+                  <div className="border-y border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-500">Variantes ajoutées ensemble</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {variants.map((variant) => (
+                        <span key={variant.id} className="max-w-full rounded-md border bg-white px-2 py-1 text-xs text-gray-700">
+                          <span className="font-semibold">{variant.variant_name}</span>{variant.reference && <span className="text-gray-500"> · {variant.reference}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {invalidVariantProduct && (
+                  <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />Produit déclaré à variantes, mais sans variante active exploitable.</div>
+                )}
+                <div className="p-2">
+                  <button type="button" onClick={() => onAdd(product)} disabled={busy || alreadyAdded || invalidVariantProduct} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-3 text-sm font-semibold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500">
+                    {alreadyAdded ? <Check className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}{actionLabel}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <footer className="border-t bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3">
+          <p className="mb-2 text-center text-xs font-semibold text-gray-600 sm:mb-0 sm:text-left" aria-live="polite">
+            {selectedReferenceCount} référence{selectedReferenceCount > 1 ? 's' : ''} sélectionnée{selectedReferenceCount > 1 ? 's' : ''} • {selectedLineCount} ligne{selectedLineCount > 1 ? 's' : ''} photo
+          </p>
+          <button type="button" onClick={onClose} disabled={busy || selectedLineCount === 0} className="min-h-11 w-full rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500 sm:w-auto">
+            Terminer la sélection ({selectedLineCount})
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+const BatchCaptureTab: React.FC<{
+  aiConfiguration: AiConfiguration;
+  onAiConfigurationChange: (next: AiConfiguration) => void;
+}> = ({ aiConfiguration, onAiConfigurationChange }) => {
+  const { user } = useAuth();
+  const [targets, setTargets] = useState<CaptureTarget[]>([]);
+  const targetsRef = useRef<CaptureTarget[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(true);
+  const [cameraTargetKey, setCameraTargetKey] = useState<string | null>(null);
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState({ completed: 0, total: 0 });
+  const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const [createShoot] = useCreatePhotoShootMutation();
+  const [processShoots] = useProcessPhotoShootsMutation();
+
+  const replaceTargets = useCallback((updater: (current: CaptureTarget[]) => CaptureTarget[]) => {
+    const next = updater(targetsRef.current);
+    targetsRef.current = next;
+    setTargets(next);
+  }, []);
+
+  useEffect(() => () => {
+    targetsRef.current.forEach((target) => target.photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl)));
+  }, []);
+
+  const selectedProductIds = useMemo(() => new Set(targets.map((target) => target.product.id)), [targets]);
+  const groupedTargets = useMemo(() => {
+    const groups: Array<{ product: Product; targets: CaptureTarget[] }> = [];
+    targets.forEach((target) => {
+      const existing = groups.find((group) => group.product.id === target.product.id);
+      if (existing) existing.targets.push(target);
+      else groups.push({ product: target.product, targets: [target] });
+    });
+    return groups;
+  }, [targets]);
+
+  const readyCount = targets.filter((target) => target.shootId || (target.photos.length > 0 && target.compressionCount === 0)).length;
+  const totalPhotos = targets.reduce((sum, target) => sum + target.photos.length, 0);
+  const compressionCount = targets.reduce((sum, target) => sum + target.compressionCount, 0);
+  const unsavedTargets = targets.filter((target) => !target.shootId);
+  const missingCount = unsavedTargets.filter((target) => target.photos.length === 0).length;
+  const canSave = targets.length > 0 && !batchSaving && compressionCount === 0 && missingCount === 0;
+
+  const addProduct = (product: Product) => {
+    if (batchSaving || selectedProductIds.has(product.id)) return;
+    const variants = validSortedVariants(product);
+    if (product.has_variants && variants.length === 0) {
+      toast('info', 'Aucune variante active exploitable pour ce produit');
+      return;
+    }
+    const selectedVariants: Array<ProductVariant | null> = variants.length > 0 ? variants : [null];
+    const newTargets = selectedVariants.map((variant) => ({
+      key: variant ? `product:${product.id}:variant:${variant.id}` : `product:${product.id}:main`,
+      instanceId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      product,
+      variant,
+      photos: [],
+      compressionCount: 0,
+      status: 'missing' as CaptureLineStatus,
+    }));
+    replaceTargets((current) => {
+      const keys = new Set(current.map((target) => target.key));
+      return [...current, ...newTargets.filter((target) => !keys.has(target.key))];
+    });
+  };
+
+  const appendPhotos = (targetKey: string, photos: PendingPhoto[]) => {
+    const currentTarget = targetsRef.current.find((target) => target.key === targetKey);
+    if (!currentTarget || currentTarget.shootId || batchSaving) {
+      photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      return;
+    }
+    const available = Math.max(0, MAX_PHOTOS_PER_TARGET - currentTarget.photos.length - currentTarget.compressionCount);
+    const accepted = photos.slice(0, available);
+    photos.slice(available).forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    if (accepted.length < photos.length) toast('info', 'Maximum 30 photos par référence');
+    replaceTargets((current) => current.map((target) => target.key === targetKey
+      ? { ...target, photos: [...target.photos, ...accepted], status: 'ready', error: undefined }
+      : target));
+  };
+
+  const onFiles = async (targetKey: string, files: FileList | null) => {
+    if (!files?.length || batchSaving) return;
+    const currentTarget = targetsRef.current.find((target) => target.key === targetKey);
+    if (!currentTarget || currentTarget.shootId) return;
+    const available = Math.max(0, MAX_PHOTOS_PER_TARGET - currentTarget.photos.length - currentTarget.compressionCount);
+    const acceptedFiles = Array.from(files).slice(0, available);
+    if (acceptedFiles.length < files.length) toast('info', 'Maximum 30 photos par référence');
+    const input = fileInputRefs.current.get(targetKey);
+    if (input) input.value = '';
+    if (!acceptedFiles.length) return;
+    const instanceId = currentTarget.instanceId;
+    replaceTargets((current) => current.map((target) => target.key === targetKey && target.instanceId === instanceId
+      ? { ...target, compressionCount: target.compressionCount + acceptedFiles.length, error: undefined }
+      : target));
+    const compressed = await Promise.all(acceptedFiles.map((file) => compressImage(file)));
+    const pending = compressed.map(makePendingPhoto);
+    const stillExists = targetsRef.current.some((target) => target.key === targetKey && target.instanceId === instanceId);
+    if (!stillExists) {
+      pending.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      return;
+    }
+    replaceTargets((current) => current.map((target) => target.key === targetKey && target.instanceId === instanceId
+      ? {
+          ...target,
+          photos: [...target.photos, ...pending].slice(0, MAX_PHOTOS_PER_TARGET),
+          compressionCount: Math.max(0, target.compressionCount - acceptedFiles.length),
+          status: 'ready',
+        }
+      : target));
+  };
+
+  const removePhoto = (targetKey: string, photo: PendingPhoto) => {
+    if (batchSaving) return;
+    URL.revokeObjectURL(photo.previewUrl);
+    replaceTargets((current) => current.map((target) => target.key === targetKey
+      ? { ...target, photos: target.photos.filter((item) => item.id !== photo.id), status: target.photos.length > 1 ? 'ready' : 'missing', error: undefined }
+      : target));
+  };
+
+  const removeTarget = async (targetKey: string) => {
+    if (batchSaving) return;
+    const target = targetsRef.current.find((item) => item.key === targetKey);
+    if (!target) return;
+    if (!target.shootId && target.photos.length > 0) {
+      const result = await Swal.fire({ title: 'Supprimer cette ligne ?', text: 'Ses photos non enregistrées seront perdues.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Supprimer', cancelButtonText: 'Annuler', confirmButtonColor: '#dc2626' });
+      if (!result.isConfirmed) return;
+    }
+    target.photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    replaceTargets((current) => current.filter((item) => item.key !== targetKey));
+  };
+
+  const clearBatch = useCallback((reopenPicker: boolean) => {
+    targetsRef.current.forEach((target) => target.photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl)));
+    targetsRef.current = [];
+    setTargets([]);
+    setCameraTargetKey(null);
+    setSaveProgress({ completed: 0, total: 0 });
+    if (reopenPicker) setPickerOpen(true);
+  }, []);
+
+  const requestClearBatch = async () => {
+    if (batchSaving || targets.length === 0) return;
+    const hasUnsavedPhotos = targets.some((target) => !target.shootId && target.photos.length > 0);
+    if (hasUnsavedPhotos) {
+      const result = await Swal.fire({ title: 'Vider la sélection ?', text: 'Toutes les photos non enregistrées seront perdues.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Vider', cancelButtonText: 'Annuler', confirmButtonColor: '#dc2626' });
+      if (!result.isConfirmed) return;
+    }
+    clearBatch(true);
+  };
+
+  const saveAll = async (processNow: boolean) => {
+    if (!canSave) return;
+    setBatchSaving(true);
+    const initialTargets = [...targetsRef.current];
+    const toCreate = initialTargets.filter((target) => !target.shootId);
+    const shootIds = new Map(initialTargets.filter((target) => target.shootId).map((target) => [target.key, target.shootId as number]));
+    let completed = shootIds.size;
+    let failures = 0;
+    setSaveProgress({ completed, total: initialTargets.length });
+
+    for (const target of toCreate) {
+      replaceTargets((current) => current.map((item) => item.key === target.key ? { ...item, status: 'saving', error: undefined } : item));
+      const formData = new FormData();
+      formData.append('product_id', String(target.product.id));
+      if (target.variant?.id) formData.append('variant_id', String(target.variant.id));
+      if (user?.id) formData.append('created_by', String(user.id));
+      target.photos.forEach((photo, index) => formData.append('images', new File([photo.blob], `photo-${index + 1}.jpg`, { type: 'image/jpeg' })));
+      try {
+        const shoot = await createShoot(formData).unwrap();
+        shootIds.set(target.key, shoot.id);
+        completed += 1;
+        setSaveProgress({ completed, total: initialTargets.length });
+        replaceTargets((current) => current.map((item) => item.key === target.key ? { ...item, shootId: shoot.id, status: 'saved', error: undefined } : item));
+      } catch (error: any) {
+        failures += 1;
+        const message = error?.data?.message || 'Échec de l’enregistrement';
+        replaceTargets((current) => current.map((item) => item.key === target.key ? { ...item, status: 'error', error: message } : item));
+      }
+    }
+
+    if (failures > 0) {
+      setBatchSaving(false);
+      toast('error', `${failures} ligne${failures > 1 ? 's' : ''} à réessayer. Les autres sont conservées.`);
+      return;
+    }
+
+    const allShootIds = initialTargets.map((target) => shootIds.get(target.key)).filter((id): id is number => Number.isFinite(id));
+    if (processNow) {
+      try {
+        await processShoots({ shootIds: allShootIds, ...aiConfiguration }).unwrap();
+        clearBatch(true);
+        toast('success', 'Lot enregistré, traitement IA lancé. Nouveau lot prêt.');
+      } catch {
+        clearBatch(true);
+        await Swal.fire({ icon: 'info', title: 'Sessions enregistrées', text: 'Le traitement IA n’a pas démarré. Les sessions sont disponibles dans Historique > Non traité.', confirmButtonText: 'Compris' });
+      }
+    } else {
+      clearBatch(true);
+      toast('success', 'Lot enregistré. Vous pouvez rechercher le lot suivant.');
+    }
+    setBatchSaving(false);
+  };
+
+  const cameraTarget = targets.find((target) => target.key === cameraTargetKey) || null;
+  const disabledReason = compressionCount > 0
+    ? `Compression de ${compressionCount} photo${compressionCount > 1 ? 's' : ''} en cours…`
+    : missingCount > 0
+      ? `Ajoutez au moins une photo à ${missingCount} ligne${missingCount > 1 ? 's' : ''}.`
+      : null;
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4" aria-labelledby="capture-queue-title">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-orange-600">Feuille de route de capture</p>
+            <h2 id="capture-queue-title" className="mt-0.5 text-lg font-bold text-gray-900">{readyCount}/{targets.length} prêts <span className="font-normal text-gray-400">·</span> {totalPhotos} photo{totalPhotos > 1 ? 's' : ''}</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <button type="button" onClick={() => setPickerOpen(true)} disabled={batchSaving} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-orange-600 px-3 text-sm font-semibold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:bg-gray-300"><ImagePlus className="h-4 w-4" />Ajouter des références</button>
+            <button type="button" onClick={() => void requestClearBatch()} disabled={batchSaving || targets.length === 0} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-40"><Trash2 className="h-4 w-4" />Vider la sélection</button>
+          </div>
+        </div>
+        {batchSaving && (
+          <div className="mt-3" aria-live="polite">
+            <div className="mb-1 flex justify-between text-xs font-semibold text-gray-600"><span>Enregistrement du lot…</span><span>{saveProgress.completed}/{saveProgress.total} enregistrés</span></div>
+            <div className="h-2 overflow-hidden rounded bg-gray-100"><div className="h-full bg-orange-500 transition-all" style={{ width: `${saveProgress.total ? (saveProgress.completed / saveProgress.total) * 100 : 0}%` }} /></div>
+          </div>
+        )}
+      </section>
+
+      {targets.length === 0 && !pickerOpen && (
+        <section className="rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-12 text-center">
+          <ImagePlus className="mx-auto h-8 w-8 text-orange-500" /><h2 className="mt-3 font-bold text-gray-900">Aucune référence dans le lot</h2><p className="mt-1 text-sm text-gray-500">Ajoutez un ou plusieurs produits avant de commencer les photos.</p>
+          <button type="button" onClick={() => setPickerOpen(true)} className="mt-4 min-h-11 rounded-lg bg-orange-600 px-5 text-sm font-semibold text-white hover:bg-orange-700">Rechercher des produits</button>
+        </section>
+      )}
+
+      {groupedTargets.map((group) => (
+        <section key={group.product.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <header className="flex items-center gap-3 border-b border-gray-200 bg-gray-50/80 px-3 py-2.5 sm:px-4">
+            {group.product.image_url ? <img src={group.product.image_url} alt="" className="h-9 w-9 rounded-md border object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-md border bg-white text-gray-400"><ImageOff className="h-4 w-4" /></div>}
+            <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold text-gray-900">{group.product.designation}</h3><p className="text-xs text-gray-500">Réf. produit : <span className="font-semibold text-gray-700">{group.product.reference || group.product.id}</span> · {group.targets.length} ligne{group.targets.length > 1 ? 's' : ''}</p></div>
+          </header>
+          <div className="divide-y divide-gray-100">
+            {group.targets.map((target) => {
+              const status = target.status === 'saving' ? { label: 'Enregistrement…', cls: 'bg-blue-100 text-blue-700' }
+                : target.status === 'saved' ? { label: 'Enregistré', cls: 'bg-green-100 text-green-700' }
+                  : target.status === 'error' ? { label: 'Erreur', cls: 'bg-red-100 text-red-700' }
+                    : target.photos.length > 0 ? { label: 'Prêt', cls: 'bg-green-100 text-green-700' }
+                      : { label: 'Photos manquantes', cls: 'bg-amber-100 text-amber-800' };
+              const imageUrl = target.variant?.image_url || target.product.image_url;
+              return (
+                <article key={target.key} className="relative grid gap-3 p-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(310px,1fr)] lg:items-center lg:px-4">
+                  <button type="button" onClick={() => void removeTarget(target.key)} disabled={batchSaving} aria-label={`Supprimer ${target.variant?.variant_name || target.product.designation} de la file`} className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-30 md:right-3"><X className="h-4 w-4" /></button>
+                  <div className="flex min-w-0 items-start gap-3 pr-9">
+                    {imageUrl ? <img src={imageUrl} alt="" className="h-14 w-14 flex-none rounded-lg border object-cover" /> : <div className="flex h-14 w-14 flex-none items-center justify-center rounded-lg border bg-gray-50 text-gray-400"><ImageOff className="h-5 w-5" /></div>}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2"><h4 className="break-words text-sm font-bold text-gray-900">{target.variant ? target.variant.variant_name : target.product.designation}</h4><span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${status.cls}`}>{status.label}</span></div>
+                      {target.variant ? <><p className="mt-1 text-xs text-gray-500">Produit : {target.product.designation}</p><p className="mt-0.5 break-all text-xs text-gray-600">Réf. variante : <span className="font-bold text-gray-800">{target.variant.reference || target.variant.id}</span></p></> : <p className="mt-1 text-xs text-gray-600">Réf. produit : <span className="font-bold text-gray-800">{target.product.reference || target.product.id}</span></p>}
+                      {target.error && <p className="mt-1.5 flex items-start gap-1 text-xs font-medium text-red-700"><OctagonX className="mt-0.5 h-3.5 w-3.5 flex-none" />{target.error}</p>}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => setCameraTargetKey(target.key)} disabled={batchSaving || !!target.shootId || target.photos.length + target.compressionCount >= MAX_PHOTOS_PER_TARGET} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-orange-600 px-3 text-sm font-semibold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:bg-gray-300 sm:flex-none"><Camera className="h-4 w-4" />Caméra</button>
+                      <button type="button" onClick={() => fileInputRefs.current.get(target.key)?.click()} disabled={batchSaving || !!target.shootId || target.photos.length + target.compressionCount >= MAX_PHOTOS_PER_TARGET} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-40 sm:flex-none"><FolderUp className="h-4 w-4" />Importer</button>
+                      <input id={`capture-upload-${target.key.replace(/:/g, '-')}`} ref={(element) => { if (element) fileInputRefs.current.set(target.key, element); else fileInputRefs.current.delete(target.key); }} type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(event) => void onFiles(target.key, event.target.files)} />
+                      <span className="ml-auto text-xs font-semibold text-gray-500">{target.compressionCount > 0 ? <span className="flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" />Compression…</span> : `${target.photos.length}/30 photos`}</span>
+                    </div>
+                    {target.photos.length > 0 && (
+                      <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                        {target.photos.map((photo, index) => <div key={photo.id} className="relative h-16 w-16 flex-none"><img src={photo.previewUrl} alt={`Photo ${index + 1}`} className="h-full w-full rounded-lg border object-cover" />{!target.shootId && <button type="button" onClick={() => removePhoto(target.key, photo)} disabled={batchSaving} aria-label={`Supprimer la photo ${index + 1}`} className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow focus:outline-none focus:ring-2 focus:ring-red-400"><X className="h-3 w-3" /></button>}</div>)}
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      <AiConfigurationPanel value={aiConfiguration} onChange={onAiConfigurationChange} />
+
+      {targets.length > 0 && (
+        <section className="sticky bottom-16 z-10 rounded-xl border border-gray-200 bg-white p-3 shadow-lg md:bottom-2 sm:p-4">
+          {disabledReason && !batchSaving && <p className="mb-2 flex items-center gap-2 text-xs font-medium text-amber-800"><AlertTriangle className="h-4 w-4 flex-none" />{disabledReason}</p>}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => void saveAll(false)} disabled={!canSave} className="flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-orange-600 px-4 text-sm font-bold text-orange-700 hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400">{batchSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}Enregistrer tout</button>
+            <button type="button" onClick={() => void saveAll(true)} disabled={!canSave} className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 text-sm font-bold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300">{batchSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}Enregistrer tout + traiter par IA</button>
+          </div>
+        </section>
+      )}
+
+      {pickerOpen && <BatchProductPicker onAdd={addProduct} onClose={() => setPickerOpen(false)} selectedProductIds={selectedProductIds} selectedReferenceCount={selectedProductIds.size} selectedLineCount={targets.length} busy={batchSaving} />}
+      {cameraTarget && (
+        <CameraModal
+          targetLabel={`${cameraTarget.product.designation}${cameraTarget.variant ? ` · ${cameraTarget.variant.variant_name} · Réf. ${cameraTarget.variant.reference || cameraTarget.variant.id}` : ` · Réf. ${cameraTarget.product.reference || cameraTarget.product.id}`}`}
+          maxPhotos={MAX_PHOTOS_PER_TARGET - cameraTarget.photos.length - cameraTarget.compressionCount}
+          onClose={() => setCameraTargetKey(null)}
+          onCaptured={(photos) => appendPhotos(cameraTarget.key, photos)}
         />
       )}
     </div>
@@ -2758,7 +3272,7 @@ const ProductPhotoStudioPage: React.FC = () => {
       </div>
 
       {tab === 'capture' && (
-        <CaptureTab aiConfiguration={aiConfiguration} onAiConfigurationChange={setAiConfiguration} />
+        <BatchCaptureTab aiConfiguration={aiConfiguration} onAiConfigurationChange={setAiConfiguration} />
       )}
       {tab === 'history' && (
         <HistoryTab aiConfiguration={aiConfiguration} onAiConfigurationChange={setAiConfiguration} />

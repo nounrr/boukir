@@ -28,13 +28,15 @@ import {
   Warehouse,
   Camera,
   FileCheck2,
+  TrendingDown,
 } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
+  tabletCompact?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const { user } = useAuth();
   const isChefChauffeur = user?.role === 'ChefChauffeur';
 
@@ -59,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Produits',
       items: [
         { name: 'Stock', href: '/stock', icon: Package, show: !isChefChauffeur },
+        { name: 'Stock faible rotation', href: '/slow-moving-stock', icon: TrendingDown, show: user?.role === 'PDG' },
         { name: 'Stock dépôt 2', href: '/stock-depot-2', icon: Warehouse, show: !isChefChauffeur },
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Correction noms', href: '/products/name-corrections', icon: FileCheck2, show: !isChefChauffeur },
@@ -109,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
 
   return (
     <aside
-      className={`hidden md:block fixed top-14 left-0 z-30 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out ${
+      className={`${tabletCompact ? 'hidden lg:block' : 'hidden md:block'} fixed top-14 left-0 z-30 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out ${
         isOpen ? 'w-64' : 'w-16'
       }`}
       style={{ height: 'calc(100vh - 56px)' }}

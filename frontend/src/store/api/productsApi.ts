@@ -1,5 +1,5 @@
 import { api } from './apiSlice';
-import type { Product, CreateProductData } from '../../types';
+import type { Product, CreateProductData, ProductImageTarget } from '../../types';
 
 // API réelle vers le backend Express (/api/products)
 const productsApi = api.injectEndpoints({
@@ -9,7 +9,7 @@ const productsApi = api.injectEndpoints({
       providesTags: ['Product'],
     }),
 
-    getProductsPaginated: builder.query<{ data: Product[]; meta: { total: number; page: number; limit: number; totalPages: number } }, { page: number; limit: number; q?: string; q2?: string; category_id?: number | string; brand_id?: number | string; missing_lang?: string; type?: 'stockable' | 'non_stockable' | 'service'; sortBy?: 'id' | 'quantite'; sortDir?: 'asc' | 'desc' }>({
+    getProductsPaginated: builder.query<{ data: Product[]; meta: { total: number; page: number; limit: number; totalPages: number } }, { page: number; limit: number; q?: string; q2?: string; category_id?: number | string; brand_id?: number | string; missing_lang?: string; missing_image?: boolean; type?: 'stockable' | 'non_stockable' | 'service'; sortBy?: 'id' | 'quantite'; sortDir?: 'asc' | 'desc' }>({
       query: (params) => ({
         url: '/products/search',
         params,
@@ -94,14 +94,16 @@ const productsApi = api.injectEndpoints({
     uploadProductMainAndGalleryImage: builder.mutation<
       {
         success: boolean;
-        product: { id: number; variant_id?: number; designation: string; image_url: string };
+        target: ProductImageTarget;
+        product: { id: number; variant_id?: number; designation: string; image_url: string | null };
         galleryImage: { id: number; image_url: string; position: number };
       },
-      { id: number; variantId?: number; image: File }
+      { id: number; variantId?: number; image: File; target: ProductImageTarget }
     >({
-      query: ({ id, variantId, image }) => {
+      query: ({ id, variantId, image, target }) => {
         const body = new FormData();
         body.append('image', image);
+        body.append('target', target);
         return {
           url: variantId
             ? `/products/${id}/variants/${variantId}/image-main-gallery`
@@ -180,10 +182,30 @@ const productsApi = api.injectEndpoints({
 
     updateSnapshots: builder.mutation<
       { success: boolean; updated: number },
-      { snapshots: Array<{ id: number; prix_achat?: number; prix_vente?: number; cout_revient?: number; cout_revient_pourcentage?: number; prix_gros?: number; prix_gros_pourcentage?: number; prix_vente_pourcentage?: number; quantite?: number }> }
+      { snapshots: Array<{ id: number; prix_achat?: number; prix_vente?: number; prix_vente_2?: number; cout_revient?: number; cout_revient_pourcentage?: number; prix_gros?: number; prix_gros_pourcentage?: number; prix_vente_pourcentage?: number; quantite?: number }> }
     >({
       query: (body) => ({
         url: '/products/snapshots',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
+    correctBonProductPrices: builder.mutation<
+      { success: boolean; updatedProducts: number; updatedVariants: number; updatedSnapshots: number },
+      {
+        corrections: Array<{
+          product_id: number;
+          variant_id?: number | null;
+          snapshot_ids: number[];
+          prix_vente: number;
+          prix_vente_2: number;
+        }>;
+      }
+    >({
+      query: (body) => ({
+        url: '/products/bon-price-corrections',
         method: 'PATCH',
         body,
       }),
@@ -224,6 +246,7 @@ export const {
   useGenerateSpecsMutation,
   useToggleEcomStockMutation,
   useUpdateSnapshotsMutation,
+  useCorrectBonProductPricesMutation,
   useGetProductsWithSnapshotsQuery,
   useSearchProductsWithSnapshotsQuery,
 } = productsApi;

@@ -76,6 +76,74 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Devis: 'Devis'
 };
 
+type BonTabColor = {
+  active: string;
+  inactive: string;
+};
+
+const BON_TAB_COLORS: Record<BonTabKey, BonTabColor> = {
+  Commande: {
+    active: 'border-blue-600 bg-blue-600 text-white shadow-sm',
+    inactive: 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-400 hover:bg-blue-100',
+  },
+  Sortie: {
+    active: 'border-emerald-600 bg-emerald-600 text-white shadow-sm',
+    inactive: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-100',
+  },
+  VendreFournisseur: {
+    active: 'border-emerald-600 bg-emerald-600 text-white shadow-sm',
+    inactive: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-100',
+  },
+  Comptant: {
+    active: 'border-teal-600 bg-teal-600 text-white shadow-sm',
+    inactive: 'border-teal-200 bg-teal-50 text-teal-700 hover:border-teal-400 hover:bg-teal-100',
+  },
+  ComptantNonPaye: {
+    active: 'border-teal-600 bg-teal-600 text-white shadow-sm',
+    inactive: 'border-teal-200 bg-teal-50 text-teal-700 hover:border-teal-400 hover:bg-teal-100',
+  },
+  Charge: {
+    active: 'border-rose-600 bg-rose-600 text-white shadow-sm',
+    inactive: 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-400 hover:bg-rose-100',
+  },
+  AvoirCharge: {
+    active: 'border-rose-600 bg-rose-600 text-white shadow-sm',
+    inactive: 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-400 hover:bg-rose-100',
+  },
+  Vehicule: {
+    active: 'border-cyan-600 bg-cyan-600 text-white shadow-sm',
+    inactive: 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:border-cyan-400 hover:bg-cyan-100',
+  },
+  Avoir: {
+    active: 'border-orange-600 bg-orange-600 text-white shadow-sm',
+    inactive: 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-400 hover:bg-orange-100',
+  },
+  AvoirVendreFournisseur: {
+    active: 'border-orange-600 bg-orange-600 text-white shadow-sm',
+    inactive: 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-400 hover:bg-orange-100',
+  },
+  AvoirComptant: {
+    active: 'border-orange-600 bg-orange-600 text-white shadow-sm',
+    inactive: 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-400 hover:bg-orange-100',
+  },
+  AvoirFournisseur: {
+    active: 'border-orange-600 bg-orange-600 text-white shadow-sm',
+    inactive: 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-400 hover:bg-orange-100',
+  },
+  AvoirEcommerce: {
+    active: 'border-orange-600 bg-orange-600 text-white shadow-sm',
+    inactive: 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-400 hover:bg-orange-100',
+  },
+  Ecommerce: {
+    active: 'border-violet-600 bg-violet-600 text-white shadow-sm',
+    inactive: 'border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-400 hover:bg-violet-100',
+  },
+  Devis: {
+    active: 'border-slate-600 bg-slate-600 text-white shadow-sm',
+    inactive: 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400 hover:bg-slate-100',
+  },
+};
+
 const getBonTabFromParam = (value: string | null): BonTabKey | null => (
   value && Object.prototype.hasOwnProperty.call(BON_TAB_LABELS, value) ? value as BonTabKey : null
 );
@@ -2627,19 +2695,24 @@ const BonsPage = () => {
               }
             }}
           >
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => changeCurrentTab(tab.key as BonTabKey)}
-                className={`py-2 px-3 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
-                  currentTab === tab.key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {tabs.map((tab) => {
+              const tabKey = tab.key as BonTabKey;
+              const tabColor = BON_TAB_COLORS[tabKey];
+              const isActive = currentTab === tabKey;
+
+              return (
+                <button
+                  key={tabKey}
+                  onClick={() => changeCurrentTab(tabKey)}
+                  aria-pressed={isActive}
+                  className={`my-1 rounded-md border px-3 py-2 font-medium text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
+                    isActive ? tabColor.active : tabColor.inactive
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </nav>
 
           {/* Right Arrow */}

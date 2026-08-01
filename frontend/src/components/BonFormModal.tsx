@@ -13,7 +13,7 @@ import {
   useGetEmployeesQueryServer as useGetEmployeesQueryServer,
   useGetMyBonAuthorizationsQueryServer,
 } from '../store/api/employeesApi.server';
-import { useGetProductsQuery, useGetProductsWithSnapshotsQuery, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
+import { useCorrectBonProductPricesMutation, useGetProductsQuery, useGetProductsWithSnapshotsQuery, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -1527,6 +1527,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Mutations
   const [createBon] = useCreateBonMutation();
   const [updateBonMutation] = useUpdateBonMutation();
+  const [correctBonProductPrices] = useCorrectBonProductPricesMutation();
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createContact] = useCreateContactMutation();
   const submitInProgressRef = useRef(false);
@@ -1785,6 +1786,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     prix_achat: 0,
     prix_gros: 0,
     prix_unitaire: 0,
+    catalog_prix_vente_1: '',
+    catalog_prix_vente_2: '',
+    _catalog_prix_vente_1_initial: '',
+    _catalog_prix_vente_2_initial: '',
+    _catalog_snapshot_ids: [],
     cout_revient: 0,
     kg: 0,
     total: 0,
@@ -2421,6 +2427,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           prix_achat: 0,
           prix_gros: 0,
           prix_unitaire: 0,
+          catalog_prix_vente_1: '',
+          catalog_prix_vente_2: '',
+          _catalog_prix_vente_1_initial: '',
+          _catalog_prix_vente_2_initial: '',
+          _catalog_snapshot_ids: [],
           cout_revient: 0,
           kg: 0,
           total: 0,
@@ -2578,6 +2589,26 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       const variant = item.variant_id && prod?.variants
         ? (prod.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id))
         : null;
+
+      const catalogPrixVente1 = Number(variant?.prix_vente ?? prod?.prix_vente ?? snap?.prix_vente ?? 0) || 0;
+      const catalogPrixVente2 = Number(variant?.prix_vente_2 ?? prod?.prix_vente_2 ?? snap?.prix_vente_2 ?? 0) || 0;
+      if (item.catalog_prix_vente_1 === undefined || item.catalog_prix_vente_1 === null || item.catalog_prix_vente_1 === '') {
+        formikRef.current!.setFieldValue(`items.${idx}.catalog_prix_vente_1`, catalogPrixVente1);
+        formikRef.current!.setFieldValue(`items.${idx}._catalog_prix_vente_1_initial`, catalogPrixVente1);
+        anyPatched = true;
+      }
+      if (item.catalog_prix_vente_2 === undefined || item.catalog_prix_vente_2 === null || item.catalog_prix_vente_2 === '') {
+        formikRef.current!.setFieldValue(`items.${idx}.catalog_prix_vente_2`, catalogPrixVente2);
+        formikRef.current!.setFieldValue(`items.${idx}._catalog_prix_vente_2_initial`, catalogPrixVente2);
+        anyPatched = true;
+      }
+      if (!Array.isArray(item._catalog_snapshot_ids)) {
+        const linkedSnapshotIds = Array.isArray(item.merged_snapshot_ids) && item.merged_snapshot_ids.length > 0
+          ? item.merged_snapshot_ids
+          : item.product_snapshot_id ? [item.product_snapshot_id] : [];
+        formikRef.current!.setFieldValue(`items.${idx}._catalog_snapshot_ids`, linkedSnapshotIds);
+        anyPatched = true;
+      }
 
       // Base PA/CR from best source: snapshot → variant → product catalog
       const meta = resolveCatalogMetaForItem(item, prod, snap, variant);
@@ -2752,6 +2783,76 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
   /* ------------------------------ Soumission ------------------------------ */
   /* ------------------------------ Soumission ------------------------------ */
+  const savePdgCatalogPriceCorrections = async (values: any) => {
+    if (!isPDG || !Array.isArray(values?.items)) return;
+
+    const correctionMap = new Map<string, {
+      product_id: number;
+      variant_id: number | null;
+      snapshotIds: Set<number>;
+      prix_vente: number;
+      prix_vente_2: number;
+    }>();
+
+    for (const item of values.items) {
+      const productId = Number(item?.product_id);
+      if (!Number.isInteger(productId) || productId <= 0) continue;
+
+      const prixVente = parseFloat(normalizeDecimal(String(item?.catalog_prix_vente_1 ?? '')));
+      const prixVente2 = parseFloat(normalizeDecimal(String(item?.catalog_prix_vente_2 ?? '')));
+      const initialPrixVente = parseFloat(normalizeDecimal(String(item?._catalog_prix_vente_1_initial ?? '')));
+      const initialPrixVente2 = parseFloat(normalizeDecimal(String(item?._catalog_prix_vente_2_initial ?? '')));
+
+      if (!Number.isFinite(prixVente) || prixVente < 0 || !Number.isFinite(prixVente2) || prixVente2 < 0) {
+        throw new Error(`Prix de vente produit invalide pour ${item?.designation || `produit ${productId}`}`);
+      }
+      if (
+        Number.isFinite(initialPrixVente) && Number.isFinite(initialPrixVente2) &&
+        Math.abs(prixVente - initialPrixVente) < 0.000001 &&
+        Math.abs(prixVente2 - initialPrixVente2) < 0.000001
+      ) {
+        continue;
+      }
+
+      const variantIdValue = Number(item?.variant_id);
+      const variantId = Number.isInteger(variantIdValue) && variantIdValue > 0 ? variantIdValue : null;
+      const key = `${productId}:${variantId || 0}`;
+      const snapshotIds = [
+        ...(Array.isArray(item?._catalog_snapshot_ids) ? item._catalog_snapshot_ids : []),
+        ...(Array.isArray(item?.merged_snapshot_ids) ? item.merged_snapshot_ids : []),
+        item?.product_snapshot_id,
+      ]
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0);
+
+      const existing = correctionMap.get(key);
+      if (existing) {
+        existing.prix_vente = prixVente;
+        existing.prix_vente_2 = prixVente2;
+        snapshotIds.forEach((id) => existing.snapshotIds.add(id));
+      } else {
+        correctionMap.set(key, {
+          product_id: productId,
+          variant_id: variantId,
+          snapshotIds: new Set(snapshotIds),
+          prix_vente: prixVente,
+          prix_vente_2: prixVente2,
+        });
+      }
+    }
+
+    if (correctionMap.size === 0) return;
+    await correctBonProductPrices({
+      corrections: [...correctionMap.values()].map((correction) => ({
+        product_id: correction.product_id,
+        variant_id: correction.variant_id,
+        snapshot_ids: [...correction.snapshotIds],
+        prix_vente: correction.prix_vente,
+        prix_vente_2: correction.prix_vente_2,
+      })),
+    }).unwrap();
+  };
+
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
   if (submitInProgressRef.current) {
     return;
@@ -3360,6 +3461,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     let submittedBon: any = null;
 
     if (isEditMode) {
+      await savePdgCatalogPriceCorrections(values);
       const updated = await updateBonMutation({ id: (initialValues as any).id, type: requestType, ...cleanBonData }).unwrap();
       const mergedUpdatedBon = {
         ...(initialValues as any),
@@ -3552,6 +3654,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         }
       }
 
+      await savePdgCatalogPriceCorrections(values);
       const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
       submittedBon = {
         ...cleanBonData,
@@ -5357,7 +5460,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
                     : [];
-                  const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0);
+                  const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0) + (isPDG ? 2 : 0);
 
                   return (
                     <>
@@ -5423,6 +5526,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                               <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
                                 Profit
                               </th>
+                            )}
+                            {isPDG && (
+                              <>
+                                <th className="w-[110px] bg-amber-50 px-2 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700" title="Prix catalogue indépendant du prix du bon">
+                                  Prix vente 1 produit
+                                </th>
+                                <th className="w-[110px] bg-amber-50 px-2 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700" title="Prix catalogue indépendant du prix du bon">
+                                  Prix vente 2 produit
+                                </th>
+                              </>
                             )}
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[76px]">
                               Actions
@@ -5709,6 +5822,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           resolvedSnapshotId = bestMergedSnap?.snapshot_id ?? null;
                                         }
                                         setFieldValue(`items.${index}.product_snapshot_id`, resolvedSnapshotId);
+                                        const selectedSnapshotIds = product._isMerged && Array.isArray(product._mergedSnapshots)
+                                          ? product._mergedSnapshots
+                                              .map((snapshot: any) => Number(snapshot?.snapshot_id))
+                                              .filter((snapshotId: number) => Number.isInteger(snapshotId) && snapshotId > 0)
+                                          : resolvedSnapshotId ? [resolvedSnapshotId] : [];
+                                        setFieldValue(`items.${index}._catalog_snapshot_ids`, selectedSnapshotIds);
                                         if (values.type !== 'Commande') {
                                           const isSpecialSnapshot = Number(product.snapshot_unite_special || 0) === 1;
                                           setFieldValue(`items.${index}.unite_special`, isSpecialSnapshot ? 1 : 0);
@@ -5740,6 +5859,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               ) || null
                                             : null
                                         );
+                                        const catalogPrixVente1 = Number(catalogVariant?.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0) || 0;
+                                        const catalogPrixVente2 = Number(catalogVariant?.prix_vente_2 ?? catalogProduct?.prix_vente_2 ?? product.prix_vente_2 ?? 0) || 0;
+                                        setFieldValue(`items.${index}.catalog_prix_vente_1`, catalogPrixVente1);
+                                        setFieldValue(`items.${index}.catalog_prix_vente_2`, catalogPrixVente2);
+                                        setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, catalogPrixVente1);
+                                        setFieldValue(`items.${index}._catalog_prix_vente_2_initial`, catalogPrixVente2);
 
                                         const latestSnapshotForCost = findLatestSnapshotForProductVariant(
                                           snapshotProducts as any[],
@@ -5878,6 +6003,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                   )
                                                 : null;
                                               setFieldValue(`items.${index}.product_snapshot_id`, snapshotProd?.snapshot_id || null);
+                                              setFieldValue(
+                                                `items.${index}._catalog_snapshot_ids`,
+                                                snapshotProd?.snapshot_id ? [snapshotProd.snapshot_id] : []
+                                              );
+                                              const catalogVariantPrixVente1 = Number(variant.prix_vente ?? product?.prix_vente ?? 0) || 0;
+                                              const catalogVariantPrixVente2 = Number(variant.prix_vente_2 ?? product?.prix_vente_2 ?? 0) || 0;
+                                              setFieldValue(`items.${index}.catalog_prix_vente_1`, catalogVariantPrixVente1);
+                                              setFieldValue(`items.${index}.catalog_prix_vente_2`, catalogVariantPrixVente2);
+                                              setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, catalogVariantPrixVente1);
+                                              setFieldValue(`items.${index}._catalog_prix_vente_2_initial`, catalogVariantPrixVente2);
                                               const latestVariantSnapshot = findLatestSnapshotForProductVariant(
                                                 snapshotProducts as any[],
                                                 values.items[index].product_id,
@@ -5977,9 +6112,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               getCatalogPrixVente(product)
                                             );
                                             setFieldValue(`items.${index}.product_snapshot_id`, snapshotProd2?.snapshot_id || null);
+                                            setFieldValue(
+                                              `items.${index}._catalog_snapshot_ids`,
+                                              snapshotProd2?.snapshot_id ? [snapshotProd2.snapshot_id] : []
+                                            );
                                           } else if (snapIdForRow2) {
                                             snapshotProd2 = null;
                                             setFieldValue(`items.${index}.product_snapshot_id`, null);
+                                            setFieldValue(`items.${index}._catalog_snapshot_ids`, []);
                                           }
 
                                           const latestProductSnapshot = findLatestSnapshotForProductVariant(
@@ -5991,6 +6131,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             ? (Number(latestProductSnapshot?.prix_achat) || Number(product?.prix_achat) || 0)
                                             : (Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0);
                                           const basePriceVente = getCatalogPrixVente(product);
+                                          const basePriceVente2 = Number(product?.prix_vente_2 ?? 0) || 0;
+                                          setFieldValue(`items.${index}.catalog_prix_vente_1`, basePriceVente);
+                                          setFieldValue(`items.${index}.catalog_prix_vente_2`, basePriceVente2);
+                                          setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, basePriceVente);
+                                          setFieldValue(`items.${index}._catalog_prix_vente_2_initial`, basePriceVente2);
                                           const averageProductCoutRevient = resolveAverageSnapshotCoutRevient(
                                             snapshotProducts as any[],
                                             values.items[index].product_id,
@@ -6824,6 +6969,51 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     );
   })()}
 </td>
+                                )}
+
+                                {isPDG && (
+                                  <>
+                                    <td className="w-[110px] bg-amber-50/60 px-1 py-2">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*[.,]?[0-9]*"
+                                        className="w-full rounded-md border border-amber-300 bg-white px-2 py-1 text-sm text-amber-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                        value={String(values.items[index].catalog_prix_vente_1 ?? '')}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          if (!isDecimalLike(raw)) return;
+                                          setFieldValue(`items.${index}.catalog_prix_vente_1`, raw);
+                                        }}
+                                        onBlur={() => {
+                                          const value = parseFloat(normalizeDecimal(String(values.items[index].catalog_prix_vente_1 ?? ''))) || 0;
+                                          setFieldValue(`items.${index}.catalog_prix_vente_1`, value);
+                                        }}
+                                        disabled={!values.items[index].product_id}
+                                        title="Corrige le prix vente 1 du produit, de la variante et des snapshots liés. Ne modifie pas le prix du bon."
+                                      />
+                                    </td>
+                                    <td className="w-[110px] bg-amber-50/60 px-1 py-2">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*[.,]?[0-9]*"
+                                        className="w-full rounded-md border border-amber-300 bg-white px-2 py-1 text-sm text-amber-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                        value={String(values.items[index].catalog_prix_vente_2 ?? '')}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          if (!isDecimalLike(raw)) return;
+                                          setFieldValue(`items.${index}.catalog_prix_vente_2`, raw);
+                                        }}
+                                        onBlur={() => {
+                                          const value = parseFloat(normalizeDecimal(String(values.items[index].catalog_prix_vente_2 ?? ''))) || 0;
+                                          setFieldValue(`items.${index}.catalog_prix_vente_2`, value);
+                                        }}
+                                        disabled={!values.items[index].product_id}
+                                        title="Corrige le prix vente 2 du produit, de la variante et des snapshots liés. Ne modifie pas le prix du bon."
+                                      />
+                                    </td>
+                                  </>
                                 )}
 
 

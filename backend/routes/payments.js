@@ -444,7 +444,7 @@ router.get('/paged', verifyToken, async (req, res) => {
     const params = [];
 
     if (date) {
-      where.push('DATE(p.date_paiement) = ?');
+      where.push('DATE(p.created_at) = ?');
       params.push(date);
     }
 
@@ -492,7 +492,7 @@ router.get('/paged', verifyToken, async (req, res) => {
     const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const sortMap = {
       numero: 'p.id',
-      date: 'COALESCE(p.date_paiement, p.created_at)',
+      date: 'p.created_at',
       contact: 'COALESCE(p.remise_account_name, c.nom_complet)',
       montant: 'COALESCE(p.montant_total, 0)',
       montant_ignorer: 'p.montant_ignorer',

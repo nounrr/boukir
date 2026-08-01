@@ -7,6 +7,11 @@ import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
 import { createStockPdfStream } from '../utils/stockPdf.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
+import {
+  PRODUCT_IMAGE_TARGETS,
+  isMissingImageFilterEnabled,
+  parseProductImageTarget,
+} from '../utils/productImageTarget.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -612,6 +617,22 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN prix_vente_2 DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER prix_vente`);
   }
 
+  if (await hasProductSnapshotTable()) {
+    const [colsSnapshotVente2] = await pool.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_snapshot' AND COLUMN_NAME = 'prix_vente_2'`
+    );
+    if (!colsSnapshotVente2.length) {
+      await pool.query(`ALTER TABLE product_snapshot ADD COLUMN prix_vente_2 DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER prix_vente`);
+      await pool.query(`
+        UPDATE product_snapshot ps
+        JOIN products p ON p.id = ps.product_id
+        LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+        SET ps.prix_vente_2 = COALESCE(pv.prix_vente_2, p.prix_vente_2, 0)
+      `);
+    }
+  }
+
   // Check remises in product_variants
   const [colsRemiseClientVar] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
@@ -801,6 +822,19 @@ async function runProductSearch(query) {
       conditions.push('COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 1');
     } else if (type === 'stockable') {
       conditions.push('COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 0');
+    }
+
+    if (isMissingImageFilterEnabled(query.missing_image)) {
+      conditions.push(`(
+        NULLIF(TRIM(p.image_url), '') IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM product_variants pv_missing_image
+          WHERE pv_missing_image.product_id = p.id
+            AND COALESCE(pv_missing_image.is_deleted, 0) = 0
+            AND NULLIF(TRIM(pv_missing_image.image_url), '') IS NULL
+        )
+      )`);
     }
 
     const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -1370,6 +1404,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         ${hasEnValidation ? 'ps.en_validation' : '1'} AS snapshot_en_validation,
         ps.prix_achat AS snapshot_prix_achat,
         ps.prix_vente AS snapshot_prix_vente,
+        ps.prix_vente_2 AS snapshot_prix_vente_2,
         ps.cout_revient AS snapshot_cout_revient,
         ps.cout_revient_pourcentage AS snapshot_cout_revient_pourcentage,
         ps.prix_gros AS snapshot_prix_gros,
@@ -1461,12 +1496,16 @@ router.get('/with-snapshots', async (req, res, next) => {
     for (const snap of snapRows) {
       const bonLabel = snap.bon_commande_id ? `Bon #${snap.bon_commande_id}` : `Snap #${snap.snapshot_id}`;
       const variantLabel = snap.variant_name ? ` - ${snap.variant_name}` : '';
-      const originalPrixVente = snap.variant_id
-        ? Number(snap.variant_prix_vente ?? snap.product_prix_vente ?? 0)
-        : Number(snap.product_prix_vente ?? 0);
-      const originalPrixVente2 = snap.variant_id
-        ? Number(snap.variant_prix_vente_2 ?? snap.product_prix_vente_2 ?? 0)
-        : Number(snap.product_prix_vente_2 ?? 0);
+      const originalPrixVente = snap.snapshot_prix_vente !== null
+        ? Number(snap.snapshot_prix_vente)
+        : snap.variant_id
+          ? Number(snap.variant_prix_vente ?? snap.product_prix_vente ?? 0)
+          : Number(snap.product_prix_vente ?? 0);
+      const originalPrixVente2 = snap.snapshot_prix_vente_2 !== null
+        ? Number(snap.snapshot_prix_vente_2)
+        : snap.variant_id
+          ? Number(snap.variant_prix_vente_2 ?? snap.product_prix_vente_2 ?? 0)
+          : Number(snap.product_prix_vente_2 ?? 0);
       const originalPrixVentePourcentage = snap.variant_id
         ? Number(snap.variant_prix_vente_pourcentage ?? snap.product_prix_vente_pourcentage ?? 0)
         : Number(snap.product_prix_vente_pourcentage ?? 0);
@@ -1494,6 +1533,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         snapshot_commande_quantite: Number(snap.snapshot_commande_quantite ?? 0) || 0,
         snapshot_prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : null,
         snapshot_prix_vente: snap.snapshot_prix_vente !== null ? Number(snap.snapshot_prix_vente) : null,
+        snapshot_prix_vente_2: snap.snapshot_prix_vente_2 !== null ? Number(snap.snapshot_prix_vente_2) : null,
         snapshot_cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : null,
         snapshot_cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : null,
         snapshot_prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : null,
@@ -3763,8 +3803,8 @@ router.patch('/:id/stock', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Drag-and-drop upload from the stock table. The uploaded file is stored once
-// and referenced both as the product's main image and as a new gallery image.
+// Drag-and-drop upload from the stock table. The uploaded file is always added
+// to the gallery and can optionally replace the product's main image.
 router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, next) => {
   let connection;
   let newImageUrl = req.file ? `/uploads/products/${req.file.filename}` : null;
@@ -3780,6 +3820,14 @@ router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, 
     }
     if (!req.file || !newImageUrl) {
       return res.status(400).json({ message: 'Sélectionnez une image JPG, PNG ou WebP.' });
+    }
+    const target = parseProductImageTarget(req.body?.target);
+    if (!target) {
+      await deleteProductUploadIfUnreferenced(newImageUrl);
+      newImageUrl = null;
+      return res.status(400).json({
+        message: 'Destination invalide. Utilisez main_and_gallery ou gallery.',
+      });
     }
 
     connection = await pool.getConnection();
@@ -3810,10 +3858,12 @@ router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, 
     const now = new Date();
     const updatedBy = req.user?.id || null;
 
-    await connection.query(
-      'UPDATE products SET image_url = ?, updated_by = ?, updated_at = ? WHERE id = ?',
-      [newImageUrl, updatedBy, now, id]
-    );
+    if (target === PRODUCT_IMAGE_TARGETS.MAIN_AND_GALLERY) {
+      await connection.query(
+        'UPDATE products SET image_url = ?, updated_by = ?, updated_at = ? WHERE id = ?',
+        [newImageUrl, updatedBy, now, id]
+      );
+    }
     const [galleryInsert] = await connection.query(
       `INSERT INTO product_images (product_id, image_url, position, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?)`,
@@ -3824,16 +3874,23 @@ router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, 
     connection.release();
     connection = null;
 
-    if (product.image_url && product.image_url !== newImageUrl) {
+    if (
+      target === PRODUCT_IMAGE_TARGETS.MAIN_AND_GALLERY
+      && product.image_url
+      && product.image_url !== newImageUrl
+    ) {
       await deleteProductUploadIfUnreferenced(product.image_url);
     }
 
     res.json({
       success: true,
+      target,
       product: {
         id,
         designation: product.designation,
-        image_url: newImageUrl,
+        image_url: target === PRODUCT_IMAGE_TARGETS.MAIN_AND_GALLERY
+          ? newImageUrl
+          : product.image_url,
       },
       galleryImage: {
         id: Number(galleryInsert.insertId),
@@ -3854,8 +3911,8 @@ router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, 
   }
 });
 
-// Same drag-and-drop behavior for a product variant: one stored file becomes
-// both the variant's main image and a new variant gallery image.
+// Same drag-and-drop behavior for a product variant: the file always enters the
+// variant gallery and can optionally replace its main image.
 router.post('/:id/variants/:variantId/image-main-gallery', upload.single('image'), async (req, res, next) => {
   let connection;
   let newImageUrl = req.file ? `/uploads/products/${req.file.filename}` : null;
@@ -3875,6 +3932,14 @@ router.post('/:id/variants/:variantId/image-main-gallery', upload.single('image'
     }
     if (!req.file || !newImageUrl) {
       return res.status(400).json({ message: 'Sélectionnez une image JPG, PNG ou WebP.' });
+    }
+    const target = parseProductImageTarget(req.body?.target);
+    if (!target) {
+      await deleteProductUploadIfUnreferenced(newImageUrl);
+      newImageUrl = null;
+      return res.status(400).json({
+        message: 'Destination invalide. Utilisez main_and_gallery ou gallery.',
+      });
     }
 
     connection = await pool.getConnection();
@@ -3912,10 +3977,12 @@ router.post('/:id/variants/:variantId/image-main-gallery', upload.single('image'
     const nextPosition = Number(positionRow?.next_position || 0);
     const now = new Date();
 
-    await connection.query(
-      'UPDATE product_variants SET image_url = ?, updated_at = ? WHERE id = ? AND product_id = ?',
-      [newImageUrl, now, variantId, productId]
-    );
+    if (target === PRODUCT_IMAGE_TARGETS.MAIN_AND_GALLERY) {
+      await connection.query(
+        'UPDATE product_variants SET image_url = ?, updated_at = ? WHERE id = ? AND product_id = ?',
+        [newImageUrl, now, variantId, productId]
+      );
+    }
     const [galleryInsert] = await connection.query(
       `INSERT INTO variant_images (variant_id, image_url, position, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?)`,
@@ -3926,17 +3993,24 @@ router.post('/:id/variants/:variantId/image-main-gallery', upload.single('image'
     connection.release();
     connection = null;
 
-    if (variant.image_url && variant.image_url !== newImageUrl) {
+    if (
+      target === PRODUCT_IMAGE_TARGETS.MAIN_AND_GALLERY
+      && variant.image_url
+      && variant.image_url !== newImageUrl
+    ) {
       await deleteProductUploadIfUnreferenced(variant.image_url);
     }
 
     res.json({
       success: true,
+      target,
       product: {
         id: productId,
         variant_id: variantId,
         designation: `${variant.product_designation} - ${variant.variant_name}`,
-        image_url: newImageUrl,
+        image_url: target === PRODUCT_IMAGE_TARGETS.MAIN_AND_GALLERY
+          ? newImageUrl
+          : variant.image_url,
       },
       galleryImage: {
         id: Number(galleryInsert.insertId),
@@ -4008,7 +4082,7 @@ router.patch('/snapshots', async (req, res, next) => {
       const params = [];
 
       const fields = [
-        'prix_achat', 'prix_vente',
+        'prix_achat', 'prix_vente', 'prix_vente_2',
         'cout_revient', 'cout_revient_pourcentage',
         'prix_gros', 'prix_gros_pourcentage',
         'prix_vente_pourcentage',
@@ -4038,6 +4112,95 @@ router.patch('/snapshots', async (req, res, next) => {
 
     res.json({ success: true, updated });
   } catch (err) { next(err); }
+});
+
+// PATCH /products/bon-price-corrections
+// PDG-only catalogue price correction from Bon create/edit forms.
+// These values are deliberately independent from the bon item's prix_unitaire.
+router.patch('/bon-price-corrections', async (req, res, next) => {
+  let connection;
+  try {
+    if (req.user?.role !== 'PDG') {
+      return res.status(403).json({ message: 'Seul le rôle PDG peut corriger les prix de vente produit depuis un bon' });
+    }
+
+    await ensureProductsColumns();
+    const corrections = req.body?.corrections;
+    if (!Array.isArray(corrections) || corrections.length === 0) {
+      return res.status(400).json({ message: 'corrections array requis' });
+    }
+    if (corrections.length > 200) {
+      return res.status(400).json({ message: 'Maximum 200 corrections par requête' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    let updatedProducts = 0;
+    let updatedVariants = 0;
+    let updatedSnapshots = 0;
+
+    for (const correction of corrections) {
+      const productId = Number(correction?.product_id);
+      const variantId = correction?.variant_id ? Number(correction.variant_id) : null;
+      const prixVente = Number(correction?.prix_vente);
+      const prixVente2 = Number(correction?.prix_vente_2);
+      if (
+        !Number.isInteger(productId) || productId <= 0 ||
+        !Number.isFinite(prixVente) || prixVente < 0 ||
+        !Number.isFinite(prixVente2) || prixVente2 < 0
+      ) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Correction de prix produit invalide' });
+      }
+
+      const [productResult] = await connection.query(
+        `UPDATE products
+         SET prix_vente = ?, prix_vente_2 = ?, updated_by = ?, updated_at = NOW()
+         WHERE id = ? AND COALESCE(is_deleted, 0) = 0`,
+        [prixVente, prixVente2, req.user?.id || null, productId]
+      );
+      if (!productResult.affectedRows) {
+        await connection.rollback();
+        return res.status(404).json({ message: `Produit ${productId} introuvable` });
+      }
+      updatedProducts += productResult.affectedRows;
+
+      if (Number.isInteger(variantId) && variantId > 0) {
+        const [variantResult] = await connection.query(
+          `UPDATE product_variants
+           SET prix_vente = ?, prix_vente_2 = ?, updated_at = NOW()
+           WHERE id = ? AND product_id = ? AND COALESCE(is_deleted, 0) = 0`,
+          [prixVente, prixVente2, variantId, productId]
+        );
+        updatedVariants += variantResult.affectedRows;
+      }
+
+      // A snapshot is active while it still carries stock. Price corrections
+      // made from a bon must apply to every active snapshot of the product,
+      // not only to the snapshot(s) referenced by the current bon line.
+      if (await hasProductSnapshotTable()) {
+        const [snapshotResult] = await connection.query(
+          `UPDATE product_snapshot
+           SET prix_vente = ?, prix_vente_2 = ?
+           WHERE product_id = ?
+             AND COALESCE(quantite, 0) > 0`,
+          [prixVente, prixVente2, productId]
+        );
+        updatedSnapshots += snapshotResult.affectedRows;
+      }
+    }
+
+    await connection.commit();
+    res.json({ success: true, updatedProducts, updatedVariants, updatedSnapshots });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
 });
 
 // ==================== VARIANT IMAGE ROUTES ====================

@@ -349,7 +349,7 @@ const CaissePage = () => {
     push(String(payment.montant || payment.montant_total || ''));
     push(String(payment.montant_ignorer || ''));
 
-    // Dates: payment date and echeance in multiple formats
+    // Dates: creation, payment and echeance in multiple formats
     const pushDateTokens = (dateVal: any) => {
       if (!dateVal) return;
       try {
@@ -371,6 +371,7 @@ const CaissePage = () => {
         parts.push(String(dateVal));
       }
     };
+    pushDateTokens(payment.created_at);
     pushDateTokens(payment.date_paiement);
     pushDateTokens(payment.date_echeance);
 
@@ -584,8 +585,8 @@ const CaissePage = () => {
           bValue = getDisplayNumeroPayment(b).toLowerCase();
           break;
         case 'date':
-          aValue = new Date(a.date_paiement || 0).getTime();
-          bValue = new Date(b.date_paiement || 0).getTime();
+          aValue = new Date(a.created_at || a.date_paiement || 0).getTime();
+          bValue = new Date(b.created_at || b.date_paiement || 0).getTime();
           break;
         case 'contact':
           aValue = getContactName(a);
@@ -1537,7 +1538,10 @@ const paymentValidationSchema = Yup.object({
         </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-700">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</div>
+        <div className="text-sm text-gray-700">{payment.created_at ? formatDateTimeWithHour(payment.created_at) : '-'}</div>
+        {payment.date_paiement && (
+          <div className="text-xs text-gray-400">Paiement : {formatDateTimeWithHour(payment.date_paiement)}</div>
+        )}
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <div className="text-sm text-gray-900">{getBonInfoDetailed(payment.bon_id, (payment as any).bon_type)}</div>
@@ -1934,7 +1938,7 @@ const paymentValidationSchema = Yup.object({
                   onClick={() => handleSort('date')}
                 >
                   <div className="flex items-center gap-1">
-                    Date paiement
+                    Date création
                     {sortField === 'date' && (
                       sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
@@ -2256,7 +2260,10 @@ const paymentValidationSchema = Yup.object({
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <h3 className="text-base font-semibold text-gray-900">{getDisplayNumeroPayment(payment)}</h3>
-                    <p className="text-xs text-gray-500">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</p>
+                    <p className="text-xs text-gray-500">{payment.created_at ? formatDateTimeWithHour(payment.created_at) : '-'}</p>
+                    {payment.date_paiement && (
+                      <p className="text-[11px] text-gray-400">Paiement : {formatDateTimeWithHour(payment.date_paiement)}</p>
+                    )}
                   </div>
                   <div>
                     <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-full ${getStatusClasses(displayStatut(payment.statut))}`}>

@@ -174,6 +174,8 @@ export interface CreateCategoryData {
   parent_id?: number | null;
 }
 
+export type ProductImageTarget = 'main_and_gallery' | 'gallery';
+
 export interface ProductVariant {
   id?: number;
   product_id?: number;

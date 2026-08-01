@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import type { Product, Category } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, UploadCloud, LoaderCircle } from 'lucide-react';
+import type { Product, Category, ProductImageTarget } from '../types';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, LoaderCircle, ImagePlus } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -15,6 +15,36 @@ import { printProductTicket } from '../utils/productTicketPrint';
 
 const cleanDesignationText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
+const supportedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+const getVisibleImageDropSurface = (
+  event: React.DragEvent<HTMLTableRowElement>,
+  scrollContainer: HTMLDivElement | null
+) => {
+  const rowBounds = event.currentTarget.getBoundingClientRect();
+  const scrollBounds = scrollContainer?.getBoundingClientRect();
+  const scrollViewportRight = scrollBounds && scrollContainer
+    ? scrollBounds.left + scrollContainer.clientWidth
+    : rowBounds.right;
+  const visibleLeft = scrollBounds ? Math.max(rowBounds.left, scrollBounds.left) : rowBounds.left;
+  const visibleRight = scrollBounds ? Math.min(rowBounds.right, scrollViewportRight) : rowBounds.right;
+  const visibleWidth = Math.max(visibleRight - visibleLeft, 1);
+
+  return {
+    target: (event.clientX < visibleLeft + visibleWidth / 2
+      ? 'main_and_gallery'
+      : 'gallery') as ProductImageTarget,
+    left: Math.max(visibleLeft - rowBounds.left, 0),
+    width: visibleWidth,
+  };
+};
+
+const hasSupportedDraggedImage = (dataTransfer: DataTransfer) => {
+  if (!Array.from(dataTransfer.types || []).includes('Files')) return false;
+  const fileItems = Array.from(dataTransfer.items || []).filter((item) => item.kind === 'file');
+  return fileItems.length === 0 || fileItems.some((item) => !item.type || supportedImageTypes.has(item.type));
+};
+
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
   const authToken = useSelector((state: any) => state.auth?.token);
@@ -23,6 +53,7 @@ const StockPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchTerm2, setSearchTerm2] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [missingImageOnly, setMissingImageOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
@@ -42,6 +73,7 @@ const StockPage: React.FC = () => {
     q: searchTerm || undefined,
     q2: searchTerm2 || undefined,
     category_id: filterCategory || undefined,
+    missing_image: missingImageOnly || undefined,
     type: productType,
     sortBy: sortMode === 'recent' ? 'id' : 'quantite',
     sortDir: sortMode === 'quantite_asc' ? 'asc' : 'desc',
@@ -96,7 +128,13 @@ const StockPage: React.FC = () => {
   const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
   const [isCloningPhotos, setIsCloningPhotos] = useState(false);
   const [isCloningToOwnVariants, setIsCloningToOwnVariants] = useState(false);
-  const [dragOverProductId, setDragOverProductId] = useState<string | null>(null);
+  const [imageDropIntent, setImageDropIntent] = useState<{
+    rowId: string;
+    target: ProductImageTarget;
+    left: number;
+    width: number;
+  } | null>(null);
+  const stockTableScrollRef = useRef<HTMLDivElement>(null);
   const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isGeneratingSpecs, setIsGeneratingSpecs] = useState(false);
@@ -376,7 +414,15 @@ const StockPage: React.FC = () => {
     return rows;
   }, [products]);
 
-  const filteredProducts = flattenedProducts;
+  const filteredProducts = useMemo(() => {
+    if (!missingImageOnly) return flattenedProducts;
+    return flattenedProducts.filter((product: any) => {
+      const mainImageUrl = product.isVariantRow
+        ? product.variant_image_url
+        : product.image_url;
+      return String(mainImageUrl ?? '').trim() === '';
+    });
+  }, [flattenedProducts, missingImageOnly]);
 
   const handleExportExcel = async () => {
     setIsExportingStockExcel(true);
@@ -389,6 +435,7 @@ const StockPage: React.FC = () => {
       if (searchTerm) params.set('q', searchTerm);
       if (searchTerm2) params.set('q2', searchTerm2);
       if (filterCategory) params.set('category_id', String(filterCategory));
+      if (missingImageOnly) params.set('missing_image', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
       const resp = await fetch(`/api/products/stock-excel?${params.toString()}`, {
@@ -430,6 +477,7 @@ const StockPage: React.FC = () => {
       if (searchTerm) params.set('q', searchTerm);
       if (searchTerm2) params.set('q2', searchTerm2);
       if (filterCategory) params.set('category_id', String(filterCategory));
+      if (missingImageOnly) params.set('missing_image', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
       const resp = await fetch(`/api/products/stock-pdf?${params.toString()}`, {
@@ -465,7 +513,7 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, searchTerm2, filterCategory, activeTab, itemsPerPage, sortMode]);
+  }, [searchTerm, searchTerm2, filterCategory, missingImageOnly, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -479,20 +527,25 @@ const StockPage: React.FC = () => {
   ) => {
     event.preventDefault();
     event.stopPropagation();
-    setDragOverProductId(null);
+    const { target } = getVisibleImageDropSurface(event, stockTableScrollRef.current);
+    setImageDropIntent(null);
 
     if (uploadingImageProductId !== null) return;
+
+    const destinationLabel = target === 'main_and_gallery'
+      ? 'l’image principale et la galerie'
+      : 'la galerie uniquement';
 
     const image = Array.from(event.dataTransfer.files || []).find((file) => {
       const extensionIsAllowed = /\.(jpe?g|png|webp)$/i.test(file.name);
       return ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || extensionIsAllowed;
     });
     if (!image) {
-      showError('Déposez une image JPG, PNG ou WebP.');
+      showError(`Dépôt vers ${destinationLabel} : utilisez une image JPG, PNG ou WebP.`);
       return;
     }
     if (image.size > 10 * 1024 * 1024) {
-      showError('L’image ne doit pas dépasser 10 Mo.');
+      showError(`Dépôt vers ${destinationLabel} : l’image ne doit pas dépasser 10 Mo.`);
       return;
     }
 
@@ -506,17 +559,21 @@ const StockPage: React.FC = () => {
         id: productId,
         variantId,
         image,
+        target,
       }).unwrap();
-      showSuccess(
-        `Image ajoutée comme photo principale et dans la galerie de « ${result.product.designation} ».`
-      );
+      const successDestination = result.target === 'main_and_gallery'
+        ? 'comme image principale et dans la galerie'
+        : 'dans la galerie uniquement';
+      showSuccess(`Image ajoutée ${successDestination} de « ${result.product.designation} ».`);
       refetchProducts?.();
     } catch (error: any) {
       console.error('Erreur dépôt image produit:', error);
       showError(
-        error?.data?.message
-        || error?.error
-        || 'Erreur lors de l’envoi de l’image'
+        `Échec du dépôt vers ${destinationLabel} : ${
+          error?.data?.message
+          || error?.error
+          || 'erreur lors de l’envoi de l’image'
+        }`
       );
     } finally {
       setUploadingImageProductId(null);
@@ -1058,7 +1115,7 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_1fr_1fr] gap-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.7fr)_minmax(170px,0.65fr)_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -1121,6 +1178,22 @@ const StockPage: React.FC = () => {
           <option value="quantite_desc">Quantite: plus grand</option>
           <option value="quantite_asc">Quantite: plus petit</option>
         </select>
+        <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
+          missingImageOnly
+            ? 'border-blue-300 bg-blue-50 text-blue-800'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+        }`}>
+          <input
+            type="checkbox"
+            checked={missingImageOnly}
+            onChange={(event) => {
+              setMissingImageOnly(event.target.checked);
+              setCurrentPage(1);
+            }}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="whitespace-nowrap">Sans image uniquement</span>
+        </label>
       </div>
 
       {/* Stats Cards */}
@@ -1198,7 +1271,7 @@ const StockPage: React.FC = () => {
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
+        <div ref={stockTableScrollRef} className="overflow-x-auto" data-testid="stock-table-scroll">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -1254,37 +1327,75 @@ const StockPage: React.FC = () => {
                   key={product.id}
                   onDragEnter={(event) => {
                     if (uploadingImageProductId !== null) return;
-                    if (Array.from(event.dataTransfer.types || []).includes('Files')) {
+                    if (hasSupportedDraggedImage(event.dataTransfer)) {
                       event.preventDefault();
-                      setDragOverProductId(String(product.id));
+                      setImageDropIntent({
+                        rowId: String(product.id),
+                        ...getVisibleImageDropSurface(event, stockTableScrollRef.current),
+                      });
                     }
                   }}
                   onDragOver={(event) => {
                     if (uploadingImageProductId !== null) return;
+                    if (!hasSupportedDraggedImage(event.dataTransfer)) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = 'copy';
-                    setDragOverProductId(String(product.id));
+                    setImageDropIntent({
+                      rowId: String(product.id),
+                      ...getVisibleImageDropSurface(event, stockTableScrollRef.current),
+                    });
                   }}
                   onDragLeave={(event) => {
                     const nextTarget = event.relatedTarget as Node | null;
                     if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
-                      setDragOverProductId((current) => (
-                        current === String(product.id) ? null : current
+                      setImageDropIntent((current) => (
+                        current?.rowId === String(product.id) ? null : current
                       ));
                     }
                   }}
                   onDrop={(event) => handleProductImageDrop(event, product)}
-                  className={`transition-colors hover:bg-gray-50 ${
+                  className={`relative isolate transition-colors hover:bg-gray-50 ${
                     product.isVariantRow ? 'bg-blue-50/30' : ''
-                  } ${
-                    dragOverProductId === String(product.id)
-                      ? 'bg-cyan-50 outline outline-2 outline-cyan-500 outline-offset-[-2px]'
-                      : ''
                   } ${
                     uploadingImageProductId === String(product.id) ? 'bg-cyan-50/70' : ''
                   }`}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
+                    {imageDropIntent?.rowId === String(product.id) && (
+                      <div
+                        className="pointer-events-none absolute inset-0 z-20 grid grid-cols-2 overflow-hidden outline outline-2 outline-blue-500 outline-offset-[-2px]"
+                        aria-hidden="true"
+                        data-testid="stock-image-drop-surface"
+                        style={{
+                          left: imageDropIntent.left,
+                          right: 'auto',
+                          width: imageDropIntent.width,
+                        }}
+                      >
+                        <div
+                          data-drop-target="main_and_gallery"
+                          data-active={imageDropIntent.target === 'main_and_gallery'}
+                          className={`flex min-w-0 flex-col items-center justify-center gap-0.5 border-r border-cyan-500/60 px-2 text-center text-xs font-bold leading-tight transition-colors sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${
+                          imageDropIntent.target === 'main_and_gallery'
+                            ? 'bg-cyan-200/90 text-cyan-950 shadow-[inset_0_0_0_2px_rgb(6_182_212)]'
+                            : 'bg-cyan-50/75 text-cyan-800'
+                        }`}>
+                          <ImagePlus size={20} />
+                          <span className="min-w-0">Principale + galerie</span>
+                        </div>
+                        <div
+                          data-drop-target="gallery"
+                          data-active={imageDropIntent.target === 'gallery'}
+                          className={`flex min-w-0 flex-col items-center justify-center gap-0.5 px-2 text-center text-xs font-bold leading-tight transition-colors sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${
+                          imageDropIntent.target === 'gallery'
+                            ? 'bg-violet-200/90 text-violet-950 shadow-[inset_0_0_0_2px_rgb(139_92_246)]'
+                            : 'bg-violet-50/75 text-violet-800'
+                        }`}>
+                          <Images size={20} />
+                          <span className="min-w-0">Galerie seulement</span>
+                        </div>
+                      </div>
+                    )}
                     <input
                       type="checkbox"
                       checked={product.isVariantRow
@@ -1308,12 +1419,7 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-1">
-                      {dragOverProductId === String(product.id) ? (
-                        <div className="flex h-12 min-w-[92px] items-center justify-center gap-1 rounded-md border-2 border-dashed border-cyan-500 bg-cyan-50 px-2 text-xs font-semibold text-cyan-700">
-                          <UploadCloud size={18} />
-                          Déposer
-                        </div>
-                      ) : uploadingImageProductId === String(product.id) ? (
+                      {uploadingImageProductId === String(product.id) ? (
                         <div className="flex h-12 min-w-[92px] items-center justify-center gap-1 rounded-md bg-cyan-50 px-2 text-xs font-semibold text-cyan-700">
                           <LoaderCircle className="animate-spin" size={18} />
                           Envoi...

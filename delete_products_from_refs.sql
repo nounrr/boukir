@@ -5,8 +5,7 @@
 --   * La "reference produit" correspond ici a products.id.
 --   * Cette requete suppose que la migration ajoutant
 --     product_variants.is_deleted a deja ete executee.
---   * Les 241 lignes du fichier source ont ete dedoublonnees :
---     231 IDs uniques sont traites.
+--   * 305 IDs uniques sont traites.
 
 DROP TEMPORARY TABLE IF EXISTS tmp_products_to_delete;
 
@@ -40,9 +39,18 @@ INSERT INTO tmp_products_to_delete (id) VALUES
 (3118),(3149),(3150),(3170),(3171),(3172),(3173),(3174),(3175),
 (3176),(3268),(3277),(3310),(3316),(3317),(3393),(3395),(3439),
 (3481),(3482),(3489),(3707),(3844),(3949),(4878),(5058),(5254),
-(5415),(5464),(5636),(5737),(5797),(6284),(6285);
+(5415),(5464),(5636),(5737),(5797),(6284),(6285),
+(3106),(3100),(3099),(3098),(2437),(2271),(2268),(2201),(2200),
+(1984),(1964),(1942),(1941),(1883),(1881),(1879),(1739),(1738),
+(1721),(1702),(1698),(1697),(1688),(1678),(1677),(1676),(1662),
+(1635),(1631),(1581),(1580),(1579),(1571),(1570),(1569),(1539),
+(1532),(1500),(1497),(1484),(1481),(1479),(1478),(1477),(1474),
+(1469),(1468),(1465),(1464),(1462),(1461),(1460),(1459),(1458),
+(1456),(1451),(1449),(1446),(1444),(1443),(1440),(1437),(1436),
+(1435),(1433),(1419),(1276),(1239),(1238),(1189),(1187),(1186),
+(1185),(1098);
 
--- Controle avant modification : doit retourner 231.
+-- Controle avant modification : doit retourner 305.
 SELECT COUNT(*) AS nombre_references_uniques
 FROM tmp_products_to_delete;
 

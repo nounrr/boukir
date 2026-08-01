@@ -57,6 +57,7 @@ import SolverPrixAchatPage from './pages/SolverPrixAchatPage';
 
 // Les pages les plus volumineuses sont chargées uniquement lorsqu'elles sont ouvertes.
 const StockPage = React.lazy(() => import('./pages/StockPage'));
+const SlowMovingStockPage = React.lazy(() => import('./pages/SlowMovingStockPage'));
 const ContactsPage = React.lazy(() => import('./pages/ContactsPage'));
 const BonsPage = React.lazy(() => import('./pages/BonsPage'));
 const CaissePage = React.lazy(() => import('./pages/CaissePage'));
@@ -67,9 +68,9 @@ const ProductPhotoStudioPage = React.lazy(() => import('./pages/ProductPhotoStud
 const RemisesPage = React.lazy(() => import('./pages/RemisesPage'));
 
 // Composant Layout avec accès aux fonctions de monitoring
-const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode; tabletCompact?: boolean }> = ({ children, tabletCompact }) => {
   const { manualAccessCheck } = useAccessScheduleMonitor();
-  return <Layout manualAccessCheck={manualAccessCheck}>{children}</Layout>;
+  return <Layout manualAccessCheck={manualAccessCheck} tabletCompact={tabletCompact}>{children}</Layout>;
 };
 
 // Composant pour initialiser l'app
@@ -238,6 +239,26 @@ const AppContent: React.FC = () => {
               <LayoutWithAccessCheck>
                 <StockPage />
               </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/slow-moving-stock"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck tabletCompact>
+                <SlowMovingStockPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/stock-faible-rotation"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <Navigate to="/slow-moving-stock" replace />
             </ProtectedRoute>
           }
         />

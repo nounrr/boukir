@@ -8,13 +8,16 @@ import {
   BarChart3,
   X,
   DollarSign,
-  Settings,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/redux';
 import { canManageEmployees } from '../../utils/permissions';
 
 // Bottom navigation bar (mobile). Groups pages: one icon per group; tap shows group's pages.
-const MobileBottomNav: React.FC = () => {
+interface MobileBottomNavProps {
+  tabletCompact?: boolean;
+}
+
+const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -39,6 +42,7 @@ const MobileBottomNav: React.FC = () => {
       key: 'produits', label: 'Produits', icon: Package,
       items: [
         { name: 'Stock', to: '/stock', show: true },
+        { name: 'Stock faible rotation', to: '/slow-moving-stock', show: user?.role === 'PDG' },
         { name: 'Photos Produits', to: '/product-photos', show: true },
         { name: 'Produits Translate', to: '/products/translate', show: true },
         { name: 'Catégories', to: '/categories', show: true },
@@ -101,7 +105,7 @@ const MobileBottomNav: React.FC = () => {
           aria-label="Fermer le menu groupe"
           onClick={() => setOpenGroup(null)}
           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setOpenGroup(null); } }}
-          className="fixed inset-0 z-40 md:hidden"
+          className={`fixed inset-0 z-40 ${tabletCompact ? 'lg:hidden' : 'md:hidden'}`}
         >
           <div className="absolute inset-0 bg-black/30" />
           {(() => {
@@ -140,7 +144,7 @@ const MobileBottomNav: React.FC = () => {
           })()}
         </button>
       )}
-      <nav className="fixed md:hidden bottom-0 left-0 right-0 z-50 bg-white border-t shadow-lg flex justify-around items-stretch h-20 px-1 py-1">
+      <nav className={`fixed ${tabletCompact ? 'lg:hidden' : 'md:hidden'} bottom-0 left-0 right-0 z-50 bg-white border-t shadow-lg flex justify-around items-stretch h-20 px-1 py-1`}>
         {visibleGroups.map(g => {
           const Icon = g.icon;
           const active = openGroup === g.key; // simple active state highlight when open
