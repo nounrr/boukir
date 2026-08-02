@@ -12,6 +12,7 @@ import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
 import Swal from 'sweetalert2';
 import { printProductTicket } from '../utils/productTicketPrint';
+import { filterStockRowsByMissingImage } from '../utils/stockMissingImage';
 
 const cleanDesignationText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
@@ -415,13 +416,7 @@ const StockPage: React.FC = () => {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    if (!missingImageOnly) return flattenedProducts;
-    return flattenedProducts.filter((product: any) => {
-      const mainImageUrl = product.isVariantRow
-        ? product.variant_image_url
-        : product.image_url;
-      return String(mainImageUrl ?? '').trim() === '';
-    });
+    return filterStockRowsByMissingImage(flattenedProducts, missingImageOnly);
   }, [flattenedProducts, missingImageOnly]);
 
   const handleExportExcel = async () => {

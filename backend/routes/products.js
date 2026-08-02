@@ -1212,8 +1212,17 @@ async function fetchAllProductsForExport(query) {
   return allProducts;
 }
 
-function appendStockDesignationRows(rows, product) {
+function stockExportValues(snapshotQuantity, originalQuantity) {
+  const hasSnapshots = snapshotQuantity !== null && snapshotQuantity !== undefined;
+  return {
+    stock: hasSnapshots ? Number(snapshotQuantity || 0) : Number(originalQuantity || 0),
+    hasSnapshots: hasSnapshots ? 'Oui' : 'Non',
+  };
+}
+
+export function appendStockDesignationRows(rows, product) {
   const productReference = String(product?.reference ?? product?.id ?? '').trim();
+  const productStock = stockExportValues(product?.snapshot_quantite_total, product?.quantite);
 
   rows.push({
     'Designation': product?.designation ?? '',
@@ -1221,24 +1230,37 @@ function appendStockDesignationRows(rows, product) {
     'Reference': productReference,
     'Ref variant': '',
     'Image': product?.image_url ? 'Oui' : 'Non',
+    'Stock': productStock.stock,
+    'Est dans un snapshot': productStock.hasSnapshots,
   });
 
   if (!Array.isArray(product?.variants)) return;
 
   for (const variant of product.variants) {
+    const variantStock = stockExportValues(variant?.snapshot_quantite_total, variant?.stock_quantity);
     rows.push({
       'Designation': product?.designation ?? '',
       'Variante': variant?.variant_name ?? '',
       'Reference': productReference,
       'Ref variant': String(variant?.reference ?? '').trim(),
       'Image': variant?.image_url ? 'Oui' : 'Non',
+      'Stock': variantStock.stock,
+      'Est dans un snapshot': variantStock.hasSnapshots,
     });
   }
 }
 
-function createStockExcelBuffer(products) {
+export function createStockExcelBuffer(products) {
   const wb = XLSX.utils.book_new();
-  const headers = ['Designation', 'Variante', 'Reference', 'Ref variant', 'Image'];
+  const headers = [
+    'Designation',
+    'Variante',
+    'Reference',
+    'Ref variant',
+    'Image',
+    'Stock',
+    'Est dans un snapshot',
+  ];
   const rows = [];
 
   for (const product of products) {
@@ -1252,6 +1274,8 @@ function createStockExcelBuffer(products) {
     { wch: 16 },
     { wch: 24 },
     { wch: 10 },
+    { wch: 14 },
+    { wch: 22 },
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Stock');

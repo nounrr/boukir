@@ -6,6 +6,7 @@ import {
   saveSlowMovingStockSettings,
 } from '../utils/slowMovingStockSettings.js';
 import {
+  assembleSlowMovingStock,
   buildSlowMovingStockQueries,
   parsePositiveInteger,
   SLOW_MOVING_STOCK_LIMITS,
@@ -38,45 +39,50 @@ router.get('/', async (req, res, next) => {
       [settings.lookbackMonths]
     );
     const periodStartSql = toMysqlDateTime(periodRow?.period_start);
-    const offset = (page - 1) * limit;
     const queries = buildSlowMovingStockQueries({
       periodStart: periodStartSql,
-      salesThreshold: settings.salesThreshold,
       q,
-      limit,
-      offset,
     });
 
-    const [[rowsResult], [summaryResult]] = await Promise.all([
-      pool.query(queries.dataSql, queries.dataParams),
-      pool.query(queries.summarySql, queries.summaryParams),
+    const [
+      [parentRows],
+      [variantRows],
+      [sortieSalesRows],
+      [comptantSalesRows],
+      [ecommerceSalesRows],
+    ] = await Promise.all([
+      pool.query(queries.parentCatalog.sql, queries.parentCatalog.params),
+      pool.query(queries.variantCatalog.sql, queries.variantCatalog.params),
+      pool.query(queries.sortieSales.sql, queries.sortieSales.params),
+      pool.query(queries.comptantSales.sql, queries.comptantSales.params),
+      pool.query(queries.ecommerceSales.sql, queries.ecommerceSales.params),
     ]);
-    const summaryRow = summaryResult[0] || {};
-    const total = Number(summaryRow.skuCount || 0);
+    const result = assembleSlowMovingStock({
+      catalogRows: [...parentRows, ...variantRows],
+      salesRows: [...sortieSalesRows, ...comptantSalesRows, ...ecommerceSalesRows],
+      salesThreshold: settings.salesThreshold,
+      page,
+      limit,
+    });
 
     res.json({
-      data: rowsResult.map((row) => ({
+      data: result.data.map((row) => ({
         ...row,
         product_id: Number(row.product_id),
         variant_id: row.variant_id == null ? null : Number(row.variant_id),
-        stock_current: Number(row.stock_current || 0),
-        sold_quantity: Number(row.sold_quantity || 0),
       })),
       settings: {
         ...settings,
         periodStart: periodRow?.period_start || periodStartSql,
       },
       summary: {
-        skuCount: total,
-        productCount: Number(summaryRow.productCount || 0),
-        totalStock: Number(summaryRow.totalStock || 0),
-        zeroSalesCount: Number(summaryRow.zeroSalesCount || 0),
+        ...result.summary,
       },
       meta: {
         page,
         limit,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / limit)),
       },
     });
   } catch (error) {

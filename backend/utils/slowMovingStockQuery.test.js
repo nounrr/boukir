@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  assembleSlowMovingStock,
   buildSlowMovingStockQueries,
   FINAL_BACKOFFICE_STATUSES,
   isSlowMovingCandidate,
@@ -24,48 +25,62 @@ test('stock must be positive and thresholds 0, 3 and 4 are inclusive', () => {
 test('query uses snapshot fallback, effective variant and null-safe SKU equality', () => {
   const queries = buildSlowMovingStockQueries({
     periodStart: '2026-03-31 12:00:00',
-    salesThreshold: 3,
     q: 'ABC',
-    limit: 20,
-    offset: 0,
   });
-  assert.match(queries.dataSql, /snapshot_count > 0 THEN .*snapshot_stock/s);
-  assert.match(queries.dataSql, /COALESCE\(si\.variant_id, ps\.variant_id\)/);
-  assert.match(queries.dataSql, /COALESCE\(ci\.variant_id, ps\.variant_id\)/);
-  assert.match(queries.dataSql, /sales\.variant_id <=> sku\.variant_id/);
-  assert.match(queries.dataSql, /sold_at >= \?/);
-  assert.equal(queries.dataParams.at(-2), 20);
-  assert.equal(queries.dataParams.at(-1), 0);
+  assert.match(queries.parentCatalog.sql, /snapshot_count, 0\) > 0 THEN COALESCE\(parent_stock\.snapshot_stock, 0\)/);
+  assert.match(queries.variantCatalog.sql, /snapshot_count, 0\) > 0 THEN COALESCE\(variant_stock\.snapshot_stock, 0\)/);
+  assert.match(queries.sortieSales.sql, /COALESCE\(item\.variant_id, ps\.variant_id\)/);
+  assert.match(queries.comptantSales.sql, /COALESCE\(item\.variant_id, ps\.variant_id\)/);
+  assert.match(queries.ecommerceSales.sql, /COALESCE\(eoi\.variant_id, ps\.variant_id\)/);
+  assert.equal(queries.parentCatalog.params[0], 'ABC');
 });
 
-test('query normalizes every SKU catalog text projection used by UNION ALL', () => {
-  const { dataSql } = buildSlowMovingStockQueries({
+test('queries avoid UNION and CTE syntax for old MySQL compatibility', () => {
+  const queries = buildSlowMovingStockQueries({
     periodStart: '2026-03-31 12:00:00',
-    salesThreshold: 3,
-    limit: 20,
-    offset: 0,
   });
-
-  assert.match(dataSql, /CONVERT\('parent' USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
-  assert.match(dataSql, /CONVERT\('variant' USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
-  assert.match(dataSql, /CONVERT\(p\.reference_2 USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
-  assert.match(dataSql, /CONVERT\(pv\.variant_name USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
-  assert.match(dataSql, /CONVERT\(pv\.reference USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
-  assert.match(dataSql, /CONVERT\(COALESCE\(NULLIF\(pv\.image_url, ''\), p\.image_url\) USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
-  assert.match(dataSql, /CAST\(NULL AS CHAR CHARACTER SET utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  for (const query of Object.values(queries)) {
+    assert.doesNotMatch(query.sql, /\bUNION\b/i);
+    assert.doesNotMatch(query.sql, /^\s*WITH\b/i);
+  }
 });
 
 test('only finalized back-office statuses and delivered ecommerce orders are included', () => {
   assert.deepEqual(FINAL_BACKOFFICE_STATUSES, [
     'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
   ]);
-  const { summarySql } = buildSlowMovingStockQueries({
+  const queries = buildSlowMovingStockQueries({
     periodStart: '2026-03-31 12:00:00',
-    salesThreshold: 3,
-    limit: 20,
-    offset: 0,
   });
-  assert.match(summarySql, /eo\.status = 'delivered'/);
-  assert.match(summarySql, /eo\.delivered_at IS NOT NULL/);
-  assert.doesNotMatch(summarySql, /pending|En attente|Annulé/);
+  assert.match(queries.ecommerceSales.sql, /eo\.status = 'delivered'/);
+  assert.match(queries.ecommerceSales.sql, /eo\.delivered_at IS NOT NULL/);
+  assert.doesNotMatch(queries.ecommerceSales.sql, /pending|En attente|Annulé/);
+});
+
+test('catalog and separate sale sources are merged, sorted and paginated', () => {
+  const result = assembleSlowMovingStock({
+    catalogRows: [
+      { product_id: 2, variant_id: null, stock_current: 4 },
+      { product_id: 1, variant_id: 10, stock_current: 8 },
+      { product_id: 1, variant_id: 11, stock_current: 0 },
+    ],
+    salesRows: [
+      { product_id: 1, variant_id: 10, sold_quantity: 1, last_sale_at: '2026-04-01 10:00:00' },
+      { product_id: 1, variant_id: 10, sold_quantity: 2, last_sale_at: '2026-05-01 10:00:00' },
+      { product_id: 2, variant_id: null, sold_quantity: 0, last_sale_at: null },
+    ],
+    salesThreshold: 3,
+    page: 1,
+    limit: 20,
+  });
+
+  assert.deepEqual(result.data.map((row) => [row.product_id, row.variant_id]), [[2, null], [1, 10]]);
+  assert.equal(result.data[1].sold_quantity, 3);
+  assert.equal(result.data[1].last_sale_at, '2026-05-01 10:00:00');
+  assert.deepEqual(result.summary, {
+    skuCount: 2,
+    productCount: 2,
+    totalStock: 12,
+    zeroSalesCount: 1,
+  });
 });
