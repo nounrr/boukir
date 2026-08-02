@@ -26,7 +26,9 @@ import {
   ChevronUp,
   ChevronDown,
   MoreVertical,
-  Wallet
+  Wallet,
+  Phone,
+  QrCode
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
@@ -45,6 +47,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
 import PaymentGroupPrintModal from '../components/PaymentGroupPrintModal';
+import PaymentPhoneCaptureDialog from '../components/PaymentPhoneCaptureDialog';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 
 const DIRECT_CONTACT_OFFSET = 10_000_000;
@@ -89,6 +92,8 @@ const CaissePage = () => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
+  const [remoteImageUrl, setRemoteImageUrl] = useState<string>('');
+  const [phoneCaptureOpen, setPhoneCaptureOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [groupPrintId, setGroupPrintId] = useState<string | null>(null); // payment_group_id en cours d'impression groupée
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set()); // groupes dépliés dans le tableau
@@ -734,6 +739,7 @@ const CaissePage = () => {
     setSelectedPayment(payment);
     // Réinitialiser l'état de l'image
     setSelectedImage(null);
+    setRemoteImageUrl('');
     setImagePreview(payment.image_url || '');
     // Set the original payment datetime for proper pre-filling
     setCreateOpenedAt(formatMySQLToDateTimeInput(payment.date_paiement));
@@ -781,6 +787,8 @@ const CaissePage = () => {
     setIsCreateModalOpen(false);
     setSelectedPayment(null);
     setSelectedImage(null);
+    setRemoteImageUrl('');
+    setPhoneCaptureOpen(false);
     setImagePreview('');
   };
 
@@ -920,8 +928,11 @@ const paymentValidationSchema = Yup.object({
         showError('Veuillez sélectionner un fichier image valide');
         return;
       }
-  // Taille illimitée acceptée (suppression de la limite 5MB)
       setSelectedImage(file);
+      if (remoteImageUrl) {
+        void deleteImageFromServer(remoteImageUrl);
+        setRemoteImageUrl('');
+      }
       
       // Créer une preview
       const reader = new FileReader();
@@ -937,6 +948,11 @@ const paymentValidationSchema = Yup.object({
     if (selectedPayment?.image_url && !selectedImage) {
       deleteImageFromServer(selectedPayment.image_url);
     }
+    if (remoteImageUrl) {
+      deleteImageFromServer(remoteImageUrl);
+      setRemoteImageUrl('');
+    }
+    if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
     setSelectedImage(null);
     setImagePreview('');
   };
@@ -1014,6 +1030,26 @@ const paymentValidationSchema = Yup.object({
     } catch (error: any) {
       console.error('Erreur suppression image:', error);
       // Ne pas afficher d'erreur à l'utilisateur car c'est optionnel
+    }
+  };
+
+  const handleRemoteImageReceived = async (imageUrl: string) => {
+    setRemoteImageUrl(imageUrl);
+    setSelectedImage(null);
+    try {
+      const response = await fetch(toBackendUrl(imageUrl), {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) throw new Error(`Image indisponible (${response.status})`);
+      const blobUrl = URL.createObjectURL(await response.blob());
+      setImagePreview((current) => {
+        if (current.startsWith('blob:')) URL.revokeObjectURL(current);
+        return blobUrl;
+      });
+      return blobUrl;
+    } catch {
+      setImagePreview(imageUrl);
+      return toBackendUrl(imageUrl);
     }
   };
 
@@ -1188,7 +1224,7 @@ const paymentValidationSchema = Yup.object({
       }
 
       // Upload de l'image si présente
-      let imageUrl: string | null = selectedPayment?.image_url || '';
+      let imageUrl: string | null = remoteImageUrl || selectedPayment?.image_url || '';
       const hasImagePaymentMode = paymentLines.some((line: any) => line.mode_paiement === 'Chèque' || line.mode_paiement === 'Traite');
       if (selectedImage && hasImagePaymentMode) {
         imageUrl = await uploadImageToServer(selectedImage);
@@ -1266,6 +1302,7 @@ const paymentValidationSchema = Yup.object({
         setIsCreateModalOpen(false);
         setSelectedPayment(null);
         setSelectedImage(null);
+        setRemoteImageUrl('');
         setImagePreview('');
       } else {
         const createdPayments: Payment[] = [];
@@ -1359,6 +1396,7 @@ const paymentValidationSchema = Yup.object({
   setIsCreateModalOpen(false);
   setSelectedPayment(null);
   setSelectedImage(null);
+  setRemoteImageUrl('');
   setImagePreview('');
   setCreateOpenedAt(null);
       }
@@ -1731,6 +1769,7 @@ const paymentValidationSchema = Yup.object({
             onClick={() => {
               setSelectedPayment(null);
               setSelectedImage(null);
+              setRemoteImageUrl('');
               setImagePreview('');
               setCreateOpenedAt(getCurrentDateTimeInput());
               setIsCreateModalOpen(true);
@@ -2960,16 +2999,24 @@ const paymentValidationSchema = Yup.object({
                               <span className="text-sm">Upload en cours...</span>
                             </div>
                           )}
-                          <input
-                            id="file_input"
-                            type="file"
-                            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
-                            onChange={handleImageUpload}
-                            disabled={uploadingImage}
-                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <label htmlFor="file_input" className="flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800 hover:bg-blue-100 focus-within:ring-2 focus-within:ring-blue-500">
+                              Choisir sur ce PC
+                              <input
+                                id="file_input"
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                onChange={handleImageUpload}
+                                disabled={uploadingImage}
+                                className="sr-only"
+                              />
+                            </label>
+                            <button type="button" onClick={() => setPhoneCaptureOpen(true)} disabled={uploadingImage} className="flex min-h-11 items-center justify-center gap-2 rounded-md border-2 border-blue-600 bg-white px-4 text-sm font-bold text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                              <Phone size={18} aria-hidden="true" /><QrCode size={18} aria-hidden="true" /> Prendre avec le téléphone
+                            </button>
+                          </div>
                           <p className="text-xs text-gray-500">
-                            📁 Formats acceptés: JPEG, JPG, PNG, GIF (taille illimitée)
+                            Formats acceptés : JPEG, PNG et WebP (10 Mo maximum)
                           </p>
                         </div>
                       </div>
@@ -3251,6 +3298,12 @@ const paymentValidationSchema = Yup.object({
           </div>
         </div>
       )}
+
+      <PaymentPhoneCaptureDialog
+        open={phoneCaptureOpen && isCreateModalOpen}
+        onClose={() => setPhoneCaptureOpen(false)}
+        onReceived={handleRemoteImageReceived}
+      />
 
       {/* Modal de visualisation */}
       {isViewModalOpen && selectedPayment && (

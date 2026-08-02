@@ -52,6 +52,7 @@ import bonsVehiculeRouter from './routes/bons_vehicule.js';
 
 import paymentsRouter from './routes/payments.js';
 import uploadRouter from './routes/upload.js';
+import paymentPhoneCapturesRouter from './routes/paymentPhoneCaptures.js';
 import uploadsRouter from './routes/uploads.js';
 import productPhotosRouter from './routes/productPhotos.js';
 import productNameCorrectionsRouter from './routes/productNameCorrections.js';
@@ -229,6 +230,10 @@ app.use((req, res, next) => {
 
   // Autoriser l'accès public aux fichiers statiques uploadés
   if (req.path.startsWith('/uploads/')) return next();
+  if (
+    (req.method === 'GET' && /^\/api\/payment-phone-captures\/public\/[A-Za-z0-9_-]{43}$/.test(req.path))
+    || (req.method === 'POST' && /^\/api\/payment-phone-captures\/public\/[A-Za-z0-9_-]{43}\/image$/.test(req.path))
+  ) return next();
   // Hero slides are public (homepage)
   if (req.path.startsWith('/api/hero-slides')) return next();
 
@@ -261,7 +266,11 @@ app.use((req, res, next) => {
 // Block access until password is changed (weekly Monday policy)
 app.use(enforceWeeklyPasswordChange);
 
-app.use(morgan('dev'));
+app.use(morgan('dev', {
+  // A capture token is a short-lived bearer credential. Never copy it into
+  // access logs even though only its SHA-256 hash is persisted in MySQL.
+  skip: (req) => req.path.startsWith('/api/payment-phone-captures/public/'),
+}));
 
 // Personnel documents and payment proofs are private. Catalogue assets and
 // bon PDFs remain publicly served by the generic static mount below.
@@ -347,6 +356,7 @@ app.use('/api/bons_vehicule', bonsVehiculeRouter);
 
 app.use('/api/payments', paymentsRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/payment-phone-captures', paymentPhoneCapturesRouter);
 app.use('/api/uploads', uploadsRouter);
 app.use('/api/product-photos', productPhotosRouter);
 app.use('/api/product-name-corrections', productNameCorrectionsRouter);

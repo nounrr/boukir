@@ -880,9 +880,14 @@ const BatchProductPicker: React.FC<{
             </button>
           </div>
           <label htmlFor="batch-product-search" className="sr-only">Référence ou désignation du produit ou de la variante</label>
+          {selectedLineCount === 0 && (
+            <p id="batch-picker-required" className="mb-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900">
+              Sélection obligatoire : ajoutez au moins une référence pour pouvoir fermer cette fenêtre.
+            </p>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input id="batch-product-search" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Référence produit, variante ou désignation…" className="min-h-11 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400" />
+            <input id="batch-product-search" aria-describedby={selectedLineCount === 0 ? 'batch-picker-required' : undefined} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Référence produit, variante ou désignation…" className="min-h-11 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400" />
           </div>
         </header>
 

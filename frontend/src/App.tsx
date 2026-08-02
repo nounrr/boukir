@@ -65,6 +65,7 @@ const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
 const InventoryPage = React.lazy(() => import('./pages/InventoryPage'));
 const ProductsTranslatePage = React.lazy(() => import('./pages/ProductsTranslatePage'));
 const ProductPhotoStudioPage = React.lazy(() => import('./pages/ProductPhotoStudioPage'));
+const PaymentPhoneCapturePage = React.lazy(() => import('./pages/PaymentPhoneCapturePage'));
 const RemisesPage = React.lazy(() => import('./pages/RemisesPage'));
 
 // Composant Layout avec accès aux fonctions de monitoring
@@ -115,6 +116,7 @@ const AppContent: React.FC = () => {
       <Router>
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-600">Chargement…</div>}>
           <Routes>
+          <Route path="/payment-phone-capture/:token" element={<PaymentPhoneCapturePage />} />
           {/* Route de login */}
           <Route 
             path="/login" 
