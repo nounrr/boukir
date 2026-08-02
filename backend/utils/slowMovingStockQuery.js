@@ -2,6 +2,20 @@ const FINAL_BACKOFFICE_STATUSES = [
   'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
 ];
 
+// Production schemas contain a mix of utf8mb4_0900_ai_ci and
+// utf8mb4_unicode_ci columns. MySQL requires every character column at the
+// same position in a UNION to have a compatible collation, so normalize the
+// SKU catalog's text projections explicitly.
+const UNION_COLLATION = 'utf8mb4_unicode_ci';
+
+function unionText(expression) {
+  return `(CONVERT(${expression} USING utf8mb4) COLLATE ${UNION_COLLATION})`;
+}
+
+function unionNullText() {
+  return `(CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE ${UNION_COLLATION})`;
+}
+
 export const SLOW_MOVING_STOCK_LIMITS = Object.freeze({
   min: 1,
   max: 100,
@@ -38,13 +52,13 @@ function buildBaseCte() {
       SELECT
         p.id AS product_id,
         NULL AS variant_id,
-        'parent' AS sku_type,
-        CAST(p.id AS CHAR) AS product_reference,
-        p.reference_2,
-        p.designation,
-        NULL AS variant_name,
-        NULL AS variant_reference,
-        p.image_url,
+        ${unionText("'parent'")} AS sku_type,
+        ${unionText('CAST(p.id AS CHAR)')} AS product_reference,
+        ${unionText('p.reference_2')} AS reference_2,
+        ${unionText('p.designation')} AS designation,
+        ${unionNullText()} AS variant_name,
+        ${unionNullText()} AS variant_reference,
+        ${unionText('p.image_url')} AS image_url,
         CASE
           WHEN parent_stock.snapshot_count > 0 THEN parent_stock.snapshot_stock
           ELSE COALESCE(p.quantite, 0)
@@ -63,13 +77,13 @@ function buildBaseCte() {
       SELECT
         p.id AS product_id,
         pv.id AS variant_id,
-        'variant' AS sku_type,
-        CAST(p.id AS CHAR) AS product_reference,
-        p.reference_2,
-        p.designation,
-        pv.variant_name,
-        pv.reference AS variant_reference,
-        COALESCE(NULLIF(pv.image_url, ''), p.image_url) AS image_url,
+        ${unionText("'variant'")} AS sku_type,
+        ${unionText('CAST(p.id AS CHAR)')} AS product_reference,
+        ${unionText('p.reference_2')} AS reference_2,
+        ${unionText('p.designation')} AS designation,
+        ${unionText('pv.variant_name')} AS variant_name,
+        ${unionText('pv.reference')} AS variant_reference,
+        ${unionText("COALESCE(NULLIF(pv.image_url, ''), p.image_url)")} AS image_url,
         CASE
           WHEN variant_stock.snapshot_count > 0 THEN variant_stock.snapshot_stock
           ELSE COALESCE(pv.stock_quantity, 0)

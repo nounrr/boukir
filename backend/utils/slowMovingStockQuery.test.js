@@ -38,6 +38,23 @@ test('query uses snapshot fallback, effective variant and null-safe SKU equality
   assert.equal(queries.dataParams.at(-1), 0);
 });
 
+test('query normalizes every SKU catalog text projection used by UNION ALL', () => {
+  const { dataSql } = buildSlowMovingStockQueries({
+    periodStart: '2026-03-31 12:00:00',
+    salesThreshold: 3,
+    limit: 20,
+    offset: 0,
+  });
+
+  assert.match(dataSql, /CONVERT\('parent' USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  assert.match(dataSql, /CONVERT\('variant' USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  assert.match(dataSql, /CONVERT\(p\.reference_2 USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  assert.match(dataSql, /CONVERT\(pv\.variant_name USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  assert.match(dataSql, /CONVERT\(pv\.reference USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  assert.match(dataSql, /CONVERT\(COALESCE\(NULLIF\(pv\.image_url, ''\), p\.image_url\) USING utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+  assert.match(dataSql, /CAST\(NULL AS CHAR CHARACTER SET utf8mb4\) COLLATE utf8mb4_unicode_ci/);
+});
+
 test('only finalized back-office statuses and delivered ecommerce orders are included', () => {
   assert.deepEqual(FINAL_BACKOFFICE_STATUSES, [
     'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
