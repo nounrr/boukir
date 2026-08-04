@@ -1120,11 +1120,16 @@ router.put('/:id', async (req, res) => {
       bonId: Number(id),
     });
 
-    const nextNonPayePayments = nonPayeRequested && Array.isArray(paiements_non_payes)
+    const existingPaymentTotal = await sumComptantBonPayments(connection, id);
+    // Un bon totalement regle repasse automatiquement a non_paye = 0. Une
+    // modification ulterieure ne doit pas supprimer les paiements qui ont
+    // alimente la caisse le jour de leur saisie.
+    const shouldPreservePaymentHistory = nonPayeRequested || existingPaymentTotal > 0;
+    const nextNonPayePayments = shouldPreservePaymentHistory && Array.isArray(paiements_non_payes)
       ? paiements_non_payes
       : [];
 
-    if (nonPayeRequested) {
+    if (shouldPreservePaymentHistory) {
       await assertComptantPaymentsWithinTotal(connection, id, montantTotalForPayments, nextNonPayePayments);
     }
 
@@ -1149,7 +1154,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    if (nonPayeRequested) {
+    if (shouldPreservePaymentHistory) {
       await syncComptantBonReste(connection, id, montantTotalForPayments);
     } else {
       await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
