@@ -212,6 +212,25 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    updateSalePriceCorrections: builder.mutation<
+      { success: boolean; updatedProducts: number; updatedSnapshots: number },
+      {
+        corrections: Array<{
+          product_id: number;
+          snapshot_ids: number[];
+          prix_vente: number;
+          prix_vente_2: number;
+        }>;
+      }
+    >({
+      query: (body) => ({
+        url: '/products/sale-price-corrections',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
     // Products with snapshots expanded — used by BonFormModal for Sortie/Comptant/Avoir
     getProductsWithSnapshots: builder.query<any[], void>({
       query: () => ({ url: '/products/with-snapshots' }),
@@ -247,6 +266,7 @@ export const {
   useToggleEcomStockMutation,
   useUpdateSnapshotsMutation,
   useCorrectBonProductPricesMutation,
+  useUpdateSalePriceCorrectionsMutation,
   useGetProductsWithSnapshotsQuery,
   useSearchProductsWithSnapshotsQuery,
 } = productsApi;

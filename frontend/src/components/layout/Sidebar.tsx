@@ -29,6 +29,7 @@ import {
   Camera,
   FileCheck2,
   TrendingDown,
+  CircleDollarSign,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -71,6 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },
         { name: 'Produits archivés', href: '/products/archived', icon: Package, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: user?.role !== 'Chauffeur' },
+        { name: 'Correction prix ventes', href: '/products/sale-price-corrections', icon: CircleDollarSign, show: user?.role === 'PDG' },
       ],
     },
     {

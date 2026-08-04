@@ -1682,7 +1682,16 @@ const StockPage: React.FC = () => {
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatNum(Number(getSnapshotDisplayPrices(product).prix_vente_2 || 0))} DH
+                    {(() => {
+                      const basePv2 = Number(getSnapshotDisplayPrices(product).prix_vente_2 || 0);
+                      const convertedPv2 = basePv2 * getSelectedUnitFactor(product);
+                      return (
+                        <>
+                          {formatNum(convertedPv2)} DH
+                          <span className="text-[10px] text-gray-500 ml-1">/ {getSelectedUnitLabel(product)}</span>
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${product.est_service

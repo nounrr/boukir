@@ -48,6 +48,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Catégories', to: '/categories', show: true },
         { name: 'Produits archivés', to: '/products/archived', show: user?.role === 'PDG' },
         { name: 'Solver prix achat', to: '/solver-prix-achat', show: user?.role === 'PDG' },
+        { name: 'Correction prix ventes', to: '/products/sale-price-corrections', show: user?.role === 'PDG' },
       ],
     },
     {

@@ -548,12 +548,24 @@ const getLatestSnapshotEntry = (entries: any[] = []) => {
   if (!Array.isArray(entries) || entries.length === 0) return null;
   return entries.reduce((latest: any, current: any) => {
     const latestTime = new Date(
-      latest?.snapshot_created_at ?? latest?.created_at ?? latest?.date_creation ?? 0
+      latest?.bon_commande_date_creation ??
+      latest?.bon_date_creation ??
+      latest?.snapshot_created_at ??
+      latest?.created_at ??
+      latest?.date_creation ??
+      0
     ).getTime();
     const currentTime = new Date(
-      current?.snapshot_created_at ?? current?.created_at ?? current?.date_creation ?? 0
+      current?.bon_commande_date_creation ??
+      current?.bon_date_creation ??
+      current?.snapshot_created_at ??
+      current?.created_at ??
+      current?.date_creation ??
+      0
     ).getTime();
-    if (currentTime !== latestTime) return currentTime > latestTime ? current : latest;
+    const safeLatestTime = Number.isFinite(latestTime) ? latestTime : 0;
+    const safeCurrentTime = Number.isFinite(currentTime) ? currentTime : 0;
+    if (safeCurrentTime !== safeLatestTime) return safeCurrentTime > safeLatestTime ? current : latest;
 
     const latestId = Number(latest?.snapshot_id ?? latest?.id ?? 0) || 0;
     const currentId = Number(current?.snapshot_id ?? current?.id ?? 0) || 0;
@@ -6730,10 +6742,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const unitId = item.unit_id;
                                     const units = product?.units ?? [];
                                     const unitObj = unitId ? units.find((u: any) => String(u.id) === String(unitId)) : null;
-                                    const factor = unitObj ? (Number(unitObj.conversion_factor) || 1) : 1;
+                                    const factorFromUnit = Number(unitObj?.conversion_factor);
+                                    const factorFromItem = Number(item.conversion_factor);
+                                    const factor = Number.isFinite(factorFromUnit) && factorFromUnit > 0
+                                      ? factorFromUnit
+                                      : Number.isFinite(factorFromItem) && factorFromItem > 0
+                                        ? factorFromItem
+                                        : 1;
 
                                     // Resolve base PA/CR for display only.
-                                    // If several active snapshots have stock, show the latest snapshot values.
+                                    // Use the latest validated purchase, based first on its bon de commande date.
                                     let snapshotProd: any = null;
                                     const snapId = item.product_snapshot_id;
                                     if (snapId && snapshotProducts.length > 0) {
@@ -6749,7 +6767,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (String(snap.variant_id || '') !== String(variantId || '')) return false;
                                       const flag = snap.snapshot_en_validation;
                                       const isActive = flag == null ? true : Number(flag) !== 0;
-                                      return isActive && Number(snap.snapshot_quantite ?? 0) > 0;
+                                      return isActive;
                                     });
                                     const latestActiveSnapshot = activeSnapshotsForRow.length > 0
                                       ? getLatestSnapshotEntry(activeSnapshotsForRow)
@@ -6801,7 +6819,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       ? scaleDecimal(baseCR, factor)
                                       : Number(costCtx.cout_revient) || Number(item.cout_revient) || 0;
                                     const displayPV = basePV ? scaleDecimal(basePV, factor) : Number(item.prix_unitaire) || 0;
-                                    const displayPV2 = basePV2 ? scaleDecimal(basePV2, factor) : 0;
+                                    const fallbackPV2 = Number(item.catalog_prix_vente_2) || 0;
+                                    const displayPV2 = scaleDecimal(basePV2 || fallbackPV2, factor);
 
                                     return <div>{`PA${displayPA} CR${displayCR} PV${displayPV} PV2${displayPV2}`}</div>;
                                   })()}
