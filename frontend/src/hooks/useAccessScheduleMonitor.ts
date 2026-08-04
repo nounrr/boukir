@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAuth } from './redux';
 import { logout } from '../store/slices/authSlice';
 import { useCheckAccessQuery } from '../store/api/authApi';
@@ -47,7 +47,7 @@ export const useAccessScheduleMonitor = () => {
   };
 
   // Fonction pour vérifier si l'utilisateur est dans ses horaires autorisés
-  const isWithinAllowedSchedule = () => {
+  const isWithinAllowedSchedule = useCallback(() => {
     if (!user || userSchedulesRef.current.length === 0) return true;
     
     const now = new Date();
@@ -72,10 +72,10 @@ export const useAccessScheduleMonitor = () => {
     }
     
     return false; // Heure actuelle en dehors des plages autorisées
-  };
+  }, [user]);
 
   // Fonction pour forcer la déconnexion immédiate si hors horaires
-  const checkTimeBasedAccess = () => {
+  const checkTimeBasedAccess = useCallback(() => {
     if (!isAuthenticated || !user) return;
     
     if (!isWithinAllowedSchedule()) {
@@ -94,7 +94,7 @@ export const useAccessScheduleMonitor = () => {
         dispatch(logout());
       }, 3000);
     }
-  };
+  }, [dispatch, isAuthenticated, isWithinAllowedSchedule, user]);
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
@@ -109,7 +109,7 @@ export const useAccessScheduleMonitor = () => {
         clearInterval(timeCheckRef.current);
       }
     };
-  }, [isAuthenticated, user, dispatch]);
+  }, [checkTimeBasedAccess, isAuthenticated, user]);
 
   // Gérer les erreurs d'accès en temps réel
   useEffect(() => {
@@ -134,7 +134,7 @@ export const useAccessScheduleMonitor = () => {
         }, 3000);
       }
     }
-  }, [accessError, isAuthenticated]);
+  }, [accessError, dispatch, isAuthenticated]);
 
   // Fonction pour vérifier manuellement l'accès et afficher le popup si nécessaire
   const manualAccessCheck = async () => {

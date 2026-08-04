@@ -1409,7 +1409,7 @@ router.get('/with-snapshots', async (req, res, next) => {
     if (!useSnapshot) {
       // Fallback: just return normal product list without snapshot expansion
       const [rows] = await pool.query(
-        `SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
+        `SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.prix_vente_2, p.cout_revient,
                 p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
                 p.prix_vente_pourcentage, p.quantite, p.est_service, p.rappel_non_calcule, p.non_stockable, p.image_url,
                 p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
@@ -1496,7 +1496,7 @@ router.get('/with-snapshots', async (req, res, next) => {
 
     // Also get all products (for items that don't have snapshots, or services)
     const [allProducts] = await pool.query(`
-      SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
+      SELECT p.id, p.reference_2, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.prix_vente_2, p.cout_revient,
              p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
              p.prix_vente_pourcentage, p.quantite, p.est_service, p.rappel_non_calcule, p.non_stockable, p.image_url,
              p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
