@@ -38,7 +38,22 @@ export const comptantApi = apiSlice.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'ComptantPayment', id },
         { type: 'Comptant', id },
-        'Comptant'
+        'Comptant',
+        'FondCaisse'
+      ]
+    }),
+
+    updateComptantPayment: builder.mutation({
+      query: ({ id, paymentId, ...body }) => ({
+        url: `/comptant/${id}/paiements/${paymentId}`,
+        method: 'PUT',
+        body
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'ComptantPayment', id },
+        { type: 'Comptant', id },
+        'Comptant',
+        'FondCaisse'
       ]
     }),
 
@@ -50,7 +65,8 @@ export const comptantApi = apiSlice.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'ComptantPayment', id },
         { type: 'Comptant', id },
-        'Comptant'
+        'Comptant',
+        'FondCaisse'
       ]
     }),
 
@@ -97,6 +113,7 @@ export const {
   useGetComptantByIdQuery,
   useGetComptantPaymentsQuery,
   useCreateComptantPaymentMutation,
+  useUpdateComptantPaymentMutation,
   useDeleteComptantPaymentMutation,
   useCreateComptantMutation,
   useUpdateComptantMutation,

@@ -17,7 +17,7 @@ import { useCorrectBonProductPricesMutation, useGetProductsQuery, useGetProducts
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
-import { useGetComptantPaymentsQuery, useGetComptantQuery } from '../store/api/comptantApi';
+import { useGetComptantPaymentsQuery, useGetComptantQuery, useUpdateComptantPaymentMutation } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery, useGetChargesQuery, useCreateContactMutation, useGetContactQuery } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
@@ -988,6 +988,123 @@ const ComptantPaidAmountField: React.FC<{
   );
 };
 
+const EditableComptantPaymentRow: React.FC<{
+  bonId: number;
+  payment: any;
+  disabled?: boolean;
+}> = ({ bonId, payment, disabled = false }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [montant, setMontant] = useState(String(payment?.montant ?? ''));
+  const [datePaiement, setDatePaiement] = useState(formatMySQLToDateTimeInput(payment?.date_paiement) || '');
+  const [note, setNote] = useState(String(payment?.note || ''));
+  const [updateComptantPayment, { isLoading }] = useUpdateComptantPaymentMutation();
+
+  useEffect(() => {
+    if (isEditing) return;
+    setMontant(String(payment?.montant ?? ''));
+    setDatePaiement(formatMySQLToDateTimeInput(payment?.date_paiement) || '');
+    setNote(String(payment?.note || ''));
+  }, [isEditing, payment?.date_paiement, payment?.montant, payment?.note]);
+
+  const cancelEdit = () => {
+    setMontant(String(payment?.montant ?? ''));
+    setDatePaiement(formatMySQLToDateTimeInput(payment?.date_paiement) || '');
+    setNote(String(payment?.note || ''));
+    setIsEditing(false);
+  };
+
+  const savePayment = async () => {
+    const normalizedAmount = Number(String(montant || '').replace(',', '.'));
+    if (!(normalizedAmount > 0)) {
+      showError('Montant de paiement invalide.');
+      return;
+    }
+    if (!datePaiement) {
+      showError('Date de paiement requise.');
+      return;
+    }
+
+    try {
+      await updateComptantPayment({
+        id: bonId,
+        paymentId: Number(payment.id),
+        montant: normalizedAmount,
+        date_paiement: formatDateInputToMySQL(datePaiement),
+        note: note.trim() || null,
+      }).unwrap();
+      setIsEditing(false);
+      showSuccess('Paiement modifie avec succes.');
+    } catch (error: any) {
+      showError(error?.data?.message || error?.message || 'Erreur lors de la modification du paiement.');
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2 rounded border border-blue-300 bg-blue-50/40 p-3 text-sm">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-gray-600">Montant (DH)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={montant}
+              onChange={(event) => setMontant(event.target.value)}
+              className="w-full rounded border border-gray-300 px-2 py-1.5"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-gray-600">Date du paiement</span>
+            <input
+              type="datetime-local"
+              value={datePaiement}
+              onChange={(event) => setDatePaiement(event.target.value)}
+              className="w-full rounded border border-gray-300 px-2 py-1.5"
+            />
+          </label>
+        </div>
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-gray-600">Note</span>
+          <input
+            type="text"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className="w-full rounded border border-gray-300 px-2 py-1.5"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={cancelEdit} disabled={isLoading} className="rounded border border-gray-300 px-3 py-1.5 text-gray-700 disabled:opacity-50">
+            Annuler
+          </button>
+          <button type="button" onClick={savePayment} disabled={isLoading} className="rounded bg-blue-600 px-3 py-1.5 font-medium text-white disabled:opacity-50">
+            {isLoading ? 'Enregistrement...' : 'Enregistrer le paiement'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded border border-gray-200 px-3 py-2 text-sm">
+      <div className="min-w-0">
+        <div className="font-medium text-gray-800">{formatDateTimeWithHour(payment.date_paiement)}</div>
+        <div className="text-xs text-gray-500 break-words">{payment.note || 'Sans note'}</div>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <div className="font-semibold text-blue-700">{Number(payment.montant || 0).toFixed(2)} DH</div>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setIsEditing(true)}
+          className="rounded border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Modifier
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const computeComptantMontantTotal = (
   values: any,
   qtyRaw: Record<number, string>,
@@ -1074,6 +1191,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { user, token } = useAuth();
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
+  const paymentHistoryModeInitializedForBonId = useRef<number | null>(null);
   const isEditMode = Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
@@ -1557,6 +1675,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     [fournisseursRaw, selectedFournisseurById]
   );
   const currentModalType = String((initialValues as any)?.type || currentTab || '');
+  const comptantPaymentBonId = Number((initialValues as any)?.id || 0);
   // Historiques "dernier prix" : chargés en création ET en édition (le dernier prix
   // doit aussi s'afficher en modification). En édition heavyDataReady est déjà true.
   const shouldFetchSortiesHistory = isOpen && (
@@ -1569,9 +1688,27 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     ['Comptant', 'AvoirComptant', 'Sortie', 'Avoir'].includes(currentModalType)
   );
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined, { skip: !shouldFetchComptantHistory });
-  const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery((initialValues as any)?.id, {
-    skip: !isEditMode || currentTab !== 'Comptant' || !((initialValues as any)?.id),
+  const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery(comptantPaymentBonId, {
+    skip: !isEditMode || currentTab !== 'Comptant' || !comptantPaymentBonId,
   });
+  useEffect(() => {
+    if (!isOpen) {
+      paymentHistoryModeInitializedForBonId.current = null;
+      return;
+    }
+    if (currentTab !== 'Comptant' || !comptantPaymentBonId) return;
+
+    const hasActivePaymentHistory = Array.isArray(comptantPaymentsHistory)
+      && comptantPaymentsHistory.some((payment: any) => {
+        const belongsToBon = Number(payment?.bon_comptant_id) === comptantPaymentBonId;
+        const statut = String(payment?.statut || '').trim().toLowerCase();
+        return belongsToBon && !statut.startsWith('annul');
+      });
+    if (!hasActivePaymentHistory || paymentHistoryModeInitializedForBonId.current === comptantPaymentBonId) return;
+
+    formikRef.current?.setFieldValue('payer_partiellement', true, false);
+    paymentHistoryModeInitializedForBonId.current = comptantPaymentBonId;
+  }, [comptantPaymentBonId, comptantPaymentsHistory, currentTab, isOpen]);
   const shouldFetchCommandesHistory = isOpen && (
     currentModalType === 'Commande' ||
     currentModalType === 'AvoirFournisseur'
@@ -5117,22 +5254,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           <div className="text-sm font-semibold text-gray-800 mb-2">Historique des paiements</div>
                           <div className="space-y-2 max-h-40 overflow-y-auto">
                             {comptantPaymentsHistory.map((payment: any) => (
-                              <div
+                              <EditableComptantPaymentRow
                                 key={payment.id}
-                                className="flex items-start justify-between gap-3 rounded border border-gray-200 px-3 py-2 text-sm"
-                              >
-                                <div className="min-w-0">
-                                  <div className="font-medium text-gray-800">
-                                    {formatDateTimeWithHour(payment.date_paiement)}
-                                  </div>
-                                  <div className="text-xs text-gray-500 break-words">
-                                    {payment.note || 'Sans note'}
-                                  </div>
-                                </div>
-                                <div className="shrink-0 font-semibold text-blue-700">
-                                  {Number(payment.montant || 0).toFixed(2)} DH
-                                </div>
-                              </div>
+                                bonId={comptantPaymentBonId}
+                                payment={payment}
+                                disabled={isQtyOnlyEdit || String(payment?.statut || '').toLowerCase().startsWith('annul')}
+                              />
                             ))}
                           </div>
                         </div>

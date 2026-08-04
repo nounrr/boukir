@@ -571,6 +571,119 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
 });
 
 /* =========================
+   PUT /comptant/:id/paiements/:paymentId
+   ========================= */
+router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await ensureComptantPaymentsTable();
+    await connection.beginTransaction();
+
+    const bonId = Number(req.params.id);
+    const paymentId = Number(req.params.paymentId);
+    const montant = Number(req.body?.montant || 0);
+    const datePaiement = normalizeSqlDateTime(req.body?.date_paiement);
+    const note = req.body?.note ? String(req.body.note) : null;
+    const updatedBy = req.user?.id ?? null;
+
+    if (!Number.isFinite(bonId) || bonId <= 0 || !Number.isFinite(paymentId) || paymentId <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Identifiant invalide' });
+    }
+    if (!(montant > 0)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Montant invalide' });
+    }
+    if (!datePaiement) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Date de paiement invalide' });
+    }
+
+    const [bonRows] = await connection.execute(
+      'SELECT id, montant_total, statut FROM bons_comptant WHERE id = ? FOR UPDATE',
+      [bonId]
+    );
+    if (!Array.isArray(bonRows) || !bonRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon comptant non trouve' });
+    }
+
+    const bon = bonRows[0];
+    const bonStatut = String(bon.statut || '').toLowerCase();
+    if (bonStatut.includes('annul') || bonStatut === 'avoir') {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Impossible de modifier un paiement sur un bon comptant annule/avoir' });
+    }
+
+    const [paymentRows] = await connection.execute(
+      `SELECT id, statut
+         FROM paiement_boncomptant_nonpaye
+        WHERE id = ? AND bon_comptant_id = ?
+        FOR UPDATE`,
+      [paymentId, bonId]
+    );
+    if (!Array.isArray(paymentRows) || !paymentRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Paiement non trouve' });
+    }
+    if (String(paymentRows[0].statut || '').toLowerCase().startsWith('annul')) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Impossible de modifier un paiement annule' });
+    }
+
+    const [otherPaymentRows] = await connection.execute(
+      `SELECT COALESCE(SUM(montant), 0) AS total
+         FROM paiement_boncomptant_nonpaye
+        WHERE bon_comptant_id = ?
+          AND id <> ?
+          AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'`,
+      [bonId, paymentId]
+    );
+    const autresPaiements = Number(otherPaymentRows?.[0]?.total || 0);
+    const montantDisponible = Math.max(0, Number(bon.montant_total || 0) - autresPaiements);
+    if (montant > montantDisponible + 0.000001) {
+      await connection.rollback();
+      return res.status(400).json({ message: `Le paiement depasse le montant disponible (${montantDisponible.toFixed(2)} DH)` });
+    }
+
+    await connection.execute(
+      `UPDATE paiement_boncomptant_nonpaye
+          SET montant = ?, date_paiement = ?, note = ?, updated_by = ?, updated_at = NOW()
+        WHERE id = ? AND bon_comptant_id = ?`,
+      [montant, datePaiement, note, updatedBy, paymentId, bonId]
+    );
+
+    const reste = await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const montantTotal = Number(bon.montant_total || 0);
+    const montantPaye = Math.max(0, Number((montantTotal - reste).toFixed(2)));
+    const [updatedRows] = await connection.execute(
+      `SELECT id, bon_comptant_id, montant, date_paiement, note, statut, created_by, updated_by, created_at, updated_at
+         FROM paiement_boncomptant_nonpaye
+        WHERE id = ? LIMIT 1`,
+      [paymentId]
+    );
+
+    await connection.commit();
+    return res.json({
+      ...updatedRows[0],
+      bon: {
+        id: bonId,
+        montant_total: montantTotal,
+        montant_paye: montantPaye,
+        reste,
+        non_paye: reste > 0 ? 1 : 0,
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Erreur PUT /comptant/:id/paiements/:paymentId:', error);
+    return res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message || String(error) });
+  } finally {
+    connection.release();
+  }
+});
+
+/* =========================
    DELETE /comptant/:id/paiements/:paymentId
    ========================= */
 router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
