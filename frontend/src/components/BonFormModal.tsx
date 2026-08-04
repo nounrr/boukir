@@ -673,6 +673,15 @@ const formatPrixVente2Option = (value: any) => {
   return price > 0 ? `PV2: ${formatted} DH` : '';
 };
 
+const formatSeriesPrice = (value: any) => {
+  const price = Number(value);
+  if (!Number.isFinite(price)) return '0';
+  return new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  }).format(price);
+};
+
 const resolveOptionPrixAchat = (
   product: any,
   variant: any = null,
@@ -6818,11 +6827,23 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const displayCR = baseCR
                                       ? scaleDecimal(baseCR, factor)
                                       : Number(costCtx.cout_revient) || Number(item.cout_revient) || 0;
-                                    const displayPV = basePV ? scaleDecimal(basePV, factor) : Number(item.prix_unitaire) || 0;
+                                    const unitPvRaw = unitObj?.prix_vente;
+                                    const unitPv = unitPvRaw === null || unitPvRaw === undefined || unitPvRaw === ''
+                                      ? null
+                                      : Number(unitPvRaw);
+                                    const hasUnitPvOverride = !variant && unitPv !== null && Number.isFinite(unitPv) && unitPv > 0;
+                                    const displayPV = basePV
+                                      ? hasUnitPvOverride ? Number(unitPv) : scaleDecimal(basePV, factor)
+                                      : Number(item.prix_unitaire) || 0;
                                     const fallbackPV2 = Number(item.catalog_prix_vente_2) || 0;
-                                    const displayPV2 = scaleDecimal(basePV2 || fallbackPV2, factor);
+                                    const salePriceFactor = basePV > 0 ? displayPV / basePV : factor;
+                                    const displayPV2 = scaleDecimal(basePV2 || fallbackPV2, salePriceFactor);
 
-                                    return <div>{`PA${displayPA} CR${displayCR} PV${displayPV} PV2${displayPV2}`}</div>;
+                                    return (
+                                      <div>
+                                        {`PA ${formatSeriesPrice(displayPA)} DH | CR ${formatSeriesPrice(displayCR)} DH | PV ${formatSeriesPrice(displayPV)} DH | PV2 ${formatSeriesPrice(displayPV2)} DH`}
+                                      </div>
+                                    );
                                   })()}
                                   <div className="text-[9px] text-orange-600">
                                     {(() => {

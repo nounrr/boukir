@@ -1683,8 +1683,14 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
-                      const basePv2 = Number(getSnapshotDisplayPrices(product).prix_vente_2 || 0);
-                      const convertedPv2 = basePv2 * getSelectedUnitFactor(product);
+                      const displayPrices = getSnapshotDisplayPrices(product);
+                      const basePv = Number(displayPrices.prix_vente || 0);
+                      const basePv2 = Number(displayPrices.prix_vente_2 || 0);
+                      const unitFactor = getSelectedUnitFactor(product);
+                      const unitPv = getSelectedUnitPrixVenteOverride(product);
+                      const convertedPv = unitPv !== null ? unitPv : basePv * unitFactor;
+                      const salePriceFactor = basePv > 0 ? convertedPv / basePv : unitFactor;
+                      const convertedPv2 = basePv2 * salePriceFactor;
                       return (
                         <>
                           {formatNum(convertedPv2)} DH
