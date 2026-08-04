@@ -161,7 +161,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       const pu = parseFloat(it.prix_unitaire || 0);
       const designationKey = String(it.designation_custom ?? it.designation ?? it.product_name ?? '').trim();
       const productKey = it.product_id ?? it.produit_id ?? it.id ?? designationKey;
-      const key = `${productKey}:${it.variant_id ?? it.variantId ?? ''}:${pu}`;
+      const key = `${productKey}:${it.variant_id ?? it.variantId ?? ''}:${it.unit_id ?? it.unite_id ?? it.uniteId ?? 'base'}:${pu}`;
       const existing = map.get(key);
       if (existing) {
         existing.quantite = parseFloat(existing.quantite || 0) + parseFloat(it.quantite || 0);
@@ -201,6 +201,11 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
 
   // Compute the baseline "original" sale price considering variant and unit factor
   const getOriginalSalePrice = (item: any) => {
+    const directOriginal = parseMoney(
+      item?.prix_original ?? item?.prixOriginal ?? item?.prix_vente_original
+    );
+    if (directOriginal > 0) return directOriginal;
+
     // Only relevant for sales-type documents; callers guard for Commande already
     const pid = item?.product_id ?? item?.produit_id ?? item?.id;
     const product = findProductById(pid);
@@ -551,8 +556,13 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               // Resolve unit name
               const itemUnitId = item?.unit_id ?? item?.unite_id ?? item?.uniteId;
               const itemProduct = findProductById(productId);
-              let unitLabel = itemProduct?.base_unit || '';
-              if (itemUnitId && Array.isArray(itemProduct?.units)) {
+              const directUnitLabel = String(
+                item?.unite ?? item?.unit_name ?? item?.unit?.unit_name ?? item?.unit?.name ?? ''
+              ).trim();
+              let unitLabel = directUnitLabel
+                ? directUnitLabel
+                : String(item?.base_unit ?? itemProduct?.base_unit ?? '').trim();
+              if (!directUnitLabel && itemUnitId && Array.isArray(itemProduct?.units)) {
                 const matchedUnit = itemProduct.units.find((uu: any) => String(uu.id) === String(itemUnitId));
                 if (matchedUnit?.unit_name) unitLabel = matchedUnit.unit_name;
               }

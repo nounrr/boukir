@@ -393,7 +393,9 @@ const BonsPage = () => {
   });
   const bons = bonsResponse?.data || [];
   const bonsPagination = bonsResponse?.pagination;
-  const needsReferenceData = anyModalOpen;
+  // Les lignes des bons contiennent déjà variante, unité choisie et unité de base.
+  // L'impression ne doit donc pas télécharger tout le catalogue produits + unités.
+  const needsReferenceData = anyModalOpen && !isThermalPrintModalOpen && !isPrintModalOpen;
   const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery(undefined, { skip: !needsReferenceData });
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery(undefined, { skip: !needsReferenceData });
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery(undefined, { skip: !needsReferenceData });

@@ -1902,7 +1902,15 @@ router.get('/', async (req, res, next) => {
           oi.product_name_ar,
           oi.variant_name,
           oi.variant_type,
-          oi.unit_name,
+          COALESCE(NULLIF(oi.unit_name, ''), p.base_unit) AS unit_name,
+          p.base_unit,
+          CASE
+            WHEN oi.unit_id IS NOT NULL THEN COALESCE(
+              NULLIF(pu.prix_vente, 0),
+              COALESCE(NULLIF(pv.prix_vente, 0), p.prix_vente, 0) * COALESCE(NULLIF(pu.conversion_factor, 0), 1)
+            )
+            ELSE COALESCE(NULLIF(pv.prix_vente, 0), p.prix_vente, 0)
+          END AS prix_original,
           oi.unit_price,
           oi.quantity,
           oi.subtotal,
@@ -1914,6 +1922,7 @@ router.get('/', async (req, res, next) => {
         FROM ecommerce_order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
         LEFT JOIN product_variants pv ON oi.variant_id = pv.id
+        LEFT JOIN product_units pu ON oi.unit_id = pu.id
         WHERE oi.order_id IN (${orderIds.map(() => '?').join(',')})
         ORDER BY oi.order_id, oi.id
       `, orderIds);
@@ -1930,6 +1939,9 @@ router.get('/', async (req, res, next) => {
           variant_name: it.variant_name,
           variant_type: it.variant_type,
           unit_name: it.unit_name,
+          unite: it.unit_name,
+          base_unit: it.base_unit,
+          prix_original: Number(it.prix_original || 0),
           unit_price: Number(it.unit_price),
           quantity: Number(it.quantity),
           subtotal: Number(it.subtotal),

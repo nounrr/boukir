@@ -225,7 +225,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   };
 
   const getOriginalSalePrice = (it: any) => {
-    const direct = it?.prix_vente ?? it?.prixVente ?? it?.prix_original ?? it?.prixOriginal;
+    const direct = it?.prix_original ?? it?.prixOriginal ?? it?.prix_vente ?? it?.prixVente;
     const directNum = parseMoney(direct);
     if (Number.isFinite(directNum) && directNum > 0) return directNum;
 
@@ -253,7 +253,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     const result: any[] = [];
     for (const it of raw) {
       const pu = parseFloat(it.prix_unitaire ?? it.prix ?? it.price ?? 0);
-      const key = `${it.product_id ?? it.produit_id ?? it.id ?? ''}:${it.variant_id ?? it.variantId ?? ''}:${pu}`;
+      const key = `${it.product_id ?? it.produit_id ?? it.id ?? ''}:${it.variant_id ?? it.variantId ?? ''}:${it.unit_id ?? it.unite_id ?? it.uniteId ?? 'base'}:${pu}`;
       const existing = map.get(key);
       if (existing) {
         existing.quantite = (parseFloat(existing.quantite ?? existing.qty ?? 0) || 0) + (parseFloat(it.quantite ?? it.qty ?? 0) || 0);

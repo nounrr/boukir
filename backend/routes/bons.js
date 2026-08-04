@@ -239,7 +239,15 @@ const buildItemsSql = (cfg) => {
     : cfg.itemSnapshot
     ? `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(ps.prix_achat, p.prix_achat) END, 'cout_revient', ${averageSnapshotCoutRevientExpr(i)}, 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
-  const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
+  const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'base_unit', p.base_unit, 'unite', COALESCE(NULLIF(pu.unit_name, ''), p.base_unit), 'unit_name', COALESCE(NULLIF(pu.unit_name, ''), p.base_unit), 'conversion_factor', COALESCE(pu.conversion_factor, 1),`;
+  const originalSalePriceFields = cfg.itemHasVariantUnit === false ? '' : `'prix_original', CASE
+        WHEN COALESCE(p.est_service, 0) = 1 THEN 0
+        WHEN ${i}.unit_id IS NOT NULL THEN COALESCE(
+          NULLIF(pu.prix_vente, 0),
+          COALESCE(NULLIF(pv.prix_vente, 0), p.prix_vente, 0) * COALESCE(NULLIF(pu.conversion_factor, 0), 1)
+        )
+        ELSE COALESCE(NULLIF(pv.prix_vente, 0), p.prix_vente, 0)
+      END,`;
   const designationExpr = cfg.itemDesignationExpr || 'p.designation';
   const extraJsonFields = cfg.itemExtraJsonFields || '';
   const unitPriceExpr = cfg.type === 'Commande'
@@ -256,6 +264,7 @@ const buildItemsSql = (cfg) => {
       'est_service', p.est_service,
       'rappel_non_calcule', p.rappel_non_calcule,
       ${variantUnitFields}
+      ${originalSalePriceFields}
       'designation', ${designationExpr},
       'quantite', ${i}.quantite,
       'prix_unitaire', ${unitPriceExpr},
