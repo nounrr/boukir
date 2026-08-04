@@ -3,8 +3,6 @@ import {
   AlertCircle,
   Check,
   CheckSquare,
-  ChevronDown,
-  ChevronRight,
   CircleDollarSign,
   ImageOff,
   Layers3,
@@ -371,8 +369,6 @@ const SalePriceCorrectionsPage: React.FC = () => {
   const { data = [], isLoading, isFetching, isError, error, refetch } = useGetProductsWithSnapshotsQuery();
   const [updateSalePrices, { isLoading: isSaving }] = useUpdateSalePriceCorrectionsMutation();
   const [search, setSearch] = useState('');
-  const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set());
-  const initializedProductIds = useRef(new Set<number>());
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set());
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [bulkMode, setBulkMode] = useState<BulkMode>('fixed');
@@ -386,19 +382,6 @@ const SalePriceCorrectionsPage: React.FC = () => {
     () => buildProductGroups(Array.isArray(data) ? (data as ProductSnapshotRow[]) : []),
     [data],
   );
-
-  useEffect(() => {
-    setExpandedProducts((previous) => {
-      const next = new Set(previous);
-      for (const group of groups) {
-        if (!initializedProductIds.current.has(group.id)) {
-          initializedProductIds.current.add(group.id);
-          if (group.rows.length > 1) next.add(group.id);
-        }
-      }
-      return next;
-    });
-  }, [groups]);
 
   const filteredGroups = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase('fr');
@@ -429,8 +412,8 @@ const SalePriceCorrectionsPage: React.FC = () => {
   }, [groups]);
 
   const visibleRows = useMemo(
-    () => filteredGroups.flatMap((group) => expandedProducts.has(group.id) ? group.rows : []),
-    [expandedProducts, filteredGroups],
+    () => filteredGroups.flatMap((group) => group.rows),
+    [filteredGroups],
   );
   const selectedRows = useMemo(
     () => [...selectedRowKeys].map((key) => allRowsByKey.get(key)).filter((row): row is DisplayPriceRow => Boolean(row)),
@@ -446,15 +429,6 @@ const SalePriceCorrectionsPage: React.FC = () => {
   }, [allVisibleSelected, visibleSelectedCount]);
 
   const hasSelection = selectedRows.length > 0;
-
-  const toggleGroup = (groupId: number) => {
-    setExpandedProducts((previous) => {
-      const next = new Set(previous);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
-  };
 
   const toggleRowSelection = (key: string) => {
     setSelectedRowKeys((previous) => {
@@ -854,91 +828,85 @@ const SalePriceCorrectionsPage: React.FC = () => {
                 </tr>
               ) : (
                 filteredGroups.map((group) => {
-                  const isExpanded = expandedProducts.has(group.id);
                   const variants = [...new Set(group.rows.map((row) => row.variantName).filter(Boolean))];
+                  const isSingleRow = group.rows.length === 1;
+
+                  const productIdentity = (
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white text-gray-300 ring-1 ring-gray-200">
+                        {group.imageUrl ? (
+                          <img
+                            src={toBackendUrl(group.imageUrl)}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                            onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                          />
+                        ) : <ImageOff className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="font-semibold text-gray-900">{group.designation}</span>
+                          <span className="rounded bg-gray-50 px-1.5 py-0.5 font-mono text-[11px] text-gray-500 ring-1 ring-gray-200">#{group.id}</span>
+                          {group.reference2 ? (
+                            <span className="font-mono text-[11px] text-gray-400">{group.reference2}</span>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          {isSingleRow ? (
+                            <span className="text-gray-500">
+                              {group.rows[0].variantName ? `${group.rows[0].variantName} · ` : ''}
+                              {group.rows[0].snapshotLabels.length
+                                ? group.rows[0].snapshotLabels.map((id) => `#${id}`).join(', ')
+                                : 'Prix original du produit'}
+                              {group.rows[0].bonCommandeIds.length
+                                ? ` · Bon(s) ${group.rows[0].bonCommandeIds.map((id) => `#${id}`).join(', ')}`
+                                : ''}
+                            </span>
+                          ) : (
+                            <>
+                              <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">{group.rows.length} prix distincts</span>
+                              {group.activeSnapshotCount ? (
+                                <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">{group.activeSnapshotCount} actif(s)</span>
+                              ) : null}
+                              {group.hasLatestFallback ? (
+                                <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">dernier épuisé</span>
+                              ) : null}
+                              {group.hasBaseRow ? (
+                                <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 font-semibold text-gray-500">sans snapshot</span>
+                              ) : null}
+                              {variants.map((variant) => (
+                                <span key={variant} className="text-gray-500">{variant}</span>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+
                   return (
                     <React.Fragment key={group.id}>
-                      <tr
-                        className={`cursor-pointer border-t border-gray-200 transition-colors ${
-                          isExpanded ? 'bg-gray-100' : 'bg-gray-50 hover:bg-gray-100'
-                        }`}
-                        onClick={() => toggleGroup(group.id)}
-                      >
-                        <td className="px-3 py-2.5 text-center">
-                          <span
-                            className="inline-flex h-7 w-7 items-center justify-center rounded text-gray-500"
-                            aria-hidden="true"
-                          >
-                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5" colSpan={2}>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleGroup(group.id);
-                            }}
-                            className="flex w-full items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                            aria-expanded={isExpanded}
-                            aria-label={isExpanded ? `Replier ${group.designation}` : `Déplier ${group.designation}`}
-                          >
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white text-gray-300 ring-1 ring-gray-200">
-                              {group.imageUrl ? (
-                                <img
-                                  src={toBackendUrl(group.imageUrl)}
-                                  alt=""
-                                  loading="lazy"
-                                  className="h-full w-full object-cover"
-                                  onError={(event) => { event.currentTarget.style.display = 'none'; }}
-                                />
-                              ) : <ImageOff className="h-4 w-4" />}
-                            </span>
-                            <span className="min-w-0">
-                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                <span className="font-semibold text-gray-900">{group.designation}</span>
-                                <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-gray-500 ring-1 ring-gray-200">#{group.id}</span>
-                                {group.reference2 ? (
-                                  <span className="font-mono text-[11px] text-gray-400">{group.reference2}</span>
-                                ) : null}
-                              </span>
-                              <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                                {group.activeSnapshotCount ? (
-                                  <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">{group.activeSnapshotCount} actif(s)</span>
-                                ) : null}
-                                {group.rows.length > 1 ? (
-                                  <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">{group.rows.length} prix distincts</span>
-                                ) : null}
-                                {group.hasLatestFallback ? (
-                                  <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">dernier épuisé</span>
-                                ) : null}
-                                {group.hasBaseRow ? (
-                                  <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 font-semibold text-gray-500">sans snapshot</span>
-                                ) : null}
-                                {variants.map((variant) => (
-                                  <span key={variant} className="text-gray-500">{variant}</span>
-                                ))}
-                              </span>
-                            </span>
-                          </button>
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-gray-700">
-                          {quantityFormatter.format(group.totalQuantity)}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-xs text-gray-400" colSpan={3}>
-                          {isExpanded ? 'Replier' : `${group.rows.length} ligne(s) de prix`}
-                        </td>
-                      </tr>
+                      {isSingleRow ? null : (
+                        <tr className="border-t border-gray-200 bg-gray-50">
+                          <td className="px-3 py-2.5" />
+                          <td className="px-3 py-2.5" colSpan={2}>{productIdentity}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-gray-700">
+                            {quantityFormatter.format(group.totalQuantity)}
+                          </td>
+                          <td className="px-3 py-2.5" colSpan={3} />
+                        </tr>
+                      )}
 
-                      {isExpanded ? group.rows.map((row) => {
+                      {group.rows.map((row) => {
                         const badge = provenanceBadge[row.provenance];
                         const selected = selectedRowKeys.has(row.key);
                         return (
                           <tr
                             key={row.key}
-                            className={`border-t border-gray-100 transition-colors ${
-                              selected ? 'bg-emerald-50/70' : 'bg-white hover:bg-gray-50/80'
-                            }`}
+                            className={`transition-colors ${
+                              isSingleRow ? 'border-t border-gray-200' : 'border-t border-gray-100'
+                            } ${selected ? 'bg-emerald-50/70' : 'bg-white hover:bg-gray-50/80'}`}
                           >
                             <td className="px-3 py-2 text-center">
                               <input
@@ -951,22 +919,24 @@ const SalePriceCorrectionsPage: React.FC = () => {
                               />
                             </td>
                             <td className="px-3 py-2">
-                              <div className="flex items-start gap-2 border-l-2 border-gray-200 pl-3">
-                                <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-gray-800">
-                                    {row.variantName ? (
-                                      <span className="text-gray-900">{row.variantName} · </span>
-                                    ) : null}
-                                    {row.snapshotLabels.length
-                                      ? row.snapshotLabels.map((id) => `#${id}`).join(', ')
-                                      : 'Prix original du produit'}
-                                  </p>
-                                  <p className="mt-0.5 text-xs text-gray-500">
-                                    {row.bonCommandeIds.length ? `Bon(s) ${row.bonCommandeIds.map((id) => `#${id}`).join(', ')}` : 'Table products'}
-                                  </p>
+                              {isSingleRow ? productIdentity : (
+                                <div className="flex items-start gap-2 border-l-2 border-gray-200 pl-3">
+                                  <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-gray-800">
+                                      {row.variantName ? (
+                                        <span className="text-gray-900">{row.variantName} · </span>
+                                      ) : null}
+                                      {row.snapshotLabels.length
+                                        ? row.snapshotLabels.map((id) => `#${id}`).join(', ')
+                                        : 'Prix original du produit'}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-gray-500">
+                                      {row.bonCommandeIds.length ? `Bon(s) ${row.bonCommandeIds.map((id) => `#${id}`).join(', ')}` : 'Table products'}
+                                    </p>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap gap-1">
@@ -1019,7 +989,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
                             </td>
                           </tr>
                         );
-                      }) : null}
+                      })}
                     </React.Fragment>
                   );
                 })
