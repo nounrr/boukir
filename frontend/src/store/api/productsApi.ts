@@ -56,6 +56,27 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    bulkAttachProducts: builder.mutation<
+      {
+        success: boolean;
+        matched: number;
+        updated: number;
+        productIds: number[];
+      },
+      {
+        productIds: number[];
+        targetType: 'category' | 'brand';
+        targetId: number;
+      }
+    >({
+      query: (body) => ({
+        url: '/products/bulk-attachment',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
     convertProductsToVariants: builder.mutation<
       {
         success: boolean;
@@ -201,6 +222,8 @@ const productsApi = api.injectEndpoints({
           snapshot_ids: number[];
           prix_vente: number;
           prix_vente_2: number;
+          previous_prix_vente: number;
+          previous_prix_vente_2: number;
         }>;
       }
     >({
@@ -255,6 +278,7 @@ export const {
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,
+  useBulkAttachProductsMutation,
   useConvertProductsToVariantsMutation,
   useCloneProductPhotosMutation,
   useUploadProductMainAndGalleryImageMutation,

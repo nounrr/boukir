@@ -1337,16 +1337,16 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       }
     }
     
-    // Merge snapshots of same product+variant into ONE entry per distinct prix_vente.
-    // ALL roles: same prix_vente → merge into one line. Different prix_vente → separate lines.
+    // Merge snapshots only when product, variant, PV1 and PV2 are identical.
     const grouped2 = new Map<string, any[]>();
     for (const snap of result) {
-      // Group by product_id + variant_id + prix_vente so different prices stay separate
+      // A difference on either selling price creates a separate group.
       const pv = Number(snap.prix_vente ?? 0);
+      const pv2 = Number(snap.prix_vente_2 ?? 0);
       const specialKey = Number(snap.snapshot_unite_special || 0)
         ? `special:${Number(snap.snapshot_facteur_barre || 0)}`
         : 'normal';
-      const key = `${snap.id}:${snap.variant_id || 0}:${pv}:${specialKey}`;
+      const key = `${snap.id}:${snap.variant_id || 0}:${pv}:${pv2}:${specialKey}`;
       if (!grouped2.has(key)) grouped2.set(key, []);
       grouped2.get(key)!.push(snap);
     }
@@ -1357,7 +1357,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       const nonSnapshotEntries = entries.filter((s: any) => !s.snapshot_id);
 
       if (snapshotEntries.length > 1) {
-        // Multiple snapshots with same prix_vente → merge into single entry
+        // Multiple snapshots with the same complete price pair become one entry.
         const sortedSnaps = [...snapshotEntries].sort((a: any, b: any) =>
           (Number(a.fifo_priority) || 999) - (Number(b.fifo_priority) || 999)
         );
@@ -2653,7 +2653,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         ? (prod.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id))
         : null;
 
-      const catalogPriceSource = prod || snap;
+      const catalogPriceSource = snap || prod;
       const catalogPrixVente1 = resolveOptionPrixVente(catalogPriceSource, variant, snapshotProducts as any[]);
       const catalogPrixVente2 = resolveOptionPrixVente2(catalogPriceSource, variant, snapshotProducts as any[]);
       if (item.catalog_prix_vente_1 === undefined || item.catalog_prix_vente_1 === null || item.catalog_prix_vente_1 === '') {
@@ -2856,6 +2856,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       snapshotIds: Set<number>;
       prix_vente: number;
       prix_vente_2: number;
+      previous_prix_vente: number;
+      previous_prix_vente_2: number;
     }>();
 
     for (const item of values.items) {
@@ -2884,7 +2886,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
       const variantIdValue = Number(item?.variant_id);
       const variantId = Number.isInteger(variantIdValue) && variantIdValue > 0 ? variantIdValue : null;
-      const key = `${productId}:${variantId || 0}`;
+      const key = `${productId}:${variantId || 0}:${initialPrixVente}:${initialPrixVente2}`;
       const snapshotIds = [
         ...(Array.isArray(item?._catalog_snapshot_ids) ? item._catalog_snapshot_ids : []),
         ...(Array.isArray(item?.merged_snapshot_ids) ? item.merged_snapshot_ids : []),
@@ -2905,6 +2907,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           snapshotIds: new Set(snapshotIds),
           prix_vente: prixVente,
           prix_vente_2: prixVente2,
+          previous_prix_vente: initialPrixVente,
+          previous_prix_vente_2: initialPrixVente2,
         });
       }
     }
@@ -2917,6 +2921,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         snapshot_ids: [...correction.snapshotIds],
         prix_vente: correction.prix_vente,
         prix_vente_2: correction.prix_vente_2,
+        previous_prix_vente: correction.previous_prix_vente,
+        previous_prix_vente_2: correction.previous_prix_vente_2,
       })),
     }).unwrap();
   };
@@ -5686,14 +5692,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           if (p._isMerged) {
                                             const nom = p.designation ?? '';
                                             const variant = variantLabel ? ` - ${variantLabel}` : '';
-                                            const catalogProduct = productMap.get(String(p.id));
-                                            const priceSource = catalogProduct || p;
-                                            const prixVenteLabel = formatPrixVenteOption(resolveOptionPrixVente(priceSource, variantMeta?.variant ?? null, snapshotProducts as any[]));
-                                            const prixVente2Label = formatPrixVente2Option(resolveOptionPrixVente2(priceSource, variantMeta?.variant ?? null, snapshotProducts as any[]));
+                                            const prixVenteLabel = formatPrixVenteOption(p.prix_vente);
+                                            const prixVente2Label = formatPrixVente2Option(p.prix_vente_2);
                                             const qte = `${formatPrixAchatOption(p.prix_achat) ? ` | ${formatPrixAchatOption(p.prix_achat)}` : ''}${prixVenteLabel ? ` | ${prixVenteLabel}` : ''}${prixVente2Label ? ` | ${prixVente2Label}` : ''}${p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : ''}`;
                                             const pv = Number(p.prix_vente ?? 0);
+                                            const pv2 = Number(p.prix_vente_2 ?? 0);
                                             return {
-                                              value: `merged:${p.id}:${p.variant_id || 0}:${pv}`,
+                                              value: `merged:${p.id}:${p.variant_id || 0}:${pv}:${pv2}`,
                                               label: `[Lots fusionnés] ${displayReference} - ${nom}${variant}${qte}${parentRefSuffix}`.trim(),
                                               data: p,
                                             };
@@ -5703,8 +5708,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const priorityTag = fifo === 1 ? '⭐' : fifo ? `#${fifo}` : '';
                                           const nom = p.designation ?? '';
                                           const variant = variantLabel ? ` - ${variantLabel}` : '';
-                                          const catalogProduct = productMap.get(String(p.id));
-                                          const priceSource = catalogProduct || p;
+                                          const priceSource = p;
                                           const prixVenteLabel = formatPrixVenteOption(resolveOptionPrixVente(priceSource, variantMeta?.variant ?? null, snapshotProducts as any[]));
                                           const prixVente2Label = formatPrixVente2Option(resolveOptionPrixVente2(priceSource, variantMeta?.variant ?? null, snapshotProducts as any[]));
                                           const qte = `${formatPrixAchatOption(p.prix_achat || resolveOptionPrixAchat(p, variantMeta?.variant ?? null, snapshotProducts as any[])) ? ` | ${formatPrixAchatOption(p.prix_achat || resolveOptionPrixAchat(p, variantMeta?.variant ?? null, snapshotProducts as any[]))}` : ''}${prixVenteLabel ? ` | ${prixVenteLabel}` : ''}${prixVente2Label ? ` | ${prixVente2Label}` : ''}${p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : ''}`;
@@ -5746,16 +5750,18 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       }
                                       // For merged items (all roles): return merged value format with prix_vente
                                       if (useSnapshotSelection && prodId && !snapId) {
-                                        const pv = Number(values.items[index].prix_unitaire ?? 0);
+                                        const pv = Number(values.items[index].catalog_prix_vente_1 ?? values.items[index].prix_unitaire ?? 0);
+                                        const pv2 = Number(values.items[index].catalog_prix_vente_2 ?? 0);
                                         const hasMergedSnapshot = (filteredSnapshotProducts as any[]).some(
                                           (p: any) =>
                                             p._isMerged &&
                                             String(p.id) === String(prodId) &&
                                             String(p.variant_id || 0) === String(varId || 0) &&
-                                            Number(p.prix_vente ?? 0) === pv
+                                            Number(p.prix_vente ?? 0) === pv &&
+                                            Number(p.prix_vente_2 ?? 0) === pv2
                                         );
                                         if (hasMergedSnapshot) {
-                                          return `merged:${prodId}:${varId || 0}:${pv}`;
+                                          return `merged:${prodId}:${varId || 0}:${pv}:${pv2}`;
                                         }
                                         if (varId) {
                                           return `catalogvar:${varId}:${prodId}`;
@@ -5794,13 +5800,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         if (!useSnapshotSelection) return false;
                                         const snapId = values.items[index].product_snapshot_id;
                                         if (snapId) return false;
-                                        const pv = Number(values.items[index].prix_unitaire ?? 0);
+                                        const pv = Number(values.items[index].catalog_prix_vente_1 ?? values.items[index].prix_unitaire ?? 0);
+                                        const pv2 = Number(values.items[index].catalog_prix_vente_2 ?? 0);
                                         return (filteredSnapshotProducts as any[]).some(
                                           (p: any) =>
                                             p._isMerged &&
                                             String(p.id) === String(prodId) &&
                                             String(p.variant_id || 0) === String(variantId || 0) &&
-                                            Number(p.prix_vente ?? 0) === pv
+                                            Number(p.prix_vente ?? 0) === pv &&
+                                            Number(p.prix_vente_2 ?? 0) === pv2
                                         );
                                       })();
                                       const prefix = isMerged ? '[Lots fusionnés] ' : '';
@@ -5839,10 +5847,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         const productId = parseInt(parts[1]);
                                         const variantId = parseInt(parts[2]) || null;
                                         const pvMatch = parseFloat(parts[3]) || 0;
+                                        const pv2Match = parseFloat(parts[4]) || 0;
                                         product = (filteredSnapshotProducts as any[]).find(
                                           (p: any) => p._isMerged && p.id === productId &&
                                             (String(p.variant_id || 0) === String(variantId || 0)) &&
-                                            Number(p.prix_vente ?? 0) === pvMatch
+                                            Number(p.prix_vente ?? 0) === pvMatch &&
+                                            Number(p.prix_vente_2 ?? 0) === pv2Match
                                         );
                                         if (!product) {
                                           product = (products as any[]).find((p: any) => String(p.id) === String(productId)) || null;
@@ -5952,9 +5962,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               ) || null
                                             : null
                                         );
-                                        const catalogPriceSource = catalogProduct || product;
-                                        const catalogPrixVente1 = resolveOptionPrixVente(catalogPriceSource, catalogVariant, snapshotProducts as any[]);
-                                        const catalogPrixVente2 = resolveOptionPrixVente2(catalogPriceSource, catalogVariant, snapshotProducts as any[]);
+                                        const catalogPriceSource = product || catalogProduct;
+                                        const catalogPrixVente1 = product?._isMerged
+                                          ? Number(product.prix_vente ?? 0)
+                                          : resolveOptionPrixVente(catalogPriceSource, catalogVariant, snapshotProducts as any[]);
+                                        const catalogPrixVente2 = product?._isMerged
+                                          ? Number(product.prix_vente_2 ?? 0)
+                                          : resolveOptionPrixVente2(catalogPriceSource, catalogVariant, snapshotProducts as any[]);
                                         setFieldValue(`items.${index}.catalog_prix_vente_1`, catalogPrixVente1);
                                         setFieldValue(`items.${index}.catalog_prix_vente_2`, catalogPrixVente2);
                                         setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, catalogPrixVente1);

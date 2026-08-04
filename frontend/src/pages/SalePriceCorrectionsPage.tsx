@@ -25,6 +25,7 @@ type Provenance = 'active' | 'latest' | 'base';
 type PriceField = 'prix_vente' | 'prix_vente_2';
 type BulkMode = 'fixed' | 'percentage';
 type PercentageTarget = 'prix_vente' | 'prix_vente_2' | 'both';
+type CorrectionTab = 'initial' | 'corrected';
 
 interface ProductSnapshotRow {
   id: number | string;
@@ -43,6 +44,8 @@ interface ProductSnapshotRow {
   prix_achat?: number | string | null;
   prix_vente?: number | string | null;
   prix_vente_2?: number | string | null;
+  snapshot_sale_price_corrected_at?: string | null;
+  product_sale_price_corrected_at?: string | null;
   quantite?: number | string | null;
   image_url?: string | null;
 }
@@ -62,6 +65,7 @@ interface DisplayPriceRow {
   provenance: Provenance;
   mergedCount: number;
   latestDate: string | null;
+  isCorrected: boolean;
 }
 
 interface ProductGroup {
@@ -74,6 +78,7 @@ interface ProductGroup {
   activeSnapshotCount: number;
   hasLatestFallback: boolean;
   hasBaseRow: boolean;
+  isFullyCorrected: boolean;
 }
 
 const moneyFormatter = new Intl.NumberFormat('fr-FR', {
@@ -154,8 +159,11 @@ const buildProductGroups = (source: ProductSnapshotRow[]): ProductGroup[] => {
         const variantId = rowVariantId(row);
         const prixVente = resolvePrice(row, 'prix_vente');
         const prixVente2 = resolvePrice(row, 'prix_vente_2');
-        const mergeKey = `${variantId ?? 'base'}|${prixVente.toFixed(2)}|${prixVente2.toFixed(2)}`;
         const snapshotId = rowSnapshotId(row);
+        const isCorrected = snapshotId !== null
+          ? Boolean(row.snapshot_sale_price_corrected_at)
+          : Boolean(row.product_sale_price_corrected_at);
+        const mergeKey = `${variantId ?? 'base'}|${prixVente.toFixed(2)}|${prixVente2.toFixed(2)}|${isCorrected ? 'corrected' : 'initial'}`;
         const bonId = optionalNumber(row.bon_commande_id);
         const purchasePrice = resolvePurchasePrice(row);
         const quantity = toFiniteNumber(row.snapshot_quantite ?? row.quantite, 0);
@@ -191,6 +199,7 @@ const buildProductGroups = (source: ProductSnapshotRow[]): ProductGroup[] => {
           provenance,
           mergedCount: 1,
           latestDate: rowRecencyDate(row),
+          isCorrected,
         });
       }
 
@@ -218,6 +227,7 @@ const buildProductGroups = (source: ProductSnapshotRow[]): ProductGroup[] => {
         activeSnapshotCount: activeSnapshots.length,
         hasLatestFallback: provenance === 'latest',
         hasBaseRow: provenance === 'base',
+        isFullyCorrected: rows.length > 0 && rows.every((row) => row.isCorrected),
       };
     })
     .sort((a, b) => b.id - a.id);
@@ -376,6 +386,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
   const [fixedPrice2, setFixedPrice2] = useState('');
   const [percentage, setPercentage] = useState('');
   const [percentageTarget, setPercentageTarget] = useState<PercentageTarget>('both');
+  const [activeTab, setActiveTab] = useState<CorrectionTab>('initial');
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   const groups = useMemo(
@@ -384,10 +395,13 @@ const SalePriceCorrectionsPage: React.FC = () => {
   );
 
   const filteredGroups = useMemo(() => {
+    const tabGroups = groups.filter((group) => (
+      activeTab === 'corrected' ? group.isFullyCorrected : !group.isFullyCorrected
+    ));
     const normalized = search.trim().toLocaleLowerCase('fr');
-    if (!normalized) return groups;
+    if (!normalized) return tabGroups;
 
-    return groups
+    return tabGroups
       .map((group) => {
         const parentMatches = [group.id, group.reference2, group.designation]
           .some((value) => String(value ?? '').toLocaleLowerCase('fr').includes(normalized));
@@ -401,7 +415,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
         return rows.length ? { ...group, rows } : null;
       })
       .filter((group): group is ProductGroup => group !== null);
-  }, [groups, search]);
+  }, [activeTab, groups, search]);
 
   const allRowsByKey = useMemo(() => {
     const map = new Map<string, DisplayPriceRow>();
@@ -549,6 +563,8 @@ const SalePriceCorrectionsPage: React.FC = () => {
 
   const totalDisplayedRows = filteredGroups.reduce((total, group) => total + group.rows.length, 0);
   const totalActiveSnapshots = groups.reduce((total, group) => total + group.activeSnapshotCount, 0);
+  const correctedProductCount = groups.filter((group) => group.isFullyCorrected).length;
+  const initialProductCount = groups.length - correctedProductCount;
 
   return (
     <div className="space-y-4 p-4 text-gray-900 sm:p-6">
@@ -585,6 +601,33 @@ const SalePriceCorrectionsPage: React.FC = () => {
           </button>
         </div>
       </header>
+
+      <nav className="flex w-full gap-1 rounded-lg bg-gray-100 p-1 sm:w-fit" aria-label="État des corrections">
+        {([
+          { id: 'initial' as const, label: 'Initial', count: initialProductCount },
+          { id: 'corrected' as const, label: 'Déjà corrigé', count: correctedProductCount },
+        ]).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => {
+              setActiveTab(tab.id);
+              setSelectedRowKeys(new Set());
+            }}
+            className={`inline-flex min-w-[140px] items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${
+              activeTab === tab.id
+                ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                : 'text-gray-600 hover:bg-white/60 hover:text-gray-900'
+            }`}
+            aria-current={activeTab === tab.id ? 'page' : undefined}
+          >
+            {tab.label}
+            <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${
+              activeTab === tab.id ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-200 text-gray-600'
+            }`}>{tab.count}</span>
+          </button>
+        ))}
+      </nav>
 
       <section className="rounded-md bg-white p-3 shadow-sm ring-1 ring-gray-200" aria-label="Recherche et légende">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -906,7 +949,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
                             key={row.key}
                             className={`transition-colors ${
                               isSingleRow ? 'border-t border-gray-200' : 'border-t border-gray-100'
-                            } ${selected ? 'bg-emerald-50/70' : 'bg-white hover:bg-gray-50/80'}`}
+                            } ${selected ? 'bg-emerald-100/80' : row.isCorrected ? 'bg-emerald-50 hover:bg-emerald-100/70' : 'bg-white hover:bg-gray-50/80'}`}
                           >
                             <td className="px-3 py-2 text-center">
                               <input
@@ -946,6 +989,11 @@ const SalePriceCorrectionsPage: React.FC = () => {
                                 </span>
                                 {row.mergedCount > 1 ? (
                                   <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{row.mergedCount} fusionnés</span>
+                                ) : null}
+                                {row.isCorrected ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                                    <Check className="h-3 w-3" /> Corrigé
+                                  </span>
                                 ) : null}
                               </div>
                             </td>

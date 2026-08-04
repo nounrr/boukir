@@ -2,17 +2,19 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category, ProductImageTarget } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, LoaderCircle, ImagePlus } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, LoaderCircle, ImagePlus, Link2 } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsPaginatedQuery, useDeleteProductMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
+import { useGetBrandsQuery } from '../store/api/brandsApi';
+import { useGetProductsPaginatedQuery, useDeleteProductMutation, useBulkAttachProductsMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
 import Swal from 'sweetalert2';
 import { printProductTicket } from '../utils/productTicketPrint';
 import { filterStockRowsByMissingImage } from '../utils/stockMissingImage';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const cleanDesignationText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
@@ -79,7 +81,16 @@ const StockPage: React.FC = () => {
     sortBy: sortMode === 'recent' ? 'id' : 'quantite',
     sortDir: sortMode === 'quantite_asc' ? 'asc' : 'desc',
   });
-  const { data: categoriesApiData } = useGetCategoriesQuery();
+  const {
+    data: categoriesApiData,
+    isLoading: areCategoriesLoading,
+    isError: categoriesLoadFailed,
+  } = useGetCategoriesQuery();
+  const {
+    data: brands = [],
+    isLoading: areBrandsLoading,
+    isError: brandsLoadFailed,
+  } = useGetBrandsQuery();
   // Keep legacy selectors as fallback during transition
   const productsState = useSelector(selectProducts);
   const categoriesState = useSelector(selectCategories);
@@ -121,11 +132,15 @@ const StockPage: React.FC = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteProductMutation] = useDeleteProductMutation();
+  const [bulkAttachProducts, { isLoading: isBulkAttaching }] = useBulkAttachProductsMutation();
   const [convertProductsToVariants] = useConvertProductsToVariantsMutation();
   const [cloneProductPhotos] = useCloneProductPhotosMutation();
   const [uploadProductMainAndGalleryImage] = useUploadProductMainAndGalleryImageMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set());
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
+  const [attachmentTargetType, setAttachmentTargetType] = useState<'category' | 'brand'>('category');
+  const [attachmentTargetId, setAttachmentTargetId] = useState('');
   const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
   const [isCloningPhotos, setIsCloningPhotos] = useState(false);
   const [isCloningToOwnVariants, setIsCloningToOwnVariants] = useState(false);
@@ -600,6 +615,33 @@ const StockPage: React.FC = () => {
     }
   };
 
+  const handleBulkAttachment = async () => {
+    const targetId = Number(attachmentTargetId);
+    if (selectedIds.size === 0 || !Number.isInteger(targetId) || targetId <= 0 || isBulkAttaching) return;
+
+    try {
+      const result = await bulkAttachProducts({
+        productIds: Array.from(selectedIds),
+        targetType: attachmentTargetType,
+        targetId,
+      }).unwrap();
+      const targetLabel = attachmentTargetType === 'category' ? 'catégorie' : 'marque';
+      showSuccess(`${result.updated} produit(s) modifié(s) et rattaché(s) à la ${targetLabel}.`);
+      setIsAttachmentDialogOpen(false);
+      setAttachmentTargetId('');
+      setSelectedIds(new Set());
+      setSelectedVariantIds(new Set());
+      refetchProducts?.();
+    } catch (error: any) {
+      console.error('Erreur rattachement en lot:', error);
+      showError(
+        error?.data?.message
+        || error?.error
+        || 'Erreur lors du rattachement des produits'
+      );
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Hover image preview (fixed overlay so it isn't clipped by table overflow) */}
@@ -875,6 +917,22 @@ const StockPage: React.FC = () => {
             title="Traduire les désignations sélectionnées"
           >
             {isTranslating ? 'Traduction...' : 'Traduire'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedIds.size === 0) return;
+              setAttachmentTargetType('category');
+              setAttachmentTargetId('');
+              setIsAttachmentDialogOpen(true);
+            }}
+            disabled={selectedIds.size === 0 || isBulkAttaching}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            title="Rattacher les produits sélectionnés à une catégorie ou une marque"
+          >
+            <Link2 size={18} />
+            Rattacher
           </button>
 
           <button
@@ -1330,6 +1388,7 @@ const StockPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Ecomm Stock</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marque</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix d'achat</th>
@@ -1603,6 +1662,9 @@ const StockPage: React.FC = () => {
                       {product.categorie?.nom || 'N/A'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    {product.brand?.nom || <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(product.est_service || product.non_stockable) ? '-' : (
                       formatNum((getSnapshotAwareQuantite(product)) / getSelectedUnitFactor(product))
@@ -1805,6 +1867,146 @@ const StockPage: React.FC = () => {
           </button>
         </div>
       )}
+
+      <Dialog
+        open={isAttachmentDialogOpen}
+        onOpenChange={(open) => {
+          if (isBulkAttaching) return;
+          setIsAttachmentDialogOpen(open);
+          if (!open) setAttachmentTargetId('');
+        }}
+      >
+        <DialogContent className="max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto p-0">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleBulkAttachment();
+            }}
+          >
+            <DialogHeader className="border-b border-gray-200 px-6 py-5 text-left">
+              <div className="flex items-center gap-3 pr-7">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-700">
+                  <Link2 size={20} />
+                </span>
+                <div>
+                  <DialogTitle>Rattacher les produits</DialogTitle>
+                  <DialogDescription className="mt-1 text-gray-600">
+                    {selectedIds.size} produit{selectedIds.size > 1 ? 's' : ''} parent{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-5 px-6 py-5">
+              <fieldset>
+                <legend className="mb-2 text-sm font-semibold text-gray-900">Type de rattachement</legend>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup">
+                  {([
+                    ['category', 'Catégorie'],
+                    ['brand', 'Marque'],
+                  ] as const).map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors ${
+                        attachmentTargetType === value
+                          ? 'border-blue-500 bg-blue-50 text-blue-800 ring-1 ring-blue-500'
+                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="attachment-target-type"
+                        value={value}
+                        checked={attachmentTargetType === value}
+                        onChange={() => {
+                          setAttachmentTargetType(value);
+                          setAttachmentTargetId('');
+                        }}
+                        disabled={isBulkAttaching}
+                        className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div>
+                <label htmlFor="attachment-target" className="mb-2 block text-sm font-semibold text-gray-900">
+                  {attachmentTargetType === 'category' ? 'Catégorie cible' : 'Marque cible'}
+                </label>
+                <select
+                  id="attachment-target"
+                  value={attachmentTargetId}
+                  onChange={(event) => setAttachmentTargetId(event.target.value)}
+                  disabled={
+                    isBulkAttaching
+                    || (attachmentTargetType === 'category' ? areCategoriesLoading : areBrandsLoading)
+                  }
+                  required
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+                >
+                  <option value="">
+                    {(attachmentTargetType === 'category' ? areCategoriesLoading : areBrandsLoading)
+                      ? 'Chargement…'
+                      : `Choisir une ${attachmentTargetType === 'category' ? 'catégorie' : 'marque'}…`}
+                  </option>
+                  {attachmentTargetType === 'category'
+                    ? organizedCategories.map((category) => {
+                        const hasChildren = categoryChildrenMap.has(category.id);
+                        return (
+                          <option key={category.id} value={category.id} disabled={hasChildren}>
+                            {'\u00A0'.repeat(category.level * 4)}{category.nom}{hasChildren ? ' — groupe' : ''}
+                          </option>
+                        );
+                      })
+                    : brands.map((brand) => (
+                        <option key={brand.id} value={brand.id}>{brand.nom}</option>
+                      ))}
+                </select>
+                {(attachmentTargetType === 'category' ? categoriesLoadFailed : brandsLoadFailed) && (
+                  <p className="mt-2 text-sm text-red-600" role="alert">
+                    Impossible de charger les {attachmentTargetType === 'category' ? 'catégories' : 'marques'}.
+                  </p>
+                )}
+                {attachmentTargetType === 'category' && !areCategoriesLoading && !categoriesLoadFailed && (
+                  <p className="mt-2 text-xs text-gray-500">Les groupes sont affichés pour conserver la hiérarchie, mais seules les catégories feuilles sont sélectionnables.</p>
+                )}
+              </div>
+
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                L’affectation {attachmentTargetType === 'category' ? 'de catégorie' : 'de marque'} actuelle sera remplacée pour les produits sélectionnés.
+                {selectedVariantIds.size > 0 && (
+                  <span className="mt-1 block font-medium">Les {selectedVariantIds.size} variante(s) sélectionnée(s) ne sont pas concernées.</span>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setIsAttachmentDialogOpen(false)}
+                disabled={isBulkAttaching}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  !attachmentTargetId
+                  || isBulkAttaching
+                  || (attachmentTargetType === 'category' ? categoriesLoadFailed : brandsLoadFailed)
+                }
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isBulkAttaching && <LoaderCircle className="animate-spin" size={17} />}
+                {isBulkAttaching ? 'Rattachement…' : `Rattacher ${selectedIds.size} produit${selectedIds.size > 1 ? 's' : ''}`}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Nouveau/Modifier Produit */}
       <ProductFormModal
