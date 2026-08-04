@@ -234,6 +234,57 @@ async function syncComptantBonReste(db, bonComptantId, montantTotalOverride = nu
   return reste;
 }
 
+async function adaptComptantPaymentsToBonTotal(db, bonComptantId, montantTotal, updatedBy = null) {
+  const totalBon = roundMoney(montantTotal);
+  const totalPaye = roundMoney(await sumComptantBonPayments(db, bonComptantId));
+  let excedent = roundMoney(totalPaye - totalBon);
+  if (excedent <= 0) return { adjusted: false, totalPaye };
+
+  // Conserver les paiements les plus anciens et retirer l'excedent des plus
+  // recents. Un paiement entierement absorbe est annule afin de garder son
+  // historique sans qu'il soit encore compte dans la caisse.
+  const [payments] = await db.execute(
+    `SELECT id, montant
+       FROM paiement_boncomptant_nonpaye
+      WHERE bon_comptant_id = ?
+        AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
+        AND COALESCE(montant, 0) > 0
+      ORDER BY created_at DESC, id DESC
+      FOR UPDATE`,
+    [bonComptantId]
+  );
+
+  for (const payment of payments) {
+    if (excedent <= 0) break;
+    const montantPaiement = roundMoney(payment.montant);
+
+    if (montantPaiement <= excedent + 0.000001) {
+      await db.execute(
+        `UPDATE paiement_boncomptant_nonpaye
+            SET statut = 'Annule', updated_by = ?, updated_at = NOW()
+          WHERE id = ?`,
+        [updatedBy, payment.id]
+      );
+      excedent = Math.max(0, roundMoney(excedent - montantPaiement));
+      continue;
+    }
+
+    const montantAjuste = roundMoney(montantPaiement - excedent);
+    await db.execute(
+      `UPDATE paiement_boncomptant_nonpaye
+          SET montant = ?, updated_by = ?, updated_at = NOW()
+        WHERE id = ?`,
+      [montantAjuste, updatedBy, payment.id]
+    );
+    excedent = 0;
+  }
+
+  return {
+    adjusted: true,
+    totalPaye: roundMoney(await sumComptantBonPayments(db, bonComptantId)),
+  };
+}
+
 /* =========================
    GET /comptant (liste)
    ========================= */
@@ -1238,6 +1289,14 @@ router.put('/:id', async (req, res) => {
     // modification ulterieure ne doit pas supprimer les paiements qui ont
     // alimente la caisse le jour de leur saisie.
     const shouldPreservePaymentHistory = nonPayeRequested || existingPaymentTotal > 0;
+    if (existingPaymentTotal > montantTotalForPayments + 0.000001) {
+      await adaptComptantPaymentsToBonTotal(
+        connection,
+        id,
+        montantTotalForPayments,
+        req.user?.id ?? null
+      );
+    }
     const nextNonPayePayments = shouldPreservePaymentHistory && Array.isArray(paiements_non_payes)
       ? paiements_non_payes
       : [];
