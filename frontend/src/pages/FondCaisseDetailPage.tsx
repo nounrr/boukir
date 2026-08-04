@@ -7,6 +7,7 @@ import {
   Calculator,
   CalendarDays,
   ListChecks,
+  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -65,6 +66,14 @@ const num = (v: any) => {
 };
 
 const fmt = (v: number) => `${num(v).toFixed(2)} DH`;
+
+const normalizeSearchText = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/,/g, '.')
+    .toLowerCase()
+    .trim();
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -129,6 +138,7 @@ const FondCaisseDetailPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'ENTREE' | 'SORTIE'>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
   const [tick, setTick] = useState(0);
   const [selectedBon, setSelectedBon] = useState<any>(null);
   const [selectedBonType, setSelectedBonType] = useState<EditableBonType | null>(null);
@@ -238,12 +248,32 @@ const FondCaisseDetailPage = () => {
 
   const filteredActions = useMemo(() => {
     const scoped = filter === 'ALL' ? actions : actions.filter((a) => a.direction === filter);
-    return [...scoped].sort((a, b) => {
+    const normalizedTerm = normalizeSearchText(searchTerm);
+    const searched = normalizedTerm
+      ? scoped.filter((action) => normalizeSearchText([
+          action.type,
+          action.sourceTable,
+          action.sourceId,
+          action.reference,
+          action.actor,
+          action.modePaiement,
+          action.statut,
+          action.description,
+          action.direction,
+          action.direction === 'ENTREE' ? 'entree' : 'sortie',
+          action.amount,
+          action.signedAmount,
+          action.cumulative,
+          formatDateTime(action.date),
+        ].join(' ')).includes(normalizedTerm))
+      : scoped;
+
+    return [...searched].sort((a, b) => {
       const byDate = new Date(a.date).getTime() - new Date(b.date).getTime();
       if (byDate !== 0) return byDate;
       return String(a.id || '').localeCompare(String(b.id || ''));
     });
-  }, [actions, filter]);
+  }, [actions, filter, searchTerm]);
 
   const cards = [
     {
@@ -338,18 +368,52 @@ const FondCaisseDetailPage = () => {
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Actions du jour</h2>
-          <p className="text-sm text-gray-500">
-            Liste chronologique avec total cumule de la caisse.
-          </p>
+        <div className="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Actions du jour</h2>
+            <p className="text-sm text-gray-500">
+              Liste chronologique avec total cumule de la caisse.
+            </p>
+          </div>
+          <div className="w-full md:w-96">
+            <label htmlFor="fond-caisse-detail-search" className="sr-only">
+              Rechercher une action
+            </label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                id="fond-caisse-detail-search"
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Rechercher référence, client, montant..."
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-9 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  title="Effacer la recherche"
+                  aria-label="Effacer la recherche"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <p className="mt-1 text-right text-xs text-gray-500">
+                {filteredActions.length} résultat{filteredActions.length === 1 ? '' : 's'}
+              </p>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
           <div className="p-5 text-sm text-blue-700">Chargement du detail...</div>
         ) : filteredActions.length === 0 ? (
           <div className="px-6 py-14 text-center text-gray-500">
-            Aucune action pour ce jour.
+            {searchTerm ? 'Aucune action ne correspond à la recherche.' : 'Aucune action pour ce jour.'}
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
@@ -9,6 +10,7 @@ import {
   Layers3,
   Loader2,
   Package,
+  Pencil,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -229,10 +231,22 @@ const getErrorMessage = (error: unknown) => {
   return candidate.data?.message || candidate.message || 'Une erreur inattendue est survenue.';
 };
 
-const provenanceBadge: Record<Provenance, { label: string; className: string }> = {
-  active: { label: 'Snapshot actif', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
-  latest: { label: 'Dernier snapshot', className: 'border-amber-300 bg-amber-50 text-amber-900' },
-  base: { label: 'Prix produit', className: 'border-slate-200 bg-slate-100 text-slate-700' },
+const provenanceBadge: Record<Provenance, { label: string; className: string; dotClassName: string }> = {
+  active: {
+    label: 'Snapshot actif',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    dotClassName: 'bg-emerald-500',
+  },
+  latest: {
+    label: 'Dernier snapshot',
+    className: 'border-amber-200 bg-amber-50 text-amber-800',
+    dotClassName: 'bg-amber-500',
+  },
+  base: {
+    label: 'Prix produit',
+    className: 'border-gray-200 bg-gray-50 text-gray-700',
+    dotClassName: 'bg-gray-400',
+  },
 };
 
 const InlinePrice: React.FC<{
@@ -280,30 +294,33 @@ const InlinePrice: React.FC<{
       <button
         type="button"
         disabled={disabled}
-        onDoubleClick={() => {
+        onClick={() => {
           if (!disabled) {
             setDraft(value.toFixed(2));
             setEditing(true);
           }
         }}
-        className="group flex min-h-9 w-full min-w-[118px] items-center justify-end gap-2 rounded-md px-2 text-right font-semibold tabular-nums text-slate-900 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait"
-        title={`Double-cliquez pour modifier ${label}`}
+        className="group inline-flex h-9 min-w-[124px] items-center justify-end gap-1.5 rounded-md border border-transparent px-2 text-right text-sm font-semibold tabular-nums text-gray-900 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+        title={`Cliquez pour modifier ${label}`}
       >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin text-emerald-600" /> : null}
-        <span>{moneyFormatter.format(value)} DH</span>
+        {saving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-600" /> : null}
+        <span>{moneyFormatter.format(value)}</span>
+        <span className="text-xs font-normal text-gray-400">DH</span>
+        <Pencil className="h-3.5 w-3.5 shrink-0 text-gray-300 opacity-0 transition group-hover:text-emerald-600 group-hover:opacity-100" />
       </button>
     );
   }
 
   return (
-    <div className="min-w-[176px]">
-      <div className="flex items-center rounded-md border border-blue-500 bg-white shadow-sm ring-2 ring-blue-100">
+    <div className="inline-block text-left">
+      <div className="flex items-center overflow-hidden rounded-md border border-emerald-500 bg-white shadow-sm ring-2 ring-emerald-100">
         <input
           autoFocus
           type="text"
           inputMode="decimal"
           value={draft}
           disabled={saving}
+          onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => {
             setDraft(event.target.value);
             setValidationError('');
@@ -317,7 +334,7 @@ const InlinePrice: React.FC<{
               void commit();
             }
           }}
-          className="h-9 w-28 border-0 bg-transparent px-2 text-right font-semibold tabular-nums text-slate-950 outline-none focus:ring-0"
+          className="h-9 w-24 border-0 bg-transparent px-2 text-right text-sm font-semibold tabular-nums text-gray-900 outline-none focus:ring-0"
           aria-label={label}
         />
         <button
@@ -325,8 +342,9 @@ const InlinePrice: React.FC<{
           disabled={saving}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => void commit()}
-          className="flex h-9 w-9 items-center justify-center text-emerald-700 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"
+          className="flex h-9 w-9 shrink-0 items-center justify-center border-l border-emerald-100 text-emerald-700 transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 disabled:opacity-50"
           aria-label={`Confirmer ${label}`}
+          title="Enregistrer (Entrée)"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
         </button>
@@ -335,13 +353,16 @@ const InlinePrice: React.FC<{
           disabled={saving}
           onMouseDown={(event) => event.preventDefault()}
           onClick={cancel}
-          className="flex h-9 w-9 items-center justify-center text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+          className="flex h-9 w-9 shrink-0 items-center justify-center border-l border-gray-100 text-gray-400 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gray-400 disabled:opacity-50"
           aria-label={`Annuler ${label}`}
+          title="Annuler (Échap)"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
-      {validationError ? <p className="mt-1 text-xs font-medium text-red-600">{validationError}</p> : null}
+      {validationError ? (
+        <p className="mt-1 text-right text-xs font-medium text-red-600">{validationError}</p>
+      ) : null}
     </div>
   );
 };
@@ -423,6 +444,17 @@ const SalePriceCorrectionsPage: React.FC = () => {
       selectAllRef.current.indeterminate = visibleSelectedCount > 0 && !allVisibleSelected;
     }
   }, [allVisibleSelected, visibleSelectedCount]);
+
+  const hasSelection = selectedRows.length > 0;
+
+  const toggleGroup = (groupId: number) => {
+    setExpandedProducts((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
 
   const toggleRowSelection = (key: string) => {
     setSelectedRowKeys((previous) => {
@@ -545,32 +577,34 @@ const SalePriceCorrectionsPage: React.FC = () => {
   const totalActiveSnapshots = groups.reduce((total, group) => total + group.activeSnapshotCount, 0);
 
   return (
-    <main className="min-h-full bg-slate-100 p-3 text-slate-900 sm:p-5 lg:p-6">
-      <header className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">
-            <CircleDollarSign className="h-4 w-4" />
-            Catalogue · Contrôle PDG
+    <div className="space-y-4 p-4 text-gray-900 sm:p-6">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 sm:inline-flex">
+            <CircleDollarSign className="h-6 w-6" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">Correction des prix de vente</h1>
+            <p className="mt-1 max-w-2xl text-sm text-gray-600">
+              Contrôlez les prix actifs par snapshot et corrigez-les sans quitter le catalogue.
+            </p>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Correction des prix ventes</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Contrôlez les prix actifs par snapshot et corrigez-les sans quitter le catalogue.
-          </p>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
-          <div className="border-l-2 border-slate-300 pl-3 text-xs text-slate-600">
-            <strong className="block text-base tabular-nums text-slate-950">{groups.length}</strong>
-            produits
+          <div className="rounded-md bg-white px-3 py-2 text-center ring-1 ring-gray-200">
+            <span className="block text-lg font-bold leading-tight tabular-nums text-gray-900">{groups.length}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Produits</span>
           </div>
-          <div className="border-l-2 border-amber-300 pl-3 text-xs text-slate-600">
-            <strong className="block text-base tabular-nums text-slate-950">{totalActiveSnapshots}</strong>
-            snapshots actifs
+          <div className="rounded-md bg-white px-3 py-2 text-center ring-1 ring-gray-200">
+            <span className="block text-lg font-bold leading-tight tabular-nums text-emerald-700">{totalActiveSnapshots}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Snapshots actifs</span>
           </div>
           <button
             type="button"
             onClick={() => void refetch()}
             disabled={isFetching || isSaving}
-            className="ml-1 inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait disabled:opacity-60"
+            className="inline-flex h-11 items-center gap-2 rounded-md bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:text-gray-400"
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             Actualiser
@@ -578,148 +612,175 @@ const SalePriceCorrectionsPage: React.FC = () => {
         </div>
       </header>
 
-      <section className="mb-3 border border-slate-200 bg-white shadow-sm" aria-label="Recherche et légende">
-        <div className="grid gap-3 p-3 lg:grid-cols-[minmax(280px,1fr)_auto] lg:items-center">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <section className="rounded-md bg-white p-3 shadow-sm ring-1 ring-gray-200" aria-label="Recherche et légende">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <label className="relative block w-full lg:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="ID, référence, désignation, variante ou snapshot…"
-              className="h-10 w-full rounded-md border border-slate-300 bg-slate-50 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="h-10 w-full rounded-md border border-gray-300 bg-white pl-10 pr-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </label>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-semibold text-slate-500">Provenance :</span>
-            <span className="border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">Actif · Qté &gt; 0</span>
-            <span className="border border-amber-300 bg-amber-50 px-2 py-1 font-semibold text-amber-900">Dernier · stock épuisé</span>
-            <span className="border border-slate-200 bg-slate-100 px-2 py-1 font-semibold text-slate-700">Base · sans snapshot</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-600">
+            {(['active', 'latest', 'base'] as Provenance[]).map((provenance) => (
+              <span key={provenance} className="inline-flex items-center gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${provenanceBadge[provenance].dotClassName}`} />
+                <span className="font-medium text-gray-700">{provenanceBadge[provenance].label}</span>
+                <span className="text-gray-400">
+                  {provenance === 'active' ? 'Qté > 0' : provenance === 'latest' ? 'stock épuisé' : 'sans snapshot'}
+                </span>
+              </span>
+            ))}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
-          <span className="inline-flex items-center gap-1.5"><SlidersHorizontal className="h-3.5 w-3.5" /> Double-cliquez sur un prix pour le modifier.</span>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 text-xs text-gray-500">
+          <span className="inline-flex items-center gap-1.5">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Cliquez sur un prix pour le modifier · <kbd className="rounded border border-gray-300 bg-gray-50 px-1 font-sans">Entrée</kbd> pour valider
+          </span>
           <span className="tabular-nums">{filteredGroups.length} produit(s) · {totalDisplayedRows} ligne(s) de prix</span>
         </div>
       </section>
 
       <section
-        className={`sticky top-0 z-20 mb-3 border shadow-md transition-colors ${
-          selectedRows.length ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'
+        className={`sticky top-0 z-20 rounded-md shadow-sm ring-1 transition-colors ${
+          hasSelection ? 'bg-emerald-50/80 ring-emerald-300 backdrop-blur' : 'bg-white ring-gray-200'
         }`}
         aria-label="Modification en masse"
       >
-        <div className="flex flex-col gap-3 p-3 xl:flex-row xl:items-end">
-          <div className="min-w-[190px]">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Modification en masse</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">
-              {selectedRows.length ? `${selectedRows.length} ligne(s) sélectionnée(s)` : 'Aucune ligne sélectionnée'}
-            </p>
+        {!hasSelection ? (
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm text-gray-600">
+            <CheckSquare className="h-4 w-4 shrink-0 text-gray-400" />
+            <span>
+              Cochez des lignes de prix pour activer la <strong className="font-semibold text-gray-800">modification en masse</strong>.
+            </span>
           </div>
-
-          <div className="inline-flex w-fit rounded-md border border-slate-300 bg-white p-0.5" role="group" aria-label="Mode de modification">
-            {(['fixed', 'percentage'] as BulkMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setBulkMode(mode)}
-                className={`h-8 rounded px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                  bulkMode === mode ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {mode === 'fixed' ? 'Valeur fixe' : 'Pourcentage'}
-              </button>
-            ))}
-          </div>
-
-          {bulkMode === 'fixed' ? (
-            <div className="flex flex-wrap gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold uppercase text-slate-500">Prix 1</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={fixedPrice1}
-                  onChange={(event) => setFixedPrice1(event.target.value)}
-                  placeholder="Inchangé"
-                  className="h-9 w-32 rounded-md border border-slate-300 bg-white px-2 text-right text-sm tabular-nums outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold uppercase text-slate-500">Prix 2</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={fixedPrice2}
-                  onChange={(event) => setFixedPrice2(event.target.value)}
-                  placeholder="Inchangé"
-                  className="h-9 w-32 rounded-md border border-slate-300 bg-white px-2 text-right text-sm tabular-nums outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold uppercase text-slate-500">Variation signée</span>
-                <div className="flex h-9 overflow-hidden rounded-md border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={percentage}
-                    onChange={(event) => setPercentage(event.target.value)}
-                    placeholder="ex. 10 ou -5"
-                    className="w-32 border-0 px-2 text-right text-sm tabular-nums outline-none focus:ring-0"
-                  />
-                  <span className="flex items-center border-l border-slate-200 px-2 text-sm font-bold text-slate-500">%</span>
-                </div>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold uppercase text-slate-500">Appliquer à</span>
-                <select
-                  value={percentageTarget}
-                  onChange={(event) => setPercentageTarget(event.target.value as PercentageTarget)}
-                  className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="both">Prix 1 et Prix 2</option>
-                  <option value="prix_vente">Prix 1</option>
-                  <option value="prix_vente_2">Prix 2</option>
-                </select>
-              </label>
-            </div>
-          )}
-
-          <div className="min-w-0 flex-1 rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-            <span className="font-bold text-slate-800">Résumé : </span>{bulkSummary}
-          </div>
-
-          <div className="flex shrink-0 gap-2">
-            {selectedRows.length ? (
+        ) : (
+          <div className="flex flex-col gap-3 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">
+                <CheckSquare className="h-3.5 w-3.5" />
+                {selectedRows.length} ligne(s) sélectionnée(s)
+              </span>
               <button
                 type="button"
                 onClick={() => setSelectedRowKeys(new Set())}
                 disabled={isSaving}
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
               >
-                Vider
+                <X className="h-3.5 w-3.5" />
+                Vider la sélection
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void applyBulkChange()}
-              disabled={!bulkOperationIsValid || isSaving}
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-700 px-4 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Appliquer
-            </button>
+            </div>
+
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+              <div
+                className="inline-flex w-fit shrink-0 rounded-md bg-white p-0.5 ring-1 ring-gray-300"
+                role="group"
+                aria-label="Mode de modification"
+              >
+                {(['fixed', 'percentage'] as BulkMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setBulkMode(mode)}
+                    className={`h-9 rounded px-3 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                      bulkMode === mode ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {mode === 'fixed' ? 'Valeur fixe' : 'Pourcentage'}
+                  </button>
+                ))}
+              </div>
+
+              {bulkMode === 'fixed' ? (
+                <div className="flex flex-wrap gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Prix vente 1</span>
+                    <div className="flex h-9 items-center overflow-hidden rounded-md border border-gray-300 bg-white focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={fixedPrice1}
+                        onChange={(event) => setFixedPrice1(event.target.value)}
+                        placeholder="Inchangé"
+                        className="w-28 border-0 px-2 text-right text-sm tabular-nums outline-none focus:ring-0"
+                      />
+                      <span className="border-l border-gray-200 px-2 text-xs font-medium text-gray-500">DH</span>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Prix vente 2</span>
+                    <div className="flex h-9 items-center overflow-hidden rounded-md border border-gray-300 bg-white focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={fixedPrice2}
+                        onChange={(event) => setFixedPrice2(event.target.value)}
+                        placeholder="Inchangé"
+                        className="w-28 border-0 px-2 text-right text-sm tabular-nums outline-none focus:ring-0"
+                      />
+                      <span className="border-l border-gray-200 px-2 text-xs font-medium text-gray-500">DH</span>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Variation signée</span>
+                    <div className="flex h-9 items-center overflow-hidden rounded-md border border-gray-300 bg-white focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={percentage}
+                        onChange={(event) => setPercentage(event.target.value)}
+                        placeholder="ex. 10 ou -5"
+                        className="w-28 border-0 px-2 text-right text-sm tabular-nums outline-none focus:ring-0"
+                      />
+                      <span className="border-l border-gray-200 px-2 text-xs font-medium text-gray-500">%</span>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Appliquer à</span>
+                    <select
+                      value={percentageTarget}
+                      onChange={(event) => setPercentageTarget(event.target.value as PercentageTarget)}
+                      className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="both">Prix 1 et Prix 2</option>
+                      <option value="prix_vente">Prix 1</option>
+                      <option value="prix_vente_2">Prix 2</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              <p className="min-w-0 flex-1 rounded-md bg-white px-3 py-2 text-xs leading-relaxed text-gray-600 ring-1 ring-gray-200">
+                <span className="font-semibold text-gray-800">Résumé : </span>
+                {bulkSummary}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => void applyBulkChange()}
+                disabled={!bulkOperationIsValid || isSaving}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Appliquer
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
-      <section className="border border-slate-200 bg-white shadow-sm" aria-label="Table des prix de vente">
+      <section className="overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-gray-200" aria-label="Table des prix de vente">
         <div className="max-h-[calc(100vh-330px)] min-h-[320px] overflow-auto">
           <table className="w-full min-w-[1080px] border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-900 text-white shadow-sm">
+            <thead className="sticky top-0 z-10 bg-gray-50 text-gray-600 shadow-[inset_0_-1px_0_0_rgb(229,231,235)]">
               <tr>
                 <th className="w-11 px-3 py-3 text-center">
                   <input
@@ -728,41 +789,44 @@ const SalePriceCorrectionsPage: React.FC = () => {
                     checked={allVisibleSelected}
                     disabled={!visibleRows.length || isSaving}
                     onChange={toggleSelectAllVisible}
-                    className="h-4 w-4 rounded border-slate-500 text-emerald-600 focus:ring-emerald-500"
+                    className="h-4 w-4 cursor-pointer rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed"
                     aria-label="Sélectionner toutes les lignes visibles"
                     title="Sélectionner toutes les lignes visibles"
                   />
                 </th>
-                <th className="min-w-[330px] px-3 py-3 text-left text-xs font-bold uppercase tracking-wide">Produit / snapshot</th>
-                <th className="min-w-[180px] px-3 py-3 text-left text-xs font-bold uppercase tracking-wide">Provenance</th>
-                <th className="px-3 py-3 text-right text-xs font-bold uppercase tracking-wide">Quantité</th>
-                <th className="min-w-[160px] px-3 py-3 text-right text-xs font-bold uppercase tracking-wide">Prix achat</th>
-                <th className="min-w-[150px] px-3 py-3 text-right text-xs font-bold uppercase tracking-wide">Prix vente 1</th>
-                <th className="min-w-[150px] px-3 py-3 text-right text-xs font-bold uppercase tracking-wide">Prix vente 2</th>
+                <th className="min-w-[330px] px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide">Produit / snapshot</th>
+                <th className="min-w-[180px] px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide">Provenance</th>
+                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide">Quantité</th>
+                <th className="min-w-[160px] px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide">Prix achat</th>
+                <th className="min-w-[150px] px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide">Prix vente 1</th>
+                <th className="min-w-[150px] px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide">Prix vente 2</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="h-72 text-center">
-                    <div className="inline-flex flex-col items-center gap-3 text-slate-500">
+                    <div className="inline-flex flex-col items-center gap-3 text-gray-500">
                       <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-                      <span className="font-medium">Chargement des prix et snapshots…</span>
+                      <span className="text-sm font-medium">Chargement des prix et snapshots…</span>
                     </div>
                   </td>
                 </tr>
               ) : isError ? (
                 <tr>
                   <td colSpan={7} className="h-72 text-center">
-                    <div className="mx-auto max-w-md px-6 text-slate-600">
-                      <AlertCircle className="mx-auto mb-3 h-9 w-9 text-red-600" />
-                      <p className="font-bold text-slate-900">Impossible de charger les prix</p>
-                      <p className="mt-1 text-sm">{getErrorMessage(error)}</p>
+                    <div className="mx-auto max-w-md px-6">
+                      <span className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+                        <AlertCircle className="h-6 w-6" />
+                      </span>
+                      <p className="font-semibold text-gray-900">Impossible de charger les prix</p>
+                      <p className="mt-1 text-sm text-gray-600">{getErrorMessage(error)}</p>
                       <button
                         type="button"
                         onClick={() => void refetch()}
-                        className="mt-4 rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        className="mt-4 inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
+                        <RefreshCw className="h-4 w-4" />
                         Réessayer
                       </button>
                     </div>
@@ -771,9 +835,21 @@ const SalePriceCorrectionsPage: React.FC = () => {
               ) : filteredGroups.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="h-72 text-center">
-                    <Package className="mx-auto mb-3 h-10 w-10 text-slate-300" />
-                    <p className="font-bold text-slate-900">Aucun produit trouvé</p>
-                    <p className="mt-1 text-sm text-slate-500">Essayez un autre ID, nom, variante ou numéro de snapshot.</p>
+                    <span className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-gray-50 text-gray-400">
+                      <Package className="h-6 w-6" />
+                    </span>
+                    <p className="font-semibold text-gray-900">Aucun produit trouvé</p>
+                    <p className="mt-1 text-sm text-gray-500">Essayez un autre ID, nom, variante ou numéro de snapshot.</p>
+                    {search ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearch('')}
+                        className="mt-4 inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <X className="h-4 w-4" />
+                        Effacer la recherche
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               ) : (
@@ -782,34 +858,32 @@ const SalePriceCorrectionsPage: React.FC = () => {
                   const variants = [...new Set(group.rows.map((row) => row.variantName).filter(Boolean))];
                   return (
                     <React.Fragment key={group.id}>
-                      <tr className="border-t border-slate-300 bg-slate-100">
+                      <tr
+                        className={`cursor-pointer border-t border-gray-200 transition-colors ${
+                          isExpanded ? 'bg-gray-100' : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                        onClick={() => toggleGroup(group.id)}
+                      >
                         <td className="px-3 py-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedProducts((previous) => {
-                              const next = new Set(previous);
-                              if (next.has(group.id)) next.delete(group.id);
-                              else next.add(group.id);
-                              return next;
-                            })}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                            aria-label={isExpanded ? `Replier ${group.designation}` : `Déplier ${group.designation}`}
+                          <span
+                            className="inline-flex h-7 w-7 items-center justify-center rounded text-gray-500"
+                            aria-hidden="true"
                           >
                             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          </button>
+                          </span>
                         </td>
                         <td className="px-3 py-2.5" colSpan={2}>
                           <button
                             type="button"
-                            onClick={() => setExpandedProducts((previous) => {
-                              const next = new Set(previous);
-                              if (next.has(group.id)) next.delete(group.id);
-                              else next.add(group.id);
-                              return next;
-                            })}
-                            className="flex w-full items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleGroup(group.id);
+                            }}
+                            className="flex w-full items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                            aria-expanded={isExpanded}
+                            aria-label={isExpanded ? `Replier ${group.designation}` : `Déplier ${group.designation}`}
                           >
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border border-slate-200 bg-white text-slate-400">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white text-gray-300 ring-1 ring-gray-200">
                               {group.imageUrl ? (
                                 <img
                                   src={toBackendUrl(group.imageUrl)}
@@ -821,34 +895,38 @@ const SalePriceCorrectionsPage: React.FC = () => {
                               ) : <ImageOff className="h-4 w-4" />}
                             </span>
                             <span className="min-w-0">
-                              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <strong className="text-sm text-slate-950">#{group.id}</strong>
-                                {group.reference2 ? <span className="font-mono text-xs text-slate-500">{group.reference2}</span> : null}
-                                <span className="font-semibold text-slate-800">{group.designation}</span>
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className="font-semibold text-gray-900">{group.designation}</span>
+                                <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-gray-500 ring-1 ring-gray-200">#{group.id}</span>
+                                {group.reference2 ? (
+                                  <span className="font-mono text-[11px] text-gray-400">{group.reference2}</span>
+                                ) : null}
                               </span>
-                              <span className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
+                              <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                                 {group.activeSnapshotCount ? (
-                                  <span className="border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-800">{group.activeSnapshotCount} actif(s)</span>
+                                  <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">{group.activeSnapshotCount} actif(s)</span>
                                 ) : null}
                                 {group.rows.length > 1 ? (
-                                  <span className="border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-bold text-blue-800">{group.rows.length} prix distincts</span>
+                                  <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">{group.rows.length} prix distincts</span>
                                 ) : null}
                                 {group.hasLatestFallback ? (
-                                  <span className="border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-bold text-amber-900">dernier épuisé</span>
+                                  <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">dernier épuisé</span>
                                 ) : null}
                                 {group.hasBaseRow ? (
-                                  <span className="border border-slate-300 bg-white px-1.5 py-0.5 font-bold text-slate-600">sans snapshot</span>
+                                  <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 font-semibold text-gray-500">sans snapshot</span>
                                 ) : null}
-                                {variants.map((variant) => <span key={variant} className="text-slate-500">{variant}</span>)}
+                                {variants.map((variant) => (
+                                  <span key={variant} className="text-gray-500">{variant}</span>
+                                ))}
                               </span>
                             </span>
                           </button>
                         </td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-700">
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-gray-700">
                           {quantityFormatter.format(group.totalQuantity)}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-xs text-slate-500" colSpan={3}>
-                          {isExpanded ? 'Cliquez pour replier' : `${group.rows.length} ligne(s) — cliquez pour afficher`}
+                        <td className="px-3 py-2.5 text-right text-xs text-gray-400" colSpan={3}>
+                          {isExpanded ? 'Replier' : `${group.rows.length} ligne(s) de prix`}
                         </td>
                       </tr>
 
@@ -856,28 +934,35 @@ const SalePriceCorrectionsPage: React.FC = () => {
                         const badge = provenanceBadge[row.provenance];
                         const selected = selectedRowKeys.has(row.key);
                         return (
-                          <tr key={row.key} className={`border-t border-slate-100 transition ${selected ? 'bg-emerald-50/80' : 'bg-white hover:bg-slate-50'}`}>
+                          <tr
+                            key={row.key}
+                            className={`border-t border-gray-100 transition-colors ${
+                              selected ? 'bg-emerald-50/70' : 'bg-white hover:bg-gray-50/80'
+                            }`}
+                          >
                             <td className="px-3 py-2 text-center">
                               <input
                                 type="checkbox"
                                 checked={selected}
                                 disabled={isSaving}
                                 onChange={() => toggleRowSelection(row.key)}
-                                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                className="h-4 w-4 cursor-pointer rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed"
                                 aria-label={`Sélectionner la ligne du produit ${group.id}`}
                               />
                             </td>
-                            <td className="border-l-2 border-l-amber-300 px-3 py-2">
-                              <div className="flex items-start gap-2 pl-2">
-                                <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                            <td className="px-3 py-2">
+                              <div className="flex items-start gap-2 border-l-2 border-gray-200 pl-3">
+                                <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                                 <div className="min-w-0">
-                                  <p className="font-medium text-slate-800">
-                                    {row.variantName ? <span>{row.variantName} · </span> : null}
+                                  <p className="text-sm font-medium text-gray-800">
+                                    {row.variantName ? (
+                                      <span className="text-gray-900">{row.variantName} · </span>
+                                    ) : null}
                                     {row.snapshotLabels.length
                                       ? row.snapshotLabels.map((id) => `#${id}`).join(', ')
                                       : 'Prix original du produit'}
                                   </p>
-                                  <p className="mt-0.5 text-xs text-slate-500">
+                                  <p className="mt-0.5 text-xs text-gray-500">
                                     {row.bonCommandeIds.length ? `Bon(s) ${row.bonCommandeIds.map((id) => `#${id}`).join(', ')}` : 'Table products'}
                                   </p>
                                 </div>
@@ -885,22 +970,31 @@ const SalePriceCorrectionsPage: React.FC = () => {
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap gap-1">
-                                <span className={`border px-2 py-1 text-[11px] font-bold ${badge.className}`}>{badge.label}</span>
+                                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}>
+                                  <span className={`h-1.5 w-1.5 rounded-full ${badge.dotClassName}`} />
+                                  {badge.label}
+                                </span>
                                 {row.mergedCount > 1 ? (
-                                  <span className="border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-800">{row.mergedCount} fusionnés</span>
+                                  <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{row.mergedCount} fusionnés</span>
                                 ) : null}
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-700">
+                            <td className="px-3 py-2 text-right text-sm font-medium tabular-nums text-gray-700">
                               {quantityFormatter.format(row.quantity)}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                            <td className="px-3 py-2 text-right text-sm tabular-nums text-gray-600">
                               {row.purchasePrices.length === 1 ? (
-                                <span>{moneyFormatter.format(row.purchasePrices[0])} DH</span>
+                                <span>
+                                  {moneyFormatter.format(row.purchasePrices[0])}
+                                  <span className="ml-1 text-xs text-gray-400">DH</span>
+                                </span>
                               ) : (
-                                <div className="flex flex-col items-end gap-1">
+                                <div className="flex flex-col items-end gap-0.5">
                                   {row.purchasePrices.map((price) => (
-                                    <span key={price} className="border-b border-dotted border-amber-400 text-xs font-semibold text-amber-900">{moneyFormatter.format(price)} DH</span>
+                                    <span key={price} className="text-xs font-medium text-amber-700">
+                                      {moneyFormatter.format(price)}
+                                      <span className="ml-1 text-gray-400">DH</span>
+                                    </span>
                                   ))}
                                 </div>
                               )}
@@ -934,7 +1028,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 };
 
