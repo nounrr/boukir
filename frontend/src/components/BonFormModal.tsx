@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
-import { Download, Plus, Trash2, Search, Printer } from 'lucide-react';
+import { Download, Plus, RotateCcw, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { sendWhatsApp } from '../utils/notifications';
 // Feature flag: show WhatsApp prompt popups after save/update
@@ -13,7 +13,7 @@ import {
   useGetEmployeesQueryServer as useGetEmployeesQueryServer,
   useGetMyBonAuthorizationsQueryServer,
 } from '../store/api/employeesApi.server';
-import { useCorrectBonProductPricesMutation, useGetProductsQuery, useGetProductsWithSnapshotsQuery, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
+import { useCorrectBonProductPricesMutation, useGetProductsQuery, useGetProductsWithSnapshotsQuery, useRestoreProductMutation, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -607,6 +607,36 @@ const findLatestSnapshotForProductVariant = (
   return getLatestSnapshotEntry(candidates);
 };
 
+const findOldestPricedSnapshotForProductVariant = (
+  snapshotProducts: any[] = [],
+  productId: any,
+  variantId: any,
+  priceField: 'prix_vente' | 'prix_vente_2'
+) => {
+  if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return null;
+  const variantKey = String(variantId || '');
+  const candidates = snapshotProducts.filter((snap: any) => {
+    if (!snap?.snapshot_id || String(snap.id) !== String(productId)) return false;
+    if (String(snap.variant_id || '') !== variantKey) return false;
+    const flag = snap.snapshot_en_validation;
+    const isActive = flag == null ? true : Number(flag) !== 0;
+    return isActive && Number(snap?.[priceField]) > 0;
+  });
+  if (candidates.length === 0) return null;
+
+  const withStock = candidates.filter((snap: any) => Number(snap.snapshot_quantite ?? 0) > 0);
+  const pool = withStock.length > 0 ? withStock : candidates;
+  return [...pool].sort((a: any, b: any) => {
+    const priorityA = Number(a.fifo_priority ?? 999);
+    const priorityB = Number(b.fifo_priority ?? 999);
+    if (priorityA !== priorityB) return priorityA - priorityB;
+    const timeA = new Date(a.snapshot_created_at ?? a.created_at ?? 0).getTime();
+    const timeB = new Date(b.snapshot_created_at ?? b.created_at ?? 0).getTime();
+    if (timeA !== timeB) return timeA - timeB;
+    return Number(a.snapshot_id ?? 0) - Number(b.snapshot_id ?? 0);
+  })[0] || null;
+};
+
 const formatPrixAchatOption = (value: any) => {
   const price = Number(value) || 0;
   const formatted = Number.isInteger(price)
@@ -649,12 +679,14 @@ const resolveOptionPrixVente = (
   variant: any = null,
   snapshotProducts: any[] = []
 ) => {
-  const snapshot = findLatestSnapshotForProductVariant(
+  const snapshot = findOldestPricedSnapshotForProductVariant(
     snapshotProducts,
     product?.id,
-    variant?.id ?? product?.variant_id ?? null
+    variant?.id ?? product?.variant_id ?? null,
+    'prix_vente'
   );
-  return Number(snapshot?.prix_vente) || Number(variant?.prix_vente) || Number(product?.prix_vente) || 0;
+  const selectedSnapshotPrice = product?.snapshot_id ? Number(product?.prix_vente) : 0;
+  return selectedSnapshotPrice || Number(snapshot?.prix_vente) || Number(variant?.prix_vente) || Number(product?.prix_vente) || 0;
 };
 
 const resolveOptionPrixVente2 = (
@@ -662,12 +694,14 @@ const resolveOptionPrixVente2 = (
   variant: any = null,
   snapshotProducts: any[] = []
 ) => {
-  const snapshot = findLatestSnapshotForProductVariant(
+  const snapshot = findOldestPricedSnapshotForProductVariant(
     snapshotProducts,
     product?.id,
-    variant?.id ?? product?.variant_id ?? null
+    variant?.id ?? product?.variant_id ?? null,
+    'prix_vente_2'
   );
-  return Number(snapshot?.prix_vente_2) || Number(variant?.prix_vente_2) || Number(product?.prix_vente_2) || 0;
+  const selectedSnapshotPrice = product?.snapshot_id ? Number(product?.prix_vente_2) : 0;
+  return selectedSnapshotPrice || Number(snapshot?.prix_vente_2) || Number(variant?.prix_vente_2) || Number(product?.prix_vente_2) || 0;
 };
 
 const resolveItemCostContext = (
@@ -766,13 +800,18 @@ const resolveItemCostContext = (
   };
 };
 
-const getCatalogPrixVente = (product: any, variantId?: any) => {
+const getCatalogPrixVente = (product: any, variantId?: any, snapshotProducts: any[] = []) => {
   const variant = variantId && product?.variants?.length
     ? (product.variants as any[]).find((v: any) => String(v?.id) === String(variantId))
     : null;
-  return variant
-    ? Number(variant.prix_vente ?? product?.prix_vente ?? 0)
-    : Number(product?.prix_vente ?? 0);
+  return resolveOptionPrixVente(product, variant, snapshotProducts);
+};
+
+const getCatalogPrixVente2 = (product: any, variantId?: any, snapshotProducts: any[] = []) => {
+  const variant = variantId && product?.variants?.length
+    ? (product.variants as any[]).find((v: any) => String(v?.id) === String(variantId))
+    : null;
+  return resolveOptionPrixVente2(product, variant, snapshotProducts);
 };
 
 const normalizeHumanName = (value: unknown) => {
@@ -1071,6 +1110,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [isContactModalOpen, setIsContactModalOpen] = useState<null | 'Client' | 'Fournisseur'>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [targetRowIndex, setTargetRowIndex] = useState<number | null>(null);
+  const [restoreProduct] = useRestoreProductMutation();
+  const [restoringProductIds, setRestoringProductIds] = useState<Set<number>>(new Set());
 
   // PERF: ne RIEN charger au montage en mode création (formulaire vide instantané).
   // Les grosses listes (produits, snapshots, clients, fournisseurs, historiques) ne se
@@ -2590,8 +2631,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         ? (prod.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id))
         : null;
 
-      const catalogPrixVente1 = Number(variant?.prix_vente ?? prod?.prix_vente ?? snap?.prix_vente ?? 0) || 0;
-      const catalogPrixVente2 = Number(variant?.prix_vente_2 ?? prod?.prix_vente_2 ?? snap?.prix_vente_2 ?? 0) || 0;
+      const catalogPriceSource = prod || snap;
+      const catalogPrixVente1 = resolveOptionPrixVente(catalogPriceSource, variant, snapshotProducts as any[]);
+      const catalogPrixVente2 = resolveOptionPrixVente2(catalogPriceSource, variant, snapshotProducts as any[]);
       if (item.catalog_prix_vente_1 === undefined || item.catalog_prix_vente_1 === null || item.catalog_prix_vente_1 === '') {
         formikRef.current!.setFieldValue(`items.${idx}.catalog_prix_vente_1`, catalogPrixVente1);
         formikRef.current!.setFieldValue(`items.${idx}._catalog_prix_vente_1_initial`, catalogPrixVente1);
@@ -2797,6 +2839,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     for (const item of values.items) {
       const productId = Number(item?.product_id);
       if (!Number.isInteger(productId) || productId <= 0) continue;
+      // Un produit archivé peut rester dans un avoir existant. Tant que
+      // l'utilisateur ne le réactive pas explicitement, ne pas appeler la
+      // correction catalogue (elle n'accepte que les produits actifs).
+      if (Number(item?.product_is_deleted ?? 0) === 1) continue;
 
       const prixVente = parseFloat(normalizeDecimal(String(item?.catalog_prix_vente_1 ?? '')));
       const prixVente2 = parseFloat(normalizeDecimal(String(item?.catalog_prix_vente_2 ?? '')));
@@ -2851,6 +2897,29 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         prix_vente_2: correction.prix_vente_2,
       })),
     }).unwrap();
+  };
+
+  const handleRestoreAvoirProduct = async (
+    productId: number,
+    rowIndex: number,
+    setFieldValue: (field: string, value: any, shouldValidate?: boolean) => any
+  ) => {
+    if (!Number.isInteger(productId) || productId <= 0 || restoringProductIds.has(productId)) return;
+
+    setRestoringProductIds((current) => new Set(current).add(productId));
+    try {
+      await restoreProduct({ id: productId }).unwrap();
+      await setFieldValue(`items.${rowIndex}.product_is_deleted`, 0, false);
+      showSuccess('Produit réactivé avec succès');
+    } catch (error: any) {
+      showError(`Erreur: ${error?.data?.message || error?.message || 'Impossible de réactiver le produit'}`);
+    } finally {
+      setRestoringProductIds((current) => {
+        const next = new Set(current);
+        next.delete(productId);
+        return next;
+      });
+    }
   };
 
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
@@ -5859,8 +5928,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               ) || null
                                             : null
                                         );
-                                        const catalogPrixVente1 = Number(catalogVariant?.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0) || 0;
-                                        const catalogPrixVente2 = Number(catalogVariant?.prix_vente_2 ?? catalogProduct?.prix_vente_2 ?? product.prix_vente_2 ?? 0) || 0;
+                                        const catalogPriceSource = catalogProduct || product;
+                                        const catalogPrixVente1 = resolveOptionPrixVente(catalogPriceSource, catalogVariant, snapshotProducts as any[]);
+                                        const catalogPrixVente2 = resolveOptionPrixVente2(catalogPriceSource, catalogVariant, snapshotProducts as any[]);
                                         setFieldValue(`items.${index}.catalog_prix_vente_1`, catalogPrixVente1);
                                         setFieldValue(`items.${index}.catalog_prix_vente_2`, catalogPrixVente2);
                                         setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, catalogPrixVente1);
@@ -5882,9 +5952,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           : selectedVariant
                                             ? Number(selectedVariant.prix_achat ?? product.prix_achat ?? 0)
                                             : Number(product.prix_achat || 0);
-                                        const effectivePV = catalogVariant
-                                          ? Number(catalogVariant.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0)
-                                          : Number((catalogProduct?.prix_vente ?? product.prix_vente) || 0);
+                                        const effectivePV = catalogPrixVente1;
                                         const effectiveCR = averageSnapshotCoutRevient ?? (
                                           latestSnapshotForCost
                                             ? Number(latestSnapshotForCost.cout_revient ?? latestSnapshotForCost.prix_achat ?? product.cout_revient ?? 0)
@@ -5999,7 +6067,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                     snapshotProducts as any[],
                                                     values.items[index].product_id,
                                                     vId,
-                                                    getCatalogPrixVente(product, vId)
+                                                    getCatalogPrixVente(product, vId, snapshotProducts as any[])
                                                   )
                                                 : null;
                                               setFieldValue(`items.${index}.product_snapshot_id`, snapshotProd?.snapshot_id || null);
@@ -6007,8 +6075,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 `items.${index}._catalog_snapshot_ids`,
                                                 snapshotProd?.snapshot_id ? [snapshotProd.snapshot_id] : []
                                               );
-                                              const catalogVariantPrixVente1 = Number(variant.prix_vente ?? product?.prix_vente ?? 0) || 0;
-                                              const catalogVariantPrixVente2 = Number(variant.prix_vente_2 ?? product?.prix_vente_2 ?? 0) || 0;
+                                              const catalogVariantPrixVente1 = getCatalogPrixVente(product, vId, snapshotProducts as any[]);
+                                              const catalogVariantPrixVente2 = getCatalogPrixVente2(product, vId, snapshotProducts as any[]);
                                               setFieldValue(`items.${index}.catalog_prix_vente_1`, catalogVariantPrixVente1);
                                               setFieldValue(`items.${index}.catalog_prix_vente_2`, catalogVariantPrixVente2);
                                               setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, catalogVariantPrixVente1);
@@ -6052,7 +6120,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 snapIdForRow: snapshotProd?.snapshot_id || null,
                                                 'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
                                                 'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
-                                                'catalog.prix_vente': getCatalogPrixVente(product, vId),
+                                                'catalog.prix_vente': getCatalogPrixVente(product, vId, snapshotProducts as any[]),
                                                 'product.prix_achat': product?.prix_achat,
                                                 'product.cout_revient': product?.cout_revient,
                                                 'product.prix_vente': product?.prix_vente,
@@ -6073,7 +6141,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 ? baseAchat
                                                 : values.type === 'Charge'
                                                   ? baseCoutRevient
-                                                  : getCatalogPrixVente(product, vId);
+                                                  : getCatalogPrixVente(product, vId, snapshotProducts as any[]);
 
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
@@ -6109,7 +6177,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               snapshotProducts as any[],
                                               values.items[index].product_id,
                                               '',
-                                              getCatalogPrixVente(product)
+                                              getCatalogPrixVente(product, undefined, snapshotProducts as any[])
                                             );
                                             setFieldValue(`items.${index}.product_snapshot_id`, snapshotProd2?.snapshot_id || null);
                                             setFieldValue(
@@ -6130,8 +6198,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const basePriceAchat = values.type === 'Commande'
                                             ? (Number(latestProductSnapshot?.prix_achat) || Number(product?.prix_achat) || 0)
                                             : (Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0);
-                                          const basePriceVente = getCatalogPrixVente(product);
-                                          const basePriceVente2 = Number(product?.prix_vente_2 ?? 0) || 0;
+                                          const basePriceVente = getCatalogPrixVente(product, undefined, snapshotProducts as any[]);
+                                          const basePriceVente2 = getCatalogPrixVente2(product, undefined, snapshotProducts as any[]);
                                           setFieldValue(`items.${index}.catalog_prix_vente_1`, basePriceVente);
                                           setFieldValue(`items.${index}.catalog_prix_vente_2`, basePriceVente2);
                                           setFieldValue(`items.${index}._catalog_prix_vente_1_initial`, basePriceVente);
@@ -6223,7 +6291,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     }
 
                                     const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
-                                    const basePriceVente = getCatalogPrixVente(product, values.items[index].variant_id);
+                                    const basePriceVente = getCatalogPrixVente(product, values.items[index].variant_id, snapshotProducts as any[]);
                                     if (values.type === 'Commande') {
                                       return (
                                         <span className="inline-flex min-h-[36px] w-full items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-base font-semibold text-emerald-700">
@@ -6278,7 +6346,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 snapIdForRow: values.items[index].product_snapshot_id,
                                                 'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
                                                 'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
-                                                'catalog.prix_vente': getCatalogPrixVente(product, selectedVariantId),
+                                                'catalog.prix_vente': getCatalogPrixVente(product, selectedVariantId, snapshotProducts as any[]),
                                                 'product.prix_achat': product?.prix_achat,
                                                 'product.cout_revient': product?.cout_revient,
                                                 'product.prix_vente': product?.prix_vente,
@@ -6291,7 +6359,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                                 if (v) {
                                                   baseA = Number(v.prix_achat) || basePriceAchat || 0;
-                                                  baseV = getCatalogPrixVente(product, selectedVariantId) || basePriceVente || 0;
+                                                  baseV = getCatalogPrixVente(product, selectedVariantId, snapshotProducts as any[]) || basePriceVente || 0;
                                                   if (averageUnitCoutRevient === null) {
                                                     baseCR = Number((v as any).cout_revient) || baseCR;
                                                   }
@@ -6352,7 +6420,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                               if (v) {
                                                 baseA = Number(v.prix_achat) || basePriceAchat || 0;
-                                                baseV = getCatalogPrixVente(product, selectedVariantId) || basePriceVente || 0;
+                                                baseV = getCatalogPrixVente(product, selectedVariantId, snapshotProducts as any[]) || basePriceVente || 0;
                                                 if (averageUnitCoutRevient === null) {
                                                   baseCR = Number((v as any).cout_revient) || baseCR;
                                                 }
@@ -7033,6 +7101,22 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       <Download size={16} />
     </button>
   )}
+  {isEditMode &&
+    ['Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(String(values.type)) &&
+    Number(values.items[index]?.product_is_deleted ?? 0) === 1 && (
+      <button
+        type="button"
+        onClick={() => handleRestoreAvoirProduct(Number(values.items[index]?.product_id), index, setFieldValue)}
+        className="text-emerald-600 hover:text-emerald-800 disabled:cursor-wait disabled:opacity-60"
+        disabled={isQtyOnlyEdit || restoringProductIds.has(Number(values.items[index]?.product_id))}
+        title="Réactiver ce produit archivé"
+        aria-label="Réactiver ce produit archivé"
+        data-row={index}
+        data-col="restore-product"
+      >
+        <RotateCcw size={16} className={restoringProductIds.has(Number(values.items[index]?.product_id)) ? 'animate-spin' : ''} />
+      </button>
+    )}
   <button
     type="button"
     disabled={isQtyOnlyEdit}

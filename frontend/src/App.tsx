@@ -68,9 +68,11 @@ const ProductPhotoStudioPage = React.lazy(() => import('./pages/ProductPhotoStud
 const PaymentPhoneCapturePage = React.lazy(() => import('./pages/PaymentPhoneCapturePage'));
 const RemisesPage = React.lazy(() => import('./pages/RemisesPage'));
 
+const ManualAccessCheckContext = React.createContext<(() => void) | undefined>(undefined);
+
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode; tabletCompact?: boolean }> = ({ children, tabletCompact }) => {
-  const { manualAccessCheck } = useAccessScheduleMonitor();
+  const manualAccessCheck = React.useContext(ManualAccessCheckContext);
   return <Layout manualAccessCheck={manualAccessCheck} tabletCompact={tabletCompact}>{children}</Layout>;
 };
 
@@ -88,7 +90,8 @@ const AppContent: React.FC = () => {
     timeRemaining,
     warningMessage,
     onWarningClose, 
-    onWarningConfirm
+    onWarningConfirm,
+    manualAccessCheck
   } = useAccessScheduleMonitor();
 
   useEffect(() => {
@@ -112,7 +115,7 @@ const AppContent: React.FC = () => {
   }, [isAuthenticated, meData, dispatch]);
 
   return (
-    <>
+    <ManualAccessCheckContext.Provider value={manualAccessCheck}>
       <Router>
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-600">Chargement…</div>}>
           <Routes>
@@ -773,7 +776,7 @@ const AppContent: React.FC = () => {
         onExtend={onWarningClose}
       />
     )}
-  </>
+    </ManualAccessCheckContext.Provider>
   );
 };
 

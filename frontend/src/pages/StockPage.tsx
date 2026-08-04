@@ -238,9 +238,33 @@ const StockPage: React.FC = () => {
     cout_revient: number | null;
     prix_gros: number | null;
     prix_vente: number | null;
+    prix_vente_2: number | null;
     rows: any[] | null;
   } => {
     const sd = p.snapshot_display;
+    const firstPositivePrice = (...values: any[]) => {
+      for (const value of values) {
+        const price = Number(value);
+        if (Number.isFinite(price) && price > 0) return price;
+      }
+      return 0;
+    };
+    const oldestPricedRow = (field: 'prix_vente' | 'prix_vente_2') => {
+      const rows = Array.isArray(sd?.rows) ? sd.rows : [];
+      return getOldestPositiveSnapshotRow(
+        rows.filter((row: any) => Number(row?.[field]) > 0)
+      );
+    };
+    const historicalPrixVente = firstPositivePrice(
+      oldestPricedRow('prix_vente')?.prix_vente,
+      p?.snapshot_prix_vente_old,
+      p?.prix_vente
+    );
+    const historicalPrixVente2 = firstPositivePrice(
+      oldestPricedRow('prix_vente_2')?.prix_vente_2,
+      p?.snapshot_prix_vente_2_old,
+      p?.prix_vente_2
+    );
     const averageCoutRevientRaw = p?.cout_revient_moyen_snapshot;
     const averageCoutRevient = averageCoutRevientRaw !== null && averageCoutRevientRaw !== undefined
       && Number.isFinite(Number(averageCoutRevientRaw))
@@ -255,7 +279,8 @@ const StockPage: React.FC = () => {
         prix_achat: Number(p.prix_achat || 0),
         cout_revient: averageCoutRevient ?? Number(p.cout_revient || 0),
         prix_gros: Number(p.prix_gros || 0),
-        prix_vente: Number(p.prix_vente || 0),
+        prix_vente: firstPositivePrice(p.prix_vente, p.snapshot_prix_vente_old),
+        prix_vente_2: firstPositivePrice(p.prix_vente_2, p.snapshot_prix_vente_2_old),
         rows: null,
       };
     }
@@ -266,7 +291,8 @@ const StockPage: React.FC = () => {
         prix_achat: latestPrixAchat,
         cout_revient: averageCoutRevient ?? (d?.cout_revient != null ? Number(d.cout_revient) : Number(p.cout_revient || 0)),
         prix_gros: d?.prix_gros != null ? Number(d.prix_gros) : Number(p.prix_gros || 0),
-        prix_vente: d?.prix_vente != null ? Number(d.prix_vente) : Number(p.prix_vente || 0),
+        prix_vente: firstPositivePrice(d?.prix_vente, historicalPrixVente),
+        prix_vente_2: firstPositivePrice(d?.prix_vente_2, historicalPrixVente2),
         rows: null,
       };
     }
@@ -278,9 +304,8 @@ const StockPage: React.FC = () => {
         prix_achat: latestPrixAchat,
         cout_revient: averageCoutRevient ?? (oldestRow?.cout_revient != null ? Number(oldestRow.cout_revient) : Number(p.cout_revient || 0)),
         prix_gros: oldestRow?.prix_gros != null ? Number(oldestRow.prix_gros) : Number(p.prix_gros || 0),
-        prix_vente: oldestRow?.prix_vente != null
-          ? Number(oldestRow.prix_vente)
-          : (p?.snapshot_prix_vente_old != null ? Number(p.snapshot_prix_vente_old) : Number(p.prix_vente || 0)),
+        prix_vente: historicalPrixVente,
+        prix_vente_2: historicalPrixVente2,
       };
     }
     return {
@@ -288,7 +313,8 @@ const StockPage: React.FC = () => {
       prix_achat: Number(p.prix_achat || 0),
       cout_revient: averageCoutRevient ?? Number(p.cout_revient || 0),
       prix_gros: Number(p.prix_gros || 0),
-      prix_vente: Number(p.prix_vente || 0),
+      prix_vente: firstPositivePrice(p.prix_vente, p.snapshot_prix_vente_old),
+      prix_vente_2: firstPositivePrice(p.prix_vente_2, p.snapshot_prix_vente_2_old),
       rows: null,
     };
   };
@@ -327,7 +353,10 @@ const StockPage: React.FC = () => {
     const opts = unitOptionsForProduct(prod);
     const found = opts.find(o => o.key === key);
     const pv = found?.prix_vente;
-    return pv === null || pv === undefined ? null : Number(pv);
+    const numericPrice = Number(pv);
+    return pv === null || pv === undefined || !Number.isFinite(numericPrice) || numericPrice <= 0
+      ? null
+      : numericPrice;
   };
 
   const getSelectedUnitLabel = (prod: any) => {
@@ -335,11 +364,6 @@ const StockPage: React.FC = () => {
     const opts = unitOptionsForProduct(prod);
     const found = opts.find(o => o.key === key);
     return found ? found.label : (prod.base_unit || 'u');
-  };
-
-  const getProductTablePrixVente = (prod: any) => {
-    const value = Number(prod?.prix_vente || 0);
-    return Number.isFinite(value) ? value : 0;
   };
 
   const handleEdit = (product: any) => {
@@ -404,6 +428,7 @@ const StockPage: React.FC = () => {
             snapshot_quantite_total: variant.snapshot_quantite_total ?? null,
             snapshot_prix_achat_old: variant.snapshot_prix_achat_old ?? null,
             snapshot_prix_vente_old: variant.snapshot_prix_vente_old ?? null,
+            snapshot_prix_vente_2_old: variant.snapshot_prix_vente_2_old ?? null,
             cout_revient_moyen_snapshot: variant.cout_revient_moyen_snapshot ?? null,
             snapshot_display: variant.snapshot_display ?? null,
             isVariantRow: true,
@@ -1643,7 +1668,7 @@ const StockPage: React.FC = () => {
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
                       const pa = dp.prix_achat!;
-                      const basePv = getProductTablePrixVente(product);
+                      const basePv = Number(dp.prix_vente || 0);
                       const factor = getSelectedUnitFactor(product);
                       const unitPv = getSelectedUnitPrixVenteOverride(product);
                       const converted = unitPv !== null && Number.isFinite(unitPv) ? unitPv : (basePv * factor);
@@ -1657,7 +1682,7 @@ const StockPage: React.FC = () => {
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatNum(Number(product.prix_vente_2 || 0))} DH
+                    {formatNum(Number(getSnapshotDisplayPrices(product).prix_vente_2 || 0))} DH
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${product.est_service

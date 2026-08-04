@@ -361,6 +361,30 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return base || variantName || '-';
   };
 
+  const getItemUnitLabel = (it: any) => {
+    // Les endpoints des bons renvoient déjà le libellé de l'unité sur la
+    // ligne. L'utiliser en priorité permet d'imprimer immédiatement, sans
+    // attendre le chargement asynchrone de tout le catalogue produits.
+    const directLabel =
+      it?.unite ??
+      it?.unit_name ??
+      it?.unit?.unit_name ??
+      it?.unit?.name;
+    if (directLabel != null && String(directLabel).trim()) {
+      return String(directLabel).trim();
+    }
+
+    const unitId = it?.unit_id ?? it?.unite_id ?? it?.uniteId;
+    const product = findProductById(it?.product_id ?? it?.produit_id);
+    if (unitId && Array.isArray(product?.units)) {
+      const matchedUnit = product.units.find((unit: any) => String(unit?.id) === String(unitId));
+      if (matchedUnit?.unit_name) return String(matchedUnit.unit_name);
+    }
+
+    const baseUnit = it?.base_unit ?? product?.base_unit;
+    return baseUnit != null ? String(baseUnit).trim() : '';
+  };
+
   const handlePrint = async () => {
     if (!printRef.current) return;
 
@@ -593,15 +617,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     <tr key={getItemKey(it)}>
                       <td className="col-code">{it.product_id}</td>
                       <td className="col-designation">{getItemDesignation(it)}</td>
-                      <td className="col-unite">{(() => {
-                        const uid = it?.unit_id ?? it?.unite_id ?? it?.uniteId;
-                        const prod = findProductById(it?.product_id ?? it?.produit_id);
-                        if (uid && Array.isArray(prod?.units)) {
-                          const mu = prod.units.find((uu: any) => String(uu.id) === String(uid));
-                          if (mu?.unit_name) return mu.unit_name;
-                        }
-                        return prod?.base_unit || '';
-                      })()}</td>
+                      <td className="col-unite">{getItemUnitLabel(it)}</td>
                       <td className="col-qte">{formatNumber(q)}</td>
                       {priceMode === 'WITH_PRICES' ? (
                         <>

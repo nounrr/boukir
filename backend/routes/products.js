@@ -938,13 +938,18 @@ async function runProductSearch(query) {
           AND COALESCE(ps2.prix_achat, 0) > 0
         ORDER BY ps2.created_at ASC, ps2.id ASC
         LIMIT 1) as snapshot_prix_achat_old,
-      (SELECT ps2.prix_vente
-         FROM product_snapshot ps2
-        WHERE ps2.product_id = p.id
-          AND ps2.quantite > 0
-          AND COALESCE(ps2.prix_vente, 0) > 0
-        ORDER BY ps2.created_at ASC, ps2.id ASC
-        LIMIT 1) as snapshot_prix_vente_old,
+       (SELECT ps2.prix_vente
+          FROM product_snapshot ps2
+         WHERE ps2.product_id = p.id
+           AND COALESCE(ps2.prix_vente, 0) > 0
+         ORDER BY (ps2.quantite > 0) DESC, ps2.created_at ASC, ps2.id ASC
+         LIMIT 1) as snapshot_prix_vente_old,
+       (SELECT ps2.prix_vente_2
+          FROM product_snapshot ps2
+         WHERE ps2.product_id = p.id
+           AND COALESCE(ps2.prix_vente_2, 0) > 0
+         ORDER BY (ps2.quantite > 0) DESC, ps2.created_at ASC, ps2.id ASC
+         LIMIT 1) as snapshot_prix_vente_2_old,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pi.id,
         'image_url', pi.image_url,
@@ -977,13 +982,18 @@ async function runProductSearch(query) {
             AND COALESCE(ps3.prix_achat, 0) > 0
           ORDER BY ps3.created_at ASC, ps3.id ASC
           LIMIT 1),
-        'snapshot_prix_vente_old', (SELECT ps3.prix_vente
-           FROM product_snapshot ps3
-          WHERE ps3.variant_id = pv.id
-            AND ps3.quantite > 0
-            AND COALESCE(ps3.prix_vente, 0) > 0
-          ORDER BY ps3.created_at ASC, ps3.id ASC
-          LIMIT 1)
+         'snapshot_prix_vente_old', (SELECT ps3.prix_vente
+            FROM product_snapshot ps3
+           WHERE ps3.variant_id = pv.id
+             AND COALESCE(ps3.prix_vente, 0) > 0
+           ORDER BY (ps3.quantite > 0) DESC, ps3.created_at ASC, ps3.id ASC
+           LIMIT 1),
+         'snapshot_prix_vente_2_old', (SELECT ps3.prix_vente_2
+            FROM product_snapshot ps3
+           WHERE ps3.variant_id = pv.id
+             AND COALESCE(ps3.prix_vente_2, 0) > 0
+           ORDER BY (ps3.quantite > 0) DESC, ps3.created_at ASC, ps3.id ASC
+           LIMIT 1)
       )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pu.id,
@@ -1051,8 +1061,9 @@ async function runProductSearch(query) {
         ...v,
         prix_vente_2: Number(v?.prix_vente_2 ?? 0),
         snapshot_quantite_total: v?.snapshot_quantite_total !== null && v?.snapshot_quantite_total !== undefined ? Number(v.snapshot_quantite_total) : null,
-        snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
-        snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
+         snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
+         snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
+         snapshot_prix_vente_2_old: v?.snapshot_prix_vente_2_old !== null && v?.snapshot_prix_vente_2_old !== undefined ? Number(v.snapshot_prix_vente_2_old) : null,
       })) : [];
 
       return {
@@ -1079,8 +1090,9 @@ async function runProductSearch(query) {
         prix_gros: Number(r.prix_gros),
         prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
         prix_vente: Number(r.prix_vente),
-        prix_vente_2: Number(r.prix_vente_2 ?? 0),
-        snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
+         prix_vente_2: Number(r.prix_vente_2 ?? 0),
+         snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
+         snapshot_prix_vente_2_old: useSnapshot && r.snapshot_prix_vente_2_old !== null && r.snapshot_prix_vente_2_old !== undefined ? Number(r.snapshot_prix_vente_2_old) : null,
         est_service: !!r.est_service,
         rappel_non_calcule: !!r.rappel_non_calcule,
         non_stockable: !!r.non_stockable,
@@ -1119,7 +1131,7 @@ async function runProductSearch(query) {
         const averageCostByProductVariant = await loadAverageSnapshotCoutRevient(productIds);
         const [allSnaps] = await pool.query(
           `SELECT ps.id, ps.product_id, ps.variant_id,
-                  ps.prix_achat, ps.prix_vente, ps.cout_revient, ps.prix_gros,
+                  ps.prix_achat, ps.prix_vente, ps.prix_vente_2, ps.cout_revient, ps.prix_gros,
                   ps.quantite, ps.bon_commande_id, ps.created_at
            FROM product_snapshot ps
            WHERE ps.product_id IN (?)
@@ -1134,7 +1146,8 @@ async function runProductSearch(query) {
           snapGrouped[key].push({
             id: Number(snap.id),
             prix_achat: snap.prix_achat !== null && snap.prix_achat !== undefined ? Number(snap.prix_achat) : null,
-            prix_vente: snap.prix_vente !== null && snap.prix_vente !== undefined ? Number(snap.prix_vente) : null,
+             prix_vente: snap.prix_vente !== null && snap.prix_vente !== undefined ? Number(snap.prix_vente) : null,
+             prix_vente_2: snap.prix_vente_2 !== null && snap.prix_vente_2 !== undefined ? Number(snap.prix_vente_2) : null,
             cout_revient: snap.cout_revient !== null && snap.cout_revient !== undefined ? Number(snap.cout_revient) : null,
             prix_gros: snap.prix_gros !== null && snap.prix_gros !== undefined ? Number(snap.prix_gros) : null,
             quantite: Number(snap.quantite ?? 0),
@@ -1154,11 +1167,14 @@ async function runProductSearch(query) {
           if (positiveSnaps.length === 1) {
             return { mode: 'single_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
-          const firstPrixAchat = positiveSnaps[0].prix_achat;
-          const firstPrixVente = positiveSnaps[0].prix_vente;
-          const allSame = positiveSnaps.every((snap) => (
-            snap.prix_achat === firstPrixAchat && snap.prix_vente === firstPrixVente
-          ));
+           const firstPrixAchat = positiveSnaps[0].prix_achat;
+           const firstPrixVente = positiveSnaps[0].prix_vente;
+           const firstPrixVente2 = positiveSnaps[0].prix_vente_2;
+           const allSame = positiveSnaps.every((snap) => (
+             snap.prix_achat === firstPrixAchat
+             && snap.prix_vente === firstPrixVente
+             && snap.prix_vente_2 === firstPrixVente2
+           ));
           if (allSame) {
             return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
@@ -1656,13 +1672,18 @@ router.get('/', async (req, res, next) => {
           AND COALESCE(ps2.prix_achat, 0) > 0
         ORDER BY ps2.created_at ASC, ps2.id ASC
         LIMIT 1) as snapshot_prix_achat_old,
-      (SELECT ps2.prix_vente
-         FROM product_snapshot ps2
-        WHERE ps2.product_id = p.id
-          AND ps2.quantite > 0
-          AND COALESCE(ps2.prix_vente, 0) > 0
-        ORDER BY ps2.created_at ASC, ps2.id ASC
-        LIMIT 1) as snapshot_prix_vente_old,
+       (SELECT ps2.prix_vente
+          FROM product_snapshot ps2
+         WHERE ps2.product_id = p.id
+           AND COALESCE(ps2.prix_vente, 0) > 0
+         ORDER BY (ps2.quantite > 0) DESC, ps2.created_at ASC, ps2.id ASC
+         LIMIT 1) as snapshot_prix_vente_old,
+       (SELECT ps2.prix_vente_2
+          FROM product_snapshot ps2
+         WHERE ps2.product_id = p.id
+           AND COALESCE(ps2.prix_vente_2, 0) > 0
+         ORDER BY (ps2.quantite > 0) DESC, ps2.created_at ASC, ps2.id ASC
+         LIMIT 1) as snapshot_prix_vente_2_old,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pi.id,
         'image_url', pi.image_url,
@@ -1695,13 +1716,18 @@ router.get('/', async (req, res, next) => {
             AND COALESCE(ps3.prix_achat, 0) > 0
           ORDER BY ps3.created_at ASC, ps3.id ASC
           LIMIT 1),
-        'snapshot_prix_vente_old', (SELECT ps3.prix_vente
-           FROM product_snapshot ps3
-          WHERE ps3.variant_id = pv.id
-            AND ps3.quantite > 0
-            AND COALESCE(ps3.prix_vente, 0) > 0
-          ORDER BY ps3.created_at ASC, ps3.id ASC
-          LIMIT 1)
+         'snapshot_prix_vente_old', (SELECT ps3.prix_vente
+            FROM product_snapshot ps3
+           WHERE ps3.variant_id = pv.id
+             AND COALESCE(ps3.prix_vente, 0) > 0
+           ORDER BY (ps3.quantite > 0) DESC, ps3.created_at ASC, ps3.id ASC
+           LIMIT 1),
+         'snapshot_prix_vente_2_old', (SELECT ps3.prix_vente_2
+            FROM product_snapshot ps3
+           WHERE ps3.variant_id = pv.id
+             AND COALESCE(ps3.prix_vente_2, 0) > 0
+           ORDER BY (ps3.quantite > 0) DESC, ps3.created_at ASC, ps3.id ASC
+           LIMIT 1)
       )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pu.id,
@@ -1766,8 +1792,9 @@ router.get('/', async (req, res, next) => {
         ...v,
         prix_vente_2: Number(v?.prix_vente_2 ?? 0),
         snapshot_quantite_total: v?.snapshot_quantite_total !== null && v?.snapshot_quantite_total !== undefined ? Number(v.snapshot_quantite_total) : null,
-        snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
-        snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
+         snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
+         snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
+         snapshot_prix_vente_2_old: v?.snapshot_prix_vente_2_old !== null && v?.snapshot_prix_vente_2_old !== undefined ? Number(v.snapshot_prix_vente_2_old) : null,
       })) : [];
       return {
         id: r.id,
@@ -1790,8 +1817,9 @@ router.get('/', async (req, res, next) => {
         prix_gros: Number(r.prix_gros),
         prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
         prix_vente: Number(r.prix_vente),
-        prix_vente_2: Number(r.prix_vente_2 ?? 0),
-        snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
+         prix_vente_2: Number(r.prix_vente_2 ?? 0),
+         snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
+         snapshot_prix_vente_2_old: useSnapshot && r.snapshot_prix_vente_2_old !== null && r.snapshot_prix_vente_2_old !== undefined ? Number(r.snapshot_prix_vente_2_old) : null,
         est_service: !!r.est_service,
         rappel_non_calcule: !!r.rappel_non_calcule,
         non_stockable: !!r.non_stockable,
@@ -1828,7 +1856,7 @@ router.get('/', async (req, res, next) => {
         const averageCostByProductVariant = await loadAverageSnapshotCoutRevient(allProductIds);
         const [allSnaps] = await pool.query(
           `SELECT ps.id, ps.product_id, ps.variant_id,
-                  ps.prix_achat, ps.prix_vente, ps.cout_revient, ps.prix_gros,
+                  ps.prix_achat, ps.prix_vente, ps.prix_vente_2, ps.cout_revient, ps.prix_gros,
                   ps.quantite, ps.bon_commande_id, ps.created_at
            FROM product_snapshot ps
            WHERE ps.product_id IN (?)
@@ -1844,7 +1872,8 @@ router.get('/', async (req, res, next) => {
           snapGrouped[key].push({
             id: Number(snap.id),
             prix_achat: snap.prix_achat !== null && snap.prix_achat !== undefined ? Number(snap.prix_achat) : null,
-            prix_vente: snap.prix_vente !== null && snap.prix_vente !== undefined ? Number(snap.prix_vente) : null,
+             prix_vente: snap.prix_vente !== null && snap.prix_vente !== undefined ? Number(snap.prix_vente) : null,
+             prix_vente_2: snap.prix_vente_2 !== null && snap.prix_vente_2 !== undefined ? Number(snap.prix_vente_2) : null,
             cout_revient: snap.cout_revient !== null && snap.cout_revient !== undefined ? Number(snap.cout_revient) : null,
             prix_gros: snap.prix_gros !== null && snap.prix_gros !== undefined ? Number(snap.prix_gros) : null,
             quantite: Number(snap.quantite ?? 0),
@@ -1874,9 +1903,12 @@ router.get('/', async (req, res, next) => {
             return { mode: 'single_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
           // Multiple positive → check price uniformity
-          const fPA = positiveSnaps[0].prix_achat;
-          const fPV = positiveSnaps[0].prix_vente;
-          const allSame = positiveSnaps.every(s => s.prix_achat === fPA && s.prix_vente === fPV);
+           const fPA = positiveSnaps[0].prix_achat;
+           const fPV = positiveSnaps[0].prix_vente;
+           const fPV2 = positiveSnaps[0].prix_vente_2;
+           const allSame = positiveSnaps.every(s => (
+             s.prix_achat === fPA && s.prix_vente === fPV && s.prix_vente_2 === fPV2
+           ));
           if (allSame) {
             return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }

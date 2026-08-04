@@ -252,6 +252,7 @@ const buildItemsSql = (cfg) => {
     SELECT JSON_ARRAYAGG(JSON_OBJECT(
       'id', ${i}.id,
       'product_id', ${i}.product_id,
+      'product_is_deleted', COALESCE(p.is_deleted, 0),
       'est_service', p.est_service,
       'rappel_non_calcule', p.rappel_non_calcule,
       ${variantUnitFields}

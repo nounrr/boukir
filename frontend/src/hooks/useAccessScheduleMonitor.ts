@@ -17,9 +17,7 @@ interface AccessMonitorState {
 export const useAccessScheduleMonitor = () => {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAuth();
-  const intervalRef = useRef<number | null>(null);
   const timeCheckRef = useRef<number | null>(null);
-  const warningShownRef = useRef<boolean>(false);
   const userSchedulesRef = useRef<any[]>([]);
   
   const [accessState, setAccessState] = useState<AccessMonitorState>({
@@ -29,14 +27,16 @@ export const useAccessScheduleMonitor = () => {
     endTime: null
   });
   
-  // Vérifier l'accès très fréquemment pour déconnexion immédiate à l'heure de fin
+  // RTK Query partage cette requête entre les composants et attend la fin d'un
+  // contrôle avant de lancer le suivant.
   const {
     data: accessResult,
     error: accessError,
     refetch: checkAccess
   } = useCheckAccessQuery(undefined, {
     skip: !isAuthenticated || !user,
-    pollingInterval: 3000, // 3 secondes pour déconnexion immédiate
+    pollingInterval: 5 * 60 * 1000,
+    skipPollingIfUnfocused: true,
   });
 
 
@@ -101,60 +101,15 @@ export const useAccessScheduleMonitor = () => {
       return;
     }
 
-    // Fonction pour vérifier l'accès
-    const verifyAccess = async () => {
-      try {
-        const result = await checkAccess();
-        
-        if (result.error) {
-          const errorData = result.error as any;
-          
-          // Si l'accès est refusé pour cause d'horaire
-          if (errorData?.data?.access_denied && 
-              errorData?.data?.error_type === 'ACCESS_SCHEDULE_RESTRICTION') {
-            
-            console.log('Accès expiré - déconnexion automatique:', errorData.data.reason);
-            
-            // Afficher le popup de fermeture avec déconnexion immédiate
-            setAccessState({
-              showWarning: true,
-              warningMessage: `Votre session a expiré: ${errorData.data.reason}. Déconnexion automatique en cours...`,
-              timeRemaining: 5, // 5 secondes avant fermeture forcée
-              endTime: new Date()
-            });
-            
-            // Déconnexion automatique après 3 secondes
-            setTimeout(() => {
-              dispatch(logout());
-            }, 3000);
-          }
-        } else {
-          // Accès autorisé - Réinitialiser le flag d'avertissement si l'accès est OK
-          warningShownRef.current = false;
-        }
-      } catch (error) {
-        console.error('Erreur lors de la vérification d\'accès:', error);
-      }
-    };
-
-    // Vérifier immédiatement
-    verifyAccess();
-
-    // Puis vérifier toutes les 5 minutes
-    intervalRef.current = window.setInterval(verifyAccess, 5 * 60 * 1000);
-
     // Vérification horaires toutes les 5 minutes
     timeCheckRef.current = window.setInterval(checkTimeBasedAccess, 5 * 60 * 1000);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
       if (timeCheckRef.current) {
         clearInterval(timeCheckRef.current);
       }
     };
-  }, [isAuthenticated, user, checkAccess, dispatch]);
+  }, [isAuthenticated, user, dispatch]);
 
   // Gérer les erreurs d'accès en temps réel
   useEffect(() => {
