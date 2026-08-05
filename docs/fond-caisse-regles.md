@@ -35,6 +35,8 @@ Les entrees du fond de caisse sont:
    - source: `payments`
    - exclus si:
      - `bon_type = 'Comptant'`
+     - `mode_paiement = 'Virement'`
+     - `mode_paiement = 'Remise'`
      - `statut` est annule
      - `statut` est refuse
    - inclus si:
@@ -158,6 +160,7 @@ Pour chaque ligne:
 Le fond de caisse represente uniquement les mouvements qui impactent reellement la caisse liquide du jour.
 
 - un encaissement client entre en caisse
+- un encaissement client par virement n'entre pas dans la caisse
 - un paiement comptant valide entre en caisse
 - une charge marquee `inclus_en_caisse` sort de la caisse
 - un bon vehicule sort de la caisse

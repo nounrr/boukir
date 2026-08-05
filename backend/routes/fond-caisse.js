@@ -42,7 +42,7 @@ const paymentIncludedInCaisseSql = (paymentAlias = 'p') => `
             AND (
               COALESCE(${paymentAlias}.bon_type, '') <> 'Comptant'
             )
-            AND COALESCE(${paymentAlias}.mode_paiement, '') <> 'Remise'`;
+            AND LOWER(TRIM(COALESCE(${paymentAlias}.mode_paiement, ''))) NOT IN ('remise', 'virement')`;
 const bonComptantPaymentCaisseDateSql = (paymentAlias = 'p') =>
   `${paymentAlias}.created_at`;
 const afterLatestCaisseStartSql = (dateTimeExpr) => `
