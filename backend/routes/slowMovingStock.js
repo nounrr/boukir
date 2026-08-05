@@ -50,16 +50,19 @@ router.get('/', async (req, res, next) => {
       [sortieSalesRows],
       [comptantSalesRows],
       [ecommerceSalesRows],
+      [stockEntryRows],
     ] = await Promise.all([
       pool.query(queries.parentCatalog.sql, queries.parentCatalog.params),
       pool.query(queries.variantCatalog.sql, queries.variantCatalog.params),
       pool.query(queries.sortieSales.sql, queries.sortieSales.params),
       pool.query(queries.comptantSales.sql, queries.comptantSales.params),
       pool.query(queries.ecommerceSales.sql, queries.ecommerceSales.params),
+      pool.query(queries.stockEntries.sql, queries.stockEntries.params),
     ]);
     const result = assembleSlowMovingStock({
       catalogRows: [...parentRows, ...variantRows],
       salesRows: [...sortieSalesRows, ...comptantSalesRows, ...ecommerceSalesRows],
+      stockEntryRows,
       salesThreshold: settings.salesThreshold,
       page,
       limit,

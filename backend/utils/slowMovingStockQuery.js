@@ -1,6 +1,8 @@
 const FINAL_BACKOFFICE_STATUSES = [
-  'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
+  'En attente', 'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
 ];
+
+const STOCK_ENTRY_BACKOFFICE_STATUSES = ['En attente', 'Validé', 'Valide'];
 
 export const SLOW_MOVING_STOCK_LIMITS = Object.freeze({
   min: 1,
@@ -160,6 +162,25 @@ function buildEcommerceSalesQuery(periodStart) {
   };
 }
 
+function buildStockEntryQuery() {
+  const statuses = STOCK_ENTRY_BACKOFFICE_STATUSES.map(() => '?').join(', ');
+
+  return {
+    sql: `
+      SELECT
+        item.product_id,
+        COALESCE(item.variant_id, ps.variant_id) AS variant_id,
+        MAX(header.date_creation) AS last_stock_at
+      FROM bons_commande header
+      INNER JOIN commande_items item ON item.bon_commande_id = header.id
+      LEFT JOIN product_snapshot ps ON ps.id = item.product_snapshot_id
+      WHERE header.statut IN (${statuses})
+        AND COALESCE(item.is_indisponible, 0) = 0
+      GROUP BY item.product_id, COALESCE(item.variant_id, ps.variant_id)`,
+    params: [...STOCK_ENTRY_BACKOFFICE_STATUSES],
+  };
+}
+
 export function buildSlowMovingStockQueries({ periodStart, q = '' }) {
   const search = String(q || '').trim();
 
@@ -179,6 +200,7 @@ export function buildSlowMovingStockQueries({ periodStart, q = '' }) {
       periodStart,
     }),
     ecommerceSales: buildEcommerceSalesQuery(periodStart),
+    stockEntries: buildStockEntryQuery(),
   };
 }
 
@@ -192,8 +214,16 @@ function latestDate(current, candidate) {
   return new Date(candidate).getTime() > new Date(current).getTime() ? candidate : current;
 }
 
-export function assembleSlowMovingStock({ catalogRows, salesRows, salesThreshold, page, limit }) {
+export function assembleSlowMovingStock({
+  catalogRows,
+  salesRows,
+  stockEntryRows = [],
+  salesThreshold,
+  page,
+  limit,
+}) {
   const salesBySku = new Map();
+  const lastStockBySku = new Map();
 
   for (const row of salesRows) {
     const key = skuKey(row.product_id, row.variant_id);
@@ -201,6 +231,11 @@ export function assembleSlowMovingStock({ catalogRows, salesRows, salesThreshold
     current.sold_quantity += Number(row.sold_quantity || 0);
     current.last_sale_at = latestDate(current.last_sale_at, row.last_sale_at);
     salesBySku.set(key, current);
+  }
+
+  for (const row of stockEntryRows) {
+    const key = skuKey(row.product_id, row.variant_id);
+    lastStockBySku.set(key, latestDate(lastStockBySku.get(key), row.last_stock_at));
   }
 
   const filteredRows = catalogRows
@@ -211,6 +246,7 @@ export function assembleSlowMovingStock({ catalogRows, salesRows, salesThreshold
         stock_current: Number(row.stock_current || 0),
         sold_quantity: Number(sales?.sold_quantity || 0),
         last_sale_at: sales?.last_sale_at || null,
+        last_stock_at: lastStockBySku.get(skuKey(row.product_id, row.variant_id)) || null,
       };
     })
     .filter((row) => isSlowMovingCandidate(row.stock_current, row.sold_quantity, salesThreshold))
@@ -238,4 +274,4 @@ export function assembleSlowMovingStock({ catalogRows, salesRows, salesThreshold
   };
 }
 
-export { FINAL_BACKOFFICE_STATUSES };
+export { FINAL_BACKOFFICE_STATUSES, STOCK_ENTRY_BACKOFFICE_STATUSES };

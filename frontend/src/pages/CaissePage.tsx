@@ -1,8 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
-import { useAppSelector, useAuth } from '../hooks/redux';
+import { useAppDispatch, useAppSelector, useAuth } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { 
@@ -41,7 +40,7 @@ import { canModifyPayments } from '../utils/permissions';
 import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
-import { useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import { paymentsApi, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
@@ -68,7 +67,7 @@ type RemisePaymentAccount = {
 };
 
 const CaissePage = () => {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
 
   function normalizePaymentStatut(s: any): 'En attente' | 'Validé' | 'Refusé' | 'Annulé' | string {
     if (!s) return '';
@@ -114,7 +113,7 @@ const CaissePage = () => {
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const paymentSortBy = sortField || 'date';
-  const { data: paymentsPagedResponse } = useGetPaymentsPagedQuery({
+  const paymentsQueryArgs = useMemo(() => ({
     page: currentPage,
     limit: itemsPerPage,
     search: searchTerm || undefined,
@@ -123,7 +122,11 @@ const CaissePage = () => {
     status: statusFilter.length ? statusFilter.join(',') : undefined,
     sortBy: paymentSortBy,
     sortDir: sortDirection,
-  });
+  }), [currentPage, itemsPerPage, searchTerm, dateFilter, modeFilter, statusFilter, paymentSortBy, sortDirection]);
+  const {
+    data: paymentsPagedResponse,
+    refetch: refetchPayments,
+  } = useGetPaymentsPagedQuery(paymentsQueryArgs);
   const needsAllPayments = isCreateModalOpen || isViewModalOpen || isPrintModalOpen;
   const { data: allPaymentsForHistory = [] } = useGetPaymentsQuery(undefined, { skip: !needsAllPayments });
   const { data: clientRemisesRaw = [] } = useGetClientRemisesQuery();
@@ -753,18 +756,34 @@ const CaissePage = () => {
 
   // Change payment statut helper (only change statut via table actions)
   const changePaymentStatus = async (paymentId: number, newStatut: 'En attente'|'Validé'|'Refusé'|'Annulé') => {
-    try {
-      // Autoriser le "déverrouillage" (Validé -> En attente) uniquement pour PDG/ManagerPlus
-      const current = (payments || []).find((p: any) => Number(p?.id) === Number(paymentId));
-      const currentStatut = normalizePaymentStatut(current?.statut);
-      if (currentStatut === 'Validé' && newStatut === 'En attente' && !isPdgOrManagerPlus) {
-        showError("Seuls PDG/ManagerPlus peuvent remettre un paiement Validé en 'En attente'.");
-        return;
-      }
+    // Autoriser le "déverrouillage" (Validé -> En attente) uniquement pour PDG/ManagerPlus
+    const current = (payments || []).find((p: any) => Number(p?.id) === Number(paymentId));
+    const currentStatut = normalizePaymentStatut(current?.statut);
+    if (currentStatut === 'Validé' && newStatut === 'En attente' && !isPdgOrManagerPlus) {
+      showError("Seuls PDG/ManagerPlus peuvent remettre un paiement Validé en 'En attente'.");
+      return;
+    }
 
+    const optimisticPagedPatch = dispatch(
+      paymentsApi.util.updateQueryData('getPaymentsPaged', paymentsQueryArgs, (draft) => {
+        const payment = draft.data.find((item) => Number(item.id) === Number(paymentId));
+        if (payment) payment.statut = newStatut;
+      })
+    );
+    const optimisticHistoryPatch = dispatch(
+      paymentsApi.util.updateQueryData('getPayments', undefined, (draft) => {
+        const payment = draft.find((item) => Number(item.id) === Number(paymentId));
+        if (payment) payment.statut = newStatut;
+      })
+    );
+
+    try {
       await changePaymentStatusApi({ id: paymentId, statut: newStatut }).unwrap();
+      await refetchPayments();
       showSuccess(`Statut mis à jour: ${newStatut}`);
     } catch (err: any) {
+      optimisticPagedPatch.undo();
+      optimisticHistoryPatch.undo();
       console.error('Erreur mise à jour statut:', err);
       showError(err?.data?.message || err?.message || 'Erreur lors de la mise à jour du statut');
     }

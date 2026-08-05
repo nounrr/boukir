@@ -19,6 +19,7 @@ export interface SlowMovingStockRow {
   stock_current: number;
   sold_quantity: number;
   last_sale_at: string | null;
+  last_stock_at: string | null;
 }
 
 export interface SlowMovingStockResponse {

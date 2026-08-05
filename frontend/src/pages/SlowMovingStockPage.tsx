@@ -244,8 +244,8 @@ const SlowMovingStockPage: React.FC = () => {
       <div className="flex gap-3 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
         <p>
-          Calcul basé uniquement sur les ventes finalisées. Les <strong>brouillons</strong>, documents{' '}
-          <strong>En attente/pending</strong> et <strong>annulations</strong> sont exclus.
+          Calcul basé sur les bons <strong>En attente</strong> et les ventes finalisées. Les{' '}
+          <strong>brouillons</strong> et <strong>annulations</strong> sont exclus.
         </p>
       </div>
 
@@ -360,6 +360,7 @@ const SlowMovingStockPage: React.FC = () => {
                     <th className="px-4 py-3 text-right font-semibold">Stock</th>
                     <th className="px-4 py-3 text-right font-semibold">Ventes</th>
                     <th className="px-4 py-3 font-semibold">Statut</th>
+                    <th className="px-4 py-3 font-semibold">Dernière date en stock</th>
                     <th className="px-4 py-3 font-semibold">Dernière vente</th>
                   </tr>
                 </thead>
@@ -383,6 +384,7 @@ const SlowMovingStockPage: React.FC = () => {
                         {numberFormatter.format(row.sold_quantity)}
                       </td>
                       <td className="px-4 py-3 align-middle"><RotationBadge sold={row.sold_quantity} /></td>
+                      <td className="whitespace-nowrap px-4 py-3 align-middle text-gray-600">{formatDate(row.last_stock_at)}</td>
                       <td className="whitespace-nowrap px-4 py-3 align-middle text-gray-600">{formatDate(row.last_sale_at)}</td>
                     </tr>
                   ))}
@@ -422,7 +424,10 @@ const SlowMovingStockPage: React.FC = () => {
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <RotationBadge sold={row.sold_quantity} />
-                    <span className="text-xs text-gray-500">Dernière vente · {formatDate(row.last_sale_at)}</span>
+                    <div className="text-right text-xs text-gray-500">
+                      <p>Dernière date en stock · {formatDate(row.last_stock_at)}</p>
+                      <p className="mt-1">Dernière vente · {formatDate(row.last_sale_at)}</p>
+                    </div>
                   </div>
                 </article>
               ))}

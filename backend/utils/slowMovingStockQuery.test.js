@@ -4,6 +4,7 @@ import {
   assembleSlowMovingStock,
   buildSlowMovingStockQueries,
   FINAL_BACKOFFICE_STATUSES,
+  STOCK_ENTRY_BACKOFFICE_STATUSES,
   isSlowMovingCandidate,
   skuKindsForProduct,
 } from './slowMovingStockQuery.js';
@@ -45,9 +46,9 @@ test('queries avoid UNION and CTE syntax for old MySQL compatibility', () => {
   }
 });
 
-test('only finalized back-office statuses and delivered ecommerce orders are included', () => {
+test('pending and finalized back-office statuses and delivered ecommerce orders are included', () => {
   assert.deepEqual(FINAL_BACKOFFICE_STATUSES, [
-    'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
+    'En attente', 'Validé', 'Valide', 'Livré', 'Livre', 'Payé', 'Paye', 'Facturé', 'Facture',
   ]);
   const queries = buildSlowMovingStockQueries({
     periodStart: '2026-03-31 12:00:00',
@@ -55,6 +56,17 @@ test('only finalized back-office statuses and delivered ecommerce orders are inc
   assert.match(queries.ecommerceSales.sql, /eo\.status = 'delivered'/);
   assert.match(queries.ecommerceSales.sql, /eo\.delivered_at IS NOT NULL/);
   assert.doesNotMatch(queries.ecommerceSales.sql, /pending|En attente|Annulé/);
+});
+
+test('last stock date uses pending and validated purchase orders', () => {
+  const queries = buildSlowMovingStockQueries({
+    periodStart: '2026-03-31 12:00:00',
+  });
+  assert.deepEqual(STOCK_ENTRY_BACKOFFICE_STATUSES, ['En attente', 'Validé', 'Valide']);
+  assert.match(queries.stockEntries.sql, /FROM bons_commande header/);
+  assert.match(queries.stockEntries.sql, /INNER JOIN commande_items item/);
+  assert.match(queries.stockEntries.sql, /MAX\(header\.date_creation\) AS last_stock_at/);
+  assert.match(queries.stockEntries.sql, /COALESCE\(item\.variant_id, ps\.variant_id\)/);
 });
 
 test('catalog and separate sale sources are merged, sorted and paginated', () => {
@@ -69,6 +81,11 @@ test('catalog and separate sale sources are merged, sorted and paginated', () =>
       { product_id: 1, variant_id: 10, sold_quantity: 2, last_sale_at: '2026-05-01 10:00:00' },
       { product_id: 2, variant_id: null, sold_quantity: 0, last_sale_at: null },
     ],
+    stockEntryRows: [
+      { product_id: 1, variant_id: 10, last_stock_at: '2026-03-01 09:00:00' },
+      { product_id: 1, variant_id: 10, last_stock_at: '2026-04-01 09:00:00' },
+      { product_id: 2, variant_id: null, last_stock_at: '2026-02-01 09:00:00' },
+    ],
     salesThreshold: 3,
     page: 1,
     limit: 20,
@@ -77,6 +94,8 @@ test('catalog and separate sale sources are merged, sorted and paginated', () =>
   assert.deepEqual(result.data.map((row) => [row.product_id, row.variant_id]), [[2, null], [1, 10]]);
   assert.equal(result.data[1].sold_quantity, 3);
   assert.equal(result.data[1].last_sale_at, '2026-05-01 10:00:00');
+  assert.equal(result.data[0].last_stock_at, '2026-02-01 09:00:00');
+  assert.equal(result.data[1].last_stock_at, '2026-04-01 09:00:00');
   assert.deepEqual(result.summary, {
     skuCount: 2,
     productCount: 2,
