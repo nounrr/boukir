@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit, Trash2, Search, Tag } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Tag, ImagePlus, Loader2 } from 'lucide-react';
 import type { Brand } from '../types';
 import {
   useGetBrandsQuery,
   useDeleteBrandMutation,
+  useUpdateBrandMutation,
 } from '../store/api/brandsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import BrandFormModal from '../components/BrandFormModal';
@@ -12,10 +13,13 @@ import { toBackendUrl } from '../utils/url';
 const BrandsPage: React.FC = () => {
   const { data: brands = [], isLoading } = useGetBrandsQuery();
   const [deleteBrand] = useDeleteBrandMutation();
+  const [updateBrand] = useUpdateBrandMutation();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [search, setSearch] = useState('');
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const [uploadingId, setUploadingId] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -33,6 +37,34 @@ const BrandsPage: React.FC = () => {
   const handleEdit = (brand: Brand) => {
     setEditingBrand(brand);
     setIsModalOpen(true);
+  };
+
+  const handleImageDrop = async (brand: Brand, e: React.DragEvent<HTMLTableRowElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverId(null);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showError('Veuillez déposer un fichier image');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('nom', brand.nom);
+    if (brand.description) formData.append('description', brand.description);
+    formData.append('image', file);
+
+    setUploadingId(brand.id);
+    try {
+      await updateBrand({ id: brand.id, data: formData }).unwrap();
+      showSuccess('Image de la marque mise à jour');
+    } catch (e: any) {
+      showError(e?.data?.message || e?.message || "Erreur lors de l'import de l'image");
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -102,19 +134,47 @@ const BrandsPage: React.FC = () => {
                 </tr>
               )}
               {filtered.map((brand) => (
-                <tr key={brand.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {brand.image_url ? (
-                      <img 
-                        src={toBackendUrl(brand.image_url)}
-                        alt={brand.nom} 
-                        className="h-10 w-10 object-contain rounded-full border"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                        <Tag size={16} />
-                      </div>
-                    )}
+                <tr
+                  key={brand.id}
+                  className={`hover:bg-gray-50 ${dragOverId === brand.id ? 'bg-blue-50 ring-2 ring-inset ring-blue-400' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (dragOverId !== brand.id) setDragOverId(brand.id);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverId((prev) => (prev === brand.id ? null : prev));
+                  }}
+                  onDrop={(e) => handleImageDrop(brand, e)}
+                >
+                  <td
+                    className="px-6 py-4 whitespace-nowrap"
+                    title="Glissez-déposez une image ici pour l'importer directement"
+                  >
+                    <div className="relative h-10 w-10">
+                      {brand.image_url ? (
+                        <img
+                          src={toBackendUrl(brand.image_url)}
+                          alt={brand.nom}
+                          className="h-10 w-10 object-contain rounded-full border"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                          <Tag size={16} />
+                        </div>
+                      )}
+                      {uploadingId === brand.id ? (
+                        <div className="absolute inset-0 rounded-full bg-black bg-opacity-50 flex items-center justify-center">
+                          <Loader2 size={16} className="text-white animate-spin" />
+                        </div>
+                      ) : dragOverId === brand.id ? (
+                        <div className="absolute inset-0 rounded-full bg-blue-600 bg-opacity-70 flex items-center justify-center pointer-events-none">
+                          <ImagePlus size={16} className="text-white" />
+                        </div>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{brand.nom}</td>
                   <td className="px-6 py-4 text-gray-500 max-w-xs truncate">{brand.description || '-'}</td>

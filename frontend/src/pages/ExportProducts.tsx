@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx';
 type Product = {
   id: number;
   designation: string | null;
+  categorie?: { nom?: string | null } | null;
+  brand?: { nom?: string | null } | null;
   quantite: number | null;
   kg: number | null;
   prix_achat: number | null;
@@ -30,6 +32,8 @@ export default function ExportProducts() {
       const rows = data.map((p) => ({
         id: p.id,
         designation: p.designation ?? '',
+        categorie: p.categorie?.nom ?? '',
+        marque: p.brand?.nom ?? '',
         quantite: p.quantite ?? 0,
         prix_achat: p.prix_achat ?? 0,
         cout_revient_pourcentage: p.cout_revient_pourcentage ?? 0,
@@ -45,6 +49,8 @@ export default function ExportProducts() {
         header: [
           'id',
           'designation',
+          'categorie',
+          'marque',
           'quantite',
           'prix_achat',
           'cout_revient_pourcentage',

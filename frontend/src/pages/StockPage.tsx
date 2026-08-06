@@ -18,6 +18,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 const cleanDesignationText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
+const normalizeSearchText = (value: unknown) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase('fr')
+  .trim();
+
 const supportedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const getVisibleImageDropSurface = (
@@ -145,6 +151,7 @@ const StockPage: React.FC = () => {
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
   const [attachmentTargetType, setAttachmentTargetType] = useState<'category' | 'brand'>('category');
   const [attachmentTargetId, setAttachmentTargetId] = useState('');
+  const [attachmentTargetSearch, setAttachmentTargetSearch] = useState('');
   const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
   const [isCloningPhotos, setIsCloningPhotos] = useState(false);
   const [isCloningToOwnVariants, setIsCloningToOwnVariants] = useState(false);
@@ -164,6 +171,21 @@ const StockPage: React.FC = () => {
   const [translateProducts] = useTranslateProductsMutation();
   const [generateSpecs] = useGenerateSpecsMutation();
   const [toggleEcomStock] = useToggleEcomStockMutation();
+  const normalizedAttachmentTargetSearch = normalizeSearchText(attachmentTargetSearch);
+  const filteredAttachmentCategories = useMemo(() => {
+    if (!normalizedAttachmentTargetSearch) return organizedCategories;
+    return organizedCategories.filter((category) => (
+      normalizeSearchText(category.nom).includes(normalizedAttachmentTargetSearch)
+      || String(category.id) === attachmentTargetId
+    ));
+  }, [attachmentTargetId, normalizedAttachmentTargetSearch, organizedCategories]);
+  const filteredAttachmentBrands = useMemo(() => {
+    if (!normalizedAttachmentTargetSearch) return brands;
+    return brands.filter((brand) => (
+      normalizeSearchText(brand.nom).includes(normalizedAttachmentTargetSearch)
+      || String(brand.id) === attachmentTargetId
+    ));
+  }, [attachmentTargetId, brands, normalizedAttachmentTargetSearch]);
   const selectedPhotoTargetCount = selectedIds.size + selectedVariantIds.size;
   const selectedProductForVariantClone = useMemo(() => {
     if (selectedIds.size !== 1) return null;
@@ -637,6 +659,7 @@ const StockPage: React.FC = () => {
       showSuccess(`${result.updated} produit(s) modifié(s) et rattaché(s) à la ${targetLabel}.`);
       setIsAttachmentDialogOpen(false);
       setAttachmentTargetId('');
+      setAttachmentTargetSearch('');
       setSelectedIds(new Set());
       setSelectedVariantIds(new Set());
       refetchProducts?.();
@@ -1918,7 +1941,10 @@ const StockPage: React.FC = () => {
         onOpenChange={(open) => {
           if (isBulkAttaching) return;
           setIsAttachmentDialogOpen(open);
-          if (!open) setAttachmentTargetId('');
+          if (!open) {
+            setAttachmentTargetId('');
+            setAttachmentTargetSearch('');
+          }
         }}
       >
         <DialogContent className="max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto p-0">
@@ -1966,6 +1992,7 @@ const StockPage: React.FC = () => {
                         onChange={() => {
                           setAttachmentTargetType(value);
                           setAttachmentTargetId('');
+                          setAttachmentTargetSearch('');
                         }}
                         disabled={isBulkAttaching}
                         className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1980,6 +2007,27 @@ const StockPage: React.FC = () => {
                 <label htmlFor="attachment-target" className="mb-2 block text-sm font-semibold text-gray-900">
                   {attachmentTargetType === 'category' ? 'Catégorie cible' : 'Marque cible'}
                 </label>
+                <div className="relative mb-2">
+                  <Search
+                    size={17}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    id="attachment-target-search"
+                    type="search"
+                    value={attachmentTargetSearch}
+                    onChange={(event) => setAttachmentTargetSearch(event.target.value)}
+                    disabled={
+                      isBulkAttaching
+                      || (attachmentTargetType === 'category' ? areCategoriesLoading : areBrandsLoading)
+                    }
+                    placeholder={`Rechercher une ${attachmentTargetType === 'category' ? 'catégorie' : 'marque'}…`}
+                    aria-label={`Rechercher une ${attachmentTargetType === 'category' ? 'catégorie' : 'marque'}`}
+                    autoComplete="off"
+                    className="w-full rounded-md border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+                  />
+                </div>
                 <select
                   id="attachment-target"
                   value={attachmentTargetId}
@@ -1997,7 +2045,7 @@ const StockPage: React.FC = () => {
                       : `Choisir une ${attachmentTargetType === 'category' ? 'catégorie' : 'marque'}…`}
                   </option>
                   {attachmentTargetType === 'category'
-                    ? organizedCategories.map((category) => {
+                    ? filteredAttachmentCategories.map((category) => {
                         const hasChildren = categoryChildrenMap.has(category.id);
                         return (
                           <option key={category.id} value={category.id} disabled={hasChildren}>
@@ -2005,10 +2053,18 @@ const StockPage: React.FC = () => {
                           </option>
                         );
                       })
-                    : brands.map((brand) => (
+                    : filteredAttachmentBrands.map((brand) => (
                         <option key={brand.id} value={brand.id}>{brand.nom}</option>
                       ))}
                 </select>
+                {normalizedAttachmentTargetSearch
+                  && (attachmentTargetType === 'category'
+                    ? filteredAttachmentCategories.length === 0
+                    : filteredAttachmentBrands.length === 0) && (
+                    <p className="mt-2 text-sm text-gray-500" role="status">
+                      Aucun résultat pour « {attachmentTargetSearch.trim()} ».
+                    </p>
+                  )}
                 {(attachmentTargetType === 'category' ? categoriesLoadFailed : brandsLoadFailed) && (
                   <p className="mt-2 text-sm text-red-600" role="alert">
                     Impossible de charger les {attachmentTargetType === 'category' ? 'catégories' : 'marques'}.
