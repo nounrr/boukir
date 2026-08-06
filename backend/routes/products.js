@@ -808,6 +808,14 @@ async function runProductSearch(query) {
       params.push(brand_id);
     }
 
+    if (isMissingImageFilterEnabled(query.missing_category)) {
+      conditions.push('p.categorie_id IS NULL');
+    }
+
+    if (isMissingImageFilterEnabled(query.missing_brand)) {
+      conditions.push('p.brand_id IS NULL');
+    }
+
     if (missing_lang) {
       if (missing_lang === 'ar') conditions.push("(p.designation_ar IS NULL OR p.designation_ar = '')");
       else if (missing_lang === 'en') conditions.push("(p.designation_en IS NULL OR p.designation_en = '')");
@@ -1277,6 +1285,8 @@ export function appendStockDesignationRows(rows, product) {
   rows.push({
     'Designation': product?.designation ?? '',
     'Variante': '',
+    'Categorie': product?.categorie?.nom ?? '',
+    'Marque': product?.brand?.nom ?? '',
     'Reference': productReference,
     'Ref variant': '',
     'Image': product?.image_url ? 'Oui' : 'Non',
@@ -1291,6 +1301,8 @@ export function appendStockDesignationRows(rows, product) {
     rows.push({
       'Designation': product?.designation ?? '',
       'Variante': variant?.variant_name ?? '',
+      'Categorie': product?.categorie?.nom ?? '',
+      'Marque': product?.brand?.nom ?? '',
       'Reference': productReference,
       'Ref variant': String(variant?.reference ?? '').trim(),
       'Image': variant?.image_url ? 'Oui' : 'Non',
@@ -1305,6 +1317,8 @@ export function createStockExcelBuffer(products) {
   const headers = [
     'Designation',
     'Variante',
+    'Categorie',
+    'Marque',
     'Reference',
     'Ref variant',
     'Image',
@@ -1321,6 +1335,8 @@ export function createStockExcelBuffer(products) {
   ws['!cols'] = [
     { wch: 50 },
     { wch: 30 },
+    { wch: 28 },
+    { wch: 24 },
     { wch: 16 },
     { wch: 24 },
     { wch: 10 },

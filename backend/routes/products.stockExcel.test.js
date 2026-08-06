@@ -7,6 +7,8 @@ test('stock Excel uses every snapshot total and falls back only when none exist'
   const buffer = createStockExcelBuffer([
     {
       id: 1,
+      categorie: { id: 4, nom: 'Outillage' },
+      brand: { id: 7, nom: 'Makita' },
       designation: 'Avec snapshots à zéro',
       quantite: 99,
       snapshot_quantite_total: 0,
@@ -35,6 +37,25 @@ test('stock Excel uses every snapshot total and falls back only when none exist'
 
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Stock);
+  const headers = XLSX.utils.sheet_to_json(workbook.Sheets.Stock, { header: 1 })[0];
+
+  assert.deepEqual(headers, [
+    'Designation',
+    'Variante',
+    'Categorie',
+    'Marque',
+    'Reference',
+    'Ref variant',
+    'Image',
+    'Stock',
+    'Est dans un snapshot',
+  ]);
+  assert.equal(rows[0].Categorie, 'Outillage');
+  assert.equal(rows[0].Marque, 'Makita');
+  assert.equal(rows[1].Categorie, 'Outillage');
+  assert.equal(rows[1].Marque, 'Makita');
+  assert.equal(rows[2].Categorie, '');
+  assert.equal(rows[2].Marque, '');
 
   assert.equal(rows[0].Stock, 0);
   assert.equal(rows[0]['Est dans un snapshot'], 'Oui');

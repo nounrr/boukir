@@ -57,6 +57,8 @@ const StockPage: React.FC = () => {
   const [searchTerm2, setSearchTerm2] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [missingImageOnly, setMissingImageOnly] = useState(false);
+  const [missingCategoryOnly, setMissingCategoryOnly] = useState(false);
+  const [missingBrandOnly, setMissingBrandOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
@@ -77,6 +79,8 @@ const StockPage: React.FC = () => {
     q2: searchTerm2 || undefined,
     category_id: filterCategory || undefined,
     missing_image: missingImageOnly || undefined,
+    missing_category: missingCategoryOnly || undefined,
+    missing_brand: missingBrandOnly || undefined,
     type: productType,
     sortBy: sortMode === 'recent' ? 'id' : 'quantite',
     sortDir: sortMode === 'quantite_asc' ? 'asc' : 'desc',
@@ -471,6 +475,8 @@ const StockPage: React.FC = () => {
       if (searchTerm2) params.set('q2', searchTerm2);
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (missingImageOnly) params.set('missing_image', 'true');
+      if (missingCategoryOnly) params.set('missing_category', 'true');
+      if (missingBrandOnly) params.set('missing_brand', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
       const resp = await fetch(`/api/products/stock-excel?${params.toString()}`, {
@@ -513,6 +519,8 @@ const StockPage: React.FC = () => {
       if (searchTerm2) params.set('q2', searchTerm2);
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (missingImageOnly) params.set('missing_image', 'true');
+      if (missingCategoryOnly) params.set('missing_category', 'true');
+      if (missingBrandOnly) params.set('missing_brand', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
       const resp = await fetch(`/api/products/stock-pdf?${params.toString()}`, {
@@ -548,7 +556,7 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, searchTerm2, filterCategory, missingImageOnly, activeTab, itemsPerPage, sortMode]);
+  }, [searchTerm, searchTerm2, filterCategory, missingImageOnly, missingCategoryOnly, missingBrandOnly, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -1193,7 +1201,7 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.7fr)_minmax(170px,0.65fr)_auto]">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.7fr)_minmax(170px,0.65fr)_auto_auto_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -1236,7 +1244,10 @@ const StockPage: React.FC = () => {
         </button>
         <select
           value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
+          onChange={(e) => {
+            setFilterCategory(e.target.value);
+            if (e.target.value) setMissingCategoryOnly(false);
+          }}
           className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="">Toutes les catégories</option>
@@ -1271,6 +1282,40 @@ const StockPage: React.FC = () => {
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
           <span className="whitespace-nowrap">Sans image uniquement</span>
+        </label>
+        <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
+          missingCategoryOnly
+            ? 'border-blue-300 bg-blue-50 text-blue-800'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+        }`}>
+          <input
+            type="checkbox"
+            checked={missingCategoryOnly}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setMissingCategoryOnly(checked);
+              if (checked) setFilterCategory('');
+              setCurrentPage(1);
+            }}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="whitespace-nowrap">Sans catégorie</span>
+        </label>
+        <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
+          missingBrandOnly
+            ? 'border-blue-300 bg-blue-50 text-blue-800'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+        }`}>
+          <input
+            type="checkbox"
+            checked={missingBrandOnly}
+            onChange={(event) => {
+              setMissingBrandOnly(event.target.checked);
+              setCurrentPage(1);
+            }}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="whitespace-nowrap">Sans marque</span>
         </label>
       </div>
 
