@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category, ProductImageTarget } from '../types';
@@ -15,6 +15,7 @@ import Swal from 'sweetalert2';
 import { printProductTicket } from '../utils/productTicketPrint';
 import { filterStockRowsByMissingImage } from '../utils/stockMissingImage';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import SearchableSelect from '../components/SearchableSelect';
 
 const cleanDesignationText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
@@ -64,7 +65,6 @@ const StockPage: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState('');
   const [missingImageOnly, setMissingImageOnly] = useState(false);
   const [missingCategoryOnly, setMissingCategoryOnly] = useState(false);
-  const [categorizedOnly, setCategorizedOnly] = useState(false);
   const [missingBrandOnly, setMissingBrandOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [currentPage, setCurrentPage] = useState(1);
@@ -87,7 +87,6 @@ const StockPage: React.FC = () => {
     category_id: filterCategory || undefined,
     missing_image: missingImageOnly || undefined,
     missing_category: missingCategoryOnly || undefined,
-    has_category: categorizedOnly || undefined,
     missing_brand: missingBrandOnly || undefined,
     type: productType,
     sortBy: sortMode === 'recent' ? 'id' : 'quantite',
@@ -139,6 +138,14 @@ const StockPage: React.FC = () => {
     traverse(roots, 0);
     return result;
   }, [categories, categoryChildrenMap]);
+
+  const categoryFilterOptions = useMemo(() => ([
+    { value: '', label: 'Toutes les catégories' },
+    ...organizedCategories.map((category) => ({
+      value: String(category.id),
+      label: `${' '.repeat(category.level * 4)}${category.nom}`,
+    })),
+  ]), [organizedCategories]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -500,7 +507,6 @@ const StockPage: React.FC = () => {
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (missingImageOnly) params.set('missing_image', 'true');
       if (missingCategoryOnly) params.set('missing_category', 'true');
-      if (categorizedOnly) params.set('has_category', 'true');
       if (missingBrandOnly) params.set('missing_brand', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
@@ -545,7 +551,6 @@ const StockPage: React.FC = () => {
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (missingImageOnly) params.set('missing_image', 'true');
       if (missingCategoryOnly) params.set('missing_category', 'true');
-      if (categorizedOnly) params.set('has_category', 'true');
       if (missingBrandOnly) params.set('missing_brand', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
@@ -582,7 +587,7 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, searchTerm2, filterCategory, missingImageOnly, missingCategoryOnly, categorizedOnly, missingBrandOnly, activeTab, itemsPerPage, sortMode]);
+  }, [searchTerm, searchTerm2, filterCategory, missingImageOnly, missingCategoryOnly, missingBrandOnly, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -1269,21 +1274,17 @@ const StockPage: React.FC = () => {
           <Search size={18} />
           Rechercher
         </button>
-        <select
+        <SearchableSelect
+          className="min-w-56"
           value={filterCategory}
-          onChange={(e) => {
-            setFilterCategory(e.target.value);
-            if (e.target.value) setMissingCategoryOnly(false);
+          onChange={(value) => {
+            setFilterCategory(value);
+            if (value) setMissingCategoryOnly(false);
           }}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">Toutes les catégories</option>
-          {organizedCategories.map((category) => (
-            <option key={category.id} value={category.id.toString()}>
-              {'\u00A0'.repeat(category.level * 4)}{category.nom}
-            </option>
-          ))}
-        </select>
+          placeholder="Toutes les catégories"
+          minSearchLength={0}
+          options={categoryFilterOptions}
+        />
         <select
           value={sortMode}
           onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
@@ -1321,33 +1322,12 @@ const StockPage: React.FC = () => {
             onChange={(event) => {
               const checked = event.target.checked;
               setMissingCategoryOnly(checked);
-              if (checked) {
-                setFilterCategory('');
-                setCategorizedOnly(false);
-              }
+              if (checked) setFilterCategory('');
               setCurrentPage(1);
             }}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
           <span className="whitespace-nowrap">Sans catégorie</span>
-        </label>
-        <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
-          categorizedOnly
-            ? 'border-blue-300 bg-blue-50 text-blue-800'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-        }`}>
-          <input
-            type="checkbox"
-            checked={categorizedOnly}
-            onChange={(event) => {
-              const checked = event.target.checked;
-              setCategorizedOnly(checked);
-              if (checked) setMissingCategoryOnly(false);
-              setCurrentPage(1);
-            }}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <span className="whitespace-nowrap">Catégorisés uniquement</span>
         </label>
         <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
           missingBrandOnly

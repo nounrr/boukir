@@ -812,10 +812,6 @@ async function runProductSearch(query) {
       conditions.push('p.categorie_id IS NULL');
     }
 
-    if (isMissingImageFilterEnabled(query.has_category)) {
-      conditions.push('p.categorie_id IS NOT NULL');
-    }
-
     if (isMissingImageFilterEnabled(query.missing_brand)) {
       conditions.push('p.brand_id IS NULL');
     }

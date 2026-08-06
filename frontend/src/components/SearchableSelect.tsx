@@ -17,6 +17,8 @@ interface SearchableSelectProps {
   createText?: string;
   renderOption?: (option: Option) => React.ReactNode;
   renderValue?: (option: Option) => React.ReactNode;
+  /** Minimum characters before options are listed. 0 shows the full list as soon as it opens. */
+  minSearchLength?: number;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -34,6 +36,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   createText = 'Créer',
   renderOption,
   renderValue,
+  minSearchLength = 2,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -70,7 +73,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const canCreate = Boolean(
     allowCreate &&
       typeof onCreate === 'function' &&
-      searchTerm.trim().length >= 2 &&
+      searchTerm.trim().length >= Math.max(minSearchLength, 1) &&
       allMatches.length === 0
   );
 
@@ -148,7 +151,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             <input
               type="text"
               className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Rechercher... (minimum 2 caractères)"
+              placeholder={minSearchLength > 0 ? `Rechercher... (minimum ${minSearchLength} caractères)` : 'Rechercher...'}
               value={searchTerm}
               onChange={(e) => { 
                 setSearchTerm(e.target.value); 
@@ -191,13 +194,13 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {searchTerm.trim().length < 2 && (
+            {searchTerm.trim().length < minSearchLength && (
               <div className="p-3 text-sm text-gray-500 text-center">
-                <div className="mb-2">Tapez au moins 2 caractères pour rechercher</div>
+                <div className="mb-2">Tapez au moins {minSearchLength} caractères pour rechercher</div>
                 <div className="text-xs text-gray-400">{options.length} éléments disponibles</div>
               </div>
             )}
-            {searchTerm.trim().length >= 2 && filteredOptions.length === 0 && (
+            {searchTerm.trim().length >= minSearchLength && filteredOptions.length === 0 && (
               <div className="p-2 text-sm text-gray-500">
                 <div className="mb-2">Aucun résultat trouvé</div>
                 {canCreate && (
@@ -222,7 +225,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 )}
               </div>
             )}
-            {searchTerm.trim().length >= 2 && filteredOptions.length > 0 && (
+            {searchTerm.trim().length >= minSearchLength && filteredOptions.length > 0 && (
               <>
                 {filteredOptions.map((option, idx) => (
                   <button
