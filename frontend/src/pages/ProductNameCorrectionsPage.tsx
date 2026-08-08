@@ -852,14 +852,14 @@ const ProductNameCorrectionsPage: React.FC = () => {
                   <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500">
                     ANCIENNE
                   </span>
-                  Ancienne désignation
+                  Ancienne désignation (produit)
                 </span>
                 <span className="relative block">
                   <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                   <input
                     value={qAncienne}
                     onChange={(event) => handleSearchChange('ancienne', event.target.value)}
-                    placeholder="Rechercher l’ancienne désignation"
+                    placeholder="Rechercher la désignation actuelle du produit"
                     className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                 </span>

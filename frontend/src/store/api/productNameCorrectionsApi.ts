@@ -15,6 +15,7 @@ export interface ProductNameCorrectionRow {
   variante_originale: string | null;
   variante_fr_pro: string | null;
   variante_ar_pro: string | null;
+  /** Désignation actuelle du produit matché (products.designation), pas la colonne Excel. */
   ancienne_designation: string | null;
   designation_fr_pro: string | null;
   designation_ar_pro: string | null;

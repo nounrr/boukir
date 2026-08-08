@@ -494,8 +494,12 @@ export async function replaceInitialCorrectionsInTransaction(
 }
 
 function serialize(row) {
+  const { product_designation: productDesignation, ...rest } = row;
   return {
-    ...row,
+    ...rest,
+    // L'ancienne désignation vient directement de products.designation (nom
+    // actuel en base), pas de la colonne Excel importée.
+    ancienne_designation: clean(productDesignation),
     is_checked: Boolean(row.is_checked),
     is_variant_row: isVariantCorrectionRow(row),
     can_apply: row.match_status === 'matched' && Boolean(row.is_checked) && !row.applied_at,
@@ -526,7 +530,11 @@ function buildCorrectionFilters(query, options = {}) {
   }
 
   if (qAncienne) {
-    where.push('pnc.ancienne_designation LIKE ?');
+    // L'ancienne désignation affichée vient de products.designation.
+    where.push(`EXISTS (
+      SELECT 1 FROM products p_anc
+      WHERE p_anc.id = pnc.matched_product_id AND p_anc.designation LIKE ?
+    )`);
     params.push(`%${qAncienne}%`);
   }
 
@@ -669,13 +677,14 @@ router.get('/export-excel', async (req, res, next) => {
          pnc.variante_originale,
          pnc.variante_fr_pro,
          pnc.variante_ar_pro,
-         pnc.ancienne_designation,
+         p_exp.designation AS ancienne_designation,
          pnc.designation_fr_pro,
          pnc.designation_ar_pro,
          pnc.statut_controle,
          pnc.note_controle,
          pnc.image
        FROM product_name_corrections pnc
+       LEFT JOIN products p_exp ON p_exp.id = pnc.matched_product_id
        ${whereSql}
        ORDER BY pnc.row_index ASC, pnc.id ASC`,
       params
@@ -715,6 +724,7 @@ router.get('/', async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT
          pnc.*,
+         p.designation AS product_designation,
          p.categorie_id AS product_categorie_id,
          p.image_url AS product_image_url,
          pv.image_url AS variant_image_url
@@ -1119,10 +1129,12 @@ router.post('/apply', async (req, res, next) => {
         const isVariantRow = isVariantCorrectionRow(row);
         if (!isVariantRow && row.matched_product_id && (row.designation_fr_pro || row.designation_ar_pro)) {
           const [productResult] = await conn.query(
+            // L'ancienne désignation conservée est la designation actuelle du
+            // produit, plus la valeur importée depuis l'Excel.
             `UPDATE products
              SET old_designation = CASE
                    WHEN NULLIF(TRIM(?), '') IS NOT NULL
-                   THEN COALESCE(NULLIF(TRIM(?), ''), designation)
+                   THEN designation
                    ELSE old_designation
                  END,
                  designation = COALESCE(NULLIF(TRIM(?), ''), designation),
@@ -1131,7 +1143,6 @@ router.post('/apply', async (req, res, next) => {
              WHERE id = ?`,
             [
               row.designation_fr_pro,
-              row.ancienne_designation,
               row.designation_fr_pro,
               row.designation_ar_pro,
               row.matched_product_id,
