@@ -641,6 +641,31 @@ const ProductNameCorrectionsPage: React.FC = () => {
     });
   };
 
+  const searchSelectedProductNamesOnGoogle = () => {
+    const names = selectedRows.flatMap((row) => [
+      String(row.designation_fr_pro ?? '').trim(),
+      String(row.designation_ar_pro ?? '').trim(),
+    ]).filter(Boolean);
+
+    if (names.length === 0) {
+      setMessage('Aucun nom FR Pro ou AR Pro à rechercher dans la sélection.');
+      return;
+    }
+
+    names.forEach((name) => {
+      window.open(
+        `https://www.google.com/search?q=${encodeURIComponent(name)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
+
+    setMessage(
+      `${names.length} recherche${names.length > 1 ? 's' : ''} Google lancée${names.length > 1 ? 's' : ''}. ` +
+      'Si le navigateur bloque plusieurs onglets, autorisez les fenêtres contextuelles.'
+    );
+  };
+
   const markSelected = async (checked: boolean) => {
     const ids = selectedRows
       .filter((row) => !row.applied_at)
@@ -995,6 +1020,15 @@ const ProductNameCorrectionsPage: React.FC = () => {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PageSizeSelect value={limit} onChange={setLimit} />
             <span className="text-sm text-gray-600">{selectedIds.size} sélection</span>
+            <button
+              type="button"
+              onClick={searchSelectedProductNamesOnGoogle}
+              disabled={selectedIds.size === 0}
+              className="inline-flex items-center gap-2 rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:border-sky-400 hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <Search className="h-4 w-4" />
+              Rechercher sur Google
+            </button>
             <button
               type="button"
               onClick={() => markSelected(true)}
