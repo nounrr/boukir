@@ -309,7 +309,12 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const visibleIds = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
-  const selectedRows = useMemo(() => rows.filter((row) => selectedIds.has(row.id)), [rows, selectedIds]);
+  const selectedRows = useMemo(() => {
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+    return Array.from(selectedIds)
+      .map((id) => rowsById.get(id))
+      .filter((row): row is ProductNameCorrectionRow => Boolean(row));
+  }, [rows, selectedIds]);
   const parentCategoryIds = useMemo(
     () => new Set(categories.map((category) => category.parent_id).filter((id): id is number => id != null)),
     [categories]
@@ -652,17 +657,32 @@ const ProductNameCorrectionsPage: React.FC = () => {
       return;
     }
 
-    names.forEach((name) => {
-      window.open(
-        `https://www.google.com/search?q=${encodeURIComponent(name)}`,
-        '_blank',
-        'noopener,noreferrer'
-      );
+    const batchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let openedCount = 0;
+
+    names.forEach((name, index) => {
+      const searchWindow = window.open('', `google-product-search-${batchId}-${index}`);
+      if (!searchWindow) return;
+
+      try {
+        searchWindow.opener = null;
+        searchWindow.location.href = `https://www.google.com/search?q=${encodeURIComponent(name)}`;
+        openedCount += 1;
+      } catch {
+        // Treat a window that cannot be navigated as blocked so the result stays accurate.
+      }
     });
 
+    if (openedCount === names.length) {
+      setMessage(
+        `${openedCount} recherche${openedCount > 1 ? 's' : ''} Google ouverte${openedCount > 1 ? 's' : ''}.`
+      );
+      return;
+    }
+
     setMessage(
-      `${names.length} recherche${names.length > 1 ? 's' : ''} Google lancée${names.length > 1 ? 's' : ''}. ` +
-      'Si le navigateur bloque plusieurs onglets, autorisez les fenêtres contextuelles.'
+      `${openedCount}/${names.length} recherches ouvertes. ` +
+      'Autorisez les pop-ups pour ce site, puis recliquez sur le bouton.'
     );
   };
 
@@ -1024,6 +1044,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
               type="button"
               onClick={searchSelectedProductNamesOnGoogle}
               disabled={selectedIds.size === 0}
+              title="Ouvre un onglet par nom FR Pro et AR Pro sélectionné ; l’autorisation des pop-ups peut être nécessaire."
+              aria-label="Rechercher sur Google chaque nom FR Pro et AR Pro sélectionné dans un onglet séparé"
               className="inline-flex items-center gap-2 rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:border-sky-400 hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
             >
               <Search className="h-4 w-4" />
