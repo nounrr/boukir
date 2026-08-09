@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import pool, { requestContext } from '../db/pool.js';
 import { checkUserAccess } from './accessSchedule.js';
+import { normalizeClientCollaborationPermissions } from '../utils/clientCollaborationPermissions.js';
 
 export function getJwtSecret() {
   const secret = String(process.env.JWT_SECRET || '').trim();
@@ -51,7 +52,8 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
 
       if (isEmployeePayload(req.user)) {
         const [rows] = await pool.query(
-          'SELECT id, cin, role FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+          `SELECT id, cin, role, acces_commentaires_clients, acces_rappels_clients
+           FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
           [userId]
         );
         const employee = rows[0];
@@ -62,6 +64,9 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
           id: employee.id,
           cin: employee.cin,
           role: employee.role,
+          acces_commentaires_clients: employee.acces_commentaires_clients,
+          acces_rappels_clients: employee.acces_rappels_clients,
+          client_collaboration_permissions: normalizeClientCollaborationPermissions(employee),
           _currentUserValidated: true,
         };
 

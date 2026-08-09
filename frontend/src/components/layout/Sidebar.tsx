@@ -90,6 +90,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Administration',
       items: [
         { name: 'Employés', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
+        { name: 'Catégories Maalem', href: '/maalem-categories', icon: Tags, show: user?.role === 'PDG' },
+        { name: 'Accès commentaires & rappels', href: '/employees/client-collaboration-permissions', icon: UserCheck, show: user?.role === 'PDG' },
         { name: 'Salaires', href: '/salaires', icon: Wallet, show: user?.role === 'PDG' },
         { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },

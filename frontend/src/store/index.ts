@@ -12,6 +12,7 @@ import './api/employeesApi.server';
 import './api/employeeArchiveApi';
 import './api/productsApi';
 import './api/categoriesApi';
+import './api/maalemCategoriesApi';
 import './api/contactsApi';
 import './api/contactGroupsApi';
 import './api/bonsApi';

@@ -2,6 +2,10 @@ import { Router } from 'express';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
 import { verifyToken, requireRole, requireRoles, requireSelfOrRoles } from '../middleware/auth.js';
+import {
+  normalizeClientCollaborationPermissions,
+  parseStrictClientCollaborationPermissions,
+} from '../utils/clientCollaborationPermissions.js';
 
 const router = Router();
 
@@ -71,6 +75,79 @@ router.get('/me/bon-authorizations', async (req, res, next) => {
       unlimited: false,
       bon_plafond_autorisations: Number(rows[0].bon_plafond_autorisations || 0),
       bon_client_bloque_autorisations: Number(rows[0].bon_client_bloque_autorisations || 0),
+    });
+  } catch (err) { next(err); }
+});
+
+// Permissions courantes, toujours normalisées depuis les données rechargées
+// par verifyCurrentUserWithSchedule dans le middleware global.
+router.get('/me/client-collaboration-permissions', (req, res) => {
+  res.json(normalizeClientCollaborationPermissions(req.user));
+});
+
+// Administration PDG : seuls les rôles qui ont déjà accès aux pages clients
+// sont configurables. Les PDG sont inclus pour rendre leur bypass explicite.
+router.get('/client-collaboration-permissions', requireRole('PDG'), async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, nom_complet, cin, role,
+              acces_commentaires_clients, acces_rappels_clients
+       FROM employees
+       WHERE deleted_at IS NULL
+         AND role IN ('PDG', 'Manager', 'ManagerPlus')
+       ORDER BY FIELD(role, 'PDG', 'ManagerPlus', 'Manager'), nom_complet ASC, id ASC`
+    );
+    res.json(rows.map((employee) => ({
+      id: Number(employee.id),
+      nom_complet: employee.nom_complet,
+      cin: employee.cin,
+      role: employee.role,
+      ...normalizeClientCollaborationPermissions(employee),
+      verrouille: employee.role === 'PDG',
+    })));
+  } catch (err) { next(err); }
+});
+
+router.put('/client-collaboration-permissions/:id(\\d+)', requireRole('PDG'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const parsed = parseStrictClientCollaborationPermissions(req.body);
+    if (!parsed.valid) return res.status(400).json({ message: parsed.error });
+
+    const [rows] = await pool.query(
+      `SELECT id, nom_complet, cin, role
+       FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+      [id]
+    );
+    const employee = rows[0];
+    if (!employee) return res.status(404).json({ message: 'Employé introuvable' });
+    if (employee.role === 'PDG') {
+      return res.status(400).json({ message: 'Le PDG est toujours autorisé.' });
+    }
+    if (!['Manager', 'ManagerPlus'].includes(employee.role)) {
+      return res.status(400).json({
+        message: 'Seuls les rôles Manager et ManagerPlus peuvent recevoir cet accès.',
+      });
+    }
+
+    const permissions = parsed.permissions;
+    await pool.query(
+      `UPDATE employees
+       SET acces_commentaires_clients = ?, acces_rappels_clients = ?,
+           updated_by = ?, updated_at = NOW()
+       WHERE id = ? AND deleted_at IS NULL`,
+      [
+        permissions.commentaires_clients ? 1 : 0,
+        permissions.rappels_clients ? 1 : 0,
+        req.user.id,
+        id,
+      ]
+    );
+
+    return res.json({
+      ...employee,
+      ...permissions,
+      verrouille: false,
     });
   } catch (err) { next(err); }
 });

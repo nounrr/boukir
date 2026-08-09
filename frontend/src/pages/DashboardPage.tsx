@@ -8,11 +8,14 @@ import {
   DollarSign,
   TrendingUp,
   AlertTriangle,
-  ArrowLeft
+  ArrowLeft,
+  Bell,
+  Phone
 } from 'lucide-react';
 import { useGetChiffreAffairesStatsQuery, useGetDashboardSummaryQuery } from '../store/api/statsApi';
 import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
 import ChiffreAffairesMonthlyCharts from '../components/ChiffreAffairesMonthlyCharts';
+import { useGetMyClientCollaborationPermissionsQuery } from '../store/api/clientCollaborationPermissionsApi';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -25,7 +28,21 @@ const DashboardPage: React.FC = () => {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
   // Dashboard counters come from one lightweight backend summary request.
-  const { data: dashboardSummary } = useGetDashboardSummaryQuery();
+  const { data: dashboardSummary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchDashboardSummary } = useGetDashboardSummaryQuery();
+  const { data: collaborationPermissions } = useGetMyClientCollaborationPermissionsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
+  const previousReminderPermission = React.useRef<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    const currentPermission = collaborationPermissions?.rappels_clients;
+    if (currentPermission === true && previousReminderPermission.current !== true) {
+      refetchDashboardSummary();
+    }
+    previousReminderPermission.current = currentPermission;
+  }, [collaborationPermissions?.rappels_clients, refetchDashboardSummary]);
 
   // Use the same backend API as ChiffreAffairesPage for financial stats (today)
   const todayStr = useMemo(() => {
@@ -57,8 +74,11 @@ const DashboardPage: React.FC = () => {
     lowStock: 0,
     pendingOrders: 0,
     talonDueSoon: 0,
+    remindersToday: 0,
   };
   const recentActivity = dashboardSummary?.recentActivity ?? [];
+  const reminderClientsToday = dashboardSummary?.reminderClientsToday ?? [];
+  const showTodayReminders = collaborationPermissions?.rappels_clients === true && stats.remindersToday > 0;
 
   // Gestion du clic protégé par mot de passe
   const handleProtectedClick = (path: string) => {
@@ -118,7 +138,7 @@ const DashboardPage: React.FC = () => {
       </div>
       
       {/* Stats Cards - Première ligne (4 cartes) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 mt-6">
         <button 
           type="button"
           onClick={() => handleProtectedClick('/employees')}
@@ -161,6 +181,22 @@ const DashboardPage: React.FC = () => {
           </div>
         </button>
 
+        {showTodayReminders && <button
+          type="button"
+          onClick={() => navigate('/clients')}
+          className="w-full text-left bg-white rounded-lg border border-amber-200 shadow p-6 cursor-pointer hover:border-amber-300 hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+        >
+          <div className="flex items-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+              <Bell className="text-amber-700" size={22} />
+            </span>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-600">Rappels aujourd’hui</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.remindersToday}</p>
+            </div>
+          </div>
+        </button>}
+
         <button 
           type="button"
           onClick={() => navigate('/bons')}
@@ -175,6 +211,68 @@ const DashboardPage: React.FC = () => {
           </div>
         </button>
       </div>
+
+      {showTodayReminders && <section className="mt-6 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm" aria-labelledby="today-reminders-title">
+        <div className="flex flex-col items-start gap-3 border-b border-amber-100 bg-amber-50/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+              <Bell size={19} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 id="today-reminders-title" className="text-base font-bold text-gray-900">Clients à rappeler aujourd’hui</h2>
+              <p className="text-xs text-gray-600">La file de rappel du jour, classée par client.</p>
+            </div>
+          </div>
+          <span className="rounded-md border border-amber-200 bg-white px-2.5 py-1 text-xs font-bold text-amber-800">
+            {stats.remindersToday} rappel{stats.remindersToday === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <div className="divide-y divide-gray-100">
+          {isSummaryLoading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="flex animate-pulse items-center gap-3 px-5 py-3">
+                <div className="h-9 w-9 rounded-full bg-gray-200" />
+                <div className="flex-1 space-y-2"><div className="h-3 w-40 rounded bg-gray-200" /><div className="h-3 w-24 rounded bg-gray-100" /></div>
+              </div>
+            ))
+          ) : isSummaryError ? (
+            <div className="px-5 py-8 text-center text-sm font-medium text-red-600">Impossible de charger les rappels du jour.</div>
+          ) : reminderClientsToday.length === 0 ? (
+            <div className="px-5 py-9 text-center">
+              <Bell className="mx-auto h-8 w-8 text-gray-300" aria-hidden="true" />
+              <p className="mt-2 text-sm font-semibold text-gray-700">Aucun rappel pour aujourd’hui</p>
+              <p className="mt-1 text-xs text-gray-500">Les prochains rappels restent visibles dans la liste des clients.</p>
+            </div>
+          ) : (
+            reminderClientsToday.map((client) => {
+              const name = client.nom_complet || client.societe || `Client #${client.id}`;
+              return (
+                <button
+                  key={client.id}
+                  type="button"
+                  onClick={() => navigate(`/clients/${client.id}`)}
+                  className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-amber-50/60 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:items-center sm:px-5"
+                >
+                  <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-gray-900">{name}</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                      {client.societe && client.societe !== name && <span>{client.societe}</span>}
+                      {client.telephone && <span className="inline-flex items-center gap-1"><Phone size={12} />{client.telephone}</span>}
+                    </span>
+                  </span>
+                  <span className="inline-flex flex-none items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700">
+                    <Bell size={12} /> Aujourd’hui
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </section>}
 
       {/* Stats Cards - Deuxième ligne (3 cartes) - Visible seulement pour PDG (et caché pour ManagerPlus/Manager) */}
       {user?.role === 'PDG' && (

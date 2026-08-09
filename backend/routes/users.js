@@ -11,6 +11,8 @@ import {
   ensureContactsRemiseBalance,
 } from '../utils/ensureRemiseSchema.js';
 import { getContactSoldeCumule } from '../utils/soldeCumule.js';
+import { findMaalemProfileByContactId } from '../utils/maalemProfile.js';
+import { parseMaalemRegistrationIntent } from '../utils/maalemRegistration.js';
 
 const router = Router();
 
@@ -76,6 +78,8 @@ router.post('/register', async (req, res, next) => {
       societe,
       company_name,
       ice,
+      artisan_path,
+      maalem_category_id,
     } = req.body;
 
     // Validation
@@ -88,6 +92,14 @@ router.post('/register', async (req, res, next) => {
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ message: 'Format d\'email invalide', field: 'email' });
+    }
+
+    const normalizedTelephone = String(telephone || '').trim();
+    if (!normalizedTelephone) {
+      return res.status(400).json({ message: 'Le numéro de téléphone est obligatoire', field: 'telephone' });
+    }
+    if (!/^(\+212|0)[5-7]\d{8}$/.test(normalizedTelephone)) {
+      return res.status(400).json({ message: 'Format de téléphone invalide', field: 'telephone' });
     }
 
     if (password.length < 8) {
@@ -108,6 +120,18 @@ router.post('/register', async (req, res, next) => {
       return res.status(400).json({
         message: 'Type de compte invalide',
         field: 'type_compte',
+      });
+    }
+
+    const registrationIntent = parseMaalemRegistrationIntent({
+      type_compte: type_compte || 'Client',
+      artisan_path,
+      maalem_category_id,
+    });
+    if (!registrationIntent.valid) {
+      return res.status(400).json({
+        message: registrationIntent.error,
+        field: registrationIntent.error.includes('catégorie') ? 'maalem_category_id' : 'artisan_path',
       });
     }
 
@@ -137,7 +161,7 @@ router.post('/register', async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Determine account type and approval status
-    const isArtisanRequest = type_compte === 'Artisan/Promoteur';
+    const isArtisanRequest = registrationIntent.is_artisan_request;
     const effectiveTypeCompte = isArtisanRequest ? 'Client' : (type_compte || 'Client');
     const demandeArtisan = isArtisanRequest;
 
@@ -194,6 +218,26 @@ router.post('/register', async (req, res, next) => {
 
     await connection.beginTransaction();
 
+    let selectedMaalemCategory = null;
+    if (registrationIntent.wants_maalem && registrationIntent.category_id != null) {
+      const [categoryRows] = await connection.query(
+        `SELECT id, nom, nom_ar, is_active
+         FROM maalem_categories
+         WHERE id = ? AND is_active = 1 AND deleted_at IS NULL
+         LIMIT 1
+         FOR UPDATE`,
+        [registrationIntent.category_id]
+      );
+      selectedMaalemCategory = categoryRows[0] || null;
+      if (!selectedMaalemCategory) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: 'Catégorie Maalem inactive ou introuvable',
+          field: 'maalem_category_id',
+        });
+      }
+    }
+
     // Insert new contact/user
     const [result] = await connection.query(
       `INSERT INTO contacts 
@@ -207,7 +251,7 @@ router.post('/register', async (req, res, next) => {
         prenom.trim(),
         nom.trim(),
         email.toLowerCase().trim(),
-        telephone?.trim() || null,
+        normalizedTelephone,
         effectiveTypeCompte,
         demandeArtisan,
         hashedPassword,
@@ -218,6 +262,34 @@ router.post('/register', async (req, res, next) => {
     );
 
     const userId = result.insertId;
+
+    let maalemProfile = null;
+    if (registrationIntent.wants_maalem) {
+      const [profileResult] = await connection.query(
+        `INSERT INTO maalem_profiles (contact_id, category_id, status)
+         VALUES (?, ?, 'draft')`,
+        [userId, registrationIntent.category_id]
+      );
+      maalemProfile = {
+        id: Number(profileResult.insertId),
+        user_id: Number(userId),
+        contact_id: Number(userId),
+        category_id: registrationIntent.category_id,
+        status: 'draft',
+        status_label: 'Brouillon',
+        professional_data: null,
+        status_reason: null,
+        submitted_at: null,
+        reviewed_at: null,
+        reviewed_by: null,
+        category: selectedMaalemCategory ? {
+          id: Number(selectedMaalemCategory.id),
+          nom: selectedMaalemCategory.nom,
+          nom_ar: selectedMaalemCategory.nom_ar,
+          is_active: true,
+        } : null,
+      };
+    }
 
     // Fetch created user
     const [users] = await connection.query(
@@ -257,6 +329,10 @@ router.post('/register', async (req, res, next) => {
       message = 'Compte créé avec succès. Votre demande pour devenir Artisan/Promoteur est en attente d\'approbation par un administrateur.';
     }
 
+    if (maalemProfile) {
+      message = 'Compte créé avec succès. Votre brouillon Maalem est prêt à être complété.';
+    }
+
     res.status(201).json({
       message,
       user: {
@@ -276,12 +352,23 @@ router.post('/register', async (req, res, next) => {
         locale: user.locale,
         demande_artisan: !!user.demande_artisan,
         artisan_approuve: !!user.artisan_approuve,
+        maalem_profile: maalemProfile,
       },
       token,
+      next_path: maalemProfile ? '/profile/maalem' : null,
     });
   } catch (err) {
     await connection.rollback();
     console.error('Registration error:', err);
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const duplicateEmail = String(err.sqlMessage || err.message || '').toLowerCase().includes('email');
+      return res.status(409).json({
+        message: duplicateEmail
+          ? 'Un compte existe déjà avec cet email'
+          : 'Ces informations sont déjà utilisées par un autre compte',
+        field: duplicateEmail ? 'email' : undefined,
+      });
+    }
     next(err);
   } finally {
     connection.release();
@@ -568,8 +655,26 @@ router.post('/request-artisan', async (req, res, next) => {
 router.post('/google', async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
-    const { credential, access_token } = req.body;
+    const {
+      credential,
+      access_token,
+      type_compte,
+      artisan_path,
+      maalem_category_id,
+    } = req.body;
     const clientIp = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+
+    const registrationIntent = parseMaalemRegistrationIntent({
+      type_compte: type_compte || 'Client',
+      artisan_path,
+      maalem_category_id,
+    });
+    if (!registrationIntent.valid) {
+      return res.status(400).json({
+        message: registrationIntent.error,
+        field: registrationIntent.error.includes('catégorie') ? 'maalem_category_id' : 'artisan_path',
+      });
+    }
 
     if (!credential && !access_token) {
       return res.status(400).json({
@@ -616,11 +721,14 @@ router.post('/google', async (req, res, next) => {
     );
 
     let user = users[0];
+    let isNewUser = false;
+    let maalemProfile = null;
 
     if (user) {
       // Existing Google user - update and login
       const lockStatus = isAccountLocked(user);
       if (lockStatus.locked) {
+        await connection.rollback();
         return res.status(403).json({
           message: lockStatus.reason,
           error_type: user.is_blocked ? 'ACCOUNT_BLOCKED' : 'ACCOUNT_LOCKED',
@@ -628,6 +736,7 @@ router.post('/google', async (req, res, next) => {
       }
 
       if (!user.is_active) {
+        await connection.rollback();
         return res.status(403).json({
           message: 'Ce compte a été désactivé',
           error_type: 'ACCOUNT_INACTIVE',
@@ -648,6 +757,7 @@ router.post('/google', async (req, res, next) => {
       user.email_verified = true;
       user.locale = locale || 'fr';
     } else {
+      isNewUser = true;
       // Check if email exists with different auth method
       [users] = await connection.query(
         'SELECT id, auth_provider FROM contacts WHERE email = ? AND deleted_at IS NULL',
@@ -657,11 +767,13 @@ router.post('/google', async (req, res, next) => {
       if (users.length > 0) {
         const existingUser = users[0];
         if (existingUser.auth_provider === 'local') {
+          await connection.rollback();
           return res.status(409).json({
             message: 'Un compte existe déjà avec cet email. Veuillez vous connecter avec votre email et mot de passe.',
             error_type: 'EMAIL_EXISTS_LOCAL',
           });
         } else if (existingUser.auth_provider === 'facebook') {
+          await connection.rollback();
           return res.status(409).json({
             message: 'Un compte existe déjà avec cet email via Facebook. Veuillez vous connecter avec Facebook.',
             error_type: 'EMAIL_EXISTS_FACEBOOK',
@@ -674,12 +786,32 @@ router.post('/google', async (req, res, next) => {
       const nomValue = nom || 'Google';
       const nomComplet = `${prenomValue} ${nomValue}`;
 
+      let selectedMaalemCategory = null;
+      if (registrationIntent.wants_maalem && registrationIntent.category_id != null) {
+        const [categoryRows] = await connection.query(
+          `SELECT id, nom, nom_ar, is_active
+           FROM maalem_categories
+           WHERE id = ? AND is_active = 1 AND deleted_at IS NULL
+           LIMIT 1
+           FOR UPDATE`,
+          [registrationIntent.category_id]
+        );
+        selectedMaalemCategory = categoryRows[0] || null;
+        if (!selectedMaalemCategory) {
+          await connection.rollback();
+          return res.status(400).json({
+            message: 'Catégorie Maalem inactive ou introuvable',
+            field: 'maalem_category_id',
+          });
+        }
+      }
+
       const [result] = await connection.query(
         `INSERT INTO contacts
          (nom_complet, prenom, nom, email, type, type_compte, auth_provider, google_id,
           avatar_url, email_verified, locale, is_active, last_login_at, last_login_ip,
-          provider_access_token, source)
-         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?, 'ecommerce')`,
+          provider_access_token, source, demande_artisan, artisan_approuve)
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?, 'ecommerce', ?, FALSE)`,
         [
           nomComplet,
           prenomValue,
@@ -690,10 +822,34 @@ router.post('/google', async (req, res, next) => {
           locale || 'fr',
           clientIp,
           access_token || null,
+          registrationIntent.is_artisan_request ? 1 : 0,
         ]
       );
 
       const userId = result.insertId;
+
+      if (registrationIntent.wants_maalem) {
+        const [profileResult] = await connection.query(
+          `INSERT INTO maalem_profiles (contact_id, category_id, status)
+           VALUES (?, ?, 'draft')`,
+          [userId, registrationIntent.category_id]
+        );
+        maalemProfile = {
+          id: Number(profileResult.insertId),
+          user_id: Number(userId),
+          contact_id: Number(userId),
+          category_id: registrationIntent.category_id,
+          status: 'draft',
+          status_label: 'Brouillon',
+          professional_data: null,
+          category: selectedMaalemCategory ? {
+            id: Number(selectedMaalemCategory.id),
+            nom: selectedMaalemCategory.nom,
+            nom_ar: selectedMaalemCategory.nom_ar,
+            is_active: true,
+          } : null,
+        };
+      }
 
       [users] = await connection.query(
         `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
@@ -706,12 +862,29 @@ router.post('/google', async (req, res, next) => {
       user = users[0];
     }
 
+    if (!isNewUser) {
+      maalemProfile = await findMaalemProfileByContactId(connection, user.id);
+    }
+
     await connection.commit();
 
     const token = generateToken(user);
 
+    if (isNewUser && user.demande_artisan && !user.artisan_approuve) {
+      emitToPDG('artisan-request:new', {
+        contact_id: user.id,
+        nom_complet: `${user.prenom} ${user.nom}`,
+        prenom: user.prenom,
+        nom: user.nom,
+        email: user.email,
+        telephone: user.telephone,
+        avatar_url: user.avatar_url,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     res.json({
-      message: user.id ? 'Connexion réussie avec Google' : 'Compte créé avec Google',
+      message: isNewUser ? 'Compte créé avec Google' : 'Connexion réussie avec Google',
       user: {
         id: user.id,
         prenom: user.prenom,
@@ -726,12 +899,21 @@ router.post('/google', async (req, res, next) => {
         demande_artisan: !!user.demande_artisan,
         artisan_approuve: !!user.artisan_approuve,
         is_solde: !!user.is_solde,
+        maalem_profile: maalemProfile,
       },
       token,
+      isNewUser,
+      next_path: isNewUser && maalemProfile ? '/profile/maalem' : null,
     });
   } catch (err) {
     await connection.rollback();
     console.error('Google authentication error:', err);
+    if (err?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        message: 'Un compte existe déjà avec cet email',
+        field: 'email',
+      });
+    }
     next(err);
   } finally {
     connection.release();
@@ -990,6 +1172,7 @@ router.get('/me', async (req, res, next) => {
       limite_solde != null
         ? Math.max(0, Math.round((limite_solde - solde_cumule) * 100) / 100)
         : null;
+    const maalem_profile = await findMaalemProfileByContactId(pool, user.id);
 
     if (debug) {
       const tEnd = process.hrtime.bigint();
@@ -1035,6 +1218,7 @@ router.get('/me', async (req, res, next) => {
         demande_artisan: !!user.demande_artisan,
         artisan_approuve: !!user.artisan_approuve,
         remise_balance: Number(user.remise_balance || 0),
+        maalem_profile,
       },
     });
   } catch (err) {

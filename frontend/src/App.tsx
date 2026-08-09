@@ -16,6 +16,7 @@ import { AccessWarningPopup } from './components/AccessWarningPopup';
 // Pages
 import DashboardPage from './pages/DashboardPage';
 import EmployeePage from './pages/EmployeePage';
+import ClientCollaborationPermissionsPage from './pages/ClientCollaborationPermissionsPage';
 import EmployeeSelfPage from './pages/EmployeeSelfPage';
 import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
@@ -32,6 +33,7 @@ import FondCaisseDetailPage from './pages/FondCaisseDetailPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
 import BrandsPage from './pages/BrandsPage';
+import MaalemCategoriesPage from './pages/MaalemCategoriesPage';
 import StatsDetailPage from './pages/StatsDetailPage';
 import ExcelUploadPage from './pages/ImportExcelTabs';
 import ExportProducts from './pages/ExportProducts';
@@ -244,6 +246,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <StockPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/employees/client-collaboration-permissions"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <ClientCollaborationPermissionsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
@@ -474,6 +487,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <BrandsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/maalem-categories"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <MaalemCategoriesPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

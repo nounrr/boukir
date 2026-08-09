@@ -120,7 +120,16 @@ export interface DashboardSummaryResponse {
     lowStock: number;
     pendingOrders: number;
     talonDueSoon: number;
+    remindersToday: number;
   };
+  reminderClientsToday: Array<{
+    id: number;
+    nom_complet: string | null;
+    societe: string | null;
+    telephone: string | null;
+    rappel_date: string;
+    rappel_jours_restants: number;
+  }>;
   recentActivity: Array<{
     type: string;
     message: string;
@@ -134,7 +143,7 @@ export const statsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getDashboardSummary: builder.query<DashboardSummaryResponse, void>({
       query: () => '/stats/dashboard-summary',
-      providesTags: ['Bon', 'Product'],
+      providesTags: ['Bon', 'Product', 'Dashboard'],
     }),
 
     getChiffreAffairesStats: builder.query<

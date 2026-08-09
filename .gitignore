@@ -38,6 +38,7 @@ localhost.sql
 
 
 backend/uploads/
+backend/private_uploads/
 backend/.env
 backend/db/pool.js
 *.save

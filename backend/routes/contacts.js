@@ -1,8 +1,26 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
+import { parseReminderDays } from '../utils/contactReminder.js';
+import { requireClientRemindersAccess } from '../middleware/clientCollaborationPermissions.js';
+import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
 
 const router = express.Router();
+
+const REMINDER_RESPONSE_FIELDS = [
+  'rappel_date',
+  'rappel_jours_initial',
+  'rappel_defini_le',
+  'rappel_defini_par',
+  'rappel_jours_restants',
+];
+
+function protectReminderFields(value, user) {
+  if (hasClientRemindersAccess(user) || !value || typeof value !== 'object') return value;
+  const protectedValue = { ...value };
+  for (const field of REMINDER_RESPONSE_FIELDS) delete protectedValue[field];
+  return protectedValue;
+}
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -159,6 +177,7 @@ const SUPPLIER_PAYMENT_SUM_EXPR = `
 const SINGLE_CONTACT_QUERY = `
   SELECT
     c.*,
+    DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants,
     cg.name AS group_name,
     -- Total Ventes
     (
@@ -366,6 +385,7 @@ router.get('/', async (req, res) => {
     let query = `
       SELECT
         c.*,
+        DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants,
         cg.name AS group_name,
         ${BALANCE_EXPR} AS solde_cumule,
         ${TOTAL_CUMULE_EXPR} AS total_cumule,
@@ -526,7 +546,17 @@ router.get('/', async (req, res) => {
           ELSE 3
         END, CHAR_LENGTH(CAST(c.id AS CHAR)), CAST(c.id AS UNSIGNED),`
       : '';
-    if (sortExpr === 'solde_cumule' || sortExpr === 'total_cumule') {
+    const canUseReminders = hasClientRemindersAccess(req.user);
+    const useReminderPriority = canUseReminders
+      && (normalizedSortBy === 'rappel' || (!normalizedSortBy && type === 'Client'));
+    if (useReminderPriority) {
+      query += ` ORDER BY ${referenceSearchOrder}
+        CASE WHEN c.rappel_date IS NULL THEN 1 ELSE 0 END,
+        c.rappel_date ASC,
+        ${groupPrefix},
+        COALESCE(c.nom_complet, '') ASC,
+        c.id ASC`;
+    } else if (sortExpr === 'solde_cumule' || sortExpr === 'total_cumule') {
       query += ` ORDER BY ${referenceSearchOrder} ${sortExpr} ${normalizedSortDir}, ${groupPrefix}, c.id ${normalizedSortDir}`;
     } else {
       // Keep explicit user sort first; group ordering is only a tie-breaker.
@@ -548,14 +578,14 @@ router.get('/', async (req, res) => {
     console.log(`Type filter: ${type || 'Tous'}`);
 
     // Convertir les champs numÃ©riques pour Ã©viter les problÃ¨mes de type cÃ´tÃ© JS
-    const processedRows = rows.map(row => ({
+    const processedRows = rows.map(row => protectReminderFields({
       ...row,
       solde_cumule: Number(row.solde_cumule || 0),
       total_cumule: row.total_cumule !== null && row.total_cumule !== undefined ? Number(row.total_cumule) : null,
       total_ventes: Number(row.total_ventes || 0),
       total_paiements: Number(row.total_paiements || 0),
       total_avoirs: Number(row.total_avoirs || 0),
-    }));
+    }, req.user));
 
     processedRows.forEach((contact, index) => {
       if (index < 10) { // Afficher les 10 premiers pour debug
@@ -1939,10 +1969,63 @@ router.get('/:id', async (req, res) => {
       contact.remise_account_id = null;
     }
 
-    res.json(contact);
+    res.json(protectReminderFields(contact, req.user));
   } catch (error) {
     console.error('Error fetching contact:', error);
     res.status(500).json({ error: 'Failed to fetch contact' });
+  }
+});
+
+// PUT /api/contacts/:id/reminder - Créer, remplacer ou supprimer le rappel actif.
+router.put('/:id/reminder', requireClientRemindersAccess, async (req, res) => {
+  try {
+    const contactId = Number(req.params.id);
+    if (!Number.isInteger(contactId) || contactId <= 0) {
+      return res.status(400).json({ error: 'Identifiant client invalide' });
+    }
+
+    const parsed = parseReminderDays(req.body?.days);
+    if (!parsed.valid) return res.status(400).json({ error: parsed.error });
+
+    const [existing] = await pool.execute(
+      `SELECT id FROM contacts
+       WHERE id = ? AND type = 'Client' AND deleted_at IS NULL
+         AND COALESCE(is_charge, 0) = 0
+       LIMIT 1`,
+      [contactId]
+    );
+    if (existing.length === 0) return res.status(404).json({ error: 'Client introuvable' });
+
+    if (parsed.days === null) {
+      await pool.execute(
+        `UPDATE contacts
+         SET rappel_date = NULL, rappel_jours_initial = NULL,
+             rappel_defini_le = NULL, rappel_defini_par = NULL, updated_at = NOW()
+         WHERE id = ?`,
+        [contactId]
+      );
+    } else {
+      const definedBy = Number(req.user?.id);
+      await pool.execute(
+        `UPDATE contacts
+         SET rappel_date = DATE_ADD(CURDATE(), INTERVAL ? DAY),
+             rappel_jours_initial = ?, rappel_defini_le = NOW(),
+             rappel_defini_par = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [parsed.days, parsed.days, Number.isInteger(definedBy) ? definedBy : null, contactId]
+      );
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT id, rappel_date, rappel_jours_initial, rappel_defini_le, rappel_defini_par,
+              DATEDIFF(rappel_date, CURDATE()) AS rappel_jours_restants
+       FROM contacts WHERE id = ? LIMIT 1`,
+      [contactId]
+    );
+    return res.json(rows[0]);
+  } catch (error) {
+    console.error('Error updating contact reminder:', error);
+    return res.status(500).json({ error: 'Impossible de mettre à jour le rappel' });
   }
 });
 
@@ -2063,7 +2146,7 @@ router.post('/', async (req, res) => {
       [result.insertId]
     );
 
-    res.status(201).json(rows[0]);
+    res.status(201).json(protectReminderFields(rows[0], req.user));
   } catch (error) {
     console.error('Error creating contact:', error);
     res.status(500).json({ error: 'Failed to create contact' });
@@ -2272,10 +2355,10 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    res.json({
+    res.json(protectReminderFields({
       ...rows[0],
       solde_cumule: Number(rows?.[0]?.solde_cumule || 0),
-    });
+    }, req.user));
   } catch (error) {
     console.error('Error updating contact:', error);
 

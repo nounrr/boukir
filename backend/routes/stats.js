@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
 
 const router = express.Router();
 
@@ -316,8 +317,9 @@ function getStatsDetailProfitSign(type) {
   }
 }
 
-router.get('/dashboard-summary', async (_req, res) => {
+router.get('/dashboard-summary', async (req, res) => {
   try {
+    const canUseReminders = hasClientRemindersAccess(req.user);
     const [
       [[employeesRow]],
       [[productsRow]],
@@ -329,6 +331,7 @@ router.get('/dashboard-summary', async (_req, res) => {
       [recentPayments],
       [criticalProducts],
       [[overdueTalonsRow]],
+      [reminderClientsToday],
     ] = await Promise.all([
       pool.query("SELECT COUNT(*) AS total FROM employees WHERE deleted_at IS NULL"),
       pool.query("SELECT COUNT(*) AS total FROM products WHERE COALESCE(is_deleted, 0) = 0"),
@@ -403,6 +406,21 @@ router.get('/dashboard-summary', async (_req, res) => {
           AND date_echeance IS NOT NULL
           AND DATE(date_echeance) < CURDATE()
       `),
+      canUseReminders ? pool.query(`
+        SELECT
+          c.id,
+          c.nom_complet,
+          c.societe,
+          c.telephone,
+          c.rappel_date,
+          DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants
+        FROM contacts c
+        WHERE c.deleted_at IS NULL
+          AND c.type = 'Client'
+          AND COALESCE(c.is_charge, 0) = 0
+          AND c.rappel_date = CURDATE()
+        ORDER BY COALESCE(c.nom_complet, c.societe, ''), c.id
+      `) : Promise.resolve([[]]),
     ]);
 
     const formatAmount = (value) => new Intl.NumberFormat('fr-FR', {
@@ -471,8 +489,10 @@ router.get('/dashboard-summary', async (_req, res) => {
         lowStock: Number(lowStockRow?.total || 0),
         pendingOrders: Number(pendingOrdersRow?.total || 0),
         talonDueSoon: Number(talonDueSoonRow?.total || 0),
+        remindersToday: reminderClientsToday.length,
       },
       recentActivity: activities.slice(0, 5),
+      reminderClientsToday,
     });
   } catch (error) {
     console.error('GET /stats/dashboard-summary error:', error);

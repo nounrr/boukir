@@ -16,7 +16,7 @@ export interface PaginatedContactsResponse {
   grandTotalAvoirs?: number;
 }
 
-export type ContactsSortBy = 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'total_cumule' | 'created_at';
+export type ContactsSortBy = 'rappel' | 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'total_cumule' | 'created_at';
 export type SortDirection = 'asc' | 'desc';
 
 export interface ContactsSummaryResponse {
@@ -123,6 +123,22 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Contact', id }, 'Contact'],
     }),
 
+    updateContactReminder: builder.mutation<
+      Pick<Contact, 'id' | 'rappel_date' | 'rappel_jours_initial' | 'rappel_defini_le' | 'rappel_defini_par' | 'rappel_jours_restants'>,
+      { id: number; days: number | null }
+    >({
+      query: ({ id, days }) => ({
+        url: `/contacts/${id}/reminder`,
+        method: 'PUT',
+        body: { days },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Contact', id },
+        'Contact',
+        'Dashboard',
+      ],
+    }),
+
     deleteContact: builder.mutation<void, { id: number; updated_by: number }>({
       query: ({ id, updated_by }) => ({
         url: `/contacts/${id}`,
@@ -225,6 +241,7 @@ export const {
   useGetContactHistoryQuery,
   useCreateContactMutation,
   useUpdateContactMutation,
+  useUpdateContactReminderMutation,
   useDeleteContactMutation,
   useGetClientsQuery,
   useGetFournisseursQuery,

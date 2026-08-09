@@ -22,6 +22,8 @@ import usersRouter from './routes/users.js';
 
 import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
+import maalemCategoriesRouter, { publicMaalemCategoriesRouter } from './routes/maalemCategories.js';
+import maalemProfilesRouter, { adminMaalemProfilesRouter } from './routes/maalemProfiles.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceSearchRouter from './routes/ecommerce/search.js';
@@ -35,6 +37,7 @@ import heroSlidesRouter from './routes/heroSlides.js';
 import heroSlidesAdminRouter from './routes/heroSlidesAdmin.js';
 import contactsRouter from './routes/contacts.js';
 import contactGroupsRouter from './routes/contactGroups.js';
+import contactCommentsRouter from './routes/contactComments.js';
 import vehiculesRouter from './routes/vehicules.js';
 
 // Documents
@@ -211,6 +214,7 @@ const ECOMMERCE_PUBLIC_PREFIXES = [
 const PUBLIC_READONLY_PREFIXES = [
   '/api/categories',
   '/api/brands',
+  '/api/maalem-categories/active',
   '/api/hero-slides',
 ];
 
@@ -323,6 +327,10 @@ app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 
 app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
+app.use('/api/maalem-categories', publicMaalemCategoriesRouter);
+app.use('/api/admin/maalem-categories', maalemCategoriesRouter);
+app.use('/api/maalem-profiles', maalemProfilesRouter);
+app.use('/api/admin/maalem-profiles', adminMaalemProfilesRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
 app.use('/api/ecommerce/search', optionalAuth, ecommerceSearchRouter); // E-commerce public search (with optional auth)
@@ -339,6 +347,7 @@ app.use('/api/admin/hero-slides', heroSlidesAdminRouter); // Backoffice manageme
 app.use('/api/promo-codes', promoCodesRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/contact-groups', contactGroupsRouter);
+app.use('/api/contact-comments', contactCommentsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 
 // Documents séparés

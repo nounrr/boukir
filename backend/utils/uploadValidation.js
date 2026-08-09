@@ -7,21 +7,26 @@ const SIGNATURES = {
   webp: Buffer.from('WEBP'),
 };
 
+export function detectBufferKind(value) {
+  const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value || []);
+  if (buffer.subarray(0, SIGNATURES.pdf.length).equals(SIGNATURES.pdf)) return 'pdf';
+  if (buffer.subarray(0, SIGNATURES.png.length).equals(SIGNATURES.png)) return 'png';
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg';
+  if (
+    buffer.length >= 12
+    && buffer.subarray(0, SIGNATURES.riff.length).equals(SIGNATURES.riff)
+    && buffer.subarray(8, 12).equals(SIGNATURES.webp)
+  ) return 'webp';
+  return null;
+}
+
 export async function detectFileKind(filePath) {
   const handle = await fs.open(filePath, 'r');
   try {
     const header = Buffer.alloc(16);
     const { bytesRead } = await handle.read(header, 0, header.length, 0);
     const value = header.subarray(0, bytesRead);
-    if (value.subarray(0, SIGNATURES.pdf.length).equals(SIGNATURES.pdf)) return 'pdf';
-    if (value.subarray(0, SIGNATURES.png.length).equals(SIGNATURES.png)) return 'png';
-    if (value.length >= 3 && value[0] === 0xff && value[1] === 0xd8 && value[2] === 0xff) return 'jpeg';
-    if (
-      value.length >= 12
-      && value.subarray(0, SIGNATURES.riff.length).equals(SIGNATURES.riff)
-      && value.subarray(8, 12).equals(SIGNATURES.webp)
-    ) return 'webp';
-    return null;
+    return detectBufferKind(value);
   } finally {
     await handle.close();
   }

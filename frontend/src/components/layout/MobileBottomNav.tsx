@@ -79,6 +79,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'gestion', label: 'Gestion', icon: Users,
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
+        { name: 'Accès commentaires & rappels', to: '/employees/client-collaboration-permissions', show: user?.role === 'PDG' },
         { name: 'Contacts', to: '/contacts', show: user?.role !== 'Employé' },
         { name: 'Paramètres UI', to: '/settings/ui', show: user?.role === 'PDG' },
       ],

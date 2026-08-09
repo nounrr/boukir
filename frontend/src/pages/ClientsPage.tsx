@@ -4,7 +4,7 @@ import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
   FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft, Plus,
-  Package, Printer, GripVertical, ChevronDown, ChevronUp, Edit, Trash2,
+  Package, Printer, GripVertical, ChevronDown, ChevronUp, Edit, Trash2, MessageSquare, Bell,
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -24,6 +24,11 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import { printContactList } from '../utils/contactListPrint';
 import { isProductNonCalcule } from '../utils/productNonCalcule';
+import ContactCommentsRow from '../components/contactComments/ContactCommentsRow';
+import ContactCommentsSection from '../components/contactComments/ContactCommentsSection';
+import { useGetContactCommentCountsQuery } from '../store/api/contactCommentsApi';
+import { ReminderBadge, ReminderEditor, ReminderModal } from '../components/reminders/ReminderEditor';
+import { useGetMyClientCollaborationPermissionsQuery } from '../store/api/clientCollaborationPermissionsApi';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -1221,10 +1226,21 @@ const ClientDetailPage: React.FC = () => {
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const { data: contact, isLoading: loadingContact } = useGetContactQuery(clientId);
+  const { data: collaborationPermissions } = useGetMyClientCollaborationPermissionsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
+  const canUseComments = collaborationPermissions?.commentaires_clients === true;
+  const canUseReminders = collaborationPermissions?.rappels_clients === true;
+  const { data: contact, isLoading: loadingContact, refetch: refetchContact } = useGetContactQuery(clientId);
   const { data: history, isLoading: loadingHistory, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
   const { data: products = [] } = useGetProductsQuery();
   const isLoading = loadingContact || loadingHistory;
+
+  useEffect(() => {
+    if (canUseReminders) refetchContact();
+  }, [canUseReminders, refetchContact]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const didAutoScrollRef = useRef(false);
@@ -1845,6 +1861,11 @@ const ClientDetailPage: React.FC = () => {
         )}
       </div>
 
+      {canUseReminders && contact && <ReminderEditor contact={contact} />}
+
+      {/* Commentaires internes sur le client */}
+      {canUseComments && <ContactCommentsSection contactId={clientId} />}
+
       {/* Tabs + checkbox détail */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
         <div className="flex items-center border-b border-gray-200 overflow-x-auto sticky top-0 z-20 bg-white">
@@ -2124,20 +2145,29 @@ const ClientsListPage: React.FC = () => {
   const navigate = useNavigate();
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [reminderClient, setReminderClient] = useState<Contact | null>(null);
   const [deleteContact] = useDeleteContactMutation();
   const [updateContact] = useUpdateContactMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const { data: collaborationPermissions, isLoading: permissionsLoading } = useGetMyClientCollaborationPermissionsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
+  const canUseComments = collaborationPermissions?.commentaires_clients === true;
+  const canUseReminders = collaborationPermissions?.rappels_clients === true;
   const savedState = React.useRef<ClientsListSavedState>(readSavedClientsState()).current;
   const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
   const [search, setSearch] = useState(savedState.search ?? '');
   const [debouncedSearch, setDebouncedSearch] = useState(savedState.search ?? '');
-  const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'total_cumule');
-  const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
+  const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'rappel');
+  const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'asc');
   const [dateFrom, setDateFrom] = useState(savedState.dateFrom ?? '');
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
+  const clientsTableColspan = 13 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -2148,10 +2178,11 @@ const ClientsListPage: React.FC = () => {
 
   const effectiveLimit = itemsPerPage === 0 ? 999999 : itemsPerPage;
 
-  const { data, isLoading, isFetching } = useGetClientsQuery({
+  const effectiveSortBy: ContactsSortBy = !canUseReminders && sortBy === 'rappel' ? 'nom' : sortBy;
+  const { data, isLoading, isFetching, refetch: refetchClients } = useGetClientsQuery({
     page: itemsPerPage === 0 ? 1 : currentPage, limit: effectiveLimit,
     search: debouncedSearch || undefined,
-    sortBy, sortDir,
+    sortBy: effectiveSortBy, sortDir,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     exclude_charge: true,
@@ -2160,7 +2191,7 @@ const ClientsListPage: React.FC = () => {
     page: 1,
     limit: 999999,
     search: debouncedSearch || undefined,
-    sortBy,
+    sortBy: effectiveSortBy,
     sortDir,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
@@ -2168,9 +2199,48 @@ const ClientsListPage: React.FC = () => {
   });
 
   const clients = data?.data ?? [];
+  const activeReminderClient = reminderClient
+    ? clients.find((client: Contact) => Number(client.id) === Number(reminderClient.id)) ?? reminderClient
+    : null;
   const printSourceRows = printData?.data ?? clients;
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
+
+  // Compteurs de commentaires pour les lignes affichées (une seule requête par page).
+  // La clé est sérialisée pour garder une référence stable entre deux rendus.
+  const visibleClientIdsKey = clients
+    .map((client: Contact) => Number(client.id))
+    .filter((id: number) => Number.isFinite(id))
+    .join(',');
+  const visibleClientIds = useMemo(
+    () => (visibleClientIdsKey ? visibleClientIdsKey.split(',').map(Number) : []),
+    [visibleClientIdsKey]
+  );
+  const { data: commentCounts = {} } = useGetContactCommentCountsQuery(visibleClientIds, {
+    skip: visibleClientIds.length === 0 || permissionsLoading || !canUseComments,
+  });
+
+  useEffect(() => {
+    if (!permissionsLoading && !canUseReminders && sortBy === 'rappel') {
+      setSortBy('nom');
+      setSortDir('asc');
+      setCurrentPage(1);
+    }
+  }, [permissionsLoading, canUseReminders, sortBy]);
+
+  useEffect(() => {
+    if (canUseReminders) refetchClients();
+  }, [canUseReminders, refetchClients]);
+
+  // Une seule ligne de commentaires ouverte à la fois (accordéon)
+  const [openCommentsClientId, setOpenCommentsClientId] = useState<number | null>(null);
+
+  // Le panneau se referme si le client sort de la page affichée
+  useEffect(() => {
+    if (openCommentsClientId !== null && !visibleClientIds.includes(openCommentsClientId)) {
+      setOpenCommentsClientId(null);
+    }
+  }, [visibleClientIds, openCommentsClientId]);
 
   React.useEffect(() => {
     if (isLoading || isFetching) return;
@@ -2356,6 +2426,12 @@ const ClientsListPage: React.FC = () => {
     setCurrentPage(1);
   };
 
+  const showReminderPriority = () => {
+    setSortBy('rappel');
+    setSortDir('asc');
+    setCurrentPage(1);
+  };
+
   const SortIcon = ({ col }: { col: ContactsSortBy }) =>
     sortBy !== col
       ? <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 inline ml-1" />
@@ -2374,8 +2450,14 @@ const ClientsListPage: React.FC = () => {
 
   const renderClientDataRow = (client: Contact, rowLabel: string | number, rowKey?: string) => {
     const isBloque = Boolean(Number(client.bloque ?? 0));
+    const clientIdNum = Number(client.id);
+    const clientCommentSummary = commentCounts[clientIdNum];
+    const commentsTotal = clientCommentSummary?.total ?? 0;
+    const isCommentsOpen = openCommentsClientId === clientIdNum;
+    const clientDisplayName = client.nom_complet || client.societe || `Client #${client.id}`;
     return (
-    <tr key={rowKey ?? client.id} className={`${isBloque ? 'bg-red-100 hover:bg-red-200' : 'hover:bg-blue-50'} transition-colors cursor-pointer`} onClick={() => handleRowClick(client.id)}>
+    <React.Fragment key={rowKey ?? client.id}>
+    <tr className={`${isBloque ? 'bg-red-100 hover:bg-red-200' : isCommentsOpen ? 'bg-indigo-50' : 'hover:bg-blue-50'} transition-colors cursor-pointer`} onClick={() => handleRowClick(client.id)}>
       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -2387,6 +2469,21 @@ const ClientsListPage: React.FC = () => {
       </td>
       <td className="px-4 py-3 text-gray-400 text-xs">{rowLabel}</td>
       <td className="px-4 py-3 font-mono text-xs text-gray-500">{client.id}</td>
+      {canUseReminders && <td className="px-4 py-3">
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); setReminderClient(client); }}
+          className="inline-flex items-center rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+          aria-label={`Modifier le rappel de ${clientDisplayName}`}
+          title="Définir ou modifier le rappel"
+        >
+          {client.rappel_date
+            ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} />
+            : <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-500 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700">
+                <Bell className="h-3.5 w-3.5" /> Définir
+              </span>}
+        </button>
+      </td>}
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -2417,6 +2514,14 @@ const ClientsListPage: React.FC = () => {
           ? <div className="flex items-center gap-1.5 text-gray-600 text-xs"><MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" /><span className="truncate max-w-[180px]">{client.adresse}</span></div>
           : <span className="text-gray-300 text-xs">â€”</span>}
       </td>
+      {canUseComments && <td className="px-4 py-3">
+        {clientCommentSummary?.dernier_contenu
+          ? <div className="flex items-start gap-1.5 max-w-[220px]" title={clientCommentSummary.dernier_contenu}>
+              <MessageSquare className="w-3 h-3 text-indigo-400 flex-shrink-0 mt-0.5" />
+              <span className="text-xs text-gray-600 line-clamp-2 leading-snug">{clientCommentSummary.dernier_contenu}</span>
+            </div>
+          : <span className="text-gray-300 text-xs">—</span>}
+      </td>}
       <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -2450,6 +2555,28 @@ const ClientsListPage: React.FC = () => {
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-2">
+          {canUseComments && <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenCommentsClientId(prev => (prev === clientIdNum ? null : clientIdNum));
+            }}
+            className={`relative p-2 rounded-md transition-colors ${
+              isCommentsOpen
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700'
+            }`}
+            title={commentsTotal > 0 ? `${commentsTotal} commentaire${commentsTotal > 1 ? 's' : ''}` : 'Ajouter un commentaire'}
+            aria-label="Commentaires"
+            aria-expanded={isCommentsOpen}
+          >
+            <MessageSquare className="w-4 h-4" />
+            {commentsTotal > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold leading-[15px] text-center">
+                {commentsTotal > 9 ? '9+' : commentsTotal}
+              </span>
+            )}
+          </button>}
           <button
             type="button"
             onClick={(e) => {
@@ -2477,6 +2604,15 @@ const ClientsListPage: React.FC = () => {
         </div>
       </td>
     </tr>
+    {canUseComments && isCommentsOpen && (
+      <ContactCommentsRow
+        contactId={clientIdNum}
+        contactName={clientDisplayName}
+        colSpan={clientsTableColspan}
+        onClose={() => setOpenCommentsClientId(null)}
+      />
+    )}
+    </React.Fragment>
     );
   };
 
@@ -2494,6 +2630,13 @@ const ClientsListPage: React.FC = () => {
     const groupPlafond = row.members.reduce((sum, member) => sum + Number(member.plafond || 0), 0);
     const groupGarantie = row.members.reduce((sum, member) => sum + Number(member.montant_garantie || 0), 0);
     const groupTotalCumule = row.members.reduce((sum, member) => sum + Number(member.total_cumule || 0), 0);
+    const groupReminder = row.members
+      .filter(member => member.rappel_date)
+      .sort((a, b) => Number(a.rappel_jours_restants ?? 999999) - Number(b.rappel_jours_restants ?? 999999))[0];
+    const groupCommentsTotal = row.members.reduce(
+      (sum, member) => sum + Number(commentCounts[Number(member.id)]?.total || 0),
+      0
+    );
 
     return (
       <React.Fragment key={`group-${row.groupId}`}>
@@ -2520,6 +2663,11 @@ const ClientsListPage: React.FC = () => {
           </td>
           <td className="px-4 py-3 text-gray-400 text-xs">{rowLabel}</td>
           <td className="px-4 py-3 font-mono text-xs text-gray-500">G{row.groupId}</td>
+          {canUseReminders && <td className="px-4 py-3">
+            {groupReminder
+              ? <ReminderBadge daysRemaining={groupReminder.rappel_jours_restants} date={groupReminder.rappel_date} />
+              : <span className="text-gray-300 text-xs">—</span>}
+          </td>}
           <td className="px-4 py-3">
             <div className="flex items-center gap-2">
               {isOpen ? <ChevronDown className="w-4 h-4 text-blue-600" /> : <ChevronRight className="w-4 h-4 text-blue-600" />}
@@ -2534,6 +2682,14 @@ const ClientsListPage: React.FC = () => {
           </td>
           <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
           <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
+          {canUseComments && <td className="px-4 py-3">
+            {groupCommentsTotal > 0
+              ? <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50/60 px-2 py-1 text-xs font-semibold text-indigo-600">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  {groupCommentsTotal}
+                </span>
+              : <span className="text-gray-300 text-xs">—</span>}
+          </td>}
           <td className="px-4 py-3 text-gray-400 text-xs text-center">-</td>
           <td className="px-4 py-3 text-right">
             <span className={`font-semibold text-sm ${groupSolde < 0 ? 'text-red-600' : groupSolde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -2642,6 +2798,16 @@ const ClientsListPage: React.FC = () => {
                 </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 w-12">#</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 w-16">ID</th>
+                {canUseReminders && <th className="text-left px-4 py-3 font-semibold text-gray-600">
+                  <button
+                    type="button"
+                    onClick={showReminderPriority}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 ${sortBy === 'rappel' ? 'text-amber-700' : 'text-gray-600 hover:text-amber-700'}`}
+                    title="Afficher les rappels les plus urgents en premier"
+                  >
+                    <Bell className="h-3.5 w-3.5" /> Rappel
+                  </button>
+                </th>}
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('nom')}>
                   Nom complet <SortIcon col="nom" />
                 </th>
@@ -2650,6 +2816,7 @@ const ClientsListPage: React.FC = () => {
                 </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Contact</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Adresse</th>
+                {canUseComments && <th className="text-left px-4 py-3 font-semibold text-gray-600 w-52">Commentaires</th>}
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Bloque</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />
@@ -2670,13 +2837,13 @@ const ClientsListPage: React.FC = () => {
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 13 }).map((_, j) => (
+                      {Array.from({ length: clientsTableColspan }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : visibleAccordionRows.length === 0
-                  ? <tr><td colSpan={13} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={clientsTableColspan} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun client trouvé</p>
                     </td></tr>
                   : (visibleAccordionRows.map((row, idx: number) => renderAccordionRow(row, idx)) || clients.map((client: Contact, idx: number) => (
@@ -2768,6 +2935,10 @@ const ClientsListPage: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {canUseReminders && activeReminderClient && (
+        <ReminderModal contact={activeReminderClient} onClose={() => setReminderClient(null)} />
       )}
 
       <ContactFormModal

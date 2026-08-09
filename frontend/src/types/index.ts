@@ -235,6 +235,26 @@ export interface CreateBrandData {
   image?: File;
 }
 
+export interface MaalemCategory {
+  id: number;
+  nom: string;
+  nom_ar: string;
+  description: string | null;
+  is_active: boolean;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+export interface SaveMaalemCategoryData {
+  nom: string;
+  nom_ar: string;
+  description: string | null;
+  is_active: boolean;
+}
+
 // Types pour les produits (stock)
 export interface Product {
   id: number;
@@ -392,6 +412,11 @@ export interface Contact {
   isSolde?: boolean; // Indique si le client peut commander en solde (crédit)
   is_charge?: boolean;
   bloque?: boolean | number;
+  rappel_date?: string | null;
+  rappel_jours_initial?: number | null;
+  rappel_defini_le?: string | null;
+  rappel_defini_par?: number | null;
+  rappel_jours_restants?: number | null;
   created_by?: number;
   updated_by?: number;
   created_at: string;
