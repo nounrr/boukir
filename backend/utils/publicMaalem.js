@@ -25,13 +25,17 @@ function publicStringList(value, limit = 30) {
     .slice(0, limit);
 }
 
+function isDatabaseTrue(value) {
+  return value === true || value === 1 || value === '1';
+}
+
 export function isPubliclyOrderableMaalem(row) {
   return Boolean(
     row
     && row.deleted_at == null
     && row.contact_deleted_at == null
-    && Boolean(row.contact_is_active)
-    && !Boolean(row.contact_is_blocked)
+    && isDatabaseTrue(row.contact_is_active)
+    && !isDatabaseTrue(row.contact_is_blocked)
     && canReceiveServiceAssignments(row)
   );
 }

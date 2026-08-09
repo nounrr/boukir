@@ -12,6 +12,8 @@ import {
   useUpdateProductCorrectionNamesMutation,
   useUpdateProductCorrectionCategoryMutation,
   useUploadProductNameCorrectionsMutation,
+  type ProductNameCorrectionImageFilter,
+  type ProductNameCorrectionMatchFilter,
   type ProductNameCorrectionRow,
 } from '../store/api/productNameCorrectionsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -255,6 +257,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [qAncienne, setQAncienne] = useState('');
   const [qFr, setQFr] = useState('');
   const [qAr, setQAr] = useState('');
+  const [matchFilter, setMatchFilter] = useState<ProductNameCorrectionMatchFilter>('all');
+  const [imageFilter, setImageFilter] = useState<ProductNameCorrectionImageFilter>('all');
   const [message, setMessage] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
@@ -272,7 +276,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const uploadInProgressRef = useRef(false);
 
   const { data, isLoading, isFetching } = useGetProductNameCorrectionsQuery({
-    status: 'all',
+    status: matchFilter,
+    image: imageFilter,
     review_status: activeTab,
     q_ancienne: qAncienne || undefined,
     q_fr: qFr || undefined,
@@ -300,6 +305,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const rows = useMemo(() => data?.rows || [], [data?.rows]);
   const summary = data?.summary;
   const meta = data?.meta;
+  const hasActiveListFilters = matchFilter !== 'all' || imageFilter !== 'all';
+  const hasAnyVisibleFilter = hasActiveListFilters || Boolean(qAncienne.trim() || qFr.trim() || qAr.trim());
 
   const visibleRows = useMemo(
     () => activeTab === 'initial' ? rows.filter((row) => !transitionedIds.has(row.id)) : rows,
@@ -334,6 +341,25 @@ const ProductNameCorrectionsPage: React.FC = () => {
     if (field === 'ancienne') setQAncienne(value);
     else if (field === 'fr') setQFr(value);
     else setQAr(value);
+  };
+
+  const handleMatchFilterChange = (value: ProductNameCorrectionMatchFilter) => {
+    setMatchFilter(value);
+    setPage(1);
+    setSelectedIds(new Set());
+  };
+
+  const handleImageFilterChange = (value: ProductNameCorrectionImageFilter) => {
+    setImageFilter(value);
+    setPage(1);
+    setSelectedIds(new Set());
+  };
+
+  const resetListFilters = () => {
+    setMatchFilter('all');
+    setImageFilter('all');
+    setPage(1);
+    setSelectedIds(new Set());
   };
 
   useEffect(() => {
@@ -399,6 +425,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
       setQAncienne('');
       setQFr('');
       setQAr('');
+      setMatchFilter('all');
+      setImageFilter('all');
       setMessage(
         `Import Initial remplacé : ${result.imported} nouvelle(s) ligne(s) importée(s), ` +
         `${result.replacedInitial} ancienne(s) ligne(s) Initial remplacée(s). ` +
@@ -426,6 +454,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
     try {
       const params = new URLSearchParams({
         review_status: reviewStatus,
+        status: matchFilter,
+        image: imageFilter,
         q_ancienne: qAncienne,
         q_fr: qFr,
         q_ar: qAr,
@@ -515,7 +545,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
         correct: 'Correct',
         false: 'Fausse',
       };
-      const hasFilters = Boolean(qAncienne.trim() || qFr.trim() || qAr.trim());
+      const hasFilters = hasAnyVisibleFilter;
       const confirmed = window.confirm(
         `Remplacer "${searchText}" par "${replacementText}" dans la colonne ${replaceColumn.toUpperCase()} Pro ?\n\n` +
         `Portee: tout l'onglet ${tabLabel[activeTab]}${hasFilters ? ' avec les filtres actuels' : ''}.\n` +
@@ -535,6 +565,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
         q_ancienne: replaceScope === 'tab' ? qAncienne || undefined : undefined,
         q_fr: replaceScope === 'tab' ? qFr || undefined : undefined,
         q_ar: replaceScope === 'tab' ? qAr || undefined : undefined,
+        status: replaceScope === 'tab' ? matchFilter : undefined,
+        image: replaceScope === 'tab' ? imageFilter : undefined,
       }).unwrap();
       if (replaceScope === 'selected') setSelectedIds(new Set());
       const skipped = result.skippedApplied
@@ -878,6 +910,56 @@ const ProductNameCorrectionsPage: React.FC = () => {
           })}
         </div>
         <div className="space-y-4 p-4">
+          <fieldset className="rounded-md border border-gray-200 bg-white px-3 pb-3 pt-2">
+            <legend className="px-1 text-xs font-semibold text-gray-700">Filtrer la liste</legend>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <label className="block min-w-[210px]">
+                <span className="mb-1.5 block text-xs font-medium text-gray-700">Match système</span>
+                <select
+                  value={matchFilter}
+                  onChange={(event) => handleMatchFilterChange(event.target.value as ProductNameCorrectionMatchFilter)}
+                  className={`w-full rounded-md border px-3 py-2 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                    matchFilter === 'matched'
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                      : matchFilter === 'unmatched'
+                        ? 'border-red-300 bg-red-50 text-red-900'
+                        : 'border-gray-300 bg-white text-gray-800'
+                  }`}
+                  aria-label="Filtrer par résultat du match système"
+                >
+                  <option value="all">Tous</option>
+                  <option value="matched">Matchés uniquement</option>
+                  <option value="unmatched">Non matchés</option>
+                </select>
+              </label>
+              <label className="block min-w-[190px]">
+                <span className="mb-1.5 block text-xs font-medium text-gray-700">Images</span>
+                <select
+                  value={imageFilter}
+                  onChange={(event) => handleImageFilterChange(event.target.value as ProductNameCorrectionImageFilter)}
+                  className={`w-full rounded-md border px-3 py-2 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                    imageFilter === 'all'
+                      ? 'border-gray-300 bg-white text-gray-800'
+                      : 'border-sky-300 bg-sky-50 text-sky-900'
+                  }`}
+                  aria-label="Filtrer par présence d’image"
+                >
+                  <option value="all">Toutes</option>
+                  <option value="with">Avec image</option>
+                  <option value="without">Sans image</option>
+                </select>
+              </label>
+              {hasActiveListFilters && (
+                <button
+                  type="button"
+                  onClick={resetListFilters}
+                  className="inline-flex min-h-10 items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-gray-600 underline-offset-4 hover:bg-gray-50 hover:text-gray-900 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  Réinitialiser les filtres
+                </button>
+              )}
+            </div>
+          </fieldset>
           <fieldset className="rounded-md border border-gray-200 bg-gray-50/70 px-3 pb-3 pt-2">
             <legend className="px-1 text-xs font-semibold text-gray-700">Rechercher par colonne</legend>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1261,7 +1343,9 @@ const ProductNameCorrectionsPage: React.FC = () => {
               {!isLoading && visibleRows.length === 0 && (
                 <tr>
                   <td colSpan={13} className="px-6 py-10 text-center text-sm text-gray-500">
-                    Aucune ligne enregistrée. Uploadez le fichier Excel pour démarrer.
+                    {hasAnyVisibleFilter
+                      ? 'Aucune ligne ne correspond aux filtres actuels.'
+                      : 'Aucune ligne enregistrée. Uploadez le fichier Excel pour démarrer.'}
                   </td>
                 </tr>
               )}

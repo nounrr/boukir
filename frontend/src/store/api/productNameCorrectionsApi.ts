@@ -7,6 +7,9 @@ export type ProductNameCorrectionStatus =
   | 'ambiguous'
   | 'not_checked';
 
+export type ProductNameCorrectionMatchFilter = 'all' | 'matched' | 'unmatched';
+export type ProductNameCorrectionImageFilter = 'all' | 'with' | 'without';
+
 export interface ProductNameCorrectionRow {
   id: number;
   row_index: number;
@@ -72,6 +75,8 @@ export interface ReplaceProductNameCorrectionNamesPayload {
   q_ancienne?: string;
   q_fr?: string;
   q_ar?: string;
+  status?: ProductNameCorrectionMatchFilter;
+  image?: ProductNameCorrectionImageFilter;
 }
 
 export interface ReplaceProductNameCorrectionNamesResult {
@@ -88,7 +93,8 @@ export const productNameCorrectionsApi = api.injectEndpoints({
     getProductNameCorrections: builder.query<
       { rows: ProductNameCorrectionRow[]; summary: ProductNameCorrectionSummary; meta: ProductNameCorrectionMeta },
       {
-        status?: string;
+        status?: ProductNameCorrectionMatchFilter;
+        image?: ProductNameCorrectionImageFilter;
         review_status?: string;
         q_ancienne?: string;
         q_fr?: string;

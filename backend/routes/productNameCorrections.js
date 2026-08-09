@@ -506,12 +506,43 @@ function serialize(row) {
   };
 }
 
-function buildCorrectionFilters(query, options = {}) {
+const SQL_VARIANT_CORRECTION_ROW = `(
+  pnc.matched_variant_id IS NOT NULL
+  OR NULLIF(TRIM(pnc.variante_originale), '') IS NOT NULL
+  OR NULLIF(TRIM(pnc.variante_fr_pro), '') IS NOT NULL
+  OR NULLIF(TRIM(pnc.variante_ar_pro), '') IS NOT NULL
+  OR (
+    NULLIF(TRIM(pnc.ref_variant), '') IS NOT NULL
+    AND NULLIF(TRIM(pnc.ref_variant), '') <> COALESCE(NULLIF(TRIM(pnc.reference), ''), '')
+  )
+)`;
+
+// Keep this in sync with ProductCorrectionImages: imported and product images
+// are always visible, while a variant image is visible only on variant rows.
+const SQL_VISIBLE_IMAGE_PRESENT = `(
+  NULLIF(TRIM(pnc.image), '') IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM products p_image
+    WHERE p_image.id = pnc.matched_product_id
+      AND NULLIF(TRIM(p_image.image_url), '') IS NOT NULL
+  )
+  OR (
+    ${SQL_VARIANT_CORRECTION_ROW}
+    AND EXISTS (
+      SELECT 1 FROM product_variants pv_image
+      WHERE pv_image.id = pnc.matched_variant_id
+        AND NULLIF(TRIM(pv_image.image_url), '') IS NOT NULL
+    )
+  )
+)`;
+
+export function buildCorrectionFilters(query, options = {}) {
   const {
     includeMatchStatus = true,
     reviewStatusOverride,
   } = options;
   const status = clean(query.status);
+  const image = clean(query.image);
   const reviewStatus = reviewStatusOverride ?? clean(query.review_status);
   const qAncienne = clean(query.q_ancienne);
   const qFr = clean(query.q_fr);
@@ -519,9 +550,18 @@ function buildCorrectionFilters(query, options = {}) {
   const params = [];
   const where = [];
 
-  if (includeMatchStatus && status && status !== 'all') {
+  if (includeMatchStatus && status === 'matched') {
     where.push('pnc.match_status = ?');
-    params.push(status);
+    params.push('matched');
+  } else if (includeMatchStatus && status === 'unmatched') {
+    where.push('pnc.match_status <> ?');
+    params.push('matched');
+  }
+
+  if (image === 'with') {
+    where.push(SQL_VISIBLE_IMAGE_PRESENT);
+  } else if (image === 'without') {
+    where.push(`NOT ${SQL_VISIBLE_IMAGE_PRESENT}`);
   }
 
   if (reviewStatus && reviewStatus !== 'all') {
@@ -565,20 +605,11 @@ const REPLACEABLE_NAME_COLUMNS = {
   },
 };
 
-const SQL_VARIANT_CORRECTION_ROW = `(
-  pnc.matched_variant_id IS NOT NULL
-  OR NULLIF(TRIM(pnc.variante_originale), '') IS NOT NULL
-  OR NULLIF(TRIM(pnc.variante_fr_pro), '') IS NOT NULL
-  OR NULLIF(TRIM(pnc.variante_ar_pro), '') IS NOT NULL
-  OR (
-    NULLIF(TRIM(pnc.ref_variant), '') IS NOT NULL
-    AND NULLIF(TRIM(pnc.ref_variant), '') <> COALESCE(NULLIF(TRIM(pnc.reference), ''), '')
-  )
-)`;
-
 function buildNameReplacementFilters({
   reviewStatus,
   ids,
+  status,
+  image,
   qAncienne,
   qFr,
   qAr,
@@ -588,13 +619,13 @@ function buildNameReplacementFilters({
 }) {
   const filterQuery = {
     review_status: reviewStatus,
+    status: ids?.length ? undefined : status,
+    image: ids?.length ? undefined : image,
     q_ancienne: ids?.length ? undefined : qAncienne,
     q_fr: ids?.length ? undefined : qFr,
     q_ar: ids?.length ? undefined : qAr,
   };
-  const { whereSql, params } = buildCorrectionFilters(filterQuery, {
-    includeMatchStatus: false,
-  });
+  const { whereSql, params } = buildCorrectionFilters(filterQuery);
   const where = whereSql ? [whereSql.replace(/^WHERE\s+/i, '')] : [];
   const whereParams = [...params];
 
@@ -667,7 +698,6 @@ router.get('/export-excel', async (req, res, next) => {
 
     await ensureTable();
     const { whereSql, params } = buildCorrectionFilters(req.query, {
-      includeMatchStatus: false,
       reviewStatusOverride: reviewStatus,
     });
     const [rows] = await pool.query(
@@ -905,6 +935,8 @@ router.patch('/bulk/replace-names', async (req, res, next) => {
     const filters = buildNameReplacementFilters({
       reviewStatus,
       ids,
+      status: req.body?.status,
+      image: req.body?.image,
       qAncienne: req.body?.q_ancienne,
       qFr: req.body?.q_fr,
       qAr: req.body?.q_ar,
@@ -949,6 +981,8 @@ router.patch('/bulk/replace-names', async (req, res, next) => {
       const appliedFilters = buildNameReplacementFilters({
         reviewStatus,
         ids,
+        status: req.body?.status,
+        image: req.body?.image,
         qAncienne: req.body?.q_ancienne,
         qFr: req.body?.q_fr,
         qAr: req.body?.q_ar,
