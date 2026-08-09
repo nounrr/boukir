@@ -255,6 +255,42 @@ export interface SaveMaalemCategoryData {
   is_active: boolean;
 }
 
+export interface ServiceMaalemCategory {
+  id: number;
+  nom: string;
+  nom_ar: string;
+  description: string | null;
+  is_active: boolean;
+  deleted_at?: string | null;
+}
+
+export interface Service {
+  id: number;
+  nom: string;
+  nom_ar: string;
+  description: string | null;
+  description_ar: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  categories: ServiceMaalemCategory[];
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+export interface SaveServiceData {
+  nom: string;
+  nom_ar: string;
+  description: string | null;
+  description_ar: string | null;
+  is_active: boolean;
+  category_ids: number[];
+  image?: File | null;
+  remove_image?: boolean;
+}
+
 // Types pour les produits (stock)
 export interface Product {
   id: number;

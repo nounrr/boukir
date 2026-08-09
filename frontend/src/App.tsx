@@ -34,6 +34,8 @@ import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
 import BrandsPage from './pages/BrandsPage';
 import MaalemCategoriesPage from './pages/MaalemCategoriesPage';
+import MaalemsPage from './pages/MaalemsPage';
+import ServicesPage from './pages/ServicesPage';
 import StatsDetailPage from './pages/StatsDetailPage';
 import ExcelUploadPage from './pages/ImportExcelTabs';
 import ExportProducts from './pages/ExportProducts';
@@ -493,11 +495,33 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/maalems"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <MaalemsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/maalem-categories"
           element={
             <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <MaalemCategoriesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/services"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <ServicesPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

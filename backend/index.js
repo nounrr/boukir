@@ -24,6 +24,10 @@ import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
 import maalemCategoriesRouter, { publicMaalemCategoriesRouter } from './routes/maalemCategories.js';
 import maalemProfilesRouter, { adminMaalemProfilesRouter } from './routes/maalemProfiles.js';
+import servicesRouter, { publicServicesRouter } from './routes/services.js';
+import maalemAccessRouter from './routes/maalemAccess.js';
+import serviceRequestsRouter from './routes/serviceRequests.js';
+import publicMaalemsRouter from './routes/publicMaalems.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceSearchRouter from './routes/ecommerce/search.js';
@@ -196,6 +200,7 @@ const PUBLIC_PATHS = new Set([
   // E-commerce users authentication (public)
   '/api/users/auth/login',
   '/api/users/auth/register',
+  '/api/users/auth/activate',
   '/api/users/auth/google',
   '/api/users/auth/facebook',
 
@@ -215,6 +220,8 @@ const PUBLIC_READONLY_PREFIXES = [
   '/api/categories',
   '/api/brands',
   '/api/maalem-categories/active',
+  '/api/services',
+  '/api/maalems',
   '/api/hero-slides',
 ];
 
@@ -329,8 +336,13 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/maalem-categories', publicMaalemCategoriesRouter);
 app.use('/api/admin/maalem-categories', maalemCategoriesRouter);
+app.use('/api/services', publicServicesRouter);
+app.use('/api/admin/services', servicesRouter);
 app.use('/api/maalem-profiles', maalemProfilesRouter);
 app.use('/api/admin/maalem-profiles', adminMaalemProfilesRouter);
+app.use('/api/maalem-access', maalemAccessRouter);
+app.use('/api/service-requests', serviceRequestsRouter);
+app.use('/api/maalems', publicMaalemsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
 app.use('/api/ecommerce/search', optionalAuth, ecommerceSearchRouter); // E-commerce public search (with optional auth)

@@ -13,6 +13,7 @@ import {
 import { getContactSoldeCumule } from '../utils/soldeCumule.js';
 import { findMaalemProfileByContactId } from '../utils/maalemProfile.js';
 import { parseMaalemRegistrationIntent } from '../utils/maalemRegistration.js';
+import { consumeMaalemActivationToken } from '../utils/maalemTeamCreation.js';
 
 const router = Router();
 
@@ -266,8 +267,8 @@ router.post('/register', async (req, res, next) => {
     let maalemProfile = null;
     if (registrationIntent.wants_maalem) {
       const [profileResult] = await connection.query(
-        `INSERT INTO maalem_profiles (contact_id, category_id, status)
-         VALUES (?, ?, 'draft')`,
+        `INSERT INTO maalem_profiles (contact_id, category_id, status, origin)
+         VALUES (?, ?, 'draft', 'NEW_REGISTRATION')`,
         [userId, registrationIntent.category_id]
       );
       maalemProfile = {
@@ -277,6 +278,9 @@ router.post('/register', async (req, res, next) => {
         category_id: registrationIntent.category_id,
         status: 'draft',
         status_label: 'Brouillon',
+        origin: 'NEW_REGISTRATION',
+        origin_label: 'Nouvelle inscription',
+        created_by_employee_id: null,
         professional_data: null,
         status_reason: null,
         submitted_at: null,
@@ -370,6 +374,41 @@ router.post('/register', async (req, res, next) => {
       });
     }
     next(err);
+  } finally {
+    connection.release();
+  }
+});
+
+// ==================== TRADITIONAL LOGIN ====================
+// POST /api/users/auth/activate - Consume a one-time team invitation and choose a password.
+router.post('/activate', async (req, res, next) => {
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const confirmPassword = typeof req.body?.confirm_password === 'string' ? req.body.confirm_password : '';
+
+  if (!token || token.length > 200) {
+    return res.status(400).json({ message: 'Lien d’activation invalide ou expiré' });
+  }
+  if (password.length < 8 || password.length > 100) {
+    return res.status(400).json({ message: 'Le mot de passe doit contenir entre 8 et 100 caractères' });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ message: 'Les mots de passe ne correspondent pas' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const contactId = await consumeMaalemActivationToken(connection, { token, password });
+    if (!contactId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Lien d’activation invalide ou expiré' });
+    }
+    await connection.commit();
+    return res.json({ message: 'Compte activé. Vous pouvez maintenant vous connecter.' });
+  } catch (error) {
+    await connection.rollback();
+    return next(error);
   } finally {
     connection.release();
   }
@@ -830,8 +869,8 @@ router.post('/google', async (req, res, next) => {
 
       if (registrationIntent.wants_maalem) {
         const [profileResult] = await connection.query(
-          `INSERT INTO maalem_profiles (contact_id, category_id, status)
-           VALUES (?, ?, 'draft')`,
+          `INSERT INTO maalem_profiles (contact_id, category_id, status, origin)
+           VALUES (?, ?, 'draft', 'NEW_REGISTRATION')`,
           [userId, registrationIntent.category_id]
         );
         maalemProfile = {
@@ -841,6 +880,9 @@ router.post('/google', async (req, res, next) => {
           category_id: registrationIntent.category_id,
           status: 'draft',
           status_label: 'Brouillon',
+          origin: 'NEW_REGISTRATION',
+          origin_label: 'Nouvelle inscription',
+          created_by_employee_id: null,
           professional_data: null,
           category: selectedMaalemCategory ? {
             id: Number(selectedMaalemCategory.id),

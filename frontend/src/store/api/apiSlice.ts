@@ -38,7 +38,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Employee', 'ClientCollaborationPermissions', 'Product', 'Contact', 'ContactGroup', 'ContactComment', 'Dashboard', 'Bon', 'Payment', 'Category', 'MaalemCategory', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'ComptantPayment', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce', 'Ecommerce', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'FondCaisse', 'AccessSchedule', 'UiSettings', 'PricePurchaseSolver', 'DepotStock', 'PhotoShoot', 'ProductNameCorrection', 'SlowMovingStock'],
+  tagTypes: ['Employee', 'ClientCollaborationPermissions', 'Product', 'Contact', 'ContactGroup', 'ContactComment', 'Dashboard', 'Bon', 'Payment', 'Category', 'MaalemCategory', 'MaalemProfile', 'Service', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'ComptantPayment', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce', 'Ecommerce', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'FondCaisse', 'AccessSchedule', 'UiSettings', 'PricePurchaseSolver', 'DepotStock', 'PhotoShoot', 'ProductNameCorrection', 'SlowMovingStock'],
   endpoints: () => ({}),
 });
 

@@ -1,0 +1,693 @@
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowRight,
+  BadgeCheck,
+  BriefcaseBusiness,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Copy,
+  Download,
+  FileImage,
+  FileText,
+  History,
+  Mail,
+  MapPin,
+  MessageSquareText,
+  Phone,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Upload,
+  UserCheck,
+  X,
+  XCircle,
+} from 'lucide-react';
+import { useGetActiveMaalemCategoriesQuery } from '../store/api/maalemCategoriesApi';
+import {
+  type MaalemLookupResponse,
+  type AdminMaalemFilters,
+  type AdminMaalemProfile,
+  type MaalemProfileOrigin,
+  type MaalemProfileStatus,
+  type MaalemProfessionalData,
+  type TeamCreateMaalemResponse,
+  useAddAdminMaalemNoteMutation,
+  useDownloadAdminMaalemDocumentMutation,
+  useGetAdminMaalemProfileDetailsQuery,
+  useGetAdminMaalemProfilesQuery,
+  useLookupMaalemIdentityMutation,
+  useTeamCreateMaalemMutation,
+  useUpdateAdminMaalemCategoryMutation,
+  useUpdateAdminMaalemStatusMutation,
+  useUploadAdminMaalemCvMutation,
+  useUploadAdminMaalemRealizationsMutation,
+} from '../store/api/maalemProfilesApi';
+import { showError, showSuccess } from '../utils/notifications';
+
+const EMPTY_PROFESSIONAL_DATA: MaalemProfessionalData = {
+  skills: [],
+  contact_phone: null,
+  city: null,
+  intervention_areas: [],
+  experience_years: null,
+  professional_summary: null,
+  experiences: null,
+  availability: null,
+  other_information: null,
+};
+
+function apiErrorMessage(error: unknown) {
+  const candidate = error as { data?: { message?: string }; error?: string; message?: string };
+  return candidate?.data?.message || candidate?.error || candidate?.message || 'Une erreur est survenue';
+}
+
+function splitList(value: string) {
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+const inputClass = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500';
+
+const DIALOG_FOCUSABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function useAccessibleDialog(onClose: () => void) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const closeRef = useRef(onClose);
+
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const initial = dialog.querySelector<HTMLElement>('[data-dialog-initial-focus]')
+      || dialog.querySelector<HTMLElement>(DIALOG_FOCUSABLE)
+      || dialog;
+    requestAnimationFrame(() => initial.focus());
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE))
+        .filter((element) => element.offsetParent !== null);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const keepFocusInside = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) {
+        const fallback = dialog.querySelector<HTMLElement>('[data-dialog-initial-focus]')
+          || dialog.querySelector<HTMLElement>(DIALOG_FOCUSABLE)
+          || dialog;
+        fallback.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('focusin', keepFocusInside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('focusin', keepFocusInside);
+      document.body.style.overflow = previousOverflow;
+      requestAnimationFrame(() => previouslyFocused?.focus());
+    };
+  }, []);
+
+  return dialogRef;
+}
+
+interface CreateMaalemModalProps {
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreated }) => {
+  const dialogRef = useAccessibleDialog(onClose);
+  const { data: categories = [], isLoading: categoriesLoading } = useGetActiveMaalemCategoriesQuery();
+  const [lookupIdentity, { isLoading: isLookingUp }] = useLookupMaalemIdentityMutation();
+  const [createMaalem, { isLoading: isCreating }] = useTeamCreateMaalemMutation();
+  const [uploadCv] = useUploadAdminMaalemCvMutation();
+  const [uploadRealizations] = useUploadAdminMaalemRealizationsMutation();
+  const [lookup, setLookup] = useState<MaalemLookupResponse | null>(null);
+  const [result, setResult] = useState<TeamCreateMaalemResponse | null>(null);
+  const [email, setEmail] = useState('');
+  const [telephone, setTelephone] = useState('');
+  const [prenom, setPrenom] = useState('');
+  const [nom, setNom] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [skills, setSkills] = useState('');
+  const [city, setCity] = useState('');
+  const [areas, setAreas] = useState('');
+  const [experienceYears, setExperienceYears] = useState('');
+  const [summary, setSummary] = useState('');
+  const [experiences, setExperiences] = useState('');
+  const [availability, setAvailability] = useState<MaalemProfessionalData['availability']>(null);
+  const [otherInformation, setOtherInformation] = useState('');
+  const [cv, setCv] = useState<File | null>(null);
+  const [realizations, setRealizations] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const blockedState = lookup && !['not_found', 'existing_artisan'].includes(lookup.state);
+  const existingArtisan = lookup?.state === 'existing_artisan';
+
+  const performLookup = async () => {
+    try {
+      const found = await lookupIdentity({ email: email.trim(), telephone: telephone.trim() }).unwrap();
+      setLookup(found);
+      setResult(null);
+      if (found.contact) {
+        setPrenom(found.contact.prenom || '');
+        setNom(found.contact.nom || '');
+        setEmail(found.contact.email || email);
+        setTelephone(found.contact.telephone || telephone);
+      }
+    } catch (error) {
+      setLookup(null);
+      await showError(apiErrorMessage(error));
+    }
+  };
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!lookup) {
+      await showError('Recherchez d’abord la personne par email ou téléphone.');
+      return;
+    }
+    if (blockedState) return;
+
+    try {
+      const created = await createMaalem({
+        prenom: prenom.trim(),
+        nom: nom.trim(),
+        email: email.trim(),
+        telephone: telephone.trim(),
+        category_id: Number(categoryId),
+        locale: 'fr',
+        professional_data: {
+          ...EMPTY_PROFESSIONAL_DATA,
+          skills: splitList(skills),
+          contact_phone: telephone.trim() || null,
+          city: city.trim() || null,
+          intervention_areas: splitList(areas),
+          experience_years: experienceYears === '' ? null : Number(experienceYears),
+          professional_summary: summary.trim() || null,
+          experiences: experiences.trim() || null,
+          availability,
+          other_information: otherInformation.trim() || null,
+        },
+      }).unwrap();
+
+      setIsUploading(true);
+      const uploadErrors: string[] = [];
+      if (cv) {
+        try { await uploadCv({ profileId: created.profile.id, file: cv }).unwrap(); }
+        catch (error) { uploadErrors.push(`CV : ${apiErrorMessage(error)}`); }
+      }
+      if (realizations.length) {
+        try { await uploadRealizations({ profileId: created.profile.id, files: realizations }).unwrap(); }
+        catch (error) { uploadErrors.push(`Réalisations : ${apiErrorMessage(error)}`); }
+      }
+      setResult(created);
+      onCreated();
+      if (uploadErrors.length) await showError(`Profil créé, mais certains documents ont échoué. ${uploadErrors.join(' — ')}`);
+      else void showSuccess(created.created_user ? 'Compte Artisan et dossier Maalem créés' : 'Dossier Maalem rattaché à l’Artisan existant');
+    } catch (error) {
+      await showError(apiErrorMessage(error));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const lookupMessage = useMemo(() => {
+    if (!lookup) return null;
+    const messages: Record<MaalemLookupResponse['state'], string> = {
+      not_found: 'Aucun compte trouvé : un nouveau compte e-commerce Artisan sera créé avec une invitation sécurisée.',
+      existing_artisan: 'Artisan existant trouvé : son compte, ses commandes et ses remises seront conservés.',
+      existing_maalem_profile: `Cette personne possède déjà un dossier Maalem (${lookup.contact?.maalem_profile_status || 'statut inconnu'}). Aucun doublon ne sera créé.`,
+      inactive_account: 'Le compte correspondant est supprimé, bloqué ou inactif. Réactivez-le avant de continuer.',
+      backoffice_contact: 'Un contact Back-office existe avec ces identifiants. Activez son compte e-commerce via le workflow existant.',
+      non_artisan_account: 'Ce compte existe mais n’est pas Artisan. Utilisez d’abord le workflow Artisan existant.',
+    };
+    return messages[lookup.state];
+  }, [lookup]);
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4" role="presentation">
+      <div ref={dialogRef as React.RefObject<HTMLDivElement>} tabIndex={-1} className="mx-auto my-4 w-full max-w-4xl rounded-xl bg-white shadow-xl outline-none" role="dialog" aria-modal="true" aria-labelledby="create-maalem-title">
+        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-xl border-b border-gray-200 bg-white px-6 py-4">
+          <div>
+            <h2 id="create-maalem-title" className="text-lg font-semibold text-gray-900">Ajouter un Maalem</h2>
+            <p className="text-xs text-gray-500">Création d’équipe — le dossier restera en brouillon pour KAN-7.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Fermer"><X className="h-5 w-5" /></button>
+        </div>
+
+        {result ? (
+          <div className="space-y-5 p-6">
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+              <div className="flex items-center gap-2 font-semibold"><UserCheck className="h-5 w-5" />Dossier Maalem #{result.profile.id} prêt</div>
+              <p className="mt-1 text-sm">Origine TEAM_CREATED, statut brouillon. Aucune validation Maalem automatique n’a été accordée.</p>
+            </div>
+            {result.invitation && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p className="font-semibold text-blue-900">Invitation sécurisée</p>
+                <p className="mt-1 text-sm text-blue-800">
+                  {result.invitation.delivery_status === 'sent_whatsapp'
+                    ? 'Le lien a été envoyé par WhatsApp.'
+                    : 'Le service WhatsApp n’a pas confirmé l’envoi. Copiez ce lien et transmettez-le par un canal sécurisé.'}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <input readOnly value={result.invitation.activation_url} className={`${inputClass} bg-white`} aria-label="Lien d’activation" />
+                  <button type="button" onClick={() => navigator.clipboard.writeText(result.invitation!.activation_url)} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"><Copy className="h-4 w-4" />Copier</button>
+                </div>
+                <p className="mt-2 text-xs text-blue-700">Lien à usage unique, valable {result.invitation.expires_in_hours} heures.</p>
+              </div>
+            )}
+            <div className="flex justify-end"><button type="button" onClick={onClose} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white">Fermer</button></div>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-6 p-6">
+            <section className="rounded-lg border border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900">1. Recherche anti-doublon obligatoire</h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                <input data-dialog-initial-focus type="email" value={email} onChange={(event) => { setEmail(event.target.value); setLookup(null); }} className={inputClass} placeholder="Email" aria-label="Email à rechercher" />
+                <input value={telephone} onChange={(event) => { setTelephone(event.target.value); setLookup(null); }} className={inputClass} placeholder="Téléphone 06… ou +212…" aria-label="Téléphone à rechercher" />
+                <button type="button" onClick={performLookup} disabled={isLookingUp || (!email.trim() && !telephone.trim())} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"><Search className="h-4 w-4" />{isLookingUp ? 'Recherche…' : 'Rechercher'}</button>
+              </div>
+              {lookupMessage && <p className={`mt-3 rounded-md p-3 text-sm ${blockedState ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800'}`}>{lookupMessage}</p>}
+            </section>
+
+            {lookup && !blockedState && (
+              <>
+                <section>
+                  <h3 className="mb-3 font-semibold text-gray-900">2. Identité et métier</h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-medium text-gray-700">Prénom *<input required value={prenom} onChange={(event) => setPrenom(event.target.value)} disabled={existingArtisan} className={`mt-1 ${inputClass}`} maxLength={100} /></label>
+                    <label className="text-sm font-medium text-gray-700">Nom *<input required value={nom} onChange={(event) => setNom(event.target.value)} disabled={existingArtisan} className={`mt-1 ${inputClass}`} maxLength={100} /></label>
+                    <label className="text-sm font-medium text-gray-700">Email *<input required type="email" value={email} disabled className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700">Téléphone *<input required value={telephone} disabled className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Catégorie Maalem active *
+                      <select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={categoriesLoading} className={`mt-1 ${inputClass}`}>
+                        <option value="">Sélectionner une catégorie</option>
+                        {categories.map((category) => <option key={category.id} value={category.id}>{category.nom}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-3 font-semibold text-gray-900">3. Informations professionnelles KAN-5</h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-medium text-gray-700">Compétences<input value={skills} onChange={(event) => setSkills(event.target.value)} className={`mt-1 ${inputClass}`} placeholder="Plomberie, installation, dépannage" /></label>
+                    <label className="text-sm font-medium text-gray-700">Ville<input value={city} onChange={(event) => setCity(event.target.value)} className={`mt-1 ${inputClass}`} maxLength={100} /></label>
+                    <label className="text-sm font-medium text-gray-700">Zones d’intervention<input value={areas} onChange={(event) => setAreas(event.target.value)} className={`mt-1 ${inputClass}`} placeholder="Tanger, Tétouan" /></label>
+                    <label className="text-sm font-medium text-gray-700">Années d’expérience<input type="number" min={0} max={70} value={experienceYears} onChange={(event) => setExperienceYears(event.target.value)} className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700">Disponibilité<select value={availability || ''} onChange={(event) => setAvailability((event.target.value || null) as MaalemProfessionalData['availability'])} className={`mt-1 ${inputClass}`}><option value="">À compléter</option><option value="immediate">Immédiate</option><option value="weekdays">En semaine</option><option value="weekends">Week-ends</option><option value="evenings">Soirs</option><option value="on_request">Sur demande</option></select></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Description professionnelle<textarea value={summary} onChange={(event) => setSummary(event.target.value)} rows={3} maxLength={2000} className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Expériences et références<textarea value={experiences} onChange={(event) => setExperiences(event.target.value)} rows={3} maxLength={5000} className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Autres informations<textarea value={otherInformation} onChange={(event) => setOtherInformation(event.target.value)} rows={2} maxLength={2000} className={`mt-1 ${inputClass}`} /></label>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-3 font-semibold text-gray-900">4. Documents</h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-700"><span className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4" />CV PDF (5 Mo max.)</span><input type="file" accept="application/pdf" onChange={(event) => setCv(event.target.files?.[0] || null)} className="mt-3 block w-full text-xs" /></label>
+                    <label className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-700"><span className="flex items-center gap-2 font-medium"><Upload className="h-4 w-4" />Réalisations (8 max.)</span><input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => setRealizations(Array.from(event.target.files || []).slice(0, 8))} className="mt-3 block w-full text-xs" /></label>
+                  </div>
+                </section>
+              </>
+            )}
+
+            <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+              <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">Annuler</button>
+              <button type="submit" disabled={!lookup || Boolean(blockedState) || isCreating || isUploading} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"><Plus className="h-4 w-4" />{isCreating || isUploading ? 'Création en cours…' : 'Créer le dossier Maalem'}</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const STATUS_META: Record<MaalemProfileStatus, { label: string; className: string }> = {
+  draft: { label: 'Brouillon', className: 'border-gray-200 bg-gray-100 text-gray-700' },
+  submitted: { label: 'À examiner', className: 'border-blue-200 bg-blue-50 text-blue-700' },
+  under_review: { label: 'En vérification', className: 'border-amber-200 bg-amber-50 text-amber-800' },
+  approved: { label: 'Validé', className: 'border-green-200 bg-green-50 text-green-700' },
+  rejected: { label: 'Refusé', className: 'border-red-200 bg-red-50 text-red-700' },
+  suspended: { label: 'Suspendu', className: 'border-violet-200 bg-violet-50 text-violet-700' },
+};
+
+const STATUS_RAILS: Record<MaalemProfileStatus, string> = {
+  draft: 'border-l-gray-300', submitted: 'border-l-blue-600', under_review: 'border-l-amber-500',
+  approved: 'border-l-green-600', rejected: 'border-l-red-600', suspended: 'border-l-violet-600',
+};
+
+const ORIGIN_LABELS: Record<MaalemProfileOrigin, string> = {
+  NEW_REGISTRATION: 'Nouvelle inscription',
+  ARTISAN_CONVERSION: 'Artisan existant',
+  TEAM_CREATED: 'Créé par l’équipe',
+  SELF_SERVICE: 'Auto-inscription (ancien)',
+};
+
+const AVAILABILITY_LABELS: Record<string, string> = {
+  immediate: 'Immédiate', weekdays: 'En semaine', weekends: 'Week-ends', evenings: 'Soirs', on_request: 'Sur demande',
+};
+
+const NEXT_STATUSES: Partial<Record<MaalemProfileStatus, MaalemProfileStatus[]>> = {
+  submitted: ['under_review'],
+  under_review: ['approved', 'rejected'],
+  approved: ['suspended'],
+};
+
+const formatDate = (value?: string | null, includeTime = false) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('fr-FR', includeTime
+    ? { dateStyle: 'medium', timeStyle: 'short' }
+    : { dateStyle: 'medium' }).format(date);
+};
+
+const queueAge = (profile: AdminMaalemProfile) => {
+  if (!['submitted', 'under_review'].includes(profile.status)) return null;
+  const since = new Date(profile.submitted_at || profile.created_at).getTime();
+  if (Number.isNaN(since)) return null;
+  const days = Math.max(0, Math.floor((Date.now() - since) / 86_400_000));
+  return { days, label: days === 0 ? 'Aujourd’hui' : `${days} j en file`, urgent: days >= 7 };
+};
+
+const StatusBadge = ({ status }: { status: MaalemProfileStatus }) => (
+  <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold ${STATUS_META[status].className}`}>
+    {STATUS_META[status].label}
+  </span>
+);
+
+const FieldBlock = ({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) => (
+  <div className={className}>
+    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
+    <dd className="mt-1 text-sm leading-6 text-gray-800">{children || '—'}</dd>
+  </div>
+);
+
+const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ profileId, onClose }) => {
+  const dialogRef = useAccessibleDialog(onClose);
+  const { data, isLoading, isError, refetch } = useGetAdminMaalemProfileDetailsQuery(profileId);
+  const { data: categories = [] } = useGetActiveMaalemCategoriesQuery();
+  const [updateStatus, { isLoading: isUpdatingStatus }] = useUpdateAdminMaalemStatusMutation();
+  const [updateCategory, { isLoading: isUpdatingCategory }] = useUpdateAdminMaalemCategoryMutation();
+  const [addNote, { isLoading: isAddingNote }] = useAddAdminMaalemNoteMutation();
+  const [downloadDocument, { isLoading: isDownloading }] = useDownloadAdminMaalemDocumentMutation();
+  const [pendingStatus, setPendingStatus] = useState<MaalemProfileStatus | null>(null);
+  const [decisionReason, setDecisionReason] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [categoryNote, setCategoryNote] = useState('');
+  const [internalNote, setInternalNote] = useState('');
+  const profile = data?.profile;
+  const professional = profile?.professional_data;
+  const canChangeCategory = profile ? ['draft', 'submitted', 'under_review', 'rejected'].includes(profile.status) : false;
+  const decisionHistory = data?.history.filter((entry) => entry.event_type !== 'INTERNAL_NOTE') || [];
+
+  useEffect(() => setSelectedCategoryId(profile?.category_id ? String(profile.category_id) : ''), [profile?.category_id]);
+  const submitStatus = async () => {
+    if (!pendingStatus) return;
+    const requiresReason = pendingStatus === 'rejected' || pendingStatus === 'suspended';
+    if (requiresReason && !decisionReason.trim()) {
+      await showError('Un motif est obligatoire pour refuser ou suspendre un Maalem.');
+      return;
+    }
+    try {
+      await updateStatus({ id: profileId, status: pendingStatus, reason: decisionReason.trim() || undefined }).unwrap();
+      const label = STATUS_META[pendingStatus].label;
+      setPendingStatus(null);
+      setDecisionReason('');
+      await showSuccess(`Dossier passé au statut « ${label} »`);
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const submitCategory = async () => {
+    const category_id = Number(selectedCategoryId);
+    if (!Number.isSafeInteger(category_id) || category_id <= 0) return;
+    try {
+      await updateCategory({ id: profileId, category_id, note: categoryNote.trim() || undefined }).unwrap();
+      setCategoryNote('');
+      await showSuccess('Catégorie Maalem corrigée');
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const submitNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!internalNote.trim()) return;
+    try {
+      await addNote({ id: profileId, note: internalNote.trim() }).unwrap();
+      setInternalNote('');
+      await showSuccess('Note interne ajoutée');
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const handleDownload = async (documentId: number, name: string) => {
+    try {
+      const blob = await downloadDocument({ profileId, documentId }).unwrap();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const nextStatuses = profile ? NEXT_STATUSES[profile.status] || [] : [];
+
+  return (
+    <div className="fixed inset-0 z-40" role="presentation">
+      <button type="button" aria-label="Fermer le dossier" onClick={onClose} className="absolute inset-0 bg-gray-950/40" />
+      <aside ref={dialogRef} tabIndex={-1} className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col bg-white shadow-2xl outline-none" role="dialog" aria-modal="true" aria-labelledby="dossier-title">
+        <header className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4 sm:px-7">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Dossier #{profileId}</p>{profile && <StatusBadge status={profile.status} />}</div>
+            <h2 id="dossier-title" className="mt-1 truncate text-xl font-bold text-gray-950">{profile?.user?.nom_complet || (isLoading ? 'Chargement…' : 'Candidature Maalem')}</h2>
+          </div>
+          <button data-dialog-initial-focus type="button" onClick={onClose} className="ml-4 rounded-md p-2 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Fermer"><X className="h-5 w-5" /></button>
+        </header>
+
+        {isLoading ? (
+          <div className="flex flex-1 items-center justify-center text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Chargement du dossier…</div>
+        ) : isError || !profile ? (
+          <div className="flex flex-1 flex-col items-center justify-center p-8 text-center"><AlertCircle className="h-8 w-8 text-red-500" /><p className="mt-3 font-medium text-gray-900">Impossible de charger ce dossier.</p><button type="button" onClick={() => refetch()} className="mt-3 text-sm font-semibold text-blue-700">Réessayer</button></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <section className="border-b border-gray-200 bg-slate-50 px-5 py-4 sm:px-7">
+              <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" /><p><strong>Compte Artisan conservé.</strong> La décision ne supprime ni le compte e-commerce, ni ses commandes, son historique ou ses remises.</p></div>
+              {profile.status === 'approved' && <p className="mt-2 text-xs font-medium text-gray-600">L’approbation valide uniquement le dossier KAN-7. L’accès technique aux fonctions Maalem relève de KAN-8.</p>}
+            </section>
+
+            <div className="space-y-8 px-5 py-6 sm:px-7">
+              <section>
+                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">Identité & contact</h3>
+                <dl className="mt-4 grid gap-4 border-l-2 border-blue-600 pl-4 sm:grid-cols-2">
+                  <FieldBlock label="Nom complet">{profile.user?.nom_complet}</FieldBlock>
+                  <FieldBlock label="Type de compte">{profile.user?.type_compte || 'Artisan e-commerce'}</FieldBlock>
+                  <FieldBlock label="Téléphone"><span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-gray-400" />{profile.user?.telephone || professional?.contact_phone || '—'}</span></FieldBlock>
+                  <FieldBlock label="Email"><span className="inline-flex items-center gap-1.5 break-all"><Mail className="h-3.5 w-3.5 text-gray-400" />{profile.user?.email || '—'}</span></FieldBlock>
+                  <FieldBlock label="Ville"><span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-gray-400" />{professional?.city || '—'}</span></FieldBlock>
+                  <FieldBlock label="Origine">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</FieldBlock>
+                </dl>
+              </section>
+
+              <section className="border-y border-gray-200 py-5">
+                <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">Catégorie métier</h3><p className="mt-1 text-xs text-gray-500">Seules les catégories actives peuvent être attribuées.</p></div>{profile.category && !profile.category.is_active && <span className="text-xs font-semibold text-red-700">Catégorie inactive</span>}</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <select value={selectedCategoryId} onChange={(event) => setSelectedCategoryId(event.target.value)} disabled={!canChangeCategory} className={inputClass} aria-label="Corriger la catégorie Maalem"><option value="">Sélectionner une catégorie active</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.nom}</option>)}</select>
+                  <button type="button" onClick={submitCategory} disabled={!canChangeCategory || isUpdatingCategory || !selectedCategoryId || Number(selectedCategoryId) === profile.category_id} className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50">{isUpdatingCategory ? 'Enregistrement…' : 'Confirmer'}</button>
+                </div>
+                {!canChangeCategory && <p className="mt-2 text-xs text-gray-500">La catégorie est verrouillée pour un dossier validé ou suspendu.</p>}
+                {selectedCategoryId && Number(selectedCategoryId) !== profile.category_id && <label className="mt-2 block text-xs font-semibold text-gray-700">Note de correction <span className="font-normal text-gray-500">(facultative)</span><input value={categoryNote} onChange={(event) => setCategoryNote(event.target.value)} className={`mt-1 ${inputClass}`} maxLength={500} placeholder="Préciser la raison du changement" /></label>}
+              </section>
+
+              <section>
+                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">Dossier professionnel</h3>
+                <dl className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                  <FieldBlock label="Compétences" className="sm:col-span-2">{professional?.skills?.length ? <div className="flex flex-wrap gap-1.5">{professional.skills.map((skill) => <span key={skill} className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium">{skill}</span>)}</div> : '—'}</FieldBlock>
+                  <FieldBlock label="Expérience">{professional?.experience_years == null ? '—' : `${professional.experience_years} an${professional.experience_years > 1 ? 's' : ''}`}</FieldBlock>
+                  <FieldBlock label="Disponibilité">{professional?.availability ? AVAILABILITY_LABELS[professional.availability] : '—'}</FieldBlock>
+                  <FieldBlock label="Zones d’intervention" className="sm:col-span-2">{professional?.intervention_areas?.join(' · ') || '—'}</FieldBlock>
+                  <FieldBlock label="Présentation" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.professional_summary || '—'}</span></FieldBlock>
+                  <FieldBlock label="Expériences & références" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.experiences || '—'}</span></FieldBlock>
+                  <FieldBlock label="Autres informations" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.other_information || '—'}</span></FieldBlock>
+                </dl>
+              </section>
+
+              <section className="border-t border-gray-200 pt-6">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-900"><FileText className="h-4 w-4" />Documents privés</h3><p className="mt-1 text-xs text-gray-500">Téléchargement protégé, réservé au Back-office.</p>
+                {!data.documents.length ? <p className="mt-3 text-sm text-gray-500">Aucun document joint.</p> : <ul className="mt-3 divide-y divide-gray-100 border-y border-gray-200">{data.documents.map((item) => <li key={item.id} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3">{item.kind === 'cv' ? <FileText className="h-5 w-5 shrink-0 text-blue-600" /> : <FileImage className="h-5 w-5 shrink-0 text-gray-500" />}<div className="min-w-0"><p className="truncate text-sm font-medium text-gray-900">{item.original_name}</p><p className="text-xs text-gray-500">{item.kind === 'cv' ? 'CV' : 'Document professionnel'} · {Math.max(1, Math.round(item.file_size / 1024))} Ko</p></div></div><button type="button" disabled={isDownloading} onClick={() => handleDownload(item.id, item.original_name)} className="rounded-md p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50" aria-label={`Télécharger ${item.original_name}`}><Download className="h-4 w-4" /></button></li>)}</ul>}
+              </section>
+
+              <section className="border-t border-gray-200 pt-6">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-900"><MessageSquareText className="h-4 w-4" />Notes internes</h3>
+                <form onSubmit={submitNote} className="mt-3"><label className="block text-xs font-semibold text-gray-700">Nouvelle note<textarea value={internalNote} onChange={(event) => setInternalNote(event.target.value)} rows={3} maxLength={2000} className={`mt-1 ${inputClass}`} placeholder="Observation visible uniquement par l’équipe…" /></label><div className="mt-2 flex justify-end"><button type="submit" disabled={isAddingNote || !internalNote.trim()} className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-700 focus-visible:ring-offset-2 disabled:opacity-50">{isAddingNote ? 'Ajout…' : 'Ajouter la note'}</button></div></form>
+                {!data.notes.length ? <p className="mt-4 text-sm text-gray-500">Aucune note interne.</p> : <ol className="mt-4 space-y-3">{data.notes.map((note) => <li key={note.id} className="border-l-2 border-gray-200 pl-4"><p className="whitespace-pre-wrap text-sm text-gray-800">{note.note}</p><p className="mt-1 text-xs text-gray-500">{note.actor?.nom_complet || note.actor_name || 'Utilisateur Back-office'} · {formatDate(note.created_at, true)}</p></li>)}</ol>}
+              </section>
+
+              <section className="border-t border-gray-200 pt-6">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-900"><History className="h-4 w-4" />Historique des décisions</h3>
+                {!decisionHistory.length ? <p className="mt-3 text-sm text-gray-500">Aucune décision enregistrée.</p> : <ol className="relative mt-4 space-y-5 border-l border-gray-300 pl-5">{decisionHistory.map((entry) => <li key={entry.id} className="relative"><span className="absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-600 ring-1 ring-gray-300" />{entry.event_type === 'STATUS_CHANGED' && entry.new_status ? <div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-gray-900">{entry.old_status ? STATUS_META[entry.old_status].label : 'Création'}</span><ArrowRight className="h-3.5 w-3.5 text-gray-400" /><span className="font-semibold text-gray-900">{STATUS_META[entry.new_status].label}</span></div> : <p className="text-sm font-semibold text-gray-900">Catégorie : {entry.old_category_name || 'Non renseignée'} → {entry.new_category_name || 'Nouvelle catégorie'}</p>}{entry.note && <p className="mt-1 text-sm text-gray-700">{entry.note}</p>}<p className="mt-1 text-xs text-gray-500">{entry.actor?.nom_complet || entry.actor_name || 'Système'} · {formatDate(entry.created_at, true)}</p></li>)}</ol>}
+              </section>
+
+              <section className="border-t border-gray-200 pt-6"><dl className="grid grid-cols-2 gap-4 text-xs text-gray-500 sm:grid-cols-4"><FieldBlock label="Créé le">{formatDate(profile.created_at, true)}</FieldBlock><FieldBlock label="Soumis le">{formatDate(profile.submitted_at, true)}</FieldBlock><FieldBlock label="Dernière revue">{formatDate(profile.reviewed_at, true)}</FieldBlock><FieldBlock label="Mis à jour">{formatDate(profile.updated_at, true)}</FieldBlock></dl></section>
+            </div>
+          </div>
+        )}
+
+        {profile && (
+          <footer className="shrink-0 border-t border-gray-200 bg-white px-5 py-4 sm:px-7">
+            {pendingStatus ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-gray-900">Confirmer : {STATUS_META[pendingStatus].label}</p>
+                  <button type="button" onClick={() => { setPendingStatus(null); setDecisionReason(''); }} className="text-xs font-medium text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Annuler</button>
+                </div>
+                {pendingStatus === 'approved' && (
+                  <div className="flex items-start gap-2 border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p><strong>Limite KAN-8 :</strong> cette approbation valide le dossier uniquement. Elle n’active pas encore les fonctionnalités techniques Maalem.</p>
+                  </div>
+                )}
+                <label className="block text-xs font-semibold text-gray-700">
+                  {pendingStatus === 'rejected' || pendingStatus === 'suspended' ? 'Motif de la décision *' : 'Note de décision (facultative)'}
+                  <textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} rows={2} maxLength={500} className={`mt-1 ${inputClass}`} placeholder="Saisir une note utile pour l’historique…" autoFocus />
+                </label>
+                <button type="button" onClick={submitStatus} disabled={isUpdatingStatus || ((pendingStatus === 'rejected' || pendingStatus === 'suspended') && !decisionReason.trim())} className={`w-full rounded-md px-4 py-2.5 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${pendingStatus === 'rejected' || pendingStatus === 'suspended' ? 'bg-red-600 hover:bg-red-700 focus-visible:ring-red-600' : pendingStatus === 'approved' ? 'bg-green-700 hover:bg-green-800 focus-visible:ring-green-600' : 'bg-blue-700 hover:bg-blue-800 focus-visible:ring-blue-600'}`}>
+                  {isUpdatingStatus ? 'Enregistrement de la décision…' : 'Confirmer la décision'}
+                </button>
+              </div>
+            ) : nextStatuses.length ? (
+              <div>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Prochaine décision autorisée</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  {nextStatuses.map((status) => <button key={status} type="button" onClick={() => setPendingStatus(status)} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${status === 'rejected' || status === 'suspended' ? 'border-red-300 text-red-700 hover:bg-red-50 focus-visible:ring-red-500' : status === 'approved' ? 'border-green-700 bg-green-700 text-white hover:bg-green-800 focus-visible:ring-green-600' : 'border-blue-700 bg-blue-700 text-white hover:bg-blue-800 focus-visible:ring-blue-600'}`}>{status === 'approved' ? <CheckCircle2 className="h-4 w-4" /> : status === 'rejected' || status === 'suspended' ? <XCircle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}{STATUS_META[status].label}</button>)}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 text-sm text-gray-600"><BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>{profile.status === 'draft' ? 'Brouillon non soumis : aucune décision Back-office autorisée.' : 'Aucune transition Back-office disponible pour ce statut.'}</p></div>
+            )}
+          </footer>
+        )}
+      </aside>
+    </div>
+  );
+};
+
+const ProfileRow = ({ profile, onOpen }: { profile: AdminMaalemProfile; onOpen: () => void }) => (
+  <tr className="group hover:bg-blue-50/40">
+    <td className={`border-l-4 px-4 py-3.5 ${STATUS_RAILS[profile.status]}`}><p className="font-semibold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-0.5 text-xs text-gray-500">{profile.user?.email || 'Sans email'}</p></td>
+    <td className="px-4 py-3.5 text-sm text-gray-700">{profile.category?.nom || <span className="text-amber-700">À compléter</span>}</td>
+    <td className="px-4 py-3.5 text-sm text-gray-700">{profile.professional_data?.city || '—'}</td>
+    <td className="px-4 py-3.5 text-sm text-gray-700">{profile.user?.telephone || profile.professional_data?.contact_phone || '—'}</td>
+    <td className="px-4 py-3.5 text-sm text-gray-600"><span className="block">{formatDate(profile.submitted_at || profile.created_at)}</span>{queueAge(profile) && <span className={`mt-0.5 block text-[11px] font-semibold ${queueAge(profile)!.urgent ? 'text-red-700' : 'text-blue-700'}`}>{queueAge(profile)!.label}</span>}</td>
+    <td className="px-4 py-3.5 text-xs font-medium text-gray-600">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</td>
+    <td className="px-4 py-3.5"><StatusBadge status={profile.status} /></td>
+    <td className="px-4 py-3.5 text-right"><button type="button" onClick={onOpen} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">Examiner<ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></button></td>
+  </tr>
+);
+
+const MaalemsPage: React.FC = () => {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search.trim());
+  const [status, setStatus] = useState<'' | MaalemProfileStatus>('');
+  const [origin, setOrigin] = useState<'' | MaalemProfileOrigin>('');
+  const [categoryId, setCategoryId] = useState('');
+  const [city, setCity] = useState('');
+  const { data: categories = [] } = useGetActiveMaalemCategoriesQuery();
+  const filters = useMemo<AdminMaalemFilters>(() => ({
+    ...(deferredSearch ? { q: deferredSearch } : {}),
+    ...(status ? { status } : {}),
+    ...(origin ? { origin } : {}),
+    ...(categoryId ? { category_id: Number(categoryId) } : {}),
+    ...(city.trim() ? { city: city.trim() } : {}),
+  }), [categoryId, city, deferredSearch, origin, status]);
+  const { data, isLoading, isFetching, isError, refetch } = useGetAdminMaalemProfilesQuery(filters);
+  const profiles = data?.profiles || [];
+  const counts = data?.counts;
+  const hasFilters = Boolean(search || status || origin || categoryId || city);
+
+  const resetFilters = () => { setSearch(''); setStatus(''); setOrigin(''); setCategoryId(''); setCity(''); };
+  const counters = [
+    { label: 'À examiner', value: counts?.submitted || 0, icon: FileText, tone: 'border-blue-200 text-blue-700', status: 'submitted' as MaalemProfileStatus },
+    { label: 'En vérification', value: counts?.under_review || 0, icon: Clock3, tone: 'border-amber-200 text-amber-700', status: 'under_review' as MaalemProfileStatus },
+    { label: 'Validés', value: counts?.approved || 0, icon: CheckCircle2, tone: 'border-green-200 text-green-700', status: 'approved' as MaalemProfileStatus },
+    { label: 'Refusés', value: counts?.rejected || 0, icon: XCircle, tone: 'border-red-200 text-red-700', status: 'rejected' as MaalemProfileStatus },
+    { label: 'Suspendus', value: counts?.suspended || 0, icon: ShieldCheck, tone: 'border-violet-200 text-violet-700', status: 'suspended' as MaalemProfileStatus },
+  ];
+
+  return (
+    <main className="space-y-5 p-4 sm:p-6">
+      <header className="flex flex-col justify-between gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-end">
+        <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Back-office · candidatures</p><div className="mt-1 flex items-center gap-2"><BriefcaseBusiness className="h-7 w-7 text-blue-700" /><h1 className="text-2xl font-bold tracking-tight text-gray-950">Centre Maalem</h1></div><p className="mt-1 max-w-2xl text-sm text-gray-600">Recevoir, vérifier et décider sur chaque dossier, quelle que soit son origine.</p></div>
+        <button type="button" onClick={() => setModalOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"><Plus className="h-4 w-4" />Ajouter un Maalem</button>
+      </header>
+
+      <section aria-label="Résumé des statuts" className="grid grid-cols-2 divide-x divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-5 sm:divide-y-0">
+        {counters.map(({ label, value, icon: Icon, tone, status: counterStatus }) => <button key={label} type="button" onClick={() => setStatus(counterStatus)} className="flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"><span className={`flex h-8 w-8 items-center justify-center rounded-md border bg-white ${tone}`}><Icon className="h-4 w-4" /></span><span><strong className="block text-xl leading-none text-gray-950">{value}</strong><span className="mt-1 block text-xs font-medium text-gray-600">{label}</span></span></button>)}
+      </section>
+
+      <section aria-label="Recherche et filtres" className="border-y border-gray-200 bg-white py-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1.6fr)_repeat(4,minmax(130px,1fr))_auto]">
+          <label className="relative sm:col-span-2 lg:col-span-1"><span className="sr-only">Rechercher</span><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} className={`${inputClass} pl-9`} placeholder="Nom, email ou téléphone…" maxLength={100} /></label>
+          <label><span className="sr-only">Statut</span><select value={status} onChange={(event) => setStatus(event.target.value as '' | MaalemProfileStatus)} className={inputClass}><option value="">Tous les statuts</option>{Object.entries(STATUS_META).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}</select></label>
+          <label><span className="sr-only">Origine</span><select value={origin} onChange={(event) => setOrigin(event.target.value as '' | MaalemProfileOrigin)} className={inputClass}><option value="">Toutes les origines</option>{Object.entries(ORIGIN_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label><span className="sr-only">Catégorie</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className={inputClass}><option value="">Toutes les catégories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.nom}</option>)}</select></label>
+          <label><span className="sr-only">Ville</span><input value={city} onChange={(event) => setCity(event.target.value)} className={inputClass} placeholder="Ville" maxLength={100} /></label>
+          <button type="button" onClick={resetFilters} disabled={!hasFilters} className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-40"><X className="h-4 w-4" />Effacer</button>
+        </div>
+        <div className="mt-3 flex items-center justify-between text-xs text-gray-500"><span className="inline-flex items-center gap-1.5"><SlidersHorizontal className="h-3.5 w-3.5" />{profiles.length} dossier{profiles.length > 1 ? 's' : ''} affiché{profiles.length > 1 ? 's' : ''}</span>{isFetching && !isLoading && <span className="inline-flex items-center gap-1"><RefreshCw className="h-3 w-3 animate-spin" />Actualisation…</span>}</div>
+      </section>
+
+      <section className="overflow-hidden border border-gray-200 bg-white" aria-label="Liste des dossiers Maalem">
+        {isLoading ? <div className="flex min-h-64 items-center justify-center text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Chargement des candidatures…</div>
+          : isError ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><AlertCircle className="h-8 w-8 text-red-500" /><p className="mt-3 font-semibold text-gray-900">Impossible de charger les dossiers Maalem.</p><button type="button" onClick={() => refetch()} className="mt-3 rounded-md px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Réessayer</button></div>
+            : profiles.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><BriefcaseBusiness className="h-9 w-9 text-gray-300" /><p className="mt-3 font-semibold text-gray-900">Aucun dossier ne correspond.</p><p className="mt-1 text-sm text-gray-500">Modifiez les filtres ou ajoutez un Maalem depuis le Back-office.</p>{hasFilters && <button type="button" onClick={resetFilters} className="mt-4 text-sm font-semibold text-blue-700">Effacer tous les filtres</button>}</div>
+              : <><div className="hidden overflow-x-auto md:block"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-slate-50"><tr>{['Candidat', 'Catégorie', 'Ville', 'Contact', 'Demande', 'Origine', 'Statut', ''].map((heading) => <th key={heading || 'actions'} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} onOpen={() => setSelectedProfileId(profile.id)} />)}</tbody></table></div><ul className="divide-y divide-gray-200 md:hidden">{profiles.map((profile) => <li key={profile.id}><button type="button" onClick={() => setSelectedProfileId(profile.id)} className="w-full p-4 text-left hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-1 text-sm text-gray-600">{profile.category?.nom || 'Catégorie à compléter'} · {profile.professional_data?.city || 'Ville inconnue'}</p></div><ChevronRight className="mt-1 h-5 w-5 shrink-0 text-gray-400" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={profile.status} /><span className="text-xs text-gray-500">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</span><span className="text-xs text-gray-400">· {formatDate(profile.submitted_at || profile.created_at)}</span></div><p className="mt-2 text-xs text-gray-500">{profile.user?.telephone || profile.professional_data?.contact_phone || 'Contact non renseigné'}</p></button></li>)}</ul></>}
+      </section>
+
+      {selectedProfileId !== null && <DossierDrawer profileId={selectedProfileId} onClose={() => setSelectedProfileId(null)} />}
+      {modalOpen && <CreateMaalemModal onClose={() => setModalOpen(false)} onCreated={() => refetch()} />}
+    </main>
+  );
+};
+
+export default MaalemsPage;

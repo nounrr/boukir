@@ -1,12 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildMaalemProfessionalPrefill,
+  canAdminChangeMaalemCategory,
   canAdminTransitionMaalemStatus,
   canEditMaalemDraft,
   isArtisanAccount,
   normalizeMaalemProfileRow,
+  validateMaalemAdminCategoryInput,
   validateMaalemAdminStatusInput,
   validateMaalemDraftInput,
+  validateMaalemInternalNoteInput,
   validateMaalemProfessionalData,
   validateMaalemSubmission,
 } from './maalemProfile.js';
@@ -22,6 +26,24 @@ test('un Maalem reste éligible par son compte Artisan existant, quel que soit s
   assert.equal(isArtisanAccount({ type_compte: 'Client', artisan_approuve: 1 }), true);
   assert.equal(isArtisanAccount({ type_compte: 'Client', artisan_approuve: 0 }), false);
   assert.equal(isArtisanAccount({ type_compte: 'Maalem' }), false);
+});
+
+test('le préremplissage Maalem copie uniquement le téléphone et la ville utiles', () => {
+  const contact = {
+    telephone: '  +212 6 12 34 56 78  ',
+    shipping_city: '  Tanger ',
+    type_compte: 'Artisan/Promoteur',
+    remise_balance: 325,
+    adresse: 'Adresse de facturation',
+  };
+  const prefill = buildMaalemProfessionalPrefill(contact);
+  assert.equal(prefill.contact_phone, '+212 6 12 34 56 78');
+  assert.equal(prefill.city, 'Tanger');
+  assert.deepEqual(prefill.skills, []);
+  assert.deepEqual(prefill.intervention_areas, []);
+  assert.equal(Object.hasOwn(prefill, 'remise_balance'), false);
+  assert.equal(Object.hasOwn(prefill, 'adresse'), false);
+  assert.equal(buildMaalemProfessionalPrefill({}).contact_phone, null);
 });
 
 test('un brouillon accepte une catégorie vide mais refuse un identifiant ambigu', () => {
@@ -79,10 +101,15 @@ test('les transitions Maalem sont indépendantes et explicites', () => {
   assert.equal(canEditMaalemDraft('rejected'), true);
   assert.equal(canEditMaalemDraft('approved'), false);
   assert.equal(canAdminTransitionMaalemStatus('submitted', 'under_review'), true);
+  assert.equal(canAdminTransitionMaalemStatus('submitted', 'rejected'), false);
   assert.equal(canAdminTransitionMaalemStatus('under_review', 'approved'), true);
+  assert.equal(canAdminTransitionMaalemStatus('under_review', 'rejected'), true);
   assert.equal(canAdminTransitionMaalemStatus('approved', 'suspended'), true);
-  assert.equal(canAdminTransitionMaalemStatus('suspended', 'approved'), true);
+  assert.equal(canAdminTransitionMaalemStatus('suspended', 'approved'), false);
   assert.equal(canAdminTransitionMaalemStatus('approved', 'rejected'), false);
+  assert.equal(canAdminChangeMaalemCategory('submitted'), true);
+  assert.equal(canAdminChangeMaalemCategory('under_review'), true);
+  assert.equal(canAdminChangeMaalemCategory('approved'), false);
 });
 
 test('un refus ou une suspension exige un motif', () => {
@@ -94,6 +121,22 @@ test('un refus ou une suspension exige un motif', () => {
     reason: 'Dossier incomplet',
   });
   assert.equal(validateMaalemAdminStatusInput({ status: 'draft' }).valid, false);
+});
+
+test('valide les corrections de catégorie et les notes internes', () => {
+  assert.deepEqual(validateMaalemAdminCategoryInput({ category_id: 4, note: 'Métier confirmé' }), {
+    valid: true,
+    category_id: 4,
+    note: 'Métier confirmé',
+  });
+  assert.equal(validateMaalemAdminCategoryInput({ category_id: '4' }).valid, false);
+  assert.equal(validateMaalemAdminCategoryInput({ category_id: 4, note: 'x'.repeat(501) }).valid, false);
+  assert.deepEqual(validateMaalemInternalNoteInput({ note: ' Appel effectué ' }), {
+    valid: true,
+    note: 'Appel effectué',
+  });
+  assert.equal(validateMaalemInternalNoteInput({ note: ' ' }).valid, false);
+  assert.equal(validateMaalemInternalNoteInput({ note: 'x'.repeat(2001) }).valid, false);
 });
 
 test('normalise le profil sans transformer le rôle e-commerce', () => {

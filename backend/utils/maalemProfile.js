@@ -16,6 +16,20 @@ export const MAALEM_PROFILE_STATUS_LABELS = Object.freeze({
   suspended: 'Suspendu',
 });
 
+export const MAALEM_PROFILE_ORIGINS = Object.freeze([
+  'SELF_SERVICE',
+  'NEW_REGISTRATION',
+  'ARTISAN_CONVERSION',
+  'TEAM_CREATED',
+]);
+
+export const MAALEM_PROFILE_ORIGIN_LABELS = Object.freeze({
+  SELF_SERVICE: 'Inscription ou conversion historique',
+  NEW_REGISTRATION: 'Nouvelle inscription',
+  ARTISAN_CONVERSION: 'Artisan existant',
+  TEAM_CREATED: 'Créé par l’équipe',
+});
+
 export const MAALEM_AVAILABILITIES = Object.freeze([
   'immediate',
   'weekdays',
@@ -26,11 +40,11 @@ export const MAALEM_AVAILABILITIES = Object.freeze([
 
 const USER_EDITABLE_STATUSES = new Set(['draft', 'rejected']);
 const ADMIN_TRANSITIONS = Object.freeze({
-  submitted: new Set(['under_review', 'rejected']),
+  submitted: new Set(['under_review']),
   under_review: new Set(['approved', 'rejected']),
   approved: new Set(['suspended']),
-  suspended: new Set(['approved', 'rejected']),
 });
+const ADMIN_CATEGORY_EDITABLE_STATUSES = new Set(['draft', 'submitted', 'under_review', 'rejected']);
 
 function isTruthyDatabaseFlag(value) {
   return value === true || value === 1 || value === '1';
@@ -38,6 +52,26 @@ function isTruthyDatabaseFlag(value) {
 
 export function isArtisanAccount(user) {
   return user?.type_compte === 'Artisan/Promoteur' || isTruthyDatabaseFlag(user?.artisan_approuve);
+}
+
+function optionalTrimmedText(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+// Only copy account fields that have the same meaning in a Maalem application.
+// The source contact is never updated or replaced by this professional extension.
+export function buildMaalemProfessionalPrefill(contact) {
+  return {
+    skills: [],
+    contact_phone: optionalTrimmedText(contact?.telephone),
+    city: optionalTrimmedText(contact?.shipping_city),
+    intervention_areas: [],
+    experience_years: null,
+    professional_summary: null,
+    experiences: null,
+    availability: null,
+    other_information: null,
+  };
 }
 
 export function canEditMaalemDraft(status) {
@@ -186,6 +220,10 @@ export function canAdminTransitionMaalemStatus(currentStatus, nextStatus) {
   return Boolean(ADMIN_TRANSITIONS[currentStatus]?.has(nextStatus));
 }
 
+export function canAdminChangeMaalemCategory(status) {
+  return ADMIN_CATEGORY_EDITABLE_STATUSES.has(status);
+}
+
 export function validateMaalemAdminStatusInput(body) {
   if (!body || typeof body !== 'object' || !MAALEM_PROFILE_STATUSES.includes(body.status)) {
     return { valid: false, error: 'Statut Maalem invalide' };
@@ -204,6 +242,35 @@ export function validateMaalemAdminStatusInput(body) {
   return { valid: true, status: body.status, reason: reason || null };
 }
 
+export function validateMaalemAdminCategoryInput(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { valid: false, error: 'Les données de catégorie sont invalides' };
+  }
+  if (!Number.isSafeInteger(body.category_id) || body.category_id <= 0) {
+    return { valid: false, error: 'Identifiant de catégorie invalide' };
+  }
+  if (body.note != null && typeof body.note !== 'string') {
+    return { valid: false, error: 'La note de correction doit être un texte' };
+  }
+  const note = typeof body.note === 'string' ? body.note.trim() : '';
+  if (note.length > 500) {
+    return { valid: false, error: 'La note de correction ne peut pas dépasser 500 caractères' };
+  }
+  return { valid: true, category_id: body.category_id, note: note || null };
+}
+
+export function validateMaalemInternalNoteInput(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.note !== 'string') {
+    return { valid: false, error: 'La note interne est requise' };
+  }
+  const note = body.note.trim();
+  if (!note) return { valid: false, error: 'La note interne est requise' };
+  if (note.length > 2000) {
+    return { valid: false, error: 'La note interne ne peut pas dépasser 2000 caractères' };
+  }
+  return { valid: true, note };
+}
+
 export function normalizeMaalemProfileRow(row) {
   if (!row) return null;
   const profile = {
@@ -213,6 +280,9 @@ export function normalizeMaalemProfileRow(row) {
     category_id: row.category_id == null ? null : Number(row.category_id),
     status: row.status,
     status_label: MAALEM_PROFILE_STATUS_LABELS[row.status] || row.status,
+    origin: row.origin || 'SELF_SERVICE',
+    origin_label: MAALEM_PROFILE_ORIGIN_LABELS[row.origin || 'SELF_SERVICE'] || row.origin,
+    created_by_employee_id: row.created_by_employee_id == null ? null : Number(row.created_by_employee_id),
     professional_data: parseProfessionalData(row.professional_data),
     status_reason: row.status_reason ?? null,
     submitted_at: row.submitted_at ?? null,
@@ -234,6 +304,17 @@ export function normalizeMaalemProfileRow(row) {
       email: row.contact_email,
       telephone: row.contact_telephone,
       type_compte: row.contact_type_compte,
+      prenom: row.contact_prenom ?? null,
+      nom: row.contact_nom ?? null,
+      societe: row.contact_societe ?? null,
+      adresse: row.contact_adresse ?? null,
+      city: row.contact_shipping_city ?? null,
+    };
+  }
+  if (row.reviewer_name !== undefined || row.creator_name !== undefined) {
+    profile.review = {
+      reviewer_name: row.reviewer_name ?? null,
+      creator_name: row.creator_name ?? null,
     };
   }
   return profile;
