@@ -980,6 +980,9 @@ router.get('/paged/:type', async (req, res) => {
       montant: cfg.amountExpr,
     };
     const orderExpr = sortMap[sortBy] || sortMap.numero;
+    const needsIdTieBreaker = orderExpr !== 'b.id';
+    const innerOrderSql = `${orderExpr} ${sortDir}${needsIdTieBreaker ? `, b.id ${sortDir}` : ''}`;
+    const outerOrderSql = `page_rows.__page_sort ${sortDir}${needsIdTieBreaker ? `, page_rows.id ${sortDir}` : ''}`;
 
     // Le COUNT et la page sont indépendants. En production, les lancer en
     // parallèle évite un aller-retour complet vers MySQL.
@@ -990,11 +993,17 @@ router.get('/paged/:type', async (req, res) => {
       ),
       pool.query(
         `SELECT b.*, ${cfg.selectExtra}, ${buildItemsSql(cfg, { includeHistoricalAverage: false })}
-         FROM ${cfg.table} b
+         FROM (
+           SELECT b.id, ${orderExpr} AS __page_sort
+           FROM ${cfg.table} b
+           ${cfg.joins}
+           ${whereSql}
+           ORDER BY ${innerOrderSql}
+           LIMIT ? OFFSET ?
+         ) page_rows
+         JOIN ${cfg.table} b ON b.id = page_rows.id
          ${cfg.joins}
-         ${whereSql}
-         ORDER BY ${orderExpr} ${sortDir}, b.id ${sortDir}
-         LIMIT ? OFFSET ?`,
+         ORDER BY ${outerOrderSql}`,
         [...params, limit, offset]
       ),
     ]);
