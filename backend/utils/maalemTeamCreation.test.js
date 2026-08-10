@@ -6,11 +6,13 @@ import {
   consumeMaalemActivationToken,
   createMaalemActivationToken,
   hashMaalemActivationToken,
+  normalizeContactReference,
   normalizeMaalemIdentityEmail,
   normalizeMoroccanPhone,
   phoneIdentityCandidates,
   validateMaalemTeamCreateInput,
   validateMaalemTeamLookup,
+  validateMaalemTeamLookupQuery,
 } from './maalemTeamCreation.js';
 
 test('normalise email et variantes du même téléphone marocain', () => {
@@ -38,6 +40,36 @@ test('exige une identité fiable et une catégorie pour la création équipe', (
   assert.equal(valid.professional_data.contact_phone, '+212612345678');
   assert.equal(valid.professional_data.city, 'Tanger');
   assert.equal(validateMaalemTeamCreateInput({ ...valid, category_id: null }).valid, false);
+});
+
+test('la recherche anti-doublon accepte une référence sans affaiblir la création', () => {
+  assert.equal(normalizeContactReference('42'), 42);
+  assert.equal(normalizeContactReference(' #42 '), 42);
+  assert.equal(normalizeContactReference('C42'), 42);
+  assert.equal(normalizeContactReference('0'), null);
+  assert.equal(normalizeContactReference('-3'), null);
+  assert.equal(normalizeContactReference('abc'), null);
+
+  // La référence prime et dispense d'email/téléphone pour la seule recherche.
+  const byReference = validateMaalemTeamLookupQuery({ reference: '#42' });
+  assert.equal(byReference.valid, true);
+  assert.equal(byReference.contactId, 42);
+  assert.equal(byReference.email, null);
+  assert.equal(byReference.telephone, null);
+
+  assert.equal(validateMaalemTeamLookupQuery({ reference: 'abc' }).valid, false);
+  assert.equal(validateMaalemTeamLookupQuery({}).valid, false);
+
+  // Sans référence, le comportement email/téléphone reste inchangé.
+  const byEmail = validateMaalemTeamLookupQuery({ email: 'AMAL@example.com' });
+  assert.equal(byEmail.valid, true);
+  assert.equal(byEmail.email, 'amal@example.com');
+  assert.equal(byEmail.contactId, null);
+
+  // La création continue d'exiger un email et un téléphone : une référence ne suffit pas.
+  assert.equal(validateMaalemTeamCreateInput({
+    prenom: 'Amal', nom: 'Artisan', reference: '42', category_id: 4,
+  }).valid, false);
 });
 
 test('génère un jeton 256 bits et ne construit le lien qu’avec le jeton brut', () => {

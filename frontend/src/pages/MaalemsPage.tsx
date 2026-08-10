@@ -9,6 +9,7 @@ import {
   Clock3,
   Copy,
   Download,
+  Eye,
   FileImage,
   FileText,
   History,
@@ -42,7 +43,10 @@ import {
   useLookupMaalemIdentityMutation,
   useTeamCreateMaalemMutation,
   useUpdateAdminMaalemCategoryMutation,
+  useUpdateAdminMaalemProfessionalDataMutation,
+  useSubmitAdminMaalemProfileMutation,
   useUpdateAdminMaalemStatusMutation,
+  useUploadAdminMaalemAvatarMutation,
   useUploadAdminMaalemCvMutation,
   useUploadAdminMaalemRealizationsMutation,
 } from '../store/api/maalemProfilesApi';
@@ -161,6 +165,7 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
   const [result, setResult] = useState<TeamCreateMaalemResponse | null>(null);
   const [email, setEmail] = useState('');
   const [telephone, setTelephone] = useState('');
+  const [reference, setReference] = useState('');
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -180,16 +185,31 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
   const existingArtisan = lookup?.state === 'existing_artisan';
 
   const performLookup = async () => {
+    const trimmedReference = reference.trim();
     try {
-      const found = await lookupIdentity({ email: email.trim(), telephone: telephone.trim() }).unwrap();
-      setLookup(found);
+      // Une référence identifie un contact précis : elle prime sur email/téléphone.
+      const found = await lookupIdentity(
+        trimmedReference
+          ? { reference: trimmedReference }
+          : { email: email.trim(), telephone: telephone.trim() }
+      ).unwrap();
       setResult(null);
       if (found.contact) {
+        setLookup(found);
         setPrenom(found.contact.prenom || '');
         setNom(found.contact.nom || '');
         setEmail(found.contact.email || email);
         setTelephone(found.contact.telephone || telephone);
+        return;
       }
+      if (trimmedReference) {
+        // Une référence sans correspondance ne permet pas de créer un compte :
+        // il n'y a ni email ni téléphone à reprendre.
+        setLookup(null);
+        await showError(`Aucun contact ne correspond à la référence ${trimmedReference}. Recherchez par email ou téléphone pour créer un nouveau compte.`);
+        return;
+      }
+      setLookup(found);
     } catch (error) {
       setLookup(null);
       await showError(apiErrorMessage(error));
@@ -199,10 +219,14 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!lookup) {
-      await showError('Recherchez d’abord la personne par email ou téléphone.');
+      await showError('Recherchez d’abord la personne par email, téléphone ou référence.');
       return;
     }
     if (blockedState) return;
+    if (!email.trim() || !telephone.trim()) {
+      await showError('Cette fiche n’a pas d’email ou de téléphone. Complétez-les avant de créer le dossier Maalem.');
+      return;
+    }
 
     try {
       const created = await createMaalem({
@@ -210,6 +234,10 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
         nom: nom.trim(),
         email: email.trim(),
         telephone: telephone.trim(),
+        // Transmet la référence ayant servi au lookup : le contact est alors identifié
+        // par sa clé primaire côté serveur, évitant un faux conflit si l'email/téléphone
+        // stockés divergent légèrement du format saisi (ancien contact, espace, etc.).
+        reference: reference.trim() || undefined,
         category_id: Number(categoryId),
         locale: 'fr',
         professional_data: {
@@ -262,7 +290,7 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4" role="presentation">
-      <div ref={dialogRef as React.RefObject<HTMLDivElement>} tabIndex={-1} className="mx-auto my-4 w-full max-w-4xl rounded-xl bg-white shadow-xl outline-none" role="dialog" aria-modal="true" aria-labelledby="create-maalem-title">
+      <div ref={dialogRef as React.RefObject<HTMLDivElement>} tabIndex={-1} className="mx-auto my-4 w-full max-w-6xl rounded-xl bg-white shadow-xl outline-none" role="dialog" aria-modal="true" aria-labelledby="create-maalem-title">
         <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-xl border-b border-gray-200 bg-white px-6 py-4">
           <div>
             <h2 id="create-maalem-title" className="text-lg font-semibold text-gray-900">Ajouter un Maalem</h2>
@@ -298,10 +326,12 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
           <form onSubmit={submit} className="space-y-6 p-6">
             <section className="rounded-lg border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-900">1. Recherche anti-doublon obligatoire</h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                <input data-dialog-initial-focus type="email" value={email} onChange={(event) => { setEmail(event.target.value); setLookup(null); }} className={inputClass} placeholder="Email" aria-label="Email à rechercher" />
-                <input value={telephone} onChange={(event) => { setTelephone(event.target.value); setLookup(null); }} className={inputClass} placeholder="Téléphone 06… ou +212…" aria-label="Téléphone à rechercher" />
-                <button type="button" onClick={performLookup} disabled={isLookingUp || (!email.trim() && !telephone.trim())} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"><Search className="h-4 w-4" />{isLookingUp ? 'Recherche…' : 'Rechercher'}</button>
+              <p className="mt-1 text-xs text-gray-500">Un seul champ suffit : email, téléphone ou référence contact (ex. 42 ou #42).</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                <input data-dialog-initial-focus type="email" value={email} onChange={(event) => { setEmail(event.target.value); setLookup(null); }} disabled={Boolean(reference.trim())} className={inputClass} placeholder="Email" aria-label="Email à rechercher" />
+                <input value={telephone} onChange={(event) => { setTelephone(event.target.value); setLookup(null); }} disabled={Boolean(reference.trim())} className={inputClass} placeholder="Téléphone 06… ou +212…" aria-label="Téléphone à rechercher" />
+                <input value={reference} onChange={(event) => { setReference(event.target.value); setLookup(null); }} className={inputClass} placeholder="Référence contact (ex. 42)" aria-label="Référence du contact à rechercher" maxLength={20} inputMode="numeric" />
+                <button type="button" onClick={performLookup} disabled={isLookingUp || (!email.trim() && !telephone.trim() && !reference.trim())} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"><Search className="h-4 w-4" />{isLookingUp ? 'Recherche…' : 'Rechercher'}</button>
               </div>
               {lookupMessage && <p className={`mt-3 rounded-md p-3 text-sm ${blockedState ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800'}`}>{lookupMessage}</p>}
             </section>
@@ -313,8 +343,9 @@ const CreateMaalemModal: React.FC<CreateMaalemModalProps> = ({ onClose, onCreate
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="text-sm font-medium text-gray-700">Prénom *<input required value={prenom} onChange={(event) => setPrenom(event.target.value)} disabled={existingArtisan} className={`mt-1 ${inputClass}`} maxLength={100} /></label>
                     <label className="text-sm font-medium text-gray-700">Nom *<input required value={nom} onChange={(event) => setNom(event.target.value)} disabled={existingArtisan} className={`mt-1 ${inputClass}`} maxLength={100} /></label>
-                    <label className="text-sm font-medium text-gray-700">Email *<input required type="email" value={email} disabled className={`mt-1 ${inputClass}`} /></label>
-                    <label className="text-sm font-medium text-gray-700">Téléphone *<input required value={telephone} disabled className={`mt-1 ${inputClass}`} /></label>
+                    {/* Verrouillés quand ils proviennent de la recherche ; saisissables si la fiche trouvée par référence ne les renseigne pas. */}
+                    <label className="text-sm font-medium text-gray-700">Email *<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} disabled={Boolean(lookup?.contact?.email)} className={`mt-1 ${inputClass}`} maxLength={255} /></label>
+                    <label className="text-sm font-medium text-gray-700">Téléphone *<input required value={telephone} onChange={(event) => setTelephone(event.target.value)} disabled={Boolean(lookup?.contact?.telephone)} className={`mt-1 ${inputClass}`} placeholder="06… ou +212…" /></label>
                     <label className="text-sm font-medium text-gray-700 sm:col-span-2">Catégorie Maalem active *
                       <select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={categoriesLoading} className={`mt-1 ${inputClass}`}>
                         <option value="">Sélectionner une catégorie</option>
@@ -413,6 +444,27 @@ const StatusBadge = ({ status }: { status: MaalemProfileStatus }) => (
   </span>
 );
 
+const AVATAR_INITIALS_PALETTE = ['bg-blue-100 text-blue-700', 'bg-green-100 text-green-700', 'bg-amber-100 text-amber-700', 'bg-violet-100 text-violet-700', 'bg-rose-100 text-rose-700'];
+
+const getInitials = (name?: string | null) => {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+};
+
+const AvatarThumb = ({ name, avatarUrl, size = 'md' }: { name?: string | null; avatarUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) => {
+  const dimensions = size === 'lg' ? 'h-16 w-16 text-lg' : size === 'sm' ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm';
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt={name || 'Photo de profil'} className={`${dimensions} shrink-0 rounded-full object-cover ring-1 ring-gray-200`} />;
+  }
+  const paletteIndex = (name || '').length % AVATAR_INITIALS_PALETTE.length;
+  return (
+    <span className={`${dimensions} flex shrink-0 items-center justify-center rounded-full font-bold ${AVATAR_INITIALS_PALETTE[paletteIndex]}`}>
+      {getInitials(name)}
+    </span>
+  );
+};
+
 const FieldBlock = ({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) => (
   <div className={className}>
     <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
@@ -420,25 +472,113 @@ const FieldBlock = ({ label, children, className = '' }: { label: string; childr
   </div>
 );
 
+const DocumentPreviewModal: React.FC<{
+  profileId: number;
+  document: { id: number; name: string; mimeType: string };
+  onClose: () => void;
+}> = ({ profileId, document: doc, onClose }) => {
+  const dialogRef = useAccessibleDialog(onClose);
+  const [downloadDocument] = useDownloadAdminMaalemDocumentMutation();
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    (async () => {
+      try {
+        const blob = await downloadDocument({ profileId, documentId: doc.id }).unwrap();
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setObjectUrl(createdUrl);
+      } catch (fetchError) {
+        if (!cancelled) setError(apiErrorMessage(fetchError));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId, doc.id]);
+
+  const isImage = doc.mimeType.startsWith('image/');
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950/80 p-4" role="presentation">
+      <div ref={dialogRef as React.RefObject<HTMLDivElement>} tabIndex={-1} className="mx-auto flex h-full w-full max-w-5xl flex-col outline-none" role="dialog" aria-modal="true" aria-label={`Aperçu de ${doc.name}`}>
+        <div className="flex shrink-0 items-center justify-between rounded-t-xl bg-white px-4 py-3">
+          <p className="truncate text-sm font-semibold text-gray-900">{doc.name}</p>
+          <button data-dialog-initial-focus type="button" onClick={onClose} className="ml-4 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Fermer l’aperçu"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="flex-1 overflow-auto rounded-b-xl bg-gray-100">
+          {error ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-sm text-gray-600"><AlertCircle className="h-6 w-6 text-red-500" />{error}</div>
+          ) : !objectUrl ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Chargement de l’aperçu…</div>
+          ) : isImage ? (
+            <div className="flex h-full items-center justify-center p-4"><img src={objectUrl} alt={doc.name} className="max-h-full max-w-full object-contain" /></div>
+          ) : (
+            <iframe src={objectUrl} title={doc.name} className="h-full w-full border-0" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ profileId, onClose }) => {
   const dialogRef = useAccessibleDialog(onClose);
   const { data, isLoading, isError, refetch } = useGetAdminMaalemProfileDetailsQuery(profileId);
   const { data: categories = [] } = useGetActiveMaalemCategoriesQuery();
   const [updateStatus, { isLoading: isUpdatingStatus }] = useUpdateAdminMaalemStatusMutation();
+  const [submitDraft, { isLoading: isSubmittingDraft }] = useSubmitAdminMaalemProfileMutation();
   const [updateCategory, { isLoading: isUpdatingCategory }] = useUpdateAdminMaalemCategoryMutation();
+  const [updateProfessionalData, { isLoading: isSavingProfessionalData }] = useUpdateAdminMaalemProfessionalDataMutation();
   const [addNote, { isLoading: isAddingNote }] = useAddAdminMaalemNoteMutation();
   const [downloadDocument, { isLoading: isDownloading }] = useDownloadAdminMaalemDocumentMutation();
+  const [uploadAvatar, { isLoading: isUploadingAvatar }] = useUploadAdminMaalemAvatarMutation();
   const [pendingStatus, setPendingStatus] = useState<MaalemProfileStatus | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [categoryNote, setCategoryNote] = useState('');
   const [internalNote, setInternalNote] = useState('');
+  const [isEditingProfessional, setIsEditingProfessional] = useState(false);
+  const [professionalDraft, setProfessionalDraft] = useState<MaalemProfessionalData>(EMPTY_PROFESSIONAL_DATA);
+  const [previewDocument, setPreviewDocument] = useState<{ id: number; name: string; mimeType: string } | null>(null);
   const profile = data?.profile;
   const professional = profile?.professional_data;
   const canChangeCategory = profile ? ['draft', 'submitted', 'under_review', 'rejected'].includes(profile.status) : false;
   const decisionHistory = data?.history.filter((entry) => entry.event_type !== 'INTERNAL_NOTE') || [];
 
   useEffect(() => setSelectedCategoryId(profile?.category_id ? String(profile.category_id) : ''), [profile?.category_id]);
+  useEffect(() => { setIsEditingProfessional(false); }, [profileId]);
+
+  const startEditingProfessional = () => {
+    setProfessionalDraft({ ...EMPTY_PROFESSIONAL_DATA, ...(professional || {}) });
+    setIsEditingProfessional(true);
+  };
+
+  const cancelEditingProfessional = () => setIsEditingProfessional(false);
+
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      await uploadAvatar({ profileId, file }).unwrap();
+      await showSuccess('Photo de profil mise à jour');
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const submitProfessionalData = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      await updateProfessionalData({ id: profileId, professional_data: professionalDraft }).unwrap();
+      setIsEditingProfessional(false);
+      await showSuccess('Dossier professionnel mis à jour');
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
   const submitStatus = async () => {
     if (!pendingStatus) return;
     const requiresReason = pendingStatus === 'rejected' || pendingStatus === 'suspended';
@@ -452,6 +592,13 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
       setPendingStatus(null);
       setDecisionReason('');
       await showSuccess(`Dossier passé au statut « ${label} »`);
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const submitDraftForReview = async () => {
+    try {
+      await submitDraft({ id: profileId }).unwrap();
+      await showSuccess('Dossier soumis pour révision');
     } catch (error) { await showError(apiErrorMessage(error)); }
   };
 
@@ -517,6 +664,13 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
             <div className="space-y-8 px-5 py-6 sm:px-7">
               <section>
                 <h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">Identité & contact</h3>
+                <div className="mt-4 flex items-center gap-4">
+                  <AvatarThumb name={profile.user?.nom_complet} avatarUrl={profile.user?.avatar_url} size="lg" />
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50">
+                    <Upload className="h-4 w-4" />{isUploadingAvatar ? 'Envoi…' : profile.user?.avatar_url ? 'Changer la photo' : 'Ajouter une photo'}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarChange} disabled={isUploadingAvatar} className="sr-only" />
+                  </label>
+                </div>
                 <dl className="mt-4 grid gap-4 border-l-2 border-blue-600 pl-4 sm:grid-cols-2">
                   <FieldBlock label="Nom complet">{profile.user?.nom_complet}</FieldBlock>
                   <FieldBlock label="Type de compte">{profile.user?.type_compte || 'Artisan e-commerce'}</FieldBlock>
@@ -538,21 +692,44 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
               </section>
 
               <section>
-                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">Dossier professionnel</h3>
-                <dl className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                  <FieldBlock label="Compétences" className="sm:col-span-2">{professional?.skills?.length ? <div className="flex flex-wrap gap-1.5">{professional.skills.map((skill) => <span key={skill} className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium">{skill}</span>)}</div> : '—'}</FieldBlock>
-                  <FieldBlock label="Expérience">{professional?.experience_years == null ? '—' : `${professional.experience_years} an${professional.experience_years > 1 ? 's' : ''}`}</FieldBlock>
-                  <FieldBlock label="Disponibilité">{professional?.availability ? AVAILABILITY_LABELS[professional.availability] : '—'}</FieldBlock>
-                  <FieldBlock label="Zones d’intervention" className="sm:col-span-2">{professional?.intervention_areas?.join(' · ') || '—'}</FieldBlock>
-                  <FieldBlock label="Présentation" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.professional_summary || '—'}</span></FieldBlock>
-                  <FieldBlock label="Expériences & références" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.experiences || '—'}</span></FieldBlock>
-                  <FieldBlock label="Autres informations" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.other_information || '—'}</span></FieldBlock>
-                </dl>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">Dossier professionnel</h3>
+                  {!isEditingProfessional && canChangeCategory && <button type="button" onClick={startEditingProfessional} className="text-sm font-semibold text-blue-700 hover:text-blue-900">Modifier</button>}
+                </div>
+                {!canChangeCategory && <p className="mt-1 text-xs text-gray-500">Verrouillé pour un dossier validé ou suspendu.</p>}
+
+                {isEditingProfessional ? (
+                  <form onSubmit={submitProfessionalData} className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Compétences <span className="font-normal text-gray-500">(séparées par des virgules)</span><input value={professionalDraft.skills.join(', ')} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, skills: splitList(event.target.value) }))} className={`mt-1 ${inputClass}`} placeholder="Plomberie, installation, dépannage" /></label>
+                    <label className="text-sm font-medium text-gray-700">Ville<input value={professionalDraft.city || ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, city: event.target.value || null }))} className={`mt-1 ${inputClass}`} maxLength={100} /></label>
+                    <label className="text-sm font-medium text-gray-700">Téléphone de contact<input value={professionalDraft.contact_phone || ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, contact_phone: event.target.value || null }))} className={`mt-1 ${inputClass}`} placeholder="06… ou +212…" /></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Zones d’intervention <span className="font-normal text-gray-500">(séparées par des virgules)</span><input value={professionalDraft.intervention_areas.join(', ')} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, intervention_areas: splitList(event.target.value) }))} className={`mt-1 ${inputClass}`} placeholder="Tanger, Tétouan" /></label>
+                    <label className="text-sm font-medium text-gray-700">Années d’expérience<input type="number" min={0} max={70} value={professionalDraft.experience_years ?? ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, experience_years: event.target.value === '' ? null : Number(event.target.value) }))} className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700">Disponibilité<select value={professionalDraft.availability || ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, availability: (event.target.value || null) as MaalemProfessionalData['availability'] }))} className={`mt-1 ${inputClass}`}><option value="">À compléter</option><option value="immediate">Immédiate</option><option value="weekdays">En semaine</option><option value="weekends">Week-ends</option><option value="evenings">Soirs</option><option value="on_request">Sur demande</option></select></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Présentation<textarea value={professionalDraft.professional_summary || ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, professional_summary: event.target.value || null }))} rows={3} maxLength={2000} className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Expériences & références<textarea value={professionalDraft.experiences || ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, experiences: event.target.value || null }))} rows={3} maxLength={5000} className={`mt-1 ${inputClass}`} /></label>
+                    <label className="text-sm font-medium text-gray-700 sm:col-span-2">Autres informations<textarea value={professionalDraft.other_information || ''} onChange={(event) => setProfessionalDraft((draft) => ({ ...draft, other_information: event.target.value || null }))} rows={2} maxLength={2000} className={`mt-1 ${inputClass}`} /></label>
+                    <div className="flex justify-end gap-2 sm:col-span-2">
+                      <button type="button" onClick={cancelEditingProfessional} className="rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">Annuler</button>
+                      <button type="submit" disabled={isSavingProfessionalData} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{isSavingProfessionalData ? 'Enregistrement…' : 'Enregistrer'}</button>
+                    </div>
+                  </form>
+                ) : (
+                  <dl className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                    <FieldBlock label="Compétences" className="sm:col-span-2">{professional?.skills?.length ? <div className="flex flex-wrap gap-1.5">{professional.skills.map((skill) => <span key={skill} className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium">{skill}</span>)}</div> : '—'}</FieldBlock>
+                    <FieldBlock label="Expérience">{professional?.experience_years == null ? '—' : `${professional.experience_years} an${professional.experience_years > 1 ? 's' : ''}`}</FieldBlock>
+                    <FieldBlock label="Disponibilité">{professional?.availability ? AVAILABILITY_LABELS[professional.availability] : '—'}</FieldBlock>
+                    <FieldBlock label="Zones d’intervention" className="sm:col-span-2">{professional?.intervention_areas?.join(' · ') || '—'}</FieldBlock>
+                    <FieldBlock label="Présentation" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.professional_summary || '—'}</span></FieldBlock>
+                    <FieldBlock label="Expériences & références" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.experiences || '—'}</span></FieldBlock>
+                    <FieldBlock label="Autres informations" className="sm:col-span-2"><span className="whitespace-pre-wrap">{professional?.other_information || '—'}</span></FieldBlock>
+                  </dl>
+                )}
               </section>
 
               <section className="border-t border-gray-200 pt-6">
                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-900"><FileText className="h-4 w-4" />Documents privés</h3><p className="mt-1 text-xs text-gray-500">Téléchargement protégé, réservé au Back-office.</p>
-                {!data.documents.length ? <p className="mt-3 text-sm text-gray-500">Aucun document joint.</p> : <ul className="mt-3 divide-y divide-gray-100 border-y border-gray-200">{data.documents.map((item) => <li key={item.id} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3">{item.kind === 'cv' ? <FileText className="h-5 w-5 shrink-0 text-blue-600" /> : <FileImage className="h-5 w-5 shrink-0 text-gray-500" />}<div className="min-w-0"><p className="truncate text-sm font-medium text-gray-900">{item.original_name}</p><p className="text-xs text-gray-500">{item.kind === 'cv' ? 'CV' : 'Document professionnel'} · {Math.max(1, Math.round(item.file_size / 1024))} Ko</p></div></div><button type="button" disabled={isDownloading} onClick={() => handleDownload(item.id, item.original_name)} className="rounded-md p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50" aria-label={`Télécharger ${item.original_name}`}><Download className="h-4 w-4" /></button></li>)}</ul>}
+                {!data.documents.length ? <p className="mt-3 text-sm text-gray-500">Aucun document joint.</p> : <ul className="mt-3 divide-y divide-gray-100 border-y border-gray-200">{data.documents.map((item) => { const previewable = item.mime_type === 'application/pdf' || item.mime_type.startsWith('image/'); return <li key={item.id} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3">{item.kind === 'cv' ? <FileText className="h-5 w-5 shrink-0 text-blue-600" /> : <FileImage className="h-5 w-5 shrink-0 text-gray-500" />}<div className="min-w-0"><p className="truncate text-sm font-medium text-gray-900">{item.original_name}</p><p className="text-xs text-gray-500">{item.kind === 'cv' ? 'CV' : 'Document professionnel'} · {Math.max(1, Math.round(item.file_size / 1024))} Ko</p></div></div><div className="flex shrink-0 items-center gap-1">{previewable && <button type="button" disabled={isDownloading} onClick={() => setPreviewDocument({ id: item.id, name: item.original_name, mimeType: item.mime_type })} className="rounded-md p-2 text-gray-600 hover:bg-gray-100 disabled:opacity-50" aria-label={`Visualiser ${item.original_name}`}><Eye className="h-4 w-4" /></button>}<button type="button" disabled={isDownloading} onClick={() => handleDownload(item.id, item.original_name)} className="rounded-md p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50" aria-label={`Télécharger ${item.original_name}`}><Download className="h-4 w-4" /></button></div></li>; })}</ul>}
               </section>
 
               <section className="border-t border-gray-200 pt-6">
@@ -600,19 +777,26 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
                   {nextStatuses.map((status) => <button key={status} type="button" onClick={() => setPendingStatus(status)} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${status === 'rejected' || status === 'suspended' ? 'border-red-300 text-red-700 hover:bg-red-50 focus-visible:ring-red-500' : status === 'approved' ? 'border-green-700 bg-green-700 text-white hover:bg-green-800 focus-visible:ring-green-600' : 'border-blue-700 bg-blue-700 text-white hover:bg-blue-800 focus-visible:ring-blue-600'}`}>{status === 'approved' ? <CheckCircle2 className="h-4 w-4" /> : status === 'rejected' || status === 'suspended' ? <XCircle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}{STATUS_META[status].label}</button>)}
                 </div>
               </div>
+            ) : profile.status === 'draft' ? (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm text-gray-600"><BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Brouillon non soumis : aucune décision Back-office tant que le dossier n’est pas soumis.</p></div>
+                <button type="button" onClick={submitDraftForReview} disabled={isSubmittingDraft} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-blue-700 bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50"><Clock3 className="h-4 w-4" />{isSubmittingDraft ? 'Soumission…' : 'Soumettre pour révision'}</button>
+                <p className="text-xs text-gray-500">Soumet le dossier au nom du candidat : catégorie, informations professionnelles et téléphone doivent déjà être complets.</p>
+              </div>
             ) : (
-              <div className="flex items-start gap-2 text-sm text-gray-600"><BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>{profile.status === 'draft' ? 'Brouillon non soumis : aucune décision Back-office autorisée.' : 'Aucune transition Back-office disponible pour ce statut.'}</p></div>
+              <div className="flex items-start gap-2 text-sm text-gray-600"><BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Aucune transition Back-office disponible pour ce statut.</p></div>
             )}
           </footer>
         )}
       </aside>
+      {previewDocument && <DocumentPreviewModal profileId={profileId} document={previewDocument} onClose={() => setPreviewDocument(null)} />}
     </div>
   );
 };
 
 const ProfileRow = ({ profile, onOpen }: { profile: AdminMaalemProfile; onOpen: () => void }) => (
   <tr className="group hover:bg-blue-50/40">
-    <td className={`border-l-4 px-4 py-3.5 ${STATUS_RAILS[profile.status]}`}><p className="font-semibold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-0.5 text-xs text-gray-500">{profile.user?.email || 'Sans email'}</p></td>
+    <td className={`border-l-4 px-4 py-3.5 ${STATUS_RAILS[profile.status]}`}><div className="flex items-center gap-3"><AvatarThumb name={profile.user?.nom_complet} avatarUrl={profile.user?.avatar_url} size="sm" /><div className="min-w-0"><p className="truncate font-semibold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-0.5 truncate text-xs text-gray-500">{profile.user?.email || 'Sans email'}</p></div></div></td>
     <td className="px-4 py-3.5 text-sm text-gray-700">{profile.category?.nom || <span className="text-amber-700">À compléter</span>}</td>
     <td className="px-4 py-3.5 text-sm text-gray-700">{profile.professional_data?.city || '—'}</td>
     <td className="px-4 py-3.5 text-sm text-gray-700">{profile.user?.telephone || profile.professional_data?.contact_phone || '—'}</td>
@@ -681,7 +865,7 @@ const MaalemsPage: React.FC = () => {
         {isLoading ? <div className="flex min-h-64 items-center justify-center text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Chargement des candidatures…</div>
           : isError ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><AlertCircle className="h-8 w-8 text-red-500" /><p className="mt-3 font-semibold text-gray-900">Impossible de charger les dossiers Maalem.</p><button type="button" onClick={() => refetch()} className="mt-3 rounded-md px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Réessayer</button></div>
             : profiles.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><BriefcaseBusiness className="h-9 w-9 text-gray-300" /><p className="mt-3 font-semibold text-gray-900">Aucun dossier ne correspond.</p><p className="mt-1 text-sm text-gray-500">Modifiez les filtres ou ajoutez un Maalem depuis le Back-office.</p>{hasFilters && <button type="button" onClick={resetFilters} className="mt-4 text-sm font-semibold text-blue-700">Effacer tous les filtres</button>}</div>
-              : <><div className="hidden overflow-x-auto md:block"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-slate-50"><tr>{['Candidat', 'Catégorie', 'Ville', 'Contact', 'Demande', 'Origine', 'Statut', ''].map((heading) => <th key={heading || 'actions'} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} onOpen={() => setSelectedProfileId(profile.id)} />)}</tbody></table></div><ul className="divide-y divide-gray-200 md:hidden">{profiles.map((profile) => <li key={profile.id}><button type="button" onClick={() => setSelectedProfileId(profile.id)} className="w-full p-4 text-left hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-1 text-sm text-gray-600">{profile.category?.nom || 'Catégorie à compléter'} · {profile.professional_data?.city || 'Ville inconnue'}</p></div><ChevronRight className="mt-1 h-5 w-5 shrink-0 text-gray-400" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={profile.status} /><span className="text-xs text-gray-500">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</span><span className="text-xs text-gray-400">· {formatDate(profile.submitted_at || profile.created_at)}</span></div><p className="mt-2 text-xs text-gray-500">{profile.user?.telephone || profile.professional_data?.contact_phone || 'Contact non renseigné'}</p></button></li>)}</ul></>}
+              : <><div className="hidden overflow-x-auto md:block"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-slate-50"><tr>{['Candidat', 'Catégorie', 'Ville', 'Contact', 'Demande', 'Origine', 'Statut', ''].map((heading) => <th key={heading || 'actions'} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} onOpen={() => setSelectedProfileId(profile.id)} />)}</tbody></table></div><ul className="divide-y divide-gray-200 md:hidden">{profiles.map((profile) => <li key={profile.id}><button type="button" onClick={() => setSelectedProfileId(profile.id)} className="w-full p-4 text-left hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><AvatarThumb name={profile.user?.nom_complet} avatarUrl={profile.user?.avatar_url} size="sm" /><div className="min-w-0"><p className="truncate font-bold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-1 truncate text-sm text-gray-600">{profile.category?.nom || 'Catégorie à compléter'} · {profile.professional_data?.city || 'Ville inconnue'}</p></div></div><ChevronRight className="mt-1 h-5 w-5 shrink-0 text-gray-400" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={profile.status} /><span className="text-xs text-gray-500">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</span><span className="text-xs text-gray-400">· {formatDate(profile.submitted_at || profile.created_at)}</span></div><p className="mt-2 text-xs text-gray-500">{profile.user?.telephone || profile.professional_data?.contact_phone || 'Contact non renseigné'}</p></button></li>)}</ul></>}
       </section>
 
       {selectedProfileId !== null && <DossierDrawer profileId={selectedProfileId} onClose={() => setSelectedProfileId(null)} />}

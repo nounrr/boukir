@@ -10,7 +10,9 @@
       "Bash(node --test routes/productNameCorrections.replaceInitial.test.js)",
       "Bash(awk 'NR>=2760 && NR<=2810' pages/ClientsPage.tsx)",
       "Bash(awk 'NR>=2722 && NR<=2759' pages/ClientsPage.tsx)",
-      "Bash(node --check backend/routes/contactComments.js)"
+      "Bash(node --check backend/routes/contactComments.js)",
+      "Bash(node --test utils/maalemRegistration.test.js utils/maalemProfile.test.js)",
+      "Bash(node --test utils/maalemTeamCreation.test.js)"
     ]
   }
 }

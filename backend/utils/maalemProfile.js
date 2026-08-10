@@ -309,6 +309,7 @@ export function normalizeMaalemProfileRow(row) {
       societe: row.contact_societe ?? null,
       adresse: row.contact_adresse ?? null,
       city: row.contact_shipping_city ?? null,
+      avatar_url: row.contact_avatar_url ?? null,
     };
   }
   if (row.reviewer_name !== undefined || row.creator_name !== undefined) {

@@ -36,6 +36,15 @@ export function phoneIdentityCandidates(value) {
   return canonical ? [canonical, `0${canonical.slice(4)}`] : [];
 }
 
+export function normalizeContactReference(value) {
+  if (value == null) return null;
+  // Accepte « 42 », « #42 » ou « C42 » — la référence affichée dans le back-office.
+  const compact = String(value).trim().replace(/^[#cC]/, '');
+  if (!/^\d+$/.test(compact)) return null;
+  const id = Number(compact);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 export function validateMaalemTeamLookup(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { valid: false, error: 'Recherche invalide' };
@@ -51,9 +60,37 @@ export function validateMaalemTeamLookup(body) {
   return { valid: true, email: email || null, telephone: phone };
 }
 
+// Recherche anti-doublon : accepte en plus une référence/ID de contact, qui sert
+// de raccourci pour retrouver une personne déjà enregistrée. La création
+// (validateMaalemTeamCreateInput) continue d'exiger email + téléphone.
+export function validateMaalemTeamLookupQuery(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { valid: false, error: 'Recherche invalide' };
+  }
+  const rawReference = body.reference;
+  const hasReference = rawReference != null && String(rawReference).trim() !== '';
+  if (hasReference) {
+    const contactId = normalizeContactReference(rawReference);
+    if (!contactId) return { valid: false, error: 'Référence invalide : saisissez un identifiant numérique (ex. 42 ou #42)' };
+    return { valid: true, email: null, telephone: null, contactId };
+  }
+  const base = validateMaalemTeamLookup(body);
+  if (!base.valid) {
+    return base.error === 'Un email ou un téléphone est requis'
+      ? { valid: false, error: 'Un email, un téléphone ou une référence est requis' }
+      : base;
+  }
+  return { ...base, contactId: null };
+}
+
 export function validateMaalemTeamCreateInput(body) {
   const lookup = validateMaalemTeamLookup(body);
   if (!lookup.valid) return lookup;
+
+  // Une référence déjà résolue par /lookup identifie le contact de façon certaine :
+  // elle évite de refaire correspondre email/téléphone (qui peuvent diverger
+  // légèrement en base sur un vieux contact) et donc un faux conflit.
+  const contactId = normalizeContactReference(body.reference);
 
   const prenom = trimmedText(body.prenom, 100, 'Le prénom', { required: true });
   if (!prenom.valid) return prenom;
@@ -82,6 +119,7 @@ export function validateMaalemTeamCreateInput(body) {
     nom: nom.value,
     email: lookup.email,
     telephone: lookup.telephone,
+    contactId,
     category_id: body.category_id,
     professional_data: professionalData.data,
   };

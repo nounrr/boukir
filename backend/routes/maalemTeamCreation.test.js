@@ -194,6 +194,31 @@ test('POST /team-create rattache uniquement le profil à un Artisan existant', a
   });
 });
 
+test('POST /team-create reconnaît un Artisan back-office sans compte de connexion e-commerce', async () => {
+  // Un artisan approuvé côté back-office (créé sans auth e-commerce) doit rester
+  // détecté comme existing_artisan, pas confondu avec un simple contact back-office.
+  const existing = {
+    id: 44,
+    prenom: 'Amal', nom: 'Artisan', nom_complet: 'Amal Artisan',
+    email: 'amal@example.com', telephone: '+212612345678',
+    type_compte: 'Artisan/Promoteur', artisan_approuve: 1,
+    auth_provider: 'none', is_active: 1, is_blocked: 0, deleted_at: null,
+    maalem_profile_id: null,
+  };
+  const database = teamCreationDatabase({ existingContact: existing });
+  await withAdminMaalemServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/team-create`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(teamPayload),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.created_user, false);
+    assert.equal(body.created_profile, true);
+    assert.equal(database.contactInsertParams, null);
+    assert.equal(database.contact.id, existing.id);
+  });
+});
+
 test('POST /team-create reprend un profil existant sans modifier son statut', async () => {
   const existing = {
     id: 44,
@@ -261,6 +286,35 @@ test('la création refuse de promouvoir silencieusement un compte Client existan
   });
 });
 
+test('POST /team-create avec une référence évite le faux conflit d’un vieux contact', async () => {
+  // Contact déjà trouvé par référence au lookup, mais dont l'email/téléphone en base
+  // diverge légèrement du payload saisi (ancien dossier) : sans la référence, la
+  // recherche email+téléphone renverrait deux lignes distinctes et un faux conflit.
+  const staleEmailRow = {
+    id: 1, email: teamPayload.email, telephone: '+212600000000',
+    type_compte: 'Artisan/Promoteur', artisan_approuve: 1, auth_provider: 'local',
+    is_active: 1, is_blocked: 0, deleted_at: null, maalem_profile_id: null,
+  };
+  const referencedContact = {
+    id: 44, prenom: 'Amal', nom: 'Artisan', nom_complet: 'Amal Artisan',
+    email: teamPayload.email, telephone: '+212612345678',
+    type_compte: 'Artisan/Promoteur', artisan_approuve: 1, auth_provider: 'none',
+    is_active: 1, is_blocked: 0, deleted_at: null, maalem_profile_id: null,
+  };
+  const database = teamCreationDatabase({ identityRows: [staleEmailRow, referencedContact] });
+  await withAdminMaalemServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/team-create`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...teamPayload, reference: '44' }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.created_user, false);
+    assert.equal(body.created_profile, true);
+    assert.equal(database.contactInsertParams, null);
+  });
+});
+
 test('lookup bloque un conflit email/téléphone entre deux comptes', async () => {
   const emailContact = {
     id: 1, email: 'amal@example.com', telephone: '+212699999999',
@@ -280,5 +334,179 @@ test('lookup bloque un conflit email/téléphone entre deux comptes', async () =
     });
     assert.equal(response.status, 409);
     assert.equal((await response.json()).code, 'IDENTITY_CONFLICT');
+  });
+});
+
+function submitDatabase({ profile, contactPhone = '+212612345678', categoryActive = true }) {
+  let current = { ...profile };
+  let historyInsertParams = null;
+  const connection = {
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {},
+    release() {},
+    async query(sql, params = []) {
+      if (sql.includes('FROM maalem_profiles') && sql.includes('FOR UPDATE')) {
+        return [[current]];
+      }
+      if (sql.includes('SELECT telephone FROM contacts')) {
+        return [[{ telephone: contactPhone }]];
+      }
+      if (sql.includes('FROM maalem_categories')) {
+        return [[categoryActive ? { id: current.category_id, is_active: 1 } : null].filter(Boolean)];
+      }
+      if (sql.includes('FROM employees')) {
+        return [[{ id: 9, nom_complet: 'Employé Test', cin: 'AB123456' }]];
+      }
+      if (sql.startsWith('UPDATE maalem_profiles')) {
+        if (sql.includes('SET professional_data')) {
+          current = { ...current, professional_data: params[0] };
+        } else {
+          current = { ...current, status: 'submitted' };
+        }
+        return [{ affectedRows: 1 }];
+      }
+      if (sql.includes('INSERT INTO maalem_profile_history')) {
+        historyInsertParams = params;
+        return [{ insertId: 1 }];
+      }
+      throw new Error(`Unexpected connection query: ${sql}`);
+    },
+  };
+  return {
+    connection,
+    get profile() { return current; },
+    get historyInsertParams() { return historyInsertParams; },
+  };
+}
+
+async function withAdminSubmitServer(database, callback) {
+  const originalGetConnection = pool.getConnection;
+  const originalQuery = pool.query;
+  pool.getConnection = async () => database.connection;
+  pool.query = async (sql, params = []) => {
+    if (sql.includes('FROM maalem_profiles mp')) {
+      return [[{
+        ...database.profile,
+        contact_nom_complet: 'Amal Artisan',
+        contact_email: 'amal@example.com',
+        contact_telephone: '+212612345678',
+        contact_type_compte: 'Artisan/Promoteur',
+        category_nom: 'Plomberie',
+        category_nom_ar: 'السباكة',
+        category_is_active: 1,
+      }]];
+    }
+    throw new Error(`Unexpected pool query: ${sql}`);
+  };
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => { req.user = { id: 9, role: 'PDG' }; next(); });
+  app.use('/api/admin/maalem-profiles', adminMaalemProfilesRouter);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.once('listening', resolve));
+  const { port } = server.address();
+  try {
+    await callback(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    pool.getConnection = originalGetConnection;
+    pool.query = originalQuery;
+  }
+}
+
+test('POST /:id/submit fait passer un brouillon complet en révision', async () => {
+  const database = submitDatabase({
+    profile: {
+      id: 55, contact_id: 44, category_id: 8, status: 'draft',
+      professional_data: JSON.stringify({
+        skills: ['Plomberie'], city: 'Tanger', intervention_areas: ['Tanger'],
+        experience_years: 6, professional_summary: 'Artisane spécialisée',
+        experiences: 'Chantiers résidentiels', availability: 'weekdays',
+        other_information: null, contact_phone: '+212612345678',
+      }),
+    },
+  });
+  await withAdminSubmitServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/55/submit`, { method: 'POST' });
+    assert.equal(response.status, 200);
+    assert.equal(database.profile.status, 'submitted');
+    assert.equal(database.historyInsertParams[7], 'BACKOFFICE');
+  });
+});
+
+test('POST /:id/submit refuse un profil déjà soumis', async () => {
+  const database = submitDatabase({
+    profile: { id: 55, contact_id: 44, category_id: 8, status: 'submitted', professional_data: '{}' },
+  });
+  await withAdminSubmitServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/55/submit`, { method: 'POST' });
+    assert.equal(response.status, 409);
+    assert.equal(database.profile.status, 'submitted');
+  });
+});
+
+test('POST /:id/submit refuse un dossier professionnel incomplet', async () => {
+  const database = submitDatabase({
+    profile: {
+      id: 55, contact_id: 44, category_id: 8, status: 'draft',
+      professional_data: JSON.stringify({ skills: [] }),
+    },
+  });
+  await withAdminSubmitServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/55/submit`, { method: 'POST' });
+    assert.equal(response.status, 400);
+    assert.equal(database.profile.status, 'draft');
+  });
+});
+
+test('PATCH /:id/professional-data corrige le dossier d’un brouillon', async () => {
+  const database = submitDatabase({
+    profile: {
+      id: 55, contact_id: 44, category_id: 8, status: 'draft',
+      professional_data: JSON.stringify({ skills: ['Plomberie'] }),
+    },
+  });
+  await withAdminSubmitServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/55/professional-data`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        professional_data: { skills: ['Plomberie', 'Électricité'], city: 'Rabat', intervention_areas: ['Rabat'] },
+      }),
+    });
+    assert.equal(response.status, 200);
+    const savedData = JSON.parse(database.profile.professional_data);
+    assert.deepEqual(savedData.skills, ['Plomberie', 'Électricité']);
+    assert.equal(savedData.city, 'Rabat');
+    assert.equal(database.historyInsertParams[7], 'BACKOFFICE');
+  });
+});
+
+test('PATCH /:id/professional-data refuse un dossier validé', async () => {
+  const database = submitDatabase({
+    profile: { id: 55, contact_id: 44, category_id: 8, status: 'approved', professional_data: '{}' },
+  });
+  await withAdminSubmitServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/55/professional-data`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ professional_data: { skills: ['Plomberie'] } }),
+    });
+    assert.equal(response.status, 409);
+  });
+});
+
+test('PATCH /:id/professional-data rejette des données invalides', async () => {
+  const database = submitDatabase({
+    profile: { id: 55, contact_id: 44, category_id: 8, status: 'draft', professional_data: '{}' },
+  });
+  await withAdminSubmitServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/maalem-profiles/55/professional-data`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ professional_data: { skills: 'not-an-array' } }),
+    });
+    assert.equal(response.status, 400);
   });
 });

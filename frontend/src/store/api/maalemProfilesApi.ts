@@ -34,6 +34,7 @@ export interface AdminMaalemProfile {
     email: string | null;
     telephone: string | null;
     type_compte: string | null;
+    avatar_url?: string | null;
   };
   category?: { id: number; nom: string; nom_ar: string; is_active: boolean } | null;
   created_at: string;
@@ -116,6 +117,7 @@ export interface TeamCreateMaalemInput {
   nom: string;
   email: string;
   telephone: string;
+  reference?: string;
   category_id: number;
   locale: 'fr';
   professional_data: MaalemProfessionalData;
@@ -160,15 +162,31 @@ export const maalemProfilesApi = apiSlice.injectEndpoints({
       query: (id) => ({ url: `/admin/maalem-profiles/${id}` }),
       providesTags: (_result, _error, id) => [{ type: 'MaalemProfile', id }],
     }),
-    lookupMaalemIdentity: builder.mutation<MaalemLookupResponse, { email?: string; telephone?: string }>({
+    lookupMaalemIdentity: builder.mutation<MaalemLookupResponse, { email?: string; telephone?: string; reference?: string }>({
       query: (body) => ({ url: '/admin/maalem-profiles/lookup', method: 'POST', body }),
     }),
     teamCreateMaalem: builder.mutation<TeamCreateMaalemResponse, TeamCreateMaalemInput>({
       query: (body) => ({ url: '/admin/maalem-profiles/team-create', method: 'POST', body }),
       invalidatesTags: [{ type: 'MaalemProfile', id: 'LIST' }],
     }),
+    submitAdminMaalemProfile: builder.mutation<AdminMaalemProfile, { id: number }>({
+      query: ({ id }) => ({ url: `/admin/maalem-profiles/${id}/submit`, method: 'POST' }),
+      transformResponse: (response: { profile: AdminMaalemProfile }) => response.profile,
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'MaalemProfile', id },
+        { type: 'MaalemProfile', id: 'LIST' },
+      ],
+    }),
     updateAdminMaalemStatus: builder.mutation<AdminMaalemProfile, { id: number; status: MaalemProfileStatus; reason?: string }>({
       query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/status`, method: 'PATCH', body }),
+      transformResponse: (response: { profile: AdminMaalemProfile }) => response.profile,
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'MaalemProfile', id },
+        { type: 'MaalemProfile', id: 'LIST' },
+      ],
+    }),
+    updateAdminMaalemProfessionalData: builder.mutation<AdminMaalemProfile, { id: number; professional_data: MaalemProfessionalData }>({
+      query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/professional-data`, method: 'PATCH', body }),
       transformResponse: (response: { profile: AdminMaalemProfile }) => response.profile,
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'MaalemProfile', id },
@@ -195,6 +213,17 @@ export const maalemProfilesApi = apiSlice.injectEndpoints({
         responseHandler: (response) => response.blob(),
         cache: 'no-store',
       }),
+    }),
+    uploadAdminMaalemAvatar: builder.mutation<{ avatar_url: string }, { profileId: number; file: File }>({
+      query: ({ profileId, file }) => {
+        const body = new FormData();
+        body.append('file', file);
+        return { url: `/admin/maalem-profiles/${profileId}/avatar`, method: 'POST', body };
+      },
+      invalidatesTags: (_result, _error, { profileId }) => [
+        { type: 'MaalemProfile', id: profileId },
+        { type: 'MaalemProfile', id: 'LIST' },
+      ],
     }),
     uploadAdminMaalemCv: builder.mutation<unknown, { profileId: number; file: File }>({
       query: ({ profileId, file }) => {
@@ -226,10 +255,13 @@ export const {
   useGetAdminMaalemProfileDetailsQuery,
   useLookupMaalemIdentityMutation,
   useTeamCreateMaalemMutation,
+  useSubmitAdminMaalemProfileMutation,
+  useUpdateAdminMaalemProfessionalDataMutation,
   useUpdateAdminMaalemStatusMutation,
   useUpdateAdminMaalemCategoryMutation,
   useAddAdminMaalemNoteMutation,
   useDownloadAdminMaalemDocumentMutation,
+  useUploadAdminMaalemAvatarMutation,
   useUploadAdminMaalemCvMutation,
   useUploadAdminMaalemRealizationsMutation,
 } = maalemProfilesApi;

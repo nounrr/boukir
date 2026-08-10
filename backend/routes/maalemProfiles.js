@@ -24,6 +24,7 @@ import {
   validateMaalemAdminStatusInput,
   validateMaalemInternalNoteInput,
   validateMaalemDraftInput,
+  validateMaalemProfessionalData,
   validateMaalemSubmission,
 } from '../utils/maalemProfile.js';
 import {
@@ -33,18 +34,27 @@ import {
   normalizeMoroccanPhone,
   phoneIdentityCandidates,
   validateMaalemTeamCreateInput,
-  validateMaalemTeamLookup,
+  validateMaalemTeamLookupQuery,
 } from '../utils/maalemTeamCreation.js';
 
 const selfRouter = Router();
 const adminRouter = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const privateDocumentsRoot = path.resolve(__dirname, '..', 'private_uploads', 'maalem_profiles');
+// Contrairement aux documents (CV/réalisations, privés), l'avatar doit être servi
+// publiquement : il apparaît dans le catalogue e-commerce et la liste back-office.
+// Réutilise le sous-dossier statique déjà exposé par index.js (app.use('/uploads', ...)).
+const publicAvatarsRoot = path.resolve(__dirname, '..', 'uploads', 'maalem_avatars');
 const DOCUMENT_LIMIT = 5 * 1024 * 1024;
 const MAX_REALIZATIONS = 8;
+const AVATAR_LIMIT = 5 * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: DOCUMENT_LIMIT, files: MAX_REALIZATIONS, fields: 10 },
+});
+const uploadAvatar = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: AVATAR_LIMIT, files: 1, fields: 5 },
 });
 
 function handleMulter(middleware) {
@@ -59,6 +69,7 @@ function handleMulter(middleware) {
 
 const receiveCv = handleMulter(upload.single('file'));
 const receiveRealizations = handleMulter(upload.array('files', MAX_REALIZATIONS));
+const receiveAvatar = handleMulter(uploadAvatar.single('file'));
 
 const KIND_EXTENSIONS = Object.freeze({ pdf: '.pdf', jpeg: '.jpg', png: '.png', webp: '.webp' });
 const KIND_MIME_TYPES = Object.freeze({
@@ -272,6 +283,14 @@ async function savePrivateDocument(profileId, kind, file, detectedKind) {
   return { storageKey, absolutePath };
 }
 
+async function saveAvatarFile(contactId, file, detectedKind) {
+  await fs.mkdir(publicAvatarsRoot, { recursive: true });
+  const filename = `${contactId}-${crypto.randomUUID()}${KIND_EXTENSIONS[detectedKind]}`;
+  const absolutePath = path.join(publicAvatarsRoot, filename);
+  await fs.writeFile(absolutePath, file.buffer, { flag: 'wx' });
+  return { absolutePath, publicUrl: `/uploads/maalem_avatars/${filename}` };
+}
+
 async function loadActiveCategory(connection, categoryId) {
   if (categoryId == null) return null;
   const [rows] = await connection.query(
@@ -291,7 +310,9 @@ async function acquireIdentityLocks(connection, identity) {
   ].filter(Boolean).sort();
   const acquired = [];
   for (const value of keys) {
-    const lockName = `kan6:${crypto.createHash('sha256').update(value).digest('hex')}`;
+    // MySQL limite GET_LOCK() à 64 caractères : on tronque le hash pour rester sous la limite
+    // (32 hex + préfixe "kan6:" = 37 caractères, largement suffisant contre les collisions ici).
+    const lockName = `kan6:${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`;
     const [rows] = await connection.query('SELECT GET_LOCK(?, 10) AS acquired', [lockName]);
     if (Number(rows[0]?.acquired) !== 1) {
       for (const held of acquired.reverse()) await connection.query('SELECT RELEASE_LOCK(?)', [held]);
@@ -320,6 +341,10 @@ async function findContactsByIdentity(db, identity, { forUpdate = false } = {}) 
     conditions.push(`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.telephone, ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') IN (?, ?)`);
     params.push(phones[0], phones[1]);
   }
+  if (identity.contactId) {
+    conditions.push('c.id = ?');
+    params.push(identity.contactId);
+  }
   if (!conditions.length) return [];
   const [rows] = await db.query(
     `SELECT c.id, c.prenom, c.nom, c.nom_complet, c.email, c.telephone,
@@ -338,6 +363,11 @@ async function findContactsByIdentity(db, identity, { forUpdate = false } = {}) 
 }
 
 function resolveIdentityMatch(rows, identity) {
+  // Une référence cible la clé primaire : la correspondance est unique par nature.
+  if (identity.contactId) {
+    const contact = rows.find((row) => Number(row.id) === identity.contactId) || null;
+    return { conflict: false, contact };
+  }
   const emailMatches = identity.email
     ? rows.filter((row) => normalizeMaalemIdentityEmail(row.email) === identity.email)
     : [];
@@ -358,9 +388,13 @@ function resolveIdentityMatch(rows, identity) {
 function existingContactState(contact) {
   if (!contact) return 'not_found';
   if (contact.deleted_at || Number(contact.is_active) !== 1 || Number(contact.is_blocked) === 1) return 'inactive_account';
+  // Un artisan approuvé côté back-office (sans compte de connexion e-commerce)
+  // reste un artisan : il ne doit pas être confondu avec un simple contact.
+  if (isArtisanAccount(contact)) {
+    return contact.maalem_profile_id ? 'existing_maalem_profile' : 'existing_artisan';
+  }
   if (contact.auth_provider === 'none' || contact.type_compte == null) return 'backoffice_contact';
-  if (!isArtisanAccount(contact)) return 'non_artisan_account';
-  return contact.maalem_profile_id ? 'existing_maalem_profile' : 'existing_artisan';
+  return 'non_artisan_account';
 }
 
 async function loadAdminEditableProfile(db, profileId, { forUpdate = false } = {}) {
@@ -738,7 +772,7 @@ selfRouter.delete('/me/documents/:id', async (req, res, next) => {
 adminRouter.use(requireRole('PDG'));
 
 adminRouter.post('/lookup', async (req, res, next) => {
-  const validation = validateMaalemTeamLookup(req.body);
+  const validation = validateMaalemTeamLookupQuery(req.body);
   if (!validation.valid) return res.status(400).json({ message: validation.error });
   try {
     const rows = await findContactsByIdentity(pool, validation);
@@ -912,6 +946,64 @@ adminRouter.post('/team-create', async (req, res, next) => {
   }
 });
 
+// Photo de profil du Maalem. Contrairement au CV/aux réalisations (documents privés
+// du dossier), l'avatar appartient au contact (contacts.avatar_url) : c'est la même
+// colonne que celle déjà utilisée par le e-commerce (photo Google/Facebook). Un compte
+// créé en local (mot de passe, ou via « Ajouter un Maalem ») n'a jamais de photo sociale
+// à reprendre ; cet endpoint permet à l'équipe d'en fournir une manuellement, à tout
+// moment (pas de restriction de statut : ce n'est pas une pièce du dossier KAN-7/8).
+adminRouter.post('/:id/avatar', receiveAvatar, async (req, res, next) => {
+  const profileId = parseId(req.params.id);
+  if (!profileId) return res.status(400).json({ message: 'Identifiant invalide' });
+  const validation = validateMemoryFile(req.file, ['jpeg', 'png', 'webp']);
+  if (!validation.valid) return res.status(400).json({ message: validation.error });
+
+  let savedFile = null;
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, contact_id FROM maalem_profiles WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [profileId]
+    );
+    const profile = rows[0];
+    if (!profile) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Profil Maalem introuvable' });
+    }
+    const [contactRows] = await connection.query(
+      `SELECT avatar_url FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [profile.contact_id]
+    );
+    if (!contactRows[0]) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Contact introuvable' });
+    }
+    const previousAvatarUrl = contactRows[0].avatar_url;
+
+    savedFile = await saveAvatarFile(profile.contact_id, req.file, validation.kind);
+    await connection.beginTransaction();
+    await connection.query(
+      `UPDATE contacts SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [savedFile.publicUrl, profile.contact_id]
+    );
+    await connection.commit();
+
+    // Ne supprime que les anciens avatars gérés par ce même endpoint (préfixe /uploads/maalem_avatars/) :
+    // une photo importée par login social (Google/Facebook) est hébergée ailleurs et ne doit pas être touchée.
+    if (previousAvatarUrl && previousAvatarUrl.startsWith('/uploads/maalem_avatars/')) {
+      await fs.unlink(path.join(publicAvatarsRoot, path.basename(previousAvatarUrl))).catch(() => {});
+    }
+
+    return res.status(201).json({ avatar_url: savedFile.publicUrl });
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    if (savedFile?.absolutePath) await fs.unlink(savedFile.absolutePath).catch(() => {});
+    return next(error);
+  } finally {
+    connection.release();
+  }
+});
+
 adminRouter.post('/:id/cv', receiveCv, async (req, res, next) => {
   const profileId = parseId(req.params.id);
   if (!profileId) return res.status(400).json({ message: 'Identifiant invalide' });
@@ -1075,6 +1167,7 @@ adminRouter.get('/', async (req, res, next) => {
               c.telephone AS contact_telephone,
               c.type_compte AS contact_type_compte,
               c.shipping_city AS contact_shipping_city,
+              c.avatar_url AS contact_avatar_url,
               mc.nom AS category_nom,
               mc.nom_ar AS category_nom_ar,
               mc.is_active AS category_is_active
@@ -1116,6 +1209,7 @@ adminRouter.get('/:id', async (req, res, next) => {
               c.type_compte AS contact_type_compte,
               c.adresse AS contact_adresse,
               c.shipping_city AS contact_shipping_city,
+              c.avatar_url AS contact_avatar_url,
               mc.nom AS category_nom,
               mc.nom_ar AS category_nom_ar,
               mc.is_active AS category_is_active,
@@ -1180,6 +1274,65 @@ adminRouter.post('/:id/notes', async (req, res, next) => {
     return res.status(201).json({
       note: history.find((item) => item.event_type === 'INTERNAL_NOTE'),
     });
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    return next(error);
+  } finally {
+    connection.release();
+  }
+});
+
+// Permet au Back-office de corriger le dossier professionnel (compétences, ville,
+// présentation, etc.) sans passer par le candidat — utile pour compléter un dossier
+// TEAM_CREATED ou fixer une erreur de saisie avant révision. Même validation que la
+// saisie candidat ; verrouillé une fois le dossier validé/suspendu (cohérence avec
+// canAdminChangeMaalemCategory).
+adminRouter.patch('/:id/professional-data', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
+  const professionalData = validateMaalemProfessionalData(req.body?.professional_data);
+  if (!professionalData.valid) return res.status(400).json({ message: professionalData.error });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, contact_id, status
+       FROM maalem_profiles
+       WHERE id = ? AND deleted_at IS NULL
+       LIMIT 1 FOR UPDATE`,
+      [id]
+    );
+    const profile = rows[0];
+    if (!profile) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Profil Maalem introuvable' });
+    }
+    if (!canAdminChangeMaalemCategory(profile.status)) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Le dossier professionnel ne peut plus être modifié dans ce statut' });
+    }
+    const actor = await loadBackofficeActor(connection, req.user.id);
+    if (!actor) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Utilisateur Back-office introuvable' });
+    }
+    await connection.query(
+      `UPDATE maalem_profiles
+       SET professional_data = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND deleted_at IS NULL`,
+      [JSON.stringify(professionalData.data), profile.id]
+    );
+    await insertMaalemHistory(connection, {
+      profileId: profile.id,
+      eventType: 'INTERNAL_NOTE',
+      note: 'Dossier professionnel modifié par le Back-office',
+      actorType: 'BACKOFFICE',
+      actorEmployeeId: actor.id,
+      actorName: actor.name,
+    });
+    await connection.commit();
+    return res.json({ profile: await findMaalemProfileByContactId(pool, profile.contact_id) });
   } catch (error) {
     await connection.rollback().catch(() => {});
     return next(error);
@@ -1287,6 +1440,85 @@ adminRouter.get('/:id/documents/:documentId/download', async (req, res, next) =>
     return res.download(absolutePath, document.original_name);
   } catch (error) {
     return next(error);
+  }
+});
+
+// Soumet au nom du candidat un dossier resté en brouillon (notamment les dossiers
+// TEAM_CREATED : l'artisan n'a pas forcément de compte de connexion e-commerce pour
+// cliquer lui-même « Soumettre »). Réutilise les mêmes règles de validation que la
+// soumission candidat (selfRouter POST /me/submit) : catégorie active, dossier complet,
+// téléphone renseigné. Ne fait rien d'autre — pas de contournement de ces contrôles.
+adminRouter.post('/:id/submit', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, contact_id, category_id, status, professional_data
+       FROM maalem_profiles
+       WHERE id = ? AND deleted_at IS NULL
+       LIMIT 1
+       FOR UPDATE`,
+      [id]
+    );
+    const profile = rows[0];
+    if (!profile) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Profil Maalem introuvable' });
+    }
+    if (!canEditMaalemDraft(profile.status)) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Ce profil ne peut pas être soumis dans son statut actuel' });
+    }
+
+    const [contactRows] = await connection.query(
+      `SELECT telephone FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [profile.contact_id]
+    );
+    const contactPhone = contactRows[0]?.telephone || null;
+
+    const category = profile.category_id == null
+      ? null
+      : await loadActiveCategory(connection, profile.category_id);
+    const validation = validateMaalemSubmission(profile, category, contactPhone);
+    if (!validation.valid) {
+      await connection.rollback();
+      return res.status(400).json({ message: validation.error });
+    }
+
+    const actor = await loadBackofficeActor(connection, req.user.id);
+    if (!actor) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Utilisateur Back-office introuvable' });
+    }
+
+    await connection.query(
+      `UPDATE maalem_profiles
+       SET status = 'submitted', submitted_at = CURRENT_TIMESTAMP,
+           status_reason = NULL, reviewed_at = NULL, reviewed_by = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND deleted_at IS NULL`,
+      [profile.id]
+    );
+    await insertMaalemHistory(connection, {
+      profileId: profile.id,
+      eventType: 'STATUS_CHANGED',
+      oldStatus: profile.status,
+      newStatus: 'submitted',
+      note: 'Soumis par le Back-office pour le compte du candidat',
+      actorType: 'BACKOFFICE',
+      actorEmployeeId: actor.id,
+      actorName: actor.name,
+    });
+    await connection.commit();
+    return res.json({ profile: await findMaalemProfileByContactId(pool, profile.contact_id) });
+  } catch (error) {
+    await connection.rollback();
+    return next(error);
+  } finally {
+    connection.release();
   }
 });
 

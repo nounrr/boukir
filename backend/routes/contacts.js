@@ -1,4 +1,5 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
 import pool from '../db/pool.js';
 import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
 import { parseReminderDays } from '../utils/contactReminder.js';
@@ -2119,11 +2120,17 @@ router.post('/', async (req, res) => {
     const effectiveArtisanApprouvePar = isArtisan ? (created_by || null) : (artisan_approuve_par ?? null);
     const effectiveArtisanApprouveLe = isArtisan ? new Date() : (artisan_approuve_le ?? null);
 
+    // Le mot de passe saisi côté Back-office doit être haché comme celui de
+    // l'inscription e-commerce (users.js) : la connexion compare avec bcrypt.compare,
+    // un mot de passe stocké en clair échoue toujours à la connexion.
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    const effectiveAuthProvider = hashedPassword ? 'local' : (auth_provider ?? 'none');
+
     const [result] = await pool.execute(
-      `INSERT INTO contacts 
+      `INSERT INTO contacts
        (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, montant_garantie, numero_garantie, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, bloque, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0), (bloque ? 1 : 0)]
+      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, hashedPassword, adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), effectiveAuthProvider, (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0), (bloque ? 1 : 0)]
     );
 
     // Optional: persist solde eligibility if column exists.
@@ -2259,7 +2266,16 @@ router.put('/:id', async (req, res) => {
     }
     if (telephone !== undefined) { updates.push('telephone = ?'); params.push(normalizeEmptyToNull(telephone)); }
     if (email !== undefined) { updates.push('email = ?'); params.push(normalizeEmptyToNull(email)); }
-    if (password !== undefined) { updates.push('password = ?'); params.push(password); }
+    if (password) {
+      // Même règle qu'à la création : la connexion e-commerce compare avec
+      // bcrypt.compare, un mot de passe stocké en clair échoue toujours.
+      updates.push('password = ?');
+      params.push(await bcrypt.hash(password, 10));
+      if (auth_provider === undefined) {
+        updates.push('auth_provider = ?');
+        params.push('local');
+      }
+    }
     if (adresse !== undefined) { updates.push('adresse = ?'); params.push(normalizeEmptyToNull(adresse)); }
     if (rib !== undefined) { updates.push('rib = ?'); params.push(normalizeEmptyToNull(rib)); }
     if (ice !== undefined) { updates.push('ice = ?'); params.push(normalizeEmptyToNull(ice)); }

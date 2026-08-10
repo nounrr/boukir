@@ -153,11 +153,22 @@ test('normalise le profil sans transformer le rôle e-commerce', () => {
     contact_email: 'artisan@example.test',
     contact_telephone: null,
     contact_type_compte: 'Artisan/Promoteur',
+    contact_avatar_url: '/uploads/maalem_avatars/42-abc.webp',
   });
   assert.equal(profile.user.type_compte, 'Artisan/Promoteur');
   assert.equal(profile.status, 'suspended');
   assert.equal(profile.category.is_active, false);
   assert.deepEqual(profile.professional_data, { experience: 5 });
+  assert.equal(profile.user.avatar_url, '/uploads/maalem_avatars/42-abc.webp');
+});
+
+test('normalise le profil sans avatar : avatar_url reste null plutôt qu’undefined', () => {
+  const profile = normalizeMaalemProfileRow({
+    id: 8, contact_id: 42, category_id: null, status: 'draft', professional_data: null,
+    contact_nom_complet: 'Artisan Exemple', contact_email: null, contact_telephone: null,
+    contact_type_compte: 'Artisan/Promoteur',
+  });
+  assert.equal(profile.user.avatar_url, null);
 });
 
 test('les remises restent pilotées par le type Artisan existant, pas par un rôle Maalem', async () => {
