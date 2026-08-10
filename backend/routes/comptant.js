@@ -4,8 +4,9 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { syncBonItemRemises } from '../utils/syncBonItemRemises.js';
-import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { applyStockDeltas, buildStockDeltaMaps, decrementSnapshotQuantities, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
+import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
 import {
   BonAuthorizationError,
   bonAuthorizationErrorPayload,
@@ -53,10 +54,6 @@ async function ensureComptantPaymentsTable() {
   }
 }
 
-ensureComptantPaymentsTable().catch((error) => {
-  console.error('ensureComptantPaymentsTable:', error);
-});
-
 async function ensureBonsComptantMontantIgnorerColumn() {
   try {
     const [rows] = await pool.query("SHOW COLUMNS FROM bons_comptant LIKE 'montant_ignorer'");
@@ -69,8 +66,15 @@ async function ensureBonsComptantMontantIgnorerColumn() {
   }
 }
 
-ensureBonsComptantMontantIgnorerColumn().catch((error) => {
-  console.error('ensureBonsComptantMontantIgnorerColumn init:', error);
+// Initialisé une seule fois au démarrage. Les anciens appels exécutaient
+// CREATE TABLE + SHOW COLUMNS sur chaque requête, ce qui est particulièrement
+// coûteux lorsque MySQL est distant en production.
+const comptantSchemaReady = Promise.all([
+  ensureComptantPaymentsTable(),
+  ensureBonsComptantMontantIgnorerColumn(),
+]);
+comptantSchemaReady.catch((error) => {
+  console.error('Initialisation schéma comptant:', error);
 });
 
 const normalizeSqlDateTime = (value) => {
@@ -514,7 +518,7 @@ router.get('/:id', async (req, res) => {
    ========================= */
 router.get('/:id/paiements', verifyToken, async (req, res) => {
   try {
-    await ensureComptantPaymentsTable();
+    await comptantSchemaReady;
     const bonId = Number(req.params.id);
     if (!Number.isFinite(bonId) || bonId <= 0) {
       return res.status(400).json({ message: 'Bon comptant invalide' });
@@ -540,7 +544,7 @@ router.get('/:id/paiements', verifyToken, async (req, res) => {
 router.post('/:id/paiements', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    await ensureComptantPaymentsTable();
+    await comptantSchemaReady;
     await connection.beginTransaction();
 
     const bonId = Number(req.params.id);
@@ -627,7 +631,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
 router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    await ensureComptantPaymentsTable();
+    await comptantSchemaReady;
     await connection.beginTransaction();
 
     const bonId = Number(req.params.id);
@@ -740,7 +744,7 @@ router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
 router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    await ensureComptantPaymentsTable();
+    await comptantSchemaReady;
     await connection.beginTransaction();
 
     const bonId = Number(req.params.id);
@@ -800,9 +804,8 @@ router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
 router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
+    await comptantSchemaReady;
     await connection.beginTransaction();
-    await ensureBonsComptantMontantIgnorerColumn();
-    await ensureComptantPaymentsTable();
 
   const {
       date_creation,
@@ -869,6 +872,11 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: resolved.error });
     }
+    const itemValidationError = await validateBonItems(connection, items);
+    if (itemValidationError) {
+      await connection.rollback();
+      return res.status(400).json(itemValidationError);
+    }
 
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
@@ -923,63 +931,35 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.execute('UPDATE bons_comptant SET client_nom = ? WHERE id = ?', [effectiveClientNom, comptantId]);
     }
 
-    if (Array.isArray(livraisons) && livraisons.length) {
-      for (const l of livraisons) {
-        const vehiculeId2 = Number(l?.vehicule_id);
-        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
-        if (!vehiculeId2) continue;
-        await connection.execute(
-          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Comptant', ?, ?, ?)`,
-          [comptantId, vehiculeId2, userId2]
-        );
-      }
-    }
+    await insertBonLivraisons(connection, 'Comptant', comptantId, livraisons);
 
     const remiseExterne = Number(resolved.remise_is_client) === 0
       && Number.isFinite(Number(resolved.remise_id))
       && Number(resolved.remise_id) > 0;
     let montantTotalForPayments = Number(montant_total || 0);
 
-    for (const it of items) {
-      const {
-        product_id,
-        quantite,
-        prix_unitaire,
-        variant_id,
-        unit_id
-      } = it || {};
-      const remise_pourcentage = remiseExterne ? 0 : (it?.remise_pourcentage ?? 0);
-      const remise_montant = remiseExterne ? 0 : (it?.remise_montant ?? 0);
-      const total = remiseExterne
-        ? Number(quantite || 0) * Number(prix_unitaire || 0)
-        : it?.total;
-
-      if (!product_id || quantite == null || prix_unitaire == null || total == null) {
-        await connection.rollback();
-        return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
-      }
-
-      const [productRows] = await connection.execute(
-        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
-        [product_id]
-      );
-      const p = Array.isArray(productRows) ? productRows[0] : null;
-      if (!p) {
-        await connection.rollback();
-        return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
-      }
-      const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
-      if (requiresVariant && !variant_id) {
-        await connection.rollback();
-        return res.status(400).json({ message: `Variante obligatoire pour le produit (id=${product_id})` });
-      }
-
-      await connection.execute(`
+    if (items.length) {
+      const itemValues = items.map((it) => [
+        comptantId,
+        it.product_id,
+        it.quantite,
+        it.prix_unitaire,
+        remiseExterne ? 0 : (it.remise_pourcentage ?? 0),
+        remiseExterne ? 0 : (it.remise_montant ?? 0),
+        remiseExterne
+          ? Number(it.quantite || 0) * Number(it.prix_unitaire || 0)
+          : it.total,
+        it.variant_id || null,
+        it.unit_id || null,
+        it.product_snapshot_id || null,
+        it.is_indisponible ? 1 : 0,
+      ]);
+      await connection.query(`
         INSERT INTO comptant_items (
           bon_comptant_id, product_id, quantite, prix_unitaire,
           remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
+        ) VALUES ?
+      `, [itemValues]);
     }
 
     if (remiseExterne) {
@@ -1020,6 +1000,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     if (initialNonPayePayments.length) {
       await assertComptantPaymentsWithinTotal(connection, null, montantTotalForPayments, initialNonPayePayments);
+      const paymentValues = [];
       for (const paiement of initialNonPayePayments) {
         const montantPaiement = Number(paiement?.montant || 0);
         const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
@@ -1028,13 +1009,14 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
           await connection.rollback();
           return res.status(400).json({ message: 'Paiement initial invalide' });
         }
-        await connection.execute(
-          `INSERT INTO paiement_boncomptant_nonpaye
-            (bon_comptant_id, montant, date_paiement, note, statut, created_by)
-           VALUES (?, ?, ?, ?, 'Validé', ?)`,
-          [comptantId, montantPaiement, datePaiement, notePaiement, created_by ?? null]
-        );
+        paymentValues.push([comptantId, montantPaiement, datePaiement, notePaiement, 'Validé', created_by ?? null]);
       }
+      await connection.query(
+        `INSERT INTO paiement_boncomptant_nonpaye
+          (bon_comptant_id, montant, date_paiement, note, statut, created_by)
+         VALUES ?`,
+        [paymentValues]
+      );
     }
 
     if (nonPayeRequested) {
@@ -1048,15 +1030,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     if (st !== 'Annulé') {
       const deltas = buildStockDeltaMaps(items, -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
-      // Deduct snapshot quantities
-      for (const item of items) {
-        if (item.product_snapshot_id) {
-          await connection.execute(
-            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
-            [Number(item.quantite) || 0, item.product_snapshot_id]
-          );
-        }
-      }
+      await decrementSnapshotQuantities(connection, items);
     }
 
   await connection.commit();
@@ -1082,9 +1056,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 router.put('/:id', async (req, res) => {
   const connection = await pool.getConnection();
   try {
+    await comptantSchemaReady;
     await connection.beginTransaction();
-    await ensureBonsComptantMontantIgnorerColumn();
-    await ensureComptantPaymentsTable();
 
     const { id } = req.params;
     const userRole = req.user?.role;
@@ -1586,7 +1559,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const enteringCancelled = !oldIsCancelled && newIsCancelled;
     const leavingCancelled = oldIsCancelled && !newIsCancelled;
     if (enteringCancelled || leavingCancelled) {
-      await ensureComptantPaymentsTable();
+      await comptantSchemaReady;
       await connection.execute(
         'UPDATE paiement_boncomptant_nonpaye SET statut = ?, updated_by = ?, updated_at = NOW() WHERE bon_comptant_id = ?',
         [enteringCancelled ? 'Annulé' : 'Validé', req.user?.id ?? null, id]

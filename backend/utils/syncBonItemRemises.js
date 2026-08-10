@@ -33,17 +33,21 @@ export async function syncBonItemRemises({ db, bonId, bonType, remiseIsClient, r
   if (!Number.isFinite(targetClientRemiseId) || targetClientRemiseId <= 0) return;
 
   const list = Array.isArray(items) ? items : [];
+  const values = [];
   for (const it of list) {
     const productId = Number(it?.product_id);
     const qte = Number(it?.quantite ?? 0) || 0;
     if (!Number.isFinite(productId) || productId <= 0 || qte <= 0) continue;
     const prixRemise = computePerUnitRemise(it);
     if (!prixRemise || prixRemise === 0) continue;
-
-    await db.execute(
-      `INSERT INTO item_remises (client_remise_id, product_id, bon_id, bon_type, is_achat, qte, prix_remise, statut)
-       VALUES (?, ?, ?, ?, 0, ?, ?, 'En attente')`,
-      [targetClientRemiseId, productId, Number(bonId), String(bonType), qte, prixRemise]
-    );
+    values.push([targetClientRemiseId, productId, Number(bonId), String(bonType), 0, qte, prixRemise, 'En attente']);
   }
+
+  if (!values.length) return;
+  await db.query(
+    `INSERT INTO item_remises
+      (client_remise_id, product_id, bon_id, bon_type, is_achat, qte, prix_remise, statut)
+     VALUES ?`,
+    [values]
+  );
 }

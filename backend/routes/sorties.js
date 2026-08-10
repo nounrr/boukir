@@ -4,8 +4,9 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { syncBonItemRemises } from '../utils/syncBonItemRemises.js';
-import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { applyStockDeltas, buildStockDeltaMaps, decrementSnapshotQuantities, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
+import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
 import {
   BonAuthorizationError,
   bonAuthorizationErrorPayload,
@@ -336,6 +337,11 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: resolved.error });
     }
+    const itemValidationError = await validateBonItems(connection, items);
+    if (itemValidationError) {
+      await connection.rollback();
+      return res.status(400).json(itemValidationError);
+    }
 
     const [sortieResult] = await connection.execute(`
       INSERT INTO bons_sortie (
@@ -370,17 +376,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     });
 
     // Optional livraisons insert (multi vehicules + chauffeur)
-    if (Array.isArray(livraisons) && livraisons.length) {
-      for (const l of livraisons) {
-        const vehiculeId2 = Number(l?.vehicule_id);
-        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
-        if (!vehiculeId2) continue;
-        await connection.execute(
-          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Sortie', ?, ?, ?)`,
-          [sortieId, vehiculeId2, userId2]
-        );
-      }
-    }
+    await insertBonLivraisons(connection, 'Sortie', sortieId, livraisons);
 
     // Si la remise est destinée à un autre client-remise (remise_is_client = 0 + remise_id),
     // on ne persiste PAS la remise sur sortie_items: elle sera stockée uniquement dans item_remises.
@@ -388,47 +384,28 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       && Number.isFinite(Number(resolved.remise_id))
       && Number(resolved.remise_id) > 0;
 
-    // Items (avec validation)
-    for (const it of items) {
-      const {
-        product_id,
-        quantite,
-        prix_unitaire,
-        variant_id,
-        unit_id
-      } = it;
-      const remise_pourcentage = remiseExterne ? 0 : (it.remise_pourcentage ?? 0);
-      const remise_montant = remiseExterne ? 0 : (it.remise_montant ?? 0);
-      const total = remiseExterne
-        ? Number(quantite || 0) * Number(prix_unitaire || 0)
-        : it.total;
-
-      if (!product_id || quantite == null || prix_unitaire == null || total == null) {
-        await connection.rollback();
-        return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
-      }
-
-      const [productRows] = await connection.execute(
-        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
-        [product_id]
-      );
-      const p = Array.isArray(productRows) ? productRows[0] : null;
-      if (!p) {
-        await connection.rollback();
-        return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
-      }
-      const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
-      if (requiresVariant && !variant_id) {
-        await connection.rollback();
-        return res.status(400).json({ message: `Variante obligatoire pour le produit (id=${product_id})` });
-      }
-
-      await connection.execute(`
+    if (items.length) {
+      const itemValues = items.map((it) => [
+        sortieId,
+        it.product_id,
+        it.quantite,
+        it.prix_unitaire,
+        remiseExterne ? 0 : (it.remise_pourcentage ?? 0),
+        remiseExterne ? 0 : (it.remise_montant ?? 0),
+        remiseExterne
+          ? Number(it.quantite || 0) * Number(it.prix_unitaire || 0)
+          : it.total,
+        it.variant_id || null,
+        it.unit_id || null,
+        it.product_snapshot_id || null,
+        it.is_indisponible ? 1 : 0,
+      ]);
+      await connection.query(`
         INSERT INTO sortie_items (
           bon_sortie_id, product_id, quantite, prix_unitaire,
           remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [sortieId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
+        ) VALUES ?
+      `, [itemValues]);
     }
 
     if (remiseExterne) {
@@ -455,15 +432,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     if (st !== 'Annulé') {
       const deltas = buildStockDeltaMaps(items, -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
-      // Deduct snapshot quantities
-      for (const item of items) {
-        if (item.product_snapshot_id) {
-          await connection.execute(
-            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
-            [Number(item.quantite) || 0, item.product_snapshot_id]
-          );
-        }
-      }
+      await decrementSnapshotQuantities(connection, items);
     }
 
   await connection.commit();

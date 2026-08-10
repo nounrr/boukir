@@ -18,7 +18,16 @@ const parseCsv = (value) => String(value || '').split(',').map((v) => v.trim()).
 const SEARCH_COLLATION = 'utf8mb4_unicode_ci';
 const searchText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SEARCH_COLLATION}`;
 
-const averageSnapshotCoutRevientExpr = (itemAlias, snapshotAlias = 'ps', productAlias = 'p', variantAlias = 'pv') => `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE COALESCE((
+const snapshotCoutRevientFallbackExpr = (snapshotAlias = 'ps', productAlias = 'p', variantAlias = 'pv') =>
+  `${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0`;
+
+const averageSnapshotCoutRevientExpr = (
+  itemAlias,
+  snapshotAlias = 'ps',
+  productAlias = 'p',
+  variantAlias = 'pv',
+  includeHistoricalAverage = true
+) => `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE COALESCE(${includeHistoricalAverage ? `(
   SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
   FROM product_snapshot ps_avg
   JOIN commande_items ci_avg ON ci_avg.product_snapshot_id = ps_avg.id
@@ -28,7 +37,7 @@ const averageSnapshotCoutRevientExpr = (itemAlias, snapshotAlias = 'ps', product
     AND ci_avg.quantite IS NOT NULL
     AND ci_avg.quantite <> 0
     AND ps_avg.cout_revient IS NOT NULL
-), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0) END)`;
+)` : ''}${includeHistoricalAverage ? ', ' : ''}${snapshotCoutRevientFallbackExpr(snapshotAlias, productAlias, variantAlias)}) END)`;
 
 const bonPagedConfigs = {
   Commande: {
@@ -46,7 +55,7 @@ const bonPagedConfigs = {
     itemFk: 'bon_commande_id',
     itemAlias: 'i',
     itemSnapshot: true,
-    itemPriceJsonFields: `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${'i'}.prix_unitaire END, 'cout_revient', ${averageSnapshotCoutRevientExpr('i')}, 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
+    itemPriceJsonFields: ({ includeHistoricalAverage = true } = {}) => `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${'i'}.prix_unitaire END, 'cout_revient', ${averageSnapshotCoutRevientExpr('i', 'ps', 'p', 'pv', includeHistoricalAverage)}, 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
     livraisonType: 'Commande',
   },
   Sortie: {
@@ -229,17 +238,21 @@ const bonPagedConfigs = {
   },
 };
 
-const buildItemsSql = (cfg) => {
+const buildItemsSql = (cfg, { includeHistoricalAverage = true } = {}) => {
   const i = cfg.itemAlias;
   const snapshotJoin = cfg.itemSnapshot ? `LEFT JOIN product_snapshot ps ON ps.id = ${i}.product_snapshot_id` : '';
   const unitJoin = cfg.itemHasVariantUnit === false ? '' : `LEFT JOIN product_units pu ON pu.id = ${i}.unit_id`;
   const variantJoin = cfg.itemHasVariantUnit === false ? '' : `LEFT JOIN product_variants pv ON pv.id = ${i}.variant_id`;
-  const priceFields = cfg.itemPriceJsonFields
-    ? cfg.itemPriceJsonFields.replaceAll("'i'.", `${i}.`)
+  const configuredPriceFields = typeof cfg.itemPriceJsonFields === 'function'
+    ? cfg.itemPriceJsonFields({ includeHistoricalAverage })
+    : cfg.itemPriceJsonFields;
+  const priceFields = configuredPriceFields
+    ? configuredPriceFields.replaceAll("'i'.", `${i}.`)
     : cfg.itemSnapshot
-    ? `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(ps.prix_achat, p.prix_achat) END, 'cout_revient', ${averageSnapshotCoutRevientExpr(i)}, 'product_snapshot_id', ${i}.product_snapshot_id,`
+    ? `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(ps.prix_achat, p.prix_achat) END, 'cout_revient', ${averageSnapshotCoutRevientExpr(i, 'ps', 'p', 'pv', includeHistoricalAverage)}, 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
   const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'base_unit', p.base_unit, 'unite', COALESCE(NULLIF(pu.unit_name, ''), p.base_unit), 'unit_name', COALESCE(NULLIF(pu.unit_name, ''), p.base_unit), 'conversion_factor', COALESCE(pu.conversion_factor, 1),`;
+  const costVariantField = cfg.itemSnapshot ? `'cost_variant_id', COALESCE(${i}.variant_id, ps.variant_id),` : '';
   const originalSalePriceFields = cfg.itemHasVariantUnit === false ? '' : `'prix_original', CASE
         WHEN COALESCE(p.est_service, 0) = 1 THEN 0
         WHEN ${i}.unit_id IS NOT NULL THEN COALESCE(
@@ -263,6 +276,7 @@ const buildItemsSql = (cfg) => {
       'product_is_deleted', COALESCE(p.is_deleted, 0),
       'est_service', p.est_service,
       'rappel_non_calcule', p.rappel_non_calcule,
+      ${costVariantField}
       ${variantUnitFields}
       ${originalSalePriceFields}
       'designation', ${designationExpr},
@@ -296,6 +310,51 @@ const parseJsonArray = (value) => {
   }
   return [];
 };
+
+const snapshotCostKey = (productId, variantId) => `${Number(productId)}:${variantId == null ? 0 : Number(variantId)}`;
+
+const usesHistoricalSnapshotCost = (cfg) => Boolean(cfg?.itemSnapshot && cfg?.type !== 'Charge');
+
+async function loadAverageSnapshotCosts(items) {
+  const productIds = [...new Set(
+    (items || [])
+      .filter((item) => Number(item?.est_service || 0) !== 1)
+      .map((item) => Number(item?.product_id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+  if (!productIds.length) return new Map();
+
+  const [rows] = await pool.query(
+    `SELECT
+       ps.product_id,
+       ps.variant_id,
+       SUM(COALESCE(ps.cout_revient, 0) * ci.quantite) / NULLIF(SUM(ci.quantite), 0) AS cout_revient
+     FROM product_snapshot ps
+     JOIN commande_items ci ON ci.product_snapshot_id = ps.id
+     WHERE ps.product_id IN (?)
+       AND ci.quantite IS NOT NULL
+       AND ci.quantite <> 0
+       AND ps.cout_revient IS NOT NULL
+     GROUP BY ps.product_id, ps.variant_id`,
+    [productIds]
+  );
+
+  return new Map(rows.map((row) => [
+    snapshotCostKey(row.product_id, row.variant_id),
+    Number(row.cout_revient),
+  ]));
+}
+
+function applyAverageSnapshotCosts(items, averageCosts) {
+  for (const item of items || []) {
+    if (Number(item?.est_service || 0) !== 1) {
+      const key = snapshotCostKey(item?.product_id, item?.cost_variant_id ?? item?.variant_id);
+      const average = averageCosts.get(key);
+      if (Number.isFinite(average)) item.cout_revient = average;
+    }
+    delete item.cost_variant_id;
+  }
+}
 
 async function getBonRowsForContext(type) {
   if (type === 'Ecommerce') return getEcommerceRowsForContext();
@@ -649,6 +708,165 @@ router.get('/vehicule-stats/:vehiculeId', async (req, res) => {
   }
 });
 
+const normalizeHistoryStatus = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toLowerCase();
+
+const historyStatusClass = (status) => {
+  const normalized = normalizeHistoryStatus(status);
+  if (normalized.startsWith('annul') || normalized === 'avoir') return 'excluded';
+  if (normalized === 'valide' || normalized === 'livre') return 'confirmed';
+  if (normalized === 'en attente') return 'pending';
+  return 'other';
+};
+
+function compactPriceHistoryRows(rows, maxPerItemAndStatus = 1, separateStatusClasses = true) {
+  const counts = new Map();
+  const compact = [];
+
+  for (const row of rows || []) {
+    const statusClass = historyStatusClass(row.statut);
+    if (statusClass === 'excluded') continue;
+    const key = [
+      row.product_id,
+      row.variant_id ?? 0,
+      row.unit_id ?? 0,
+      separateStatusClasses ? statusClass : 'all',
+    ].join(':');
+    const count = counts.get(key) || 0;
+    if (count >= maxPerItemAndStatus) continue;
+    counts.set(key, count + 1);
+
+    compact.push({
+      id: Number(row.id),
+      date_creation: row.date_creation,
+      statut: row.statut,
+      client_id: row.client_id ?? null,
+      fournisseur_id: row.fournisseur_id ?? null,
+      vendre_au_fournisseur: Number(row.vendre_au_fournisseur || 0),
+      items: [{
+        product_id: Number(row.product_id),
+        variant_id: row.variant_id ?? null,
+        unit_id: row.unit_id ?? null,
+        quantite: Number(row.quantite || 0),
+        prix_unitaire: Number(row.prix_unitaire || 0),
+        prix_achat: Number(row.prix_achat ?? row.prix_unitaire ?? 0),
+      }],
+    });
+  }
+
+  return compact;
+}
+
+// Historique compact utilisé uniquement pour le préremplissage des derniers prix.
+// Il remplace le téléchargement de dizaines de milliers de bons complets dans le
+// formulaire de création.
+router.get('/price-history', async (req, res) => {
+  try {
+    const type = String(req.query.type || '');
+    const partyKind = String(req.query.partyKind || 'client') === 'supplier' ? 'supplier' : 'client';
+    const contactId = clampInt(req.query.contactId, 0, 0, 2147483647);
+    const result = { sorties: [], comptants: [], commandes: [], avoirsFournisseur: [] };
+
+    if (type === 'Comptant' || type === 'AvoirComptant') {
+      const [rows] = await pool.query(`
+        SELECT b.id, b.date_creation, b.statut, b.client_id,
+               NULL AS fournisseur_id, 0 AS vendre_au_fournisseur,
+               i.product_id, i.variant_id, i.unit_id, i.quantite,
+               i.prix_unitaire, NULL AS prix_achat
+        FROM bons_comptant b
+        JOIN comptant_items i ON i.bon_comptant_id = b.id
+        ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
+      `);
+      result.comptants = compactPriceHistoryRows(rows, 4, false);
+      return res.json(result);
+    }
+
+    if (contactId <= 0) return res.json(result);
+
+    if (type === 'Commande' || type === 'AvoirFournisseur') {
+      const queries = [
+        pool.query(`
+          SELECT b.id, b.date_creation, b.statut, NULL AS client_id,
+                 b.fournisseur_id, 0 AS vendre_au_fournisseur,
+                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.prix_unitaire, i.prix_unitaire AS prix_achat
+          FROM bons_commande b
+          JOIN commande_items i ON i.bon_commande_id = b.id
+          WHERE b.fournisseur_id = ?
+          ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
+        `, [contactId]),
+      ];
+      if (type === 'AvoirFournisseur') {
+        queries.push(pool.query(`
+          SELECT b.id, b.date_creation, b.statut, NULL AS client_id,
+                 b.fournisseur_id, 0 AS vendre_au_fournisseur,
+                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.prix_unitaire, i.prix_unitaire AS prix_achat
+          FROM avoirs_fournisseur b
+          JOIN avoir_fournisseur_items i ON i.avoir_fournisseur_id = b.id
+          WHERE b.fournisseur_id = ?
+          ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
+        `, [contactId]));
+      }
+      const responses = await Promise.all(queries);
+      result.commandes = compactPriceHistoryRows(responses[0][0]);
+      if (responses[1]) result.avoirsFournisseur = compactPriceHistoryRows(responses[1][0]);
+      return res.json(result);
+    }
+
+    if (type === 'Sortie' || type === 'Avoir') {
+      if (partyKind === 'supplier') {
+        const [rows] = await pool.query(`
+          SELECT b.id, b.date_creation, b.statut, b.client_id,
+                 b.fournisseur_id, b.vendre_au_fournisseur,
+                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.prix_unitaire, NULL AS prix_achat
+          FROM bons_sortie b
+          JOIN sortie_items i ON i.bon_sortie_id = b.id
+          WHERE b.fournisseur_id = ? AND b.vendre_au_fournisseur = 1
+          ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
+        `, [contactId]);
+        result.sorties = compactPriceHistoryRows(rows);
+        return res.json(result);
+      }
+
+      const [sortieResponse, comptantResponse] = await Promise.all([
+        pool.query(`
+          SELECT b.id, b.date_creation, b.statut, b.client_id,
+                 b.fournisseur_id, b.vendre_au_fournisseur,
+                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.prix_unitaire, NULL AS prix_achat
+          FROM bons_sortie b
+          JOIN sortie_items i ON i.bon_sortie_id = b.id
+          WHERE b.client_id = ? AND COALESCE(b.vendre_au_fournisseur, 0) = 0
+          ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
+        `, [contactId]),
+        pool.query(`
+          SELECT b.id, b.date_creation, b.statut, b.client_id,
+                 NULL AS fournisseur_id, 0 AS vendre_au_fournisseur,
+                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.prix_unitaire, NULL AS prix_achat
+          FROM bons_comptant b
+          JOIN comptant_items i ON i.bon_comptant_id = b.id
+          WHERE b.client_id = ?
+          ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
+        `, [contactId]),
+      ]);
+      result.sorties = compactPriceHistoryRows(sortieResponse[0]);
+      result.comptants = compactPriceHistoryRows(comptantResponse[0]);
+      return res.json(result);
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('GET /bons/price-history error:', error);
+    res.status(500).json({ message: 'Erreur historique des prix', error: error?.sqlMessage || error?.message, code: error?.code });
+  }
+});
+
 router.get('/paged/:type', async (req, res) => {
   try {
     const { type } = req.params;
@@ -752,12 +970,6 @@ router.get('/paged/:type', async (req, res) => {
     }
 
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
-    const [countRows] = await pool.query(
-      `SELECT COUNT(*) AS total FROM ${cfg.table} b ${cfg.joins} ${whereSql}`,
-      params
-    );
-    const total = Number(countRows?.[0]?.total || 0);
-
     const sortBy = String(req.query.sortBy || 'numero');
     const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const sortMap = {
@@ -768,41 +980,65 @@ router.get('/paged/:type', async (req, res) => {
     };
     const orderExpr = sortMap[sortBy] || sortMap.numero;
 
-    const [rows] = await pool.query(
-      `SELECT b.*, ${cfg.selectExtra}, ${buildItemsSql(cfg)}
-       FROM ${cfg.table} b
-       ${cfg.joins}
-       ${whereSql}
-       ORDER BY ${orderExpr} ${sortDir}, b.id ${sortDir}
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    );
+    // Le COUNT et la page sont indépendants. En production, les lancer en
+    // parallèle évite un aller-retour complet vers MySQL.
+    const [countResponse, rowsResponse] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS total FROM ${cfg.table} b ${cfg.joins} ${whereSql}`,
+        params
+      ),
+      pool.query(
+        `SELECT b.*, ${cfg.selectExtra}, ${buildItemsSql(cfg, { includeHistoricalAverage: false })}
+         FROM ${cfg.table} b
+         ${cfg.joins}
+         ${whereSql}
+         ORDER BY ${orderExpr} ${sortDir}, b.id ${sortDir}
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      ),
+    ]);
+    const countRows = countResponse[0];
+    const rows = rowsResponse[0];
+    const total = Number(countRows?.[0]?.total || 0);
 
-    let livraisonsByBonId = new Map();
-    if (cfg.livraisonType && rows.length) {
-      const ids = rows.map((row) => row.id);
-      const [livs] = await pool.query(
+    const parsedRows = rows.map((row) => ({
+      ...row,
+      items: parseJsonArray(row.items),
+    }));
+
+    const averageCostPromise = usesHistoricalSnapshotCost(cfg)
+      ? loadAverageSnapshotCosts(parsedRows.flatMap((row) => row.items))
+      : Promise.resolve(new Map());
+
+    const livraisonPromise = cfg.livraisonType && parsedRows.length
+      ? pool.query(
         `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
          FROM livraisons l
          LEFT JOIN vehicules v ON v.id = l.vehicule_id
          LEFT JOIN employees e ON e.id = l.user_id
          WHERE l.bon_type = ? AND l.bon_id IN (?)`,
-        [cfg.livraisonType, ids]
-      );
-      for (const liv of livs) {
+        [cfg.livraisonType, parsedRows.map((row) => row.id)]
+      )
+      : Promise.resolve([[]]);
+
+    const [averageCosts, livraisonResponse] = await Promise.all([averageCostPromise, livraisonPromise]);
+    const livraisonsByBonId = new Map();
+    for (const liv of livraisonResponse[0] || []) {
         const list = livraisonsByBonId.get(liv.bon_id) || [];
         list.push(liv);
         livraisonsByBonId.set(liv.bon_id, list);
-      }
     }
 
-    const data = rows.map((row) => ({
-      ...row,
-      type: cfg.type,
-      numero: row.numero || `${cfg.prefix}${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-      livraisons: livraisonsByBonId.get(row.id) || [],
-    }));
+    const data = parsedRows.map((row) => {
+      if (usesHistoricalSnapshotCost(cfg)) applyAverageSnapshotCosts(row.items, averageCosts);
+      else for (const item of row.items) delete item.cost_variant_id;
+      return {
+        ...row,
+        type: cfg.type,
+        numero: row.numero || `${cfg.prefix}${String(row.id).padStart(2, '0')}`,
+        livraisons: livraisonsByBonId.get(row.id) || [],
+      };
+    });
 
     res.json({
       data,

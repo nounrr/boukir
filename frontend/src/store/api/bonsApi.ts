@@ -50,6 +50,13 @@ type BonsContextResponse = {
   vehicules?: Bon[];
 };
 
+type BonPriceHistoryResponse = {
+  sorties: Bon[];
+  comptants: Bon[];
+  commandes: Bon[];
+  avoirsFournisseur: Bon[];
+};
+
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getBons: builder.query<Bon[], void>({
@@ -565,6 +572,23 @@ export const bonsApi = api.injectEndpoints({
       },
     }),
 
+    getBonPriceHistory: builder.query<
+      BonPriceHistoryResponse,
+      { type: AnyBonType; contactId?: number; partyKind?: 'client' | 'supplier' }
+    >({
+      query: ({ type, contactId, partyKind }) => ({
+        url: '/bons/price-history',
+        params: {
+          type,
+          ...(contactId ? { contactId } : {}),
+          ...(partyKind ? { partyKind } : {}),
+        },
+      }),
+      providesTags: (_result, _error, { type }) => [
+        { type: getBonTagType(type), id: 'LIST' },
+      ],
+    }),
+
     // Pour changer le statut d'un bon (Valider, Annuler, etc.)
   updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: AnyBonType; force_clamp_percentages?: boolean }>({
       query: ({ id, statut, type, force_clamp_percentages }) => {
@@ -812,6 +836,7 @@ export const {
   useGetBonsQuery,
   useGetBonsByTypeQuery,
   useGetBonsByTypePagedQuery,
+  useGetBonPriceHistoryQuery,
   useGetVehiculeBonsStatsQuery,
   useGetAllVehiculesBonsStatsQuery,
   useGetCaisseBonsContextQuery,

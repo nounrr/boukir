@@ -16,11 +16,10 @@ import {
 import { useCorrectBonProductPricesMutation, useGetProductsQuery, useGetProductsWithSnapshotsQuery, useRestoreProductMutation, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
-import { useGetSortiesQuery } from '../store/api/sortiesApi';
-import { useGetComptantPaymentsQuery, useGetComptantQuery, useUpdateComptantPaymentMutation } from '../store/api/comptantApi';
+import { useGetComptantPaymentsQuery, useUpdateComptantPaymentMutation } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery, useGetChargesQuery, useCreateContactMutation, useGetContactQuery } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
-import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
+import { useGetBonPriceHistoryQuery, useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import { useContactSoldeCumule } from '../hooks/useContactSoldeCumule';
@@ -1676,18 +1675,50 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   );
   const currentModalType = String((initialValues as any)?.type || currentTab || '');
   const comptantPaymentBonId = Number((initialValues as any)?.id || 0);
-  // Historiques "dernier prix" : chargés en création ET en édition (le dernier prix
-  // doit aussi s'afficher en modification). En édition heavyDataReady est déjà true.
-  const shouldFetchSortiesHistory = isOpen && (
-    heavyDataReady ||
-    ['Sortie', 'Avoir'].includes(currentModalType)
+  const initialHistoryContactId = Number(
+    ['Commande', 'AvoirFournisseur'].includes(currentModalType)
+      || defaultVendreAuFournisseur
+      || Boolean((initialValues as any)?.vendre_au_fournisseur)
+      ? (initialValues as any)?.fournisseur_id
+      : (initialValues as any)?.client_id
   );
-  const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined, { skip: !shouldFetchSortiesHistory });
-  const shouldFetchComptantHistory = isOpen && (
-    heavyDataReady ||
-    ['Comptant', 'AvoirComptant', 'Sortie', 'Avoir'].includes(currentModalType)
+  const [priceHistoryContactId, setPriceHistoryContactId] = useState<number | undefined>(() => (
+    Number.isInteger(initialHistoryContactId) && initialHistoryContactId > 0
+      ? initialHistoryContactId
+      : undefined
+  ));
+  useEffect(() => {
+    setPriceHistoryContactId(
+      Number.isInteger(initialHistoryContactId) && initialHistoryContactId > 0
+        ? initialHistoryContactId
+        : undefined
+    );
+  }, [initialHistoryContactId, isOpen]);
+  const priceHistoryPartyKind: 'client' | 'supplier' = (
+    ['Commande', 'AvoirFournisseur'].includes(currentModalType)
+    || defaultVendreAuFournisseur
+    || Boolean((initialValues as any)?.vendre_au_fournisseur)
+  ) ? 'supplier' : 'client';
+  const isGlobalComptantHistory = ['Comptant', 'AvoirComptant'].includes(currentModalType);
+  const supportsCompactPriceHistory = [
+    'Commande', 'Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirFournisseur',
+  ].includes(currentModalType);
+  const { data: compactPriceHistory } = useGetBonPriceHistoryQuery(
+    {
+      type: currentModalType as any,
+      contactId: priceHistoryContactId,
+      partyKind: priceHistoryPartyKind,
+    },
+    {
+      skip: !isOpen
+        || !supportsCompactPriceHistory
+        || (!isGlobalComptantHistory && !priceHistoryContactId),
+    }
   );
-  const { data: comptantHistory = [] } = useGetComptantQuery(undefined, { skip: !shouldFetchComptantHistory });
+  const sortiesHistory = compactPriceHistory?.sorties || [];
+  const comptantHistory = compactPriceHistory?.comptants || [];
+  const commandesHistory = compactPriceHistory?.commandes || [];
+  const avoirsFournisseurHistory = compactPriceHistory?.avoirsFournisseur || [];
   const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery(comptantPaymentBonId, {
     skip: !isEditMode || currentTab !== 'Comptant' || !comptantPaymentBonId,
   });
@@ -1709,13 +1740,6 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     formikRef.current?.setFieldValue('payer_partiellement', true, false);
     paymentHistoryModeInitializedForBonId.current = comptantPaymentBonId;
   }, [comptantPaymentBonId, comptantPaymentsHistory, currentTab, isOpen]);
-  const shouldFetchCommandesHistory = isOpen && (
-    currentModalType === 'Commande' ||
-    currentModalType === 'AvoirFournisseur'
-  );
-  const { data: commandesHistory = [] } = useGetBonsByTypeQuery('Commande', { skip: !shouldFetchCommandesHistory });
-  const shouldFetchAvoirsFournisseurHistory = isOpen && currentModalType === 'AvoirFournisseur';
-  const { data: avoirsFournisseurHistory = [] } = useGetBonsByTypeQuery('AvoirFournisseur', { skip: !shouldFetchAvoirsFournisseurHistory });
   const shouldFetchEcommerceOrders = isOpen && (currentTab === 'AvoirEcommerce' || String((initialValues as any)?.type || '') === 'AvoirEcommerce');
   const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce', { skip: !shouldFetchEcommerceOrders });
   // For cumulative balances
@@ -4916,6 +4940,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
                       if (isQtyOnlyEdit) return;
+                      const numericClientId = Number(clientId);
+                      setPriceHistoryContactId(
+                        Number.isInteger(numericClientId) && numericClientId > 0
+                          ? numericClientId
+                          : undefined
+                      );
                       const client = selectableClients.find((c: Contact) => c.id.toString() === clientId);
                       if (!client) {
                         setFieldValue('client_id', clientId);
@@ -5297,6 +5327,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     disabled={isQtyOnlyEdit}
                     onChange={(fournisseurId) => {
                       if (isQtyOnlyEdit) return;
+                      const numericFournisseurId = Number(fournisseurId);
+                      setPriceHistoryContactId(
+                        Number.isInteger(numericFournisseurId) && numericFournisseurId > 0
+                          ? numericFournisseurId
+                          : undefined
+                      );
                       setFieldValue('fournisseur_id', fournisseurId);
                       if (fournisseurId) {
                         const f = fournisseurs.find((x: Contact) => x.id.toString() === fournisseurId);
@@ -7816,6 +7852,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
           if (formikRef.current) {
             if (newContact.type === 'Client') {
+              setPriceHistoryContactId(Number(newContact.id));
               formikRef.current.setFieldValue('client_id', String(newContact.id));
               formikRef.current.setFieldValue('client_nom', newContact.nom_complet);
               formikRef.current.setFieldValue('client_adresse', newContact.adresse || '');
@@ -7826,6 +7863,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }, 50);
             } else if (newContact.type === 'Fournisseur') {
+              setPriceHistoryContactId(Number(newContact.id));
               formikRef.current.setFieldValue('fournisseur_id', String(newContact.id));
               formikRef.current.setFieldValue('fournisseur_nom', newContact.nom_complet);
               formikRef.current.setFieldValue('fournisseur_adresse', newContact.adresse || '');

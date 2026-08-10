@@ -3,6 +3,7 @@ import pool from '../db/pool.js';
 import { forbidRoles, verifyToken } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
 
 const router = express.Router();
 
@@ -247,6 +248,11 @@ router.post('/', verifyToken, async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
+    const itemValidationError = await validateBonItems(connection, normalizedItems);
+    if (itemValidationError) {
+      await connection.rollback();
+      return res.status(400).json(itemValidationError);
+    }
 
     // 👇 convertir undefined -> NULL
     const fId = fournisseur_id ?? null;
@@ -264,70 +270,31 @@ router.post('/', verifyToken, async (req, res) => {
     const commandeId = commandeResult.insertId;
 
     // Optional livraisons
-    if (Array.isArray(livraisons) && livraisons.length) {
-      for (const l of livraisons) {
-        const vehiculeId2 = Number(l?.vehicule_id);
-        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
-        if (!vehiculeId2) continue;
-        await connection.execute(
-          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Commande', ?, ?, ?)`,
-          [commandeId, vehiculeId2, userId2]
-        );
-      }
-    }
+    await insertBonLivraisons(connection, 'Commande', commandeId, livraisons);
 
     // Items (facultatifs)
-    for (const item of normalizedItems) {
-      const {
-        product_id,
-        quantite,
-        prix_unitaire, // pour Commande = prix d'achat saisi
-        remise_pourcentage = 0,
-        remise_montant = 0,
-        total,
-        variant_id,
-        unit_id,
-        unite_special = 0,
-        nbr_barre = null,
-        facteur_barre = null
-      } = item || {};
-
-      // Validation item
-      if (!product_id || quantite == null || prix_unitaire == null || total == null) {
-        await connection.rollback();
-        return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
-      }
-
-      const [productRows] = await connection.execute(
-        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
-        [product_id]
-      );
-      const p = Array.isArray(productRows) ? productRows[0] : null;
-      if (!p) {
-        await connection.rollback();
-        return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
-      }
-      const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
-      if (requiresVariant && !variant_id) {
-        await connection.rollback();
-        return res.status(400).json({ message: `Variante obligatoire pour le produit (id=${product_id})` });
-      }
-
-      await connection.execute(`
+    if (normalizedItems.length) {
+      const itemValues = normalizedItems.map((item) => [
+        commandeId,
+        item.product_id,
+        item.quantite,
+        item.prix_unitaire,
+        item.remise_pourcentage ?? 0,
+        item.remise_montant ?? 0,
+        item.total,
+        item.variant_id || null,
+        item.unit_id || null,
+        Number(item.unite_special) ? 1 : 0,
+        Number(item.unite_special) ? (item.nbr_barre ?? null) : null,
+        Number(item.unite_special) ? (item.facteur_barre ?? null) : null,
+      ]);
+      await connection.query(`
         INSERT INTO commande_items (
           bon_commande_id, product_id, quantite, prix_unitaire,
           remise_pourcentage, remise_montant, total, variant_id, unit_id,
           unite_special, nbr_barre, facteur_barre
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        commandeId, product_id, quantite, prix_unitaire, remise_pourcentage,
-        remise_montant, total, variant_id || null, unit_id || null,
-        Number(unite_special) ? 1 : 0,
-        Number(unite_special) ? (nbr_barre ?? null) : null,
-        Number(unite_special) ? (facteur_barre ?? null) : null
-      ]);
-
-  // (Suppression de la collecte des nouveaux prix d'achat)
+        ) VALUES ?
+      `, [itemValues]);
     }
 
     // Stock (nouvelle règle): Commande => ajoute au stock dès la création (même "En attente")

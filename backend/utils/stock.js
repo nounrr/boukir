@@ -65,25 +65,32 @@ export function mergeStockDeltaMaps(target, source) {
 export async function applyProductStockDeltas(connection, deltas, updatedBy = null) {
   if (!deltas || !(deltas instanceof Map) || deltas.size === 0) return;
 
-  const productIds = Array.from(deltas.keys());
+  const productIds = Array.from(deltas.keys()).sort((a, b) => Number(a) - Number(b));
   if (productIds.length === 0) return;
 
   // Lock product rows to avoid concurrent stock races
   await connection.execute('SELECT id FROM products WHERE id IN (?) FOR UPDATE', [productIds]);
 
-  for (const productId of productIds) {
-    const delta = Number(deltas.get(productId));
-    if (!Number.isFinite(delta) || delta === 0) continue;
+  const effectiveDeltas = productIds
+    .map((productId) => [productId, Number(deltas.get(productId))])
+    .filter(([, delta]) => Number.isFinite(delta) && delta !== 0);
+  if (effectiveDeltas.length === 0) return;
 
-    await connection.execute(
-      `UPDATE products
-          SET quantite = COALESCE(quantite, 0) + ?,
-              updated_by = ?,
-              updated_at = NOW()
-        WHERE id = ?`,
-      [delta, updatedBy ?? null, productId]
-    );
+  const cases = [];
+  const params = [];
+  for (const [productId, delta] of effectiveDeltas) {
+    cases.push('WHEN ? THEN ?');
+    params.push(productId, delta);
   }
+
+  await connection.query(
+    `UPDATE products
+        SET quantite = COALESCE(quantite, 0) + CASE id ${cases.join(' ')} ELSE 0 END,
+            updated_by = ?,
+            updated_at = NOW()
+      WHERE id IN (?)`,
+    [...params, updatedBy ?? null, effectiveDeltas.map(([productId]) => productId)]
+  );
 }
 
 export async function applyStockDeltas(connection, deltaMaps, updatedBy = null) {
@@ -97,22 +104,56 @@ export async function applyStockDeltas(connection, deltaMaps, updatedBy = null) 
 
   if (!(variantDeltas instanceof Map) || variantDeltas.size === 0) return;
 
-  const variantIds = Array.from(variantDeltas.keys());
+  const variantIds = Array.from(variantDeltas.keys()).sort((a, b) => Number(a) - Number(b));
   if (variantIds.length === 0) return;
 
   // Lock variant rows to avoid concurrent stock races
   await connection.execute('SELECT id FROM product_variants WHERE id IN (?) FOR UPDATE', [variantIds]);
 
-  for (const variantId of variantIds) {
-    const delta = Number(variantDeltas.get(variantId));
-    if (!Number.isFinite(delta) || delta === 0) continue;
+  const effectiveDeltas = variantIds
+    .map((variantId) => [variantId, Number(variantDeltas.get(variantId))])
+    .filter(([, delta]) => Number.isFinite(delta) && delta !== 0);
+  if (effectiveDeltas.length === 0) return;
 
-    await connection.execute(
-      `UPDATE product_variants
-          SET stock_quantity = COALESCE(stock_quantity, 0) + ?,
-              updated_at = NOW()
-        WHERE id = ?`,
-      [delta, variantId]
-    );
+  const cases = [];
+  const params = [];
+  for (const [variantId, delta] of effectiveDeltas) {
+    cases.push('WHEN ? THEN ?');
+    params.push(variantId, delta);
   }
+
+  await connection.query(
+    `UPDATE product_variants
+        SET stock_quantity = COALESCE(stock_quantity, 0) + CASE id ${cases.join(' ')} ELSE 0 END,
+            updated_at = NOW()
+      WHERE id IN (?)`,
+    [...params, effectiveDeltas.map(([variantId]) => variantId)]
+  );
+}
+
+export async function decrementSnapshotQuantities(connection, items = []) {
+  const quantities = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    const snapshotId = Number(item?.product_snapshot_id);
+    const quantity = Number(item?.quantite);
+    if (!Number.isInteger(snapshotId) || snapshotId <= 0) continue;
+    if (!Number.isFinite(quantity) || quantity <= 0) continue;
+    quantities.set(snapshotId, (quantities.get(snapshotId) || 0) + quantity);
+  }
+  const snapshotIds = [...quantities.keys()].sort((a, b) => a - b);
+  if (!snapshotIds.length) return;
+
+  await connection.execute('SELECT id FROM product_snapshot WHERE id IN (?) FOR UPDATE', [snapshotIds]);
+  const cases = [];
+  const params = [];
+  for (const snapshotId of snapshotIds) {
+    cases.push('WHEN ? THEN GREATEST(quantite - ?, 0)');
+    params.push(snapshotId, quantities.get(snapshotId));
+  }
+  await connection.query(
+    `UPDATE product_snapshot
+        SET quantite = CASE id ${cases.join(' ')} ELSE quantite END
+      WHERE id IN (?)`,
+    [...params, snapshotIds]
+  );
 }
