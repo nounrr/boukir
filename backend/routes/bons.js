@@ -780,7 +780,8 @@ router.get('/price-history', async (req, res) => {
         JOIN comptant_items i ON i.bon_comptant_id = b.id
         ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
       `);
-      result.comptants = compactPriceHistoryRows(rows, 4, false);
+      const relevantRows = rows.filter((row) => ['confirmed', 'pending'].includes(historyStatusClass(row.statut)));
+      result.comptants = compactPriceHistoryRows(relevantRows, 4, false);
       return res.json(result);
     }
 
