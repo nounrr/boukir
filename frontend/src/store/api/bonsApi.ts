@@ -238,9 +238,6 @@ export const bonsApi = api.injectEndpoints({
         return [
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id: 'LIST' },
-          { type: 'Product', id: 'LIST' },
-          { type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' },
-          'Contact', // Solde cumulé dépend des bons
         ];
       }
     }),

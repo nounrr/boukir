@@ -40,6 +40,13 @@ test('without-image filter negates the same blank-safe visible-image expression'
   assert.equal((withoutImage.match(/NULLIF\(TRIM/g) || []).length >= 8, true);
 });
 
+test('image filters ignore text placeholders such as "non" from imports', () => {
+  const sql = compact(buildCorrectionFilters({ image: 'with' }).whereSql);
+
+  assert.match(sql, /LOWER\(TRIM\(pnc\.image\)\) NOT IN/);
+  assert.match(sql, /'non'/);
+});
+
 test('new filters compose with review and all text searches using AND semantics', () => {
   const result = buildCorrectionFilters({
     status: 'unmatched',
@@ -53,7 +60,7 @@ test('new filters compose with review and all text searches using AND semantics'
 
   assert.equal((sql.match(/ AND /g) || []).length >= 5, true);
   assert.match(sql, /pnc\.match_status <> \?/);
-  assert.match(sql, /NOT \( NULLIF\(TRIM\(pnc\.image\)/);
+  assert.match(sql, /NOT \( \( NULLIF\(TRIM\(pnc\.image\)/);
   assert.match(sql, /pnc\.review_status = \?/);
   assert.match(sql, /p_anc\.designation LIKE \?/);
   assert.match(sql, /pnc\.designation_fr_pro LIKE \?/);

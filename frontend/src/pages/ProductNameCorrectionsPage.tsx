@@ -178,13 +178,33 @@ const EditableCorrectionName: React.FC<{
   );
 };
 
+const IMAGE_PLACEHOLDER_VALUES = new Set([
+  '-',
+  'â€“',
+  'â€”',
+  'n/a',
+  'na',
+  'null',
+  'none',
+  'undefined',
+  'non',
+  'no',
+  'false',
+  '0',
+]);
+
+const hasDisplayableImage = (url: string | null | undefined): url is string => {
+  const value = String(url || '').trim();
+  return Boolean(value) && !IMAGE_PLACEHOLDER_VALUES.has(value.toLowerCase());
+};
+
 const ProductCorrectionImages: React.FC<{ row: ProductNameCorrectionRow }> = ({ row }) => {
   const [preview, setPreview] = useState<{ src: string; label: string; x: number; y: number } | null>(null);
   const images = [
     { key: 'product', label: 'Produit', url: row.product_image_url },
     { key: 'variant', label: 'Variante', url: row.is_variant_row ? row.variant_image_url : null },
     { key: 'import', label: 'Import', url: row.image },
-  ].filter((image): image is { key: string; label: string; url: string } => Boolean(String(image.url || '').trim()));
+  ].filter((image): image is { key: string; label: string; url: string } => hasDisplayableImage(image.url));
 
   if (!images.length) {
     return <span className="text-gray-400">-</span>;

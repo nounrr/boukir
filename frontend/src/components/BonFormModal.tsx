@@ -3919,8 +3919,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         ...(created && typeof created === 'object' ? created : {}),
         type: requestType,
       };
-      // Rafraîchir les stocks produits immédiatement après création du bon
-      try { dispatch(api.util.invalidateTags(['Product'])); } catch {}
       // Optionally show WhatsApp prompt on create
       if (SHOW_WHATSAPP_POPUP) {
         await (await import('sweetalert2')).default.fire({
@@ -3968,6 +3966,19 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       onBonAdded && onBonAdded(submittedBon || { ...cleanBonData, type: requestType });
     }
     onClose();
+    if (!isEditMode) {
+      // Invalider après le démontage du formulaire. Cela empêche les gros
+      // refetch produits/snapshots/contacts de concurrencer la liste des bons.
+      setTimeout(() => {
+        try {
+          dispatch(api.util.invalidateTags([
+            'Product',
+            'Contact',
+            { type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' },
+          ]));
+        } catch {}
+      }, 0);
+    }
   } catch (error: any) {
     console.error('Erreur lors de la soumission:', error);
     // Extraire les champs manquants renvoyés par l'API

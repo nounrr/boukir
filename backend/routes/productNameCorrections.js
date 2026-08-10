@@ -123,10 +123,26 @@ const EMPTY_CORRECTION_VALUES = new Set([
   'undefined',
 ]);
 
+// The import file sometimes uses a text flag such as "non" instead of an
+// image URL. Those values must not create a thumbnail or count as an image.
+const EMPTY_IMAGE_VALUES = new Set([
+  ...EMPTY_CORRECTION_VALUES,
+  'non',
+  'no',
+  'false',
+  '0',
+]);
+
 function cleanCorrectionValue(value) {
   const text = clean(value);
   if (!text) return null;
   return EMPTY_CORRECTION_VALUES.has(text.toLowerCase()) ? null : text;
+}
+
+function cleanCorrectionImage(value) {
+  const text = clean(value);
+  if (!text) return null;
+  return EMPTY_IMAGE_VALUES.has(text.toLowerCase()) ? null : text;
 }
 
 function firstCorrectionValue(...values) {
@@ -306,7 +322,7 @@ function mapExcelRow(row, index) {
     designation_ar_pro: pick(['Désignation AR pro', 'Designation AR pro', 'Désignation AR'], ['designationarpro', 'designationar']),
     statut_controle: pick(['Statut contrôle', 'Statut controle', 'Status'], ['statutcontrole', 'status']),
     note_controle: pick(['Note contrôle', 'Note controle', 'Note'], ['notecontrole', 'note']),
-    image: pick(['Image'], ['image']),
+    image: cleanCorrectionImage(pick(['Image'], ['image'])),
   };
 }
 
@@ -520,7 +536,10 @@ const SQL_VARIANT_CORRECTION_ROW = `(
 // Keep this in sync with ProductCorrectionImages: imported and product images
 // are always visible, while a variant image is visible only on variant rows.
 const SQL_VISIBLE_IMAGE_PRESENT = `(
-  NULLIF(TRIM(pnc.image), '') IS NOT NULL
+  (
+    NULLIF(TRIM(pnc.image), '') IS NOT NULL
+    AND LOWER(TRIM(pnc.image)) NOT IN ('-', 'â€“', 'â€”', 'n/a', 'na', 'null', 'none', 'undefined', 'non', 'no', 'false', '0')
+  )
   OR EXISTS (
     SELECT 1 FROM products p_image
     WHERE p_image.id = pnc.matched_product_id
