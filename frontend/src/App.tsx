@@ -64,6 +64,7 @@ const ChangePasswordPage = React.lazy(() => import('./pages/ChangePasswordPage')
 const ProductNameCorrectionsPage = React.lazy(() => import('./pages/ProductNameCorrectionsPage'));
 const UiSettingsPage = React.lazy(() => import('./pages/UiSettingsPage'));
 const SolverPrixAchatPage = React.lazy(() => import('./pages/SolverPrixAchatPage'));
+const SolverCategoriePage = React.lazy(() => import('./pages/SolverCategoriePage'));
 const SalePriceCorrectionsPage = React.lazy(() => import('./pages/SalePriceCorrectionsPage'));
 
 // Les pages les plus volumineuses sont chargées uniquement lorsqu'elles sont ouvertes.
@@ -766,6 +767,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur','Employé']}>
               <LayoutWithAccessCheck>
                 <SolverPrixAchatPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/solver-categorie"
+          element={
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','Employé']}>
+              <LayoutWithAccessCheck>
+                <SolverCategoriePage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

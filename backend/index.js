@@ -88,6 +88,7 @@ import statsRouter from './routes/stats.js';
 import calcRouter from './routes/calc.js';
 import uiSettingsRouter from './routes/uiSettings.js';
 import pricePurchaseSolverRouter from './routes/pricePurchaseSolver.js';
+import categorySolverRouter from './routes/categorySolver.js';
 import stockDepotRouter from './routes/stockDepot.js';
 import slowMovingStockRouter from './routes/slowMovingStock.js';
 
@@ -406,6 +407,7 @@ app.use('/api/stats', statsRouter);
 app.use('/api/calc', calcRouter);
 app.use('/api/ui-settings', uiSettingsRouter);
 app.use('/api/price-purchase-solver', pricePurchaseSolverRouter);
+app.use('/api/category-solver', categorySolverRouter);
 app.use('/api/stock-depot', stockDepotRouter);
 app.use('/api/slow-moving-stock', slowMovingStockRouter);
 

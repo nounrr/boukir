@@ -233,10 +233,17 @@ async function loadOwnedRequest(db, requestId, contactId) {
   const [rows] = await db.query(
     `SELECT sr.*,
             s.nom AS service_name, s.nom_ar AS service_name_ar,
-            mc.nom AS category_name, mc.nom_ar AS category_name_ar
+            mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+            maalem_contact.nom_complet AS maalem_name
      FROM service_requests sr
      LEFT JOIN services s ON s.id = sr.service_id
      LEFT JOIN maalem_categories mc ON mc.id = sr.qualified_category_id
+     LEFT JOIN maalem_profiles requested_maalem
+       ON requested_maalem.id = sr.requested_maalem_profile_id
+       AND requested_maalem.deleted_at IS NULL
+     LEFT JOIN contacts maalem_contact
+       ON maalem_contact.id = requested_maalem.contact_id
+       AND maalem_contact.deleted_at IS NULL
      WHERE sr.id = ? AND sr.requester_contact_id = ? AND sr.deleted_at IS NULL
      LIMIT 1`,
     [requestId, contactId]
@@ -576,12 +583,24 @@ router.post('/', handleAttachments, createServiceRequest());
 router.get('/', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, request_number, requester_contact_id, request_source, service_id,
-              requested_maalem_profile_id, qualified_category_id, title, problem_description,
-              city, desired_date, desired_time_slot, status, request_channel, created_at, updated_at
-       FROM service_requests
-       WHERE requester_contact_id = ? AND deleted_at IS NULL
-       ORDER BY created_at DESC, id DESC
+      `SELECT sr.id, sr.request_number, sr.requester_contact_id, sr.request_source, sr.service_id,
+              sr.requested_maalem_profile_id, sr.qualified_category_id, sr.title, sr.problem_description,
+              sr.city, sr.desired_date, sr.desired_time_slot, sr.status, sr.request_channel,
+              sr.created_at, sr.updated_at,
+              s.nom AS service_name, s.nom_ar AS service_name_ar,
+              mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+              maalem_contact.nom_complet AS maalem_name
+       FROM service_requests sr
+       LEFT JOIN services s ON s.id = sr.service_id
+       LEFT JOIN maalem_categories mc ON mc.id = sr.qualified_category_id
+       LEFT JOIN maalem_profiles requested_maalem
+         ON requested_maalem.id = sr.requested_maalem_profile_id
+         AND requested_maalem.deleted_at IS NULL
+       LEFT JOIN contacts maalem_contact
+         ON maalem_contact.id = requested_maalem.contact_id
+         AND maalem_contact.deleted_at IS NULL
+       WHERE sr.requester_contact_id = ? AND sr.deleted_at IS NULL
+       ORDER BY sr.created_at DESC, sr.id DESC
        LIMIT 200`,
       [Number(req.user.id)]
     );
