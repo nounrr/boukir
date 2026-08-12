@@ -22,7 +22,8 @@ router.get('/categories', async (_req, res, next) => {
               c.nom,
               c.parent_id,
               p.nom AS parent_nom,
-              (SELECT COUNT(*) FROM products pr WHERE pr.categorie_id = c.id) AS product_count
+              (SELECT COUNT(*) FROM products pr
+                WHERE pr.categorie_id = c.id AND COALESCE(pr.is_deleted, 0) = 0) AS product_count
          FROM categories c
          LEFT JOIN categories p ON p.id = c.parent_id
         ORDER BY COALESCE(p.nom, c.nom), c.parent_id IS NOT NULL, c.nom`
@@ -54,18 +55,27 @@ router.post('/resolve', async (req, res, next) => {
 
     if (!cleaned.length) return res.json({ results: [] });
 
+    // reference_2 est une colonne optionnelle ajoutée par migration : on la
+    // sélectionne seulement si elle existe, sinon la requête planterait.
+    const [refCols] = await pool.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'reference_2'`
+    );
+    const referenceSql = refCols.length ? 'p.reference_2' : 'NULL';
+
     // On récupère tous les produits candidats en une requête, puis on
     // rapproche côté JS avec la même normalisation que l'entrée.
     const [rows] = await pool.query(
       `SELECT p.id,
               p.designation,
-              p.reference,
+              ${referenceSql} AS reference_2,
               p.categorie_id,
               c.nom AS categorie_nom,
               pc.nom AS categorie_parent_nom
          FROM products p
          LEFT JOIN categories c ON c.id = p.categorie_id
-         LEFT JOIN categories pc ON pc.id = c.parent_id`
+         LEFT JOIN categories pc ON pc.id = c.parent_id
+        WHERE COALESCE(p.is_deleted, 0) = 0`
     );
 
     const byKey = new Map();
@@ -92,7 +102,7 @@ router.post('/resolve', async (req, res, next) => {
         matches: matches.map((m) => ({
           id: m.id,
           designation: m.designation,
-          reference: m.reference,
+          reference: m.reference_2,
           categorie_id: m.categorie_id,
           categorie_nom: m.categorie_nom,
           categorie_chemin: m.categorie_nom
@@ -133,7 +143,8 @@ router.post('/assign', async (req, res, next) => {
 
     await connection.beginTransaction();
     const [result] = await connection.query(
-      `UPDATE products SET categorie_id = ?, updated_by = COALESCE(?, updated_by) WHERE id IN (?)`,
+      `UPDATE products SET categorie_id = ?, updated_by = COALESCE(?, updated_by)
+        WHERE id IN (?) AND COALESCE(is_deleted, 0) = 0`,
       [categorieId, updatedBy, productIds]
     );
     await connection.commit();
