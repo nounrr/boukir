@@ -37,10 +37,10 @@ function createDatabase() {
       return [params.map(Number).map((id) => state.categories.get(id)).filter((category) => category?.is_active === 1 && category.deleted_at == null).map(({ id }) => ({ id }))];
     }
     if (sql.includes('INSERT INTO services')) {
-      const [nom, nomAr, description, descriptionAr, imageUrl, isActive, createdBy, updatedBy] = params;
+      const [nom, nomAr, description, descriptionAr, imageUrl, isActive, isPublished, createdBy, updatedBy] = params;
       state.service = {
         id: state.nextId++, nom, nom_ar: nomAr, description, description_ar: descriptionAr,
-        image_url: imageUrl, is_active: isActive, created_by: createdBy, updated_by: updatedBy,
+        image_url: imageUrl, is_active: isActive, is_published: isPublished, created_by: createdBy, updated_by: updatedBy,
         created_at: '2026-08-09 10:00:00', updated_at: '2026-08-09 10:00:00', deleted_at: null,
       };
       return [{ insertId: state.service.id, affectedRows: 1 }];
@@ -57,11 +57,15 @@ function createDatabase() {
       }
       return [{ affectedRows: params.length / 2 }];
     }
-    if (sql.includes('FROM services') && sql.includes('LIMIT 1') && !sql.includes('FROM services s')) {
+    if (sql.includes('FROM services s') && sql.includes('LIMIT 1') && sql.includes('s.id = ?')) {
       const requestedId = Number(params[0]);
       const service = state.service?.id === requestedId ? state.service : null;
-      if (!service || service.deleted_at || (sql.includes('is_active = 1') && service.is_active !== 1)) return [[]];
+      if (!service || service.deleted_at || (sql.includes('s.is_active = 1') && service.is_active !== 1) || (sql.includes('s.is_published = 1') && service.is_published !== 1)) return [[]];
       return [[{ ...service }]];
+    }
+    if (sql.includes('SELECT id FROM services WHERE') && sql.includes('LIMIT 1')) {
+      const service = state.service?.id === Number(params[0]) && !state.service.deleted_at ? state.service : null;
+      return [service ? [{ id: service.id }] : []];
     }
     if (sql.includes('FROM services') && sql.includes('ORDER BY nom ASC')) {
       const service = state.service && !state.service.deleted_at && state.service.is_active === 1 ? [{ ...state.service }] : [];
@@ -90,9 +94,9 @@ function createDatabase() {
       return [[...state.pivots].map((value) => value.split(':').map(Number)).filter(([id]) => id === serviceId).map(([, categoryId]) => ({ category_id: categoryId }))];
     }
     if (sql.includes('UPDATE services') && sql.includes('SET nom =')) {
-      const [nom, nomAr, description, descriptionAr, imageUrl, isActive, updatedBy, id] = params;
+      const [nom, nomAr, description, descriptionAr, imageUrl, isActive, isPublished, updatedBy, id] = params;
       if (!state.service || state.service.id !== Number(id) || state.service.deleted_at) return [{ affectedRows: 0 }];
-      Object.assign(state.service, { nom, nom_ar: nomAr, description, description_ar: descriptionAr, image_url: imageUrl, is_active: isActive, updated_by: updatedBy });
+      Object.assign(state.service, { nom, nom_ar: nomAr, description, description_ar: descriptionAr, image_url: imageUrl, is_active: isActive, is_published: isPublished, updated_by: updatedBy });
       return [{ affectedRows: 1 }];
     }
     if (sql.includes('SELECT 1') && sql.includes('service_maalem_categories')) {
@@ -172,6 +176,7 @@ const servicePayload = {
   description: 'Rénovation complète',
   description_ar: null,
   is_active: true,
+  is_published: true,
   category_ids: [1],
 };
 

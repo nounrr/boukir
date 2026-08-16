@@ -41,11 +41,14 @@ import {
   useGetAdminMaalemProfileDetailsQuery,
   useGetAdminMaalemProfilesQuery,
   useLookupMaalemIdentityMutation,
+  useReissueAdminMaalemInvitationMutation,
+  useRetryAdminMaalemNotificationMutation,
   useTeamCreateMaalemMutation,
   useUpdateAdminMaalemCategoryMutation,
   useUpdateAdminMaalemProfessionalDataMutation,
   useSubmitAdminMaalemProfileMutation,
   useUpdateAdminMaalemStatusMutation,
+  useUpdateAdminMaalemPublicationMutation,
   useUploadAdminMaalemAvatarMutation,
   useUploadAdminMaalemCvMutation,
   useUploadAdminMaalemRealizationsMutation,
@@ -532,14 +535,18 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
   const { data, isLoading, isError, refetch } = useGetAdminMaalemProfileDetailsQuery(profileId);
   const { data: categories = [] } = useGetActiveMaalemCategoriesQuery();
   const [updateStatus, { isLoading: isUpdatingStatus }] = useUpdateAdminMaalemStatusMutation();
+  const [updatePublication, { isLoading: isUpdatingPublication }] = useUpdateAdminMaalemPublicationMutation();
   const [submitDraft, { isLoading: isSubmittingDraft }] = useSubmitAdminMaalemProfileMutation();
   const [updateCategory, { isLoading: isUpdatingCategory }] = useUpdateAdminMaalemCategoryMutation();
   const [updateProfessionalData, { isLoading: isSavingProfessionalData }] = useUpdateAdminMaalemProfessionalDataMutation();
   const [addNote, { isLoading: isAddingNote }] = useAddAdminMaalemNoteMutation();
   const [downloadDocument, { isLoading: isDownloading }] = useDownloadAdminMaalemDocumentMutation();
   const [uploadAvatar, { isLoading: isUploadingAvatar }] = useUploadAdminMaalemAvatarMutation();
+  const [retryNotification, { isLoading: isRetryingNotification }] = useRetryAdminMaalemNotificationMutation();
+  const [reissueInvitation, { isLoading: isReissuingInvitation }] = useReissueAdminMaalemInvitationMutation();
   const [pendingStatus, setPendingStatus] = useState<MaalemProfileStatus | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
+  const [publicDecisionReason, setPublicDecisionReason] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [categoryNote, setCategoryNote] = useState('');
   const [internalNote, setInternalNote] = useState('');
@@ -587,10 +594,16 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
       return;
     }
     try {
-      await updateStatus({ id: profileId, status: pendingStatus, reason: decisionReason.trim() || undefined }).unwrap();
+      await updateStatus({
+        id: profileId,
+        status: pendingStatus,
+        internal_reason: decisionReason.trim() || undefined,
+        public_reason: publicDecisionReason.trim() || undefined,
+      }).unwrap();
       const label = STATUS_META[pendingStatus].label;
       setPendingStatus(null);
       setDecisionReason('');
+      setPublicDecisionReason('');
       await showSuccess(`Dossier passé au statut « ${label} »`);
     } catch (error) { await showError(apiErrorMessage(error)); }
   };
@@ -636,6 +649,23 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
     } catch (error) { await showError(apiErrorMessage(error)); }
   };
 
+  const handleRetryNotification = async (notificationId: number) => {
+    try {
+      await retryNotification({ profileId, notificationId }).unwrap();
+      await showSuccess('Nouvelle tentative de notification enregistrée');
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  const handleReissueInvitation = async () => {
+    try {
+      const invitation = await reissueInvitation({ profileId }).unwrap();
+      if (invitation?.activation_url) await navigator.clipboard?.writeText(invitation.activation_url);
+      await showSuccess(invitation?.activation_url
+        ? 'Invitation renouvelée. Le nouveau lien a été copié.'
+        : 'Invitation renouvelée.');
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
   const nextStatuses = profile ? NEXT_STATUSES[profile.status] || [] : [];
 
   return (
@@ -644,7 +674,7 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
       <aside ref={dialogRef} tabIndex={-1} className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col bg-white shadow-2xl outline-none" role="dialog" aria-modal="true" aria-labelledby="dossier-title">
         <header className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4 sm:px-7">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Dossier #{profileId}</p>{profile && <StatusBadge status={profile.status} />}</div>
+            <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Dossier #{profileId}</p>{profile && <><StatusBadge status={profile.status} /><span className={`rounded-md px-2 py-1 text-xs font-semibold ${profile.is_public ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{profile.is_public ? 'Public' : 'Non publié'}</span><button type="button" disabled={isUpdatingPublication || (!profile.is_public && profile.status !== 'approved')} onClick={() => void updatePublication({ id: profile.id, is_public: !profile.is_public })} className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-40">{profile.is_public ? 'Retirer du public' : 'Publier'}</button></>}</div>
             <h2 id="dossier-title" className="mt-1 truncate text-xl font-bold text-gray-950">{profile?.user?.nom_complet || (isLoading ? 'Chargement…' : 'Candidature Maalem')}</h2>
           </div>
           <button data-dialog-initial-focus type="button" onClick={onClose} className="ml-4 rounded-md p-2 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Fermer"><X className="h-5 w-5" /></button>
@@ -739,6 +769,45 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
               </section>
 
               <section className="border-t border-gray-200 pt-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-900"><Mail className="h-4 w-4" />Historique des notifications</h3>
+                    <p className="mt-1 text-xs text-gray-500">Journal durable des messages applicatifs et WhatsApp. Aucun email ou SMS n’est simulé.</p>
+                  </div>
+                  {profile.origin === 'TEAM_CREATED' && (
+                    <button type="button" onClick={handleReissueInvitation} disabled={isReissuingInvitation} className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+                      <RefreshCw className={`h-3.5 w-3.5 ${isReissuingInvitation ? 'animate-spin' : ''}`} />
+                      Renouveler l’invitation
+                    </button>
+                  )}
+                </div>
+                {!data.notifications?.length ? (
+                  <p className="mt-3 text-sm text-gray-500">Aucune notification enregistrée.</p>
+                ) : (
+                  <ol className="mt-4 space-y-3">
+                    {data.notifications.map((notification) => {
+                      const canRetry = notification.channel === 'WHATSAPP'
+                        && notification.status === 'failed'
+                        && notification.notification_type !== 'MaalemAccountCreatedByTeam';
+                      return (
+                        <li key={notification.id} className="rounded-md border border-gray-200 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{notification.title}</p>
+                              <p className="mt-0.5 text-xs text-gray-500">{notification.channel === 'IN_APP' ? 'Application' : 'WhatsApp'} · {formatDate(notification.created_at, true)} · {notification.attempts} tentative(s)</p>
+                            </div>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${notification.status === 'sent' ? 'bg-green-100 text-green-800' : notification.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'}`}>{notification.status}</span>
+                          </div>
+                          {notification.last_error && <p className="mt-2 text-xs text-red-700">Erreur : {notification.last_error}</p>}
+                          {canRetry && <button type="button" onClick={() => handleRetryNotification(notification.id)} disabled={isRetryingNotification} className="mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900 disabled:opacity-50">Relancer l’envoi</button>}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </section>
+
+              <section className="border-t border-gray-200 pt-6">
                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-900"><History className="h-4 w-4" />Historique des décisions</h3>
                 {!decisionHistory.length ? <p className="mt-3 text-sm text-gray-500">Aucune décision enregistrée.</p> : <ol className="relative mt-4 space-y-5 border-l border-gray-300 pl-5">{decisionHistory.map((entry) => <li key={entry.id} className="relative"><span className="absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-600 ring-1 ring-gray-300" />{entry.event_type === 'STATUS_CHANGED' && entry.new_status ? <div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-gray-900">{entry.old_status ? STATUS_META[entry.old_status].label : 'Création'}</span><ArrowRight className="h-3.5 w-3.5 text-gray-400" /><span className="font-semibold text-gray-900">{STATUS_META[entry.new_status].label}</span></div> : <p className="text-sm font-semibold text-gray-900">Catégorie : {entry.old_category_name || 'Non renseignée'} → {entry.new_category_name || 'Nouvelle catégorie'}</p>}{entry.note && <p className="mt-1 text-sm text-gray-700">{entry.note}</p>}<p className="mt-1 text-xs text-gray-500">{entry.actor?.nom_complet || entry.actor_name || 'Système'} · {formatDate(entry.created_at, true)}</p></li>)}</ol>}
               </section>
@@ -754,7 +823,7 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-gray-900">Confirmer : {STATUS_META[pendingStatus].label}</p>
-                  <button type="button" onClick={() => { setPendingStatus(null); setDecisionReason(''); }} className="text-xs font-medium text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Annuler</button>
+                  <button type="button" onClick={() => { setPendingStatus(null); setDecisionReason(''); setPublicDecisionReason(''); }} className="text-xs font-medium text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Annuler</button>
                 </div>
                 {pendingStatus === 'approved' && (
                   <div className="flex items-start gap-2 border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-950">
@@ -763,9 +832,15 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
                   </div>
                 )}
                 <label className="block text-xs font-semibold text-gray-700">
-                  {pendingStatus === 'rejected' || pendingStatus === 'suspended' ? 'Motif de la décision *' : 'Note de décision (facultative)'}
-                  <textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} rows={2} maxLength={500} className={`mt-1 ${inputClass}`} placeholder="Saisir une note utile pour l’historique…" autoFocus />
+                  {pendingStatus === 'rejected' || pendingStatus === 'suspended' ? 'Motif interne *' : 'Note interne (facultative)'}
+                  <textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} rows={2} maxLength={500} className={`mt-1 ${inputClass}`} placeholder="Visible uniquement par l’équipe…" autoFocus />
                 </label>
+                {(pendingStatus === 'rejected' || pendingStatus === 'suspended') && (
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Motif communicable au Maalem <span className="font-normal text-gray-500">(facultatif)</span>
+                    <textarea value={publicDecisionReason} onChange={(event) => setPublicDecisionReason(event.target.value)} rows={2} maxLength={500} className={`mt-1 ${inputClass}`} placeholder="Seul ce texte peut apparaître dans la notification…" />
+                  </label>
+                )}
                 <button type="button" onClick={submitStatus} disabled={isUpdatingStatus || ((pendingStatus === 'rejected' || pendingStatus === 'suspended') && !decisionReason.trim())} className={`w-full rounded-md px-4 py-2.5 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${pendingStatus === 'rejected' || pendingStatus === 'suspended' ? 'bg-red-600 hover:bg-red-700 focus-visible:ring-red-600' : pendingStatus === 'approved' ? 'bg-green-700 hover:bg-green-800 focus-visible:ring-green-600' : 'bg-blue-700 hover:bg-blue-800 focus-visible:ring-blue-600'}`}>
                   {isUpdatingStatus ? 'Enregistrement de la décision…' : 'Confirmer la décision'}
                 </button>

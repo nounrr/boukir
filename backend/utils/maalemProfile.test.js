@@ -119,7 +119,16 @@ test('un refus ou une suspension exige un motif', () => {
     valid: true,
     status: 'rejected',
     reason: 'Dossier incomplet',
+    internalReason: 'Dossier incomplet',
+    publicReason: null,
   });
+  const separated = validateMaalemAdminStatusInput({
+    status: 'rejected',
+    internal_reason: 'Pièce falsifiée',
+    public_reason: 'Le justificatif fourni ne peut pas être validé.',
+  });
+  assert.equal(separated.internalReason, 'Pièce falsifiée');
+  assert.equal(separated.publicReason, 'Le justificatif fourni ne peut pas être validé.');
   assert.equal(validateMaalemAdminStatusInput({ status: 'draft' }).valid, false);
 });
 

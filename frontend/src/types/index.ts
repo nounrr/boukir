@@ -272,6 +272,7 @@ export interface Service {
   description_ar: string | null;
   image_url: string | null;
   is_active: boolean;
+  is_published: boolean;
   categories: ServiceMaalemCategory[];
   created_by?: number | null;
   updated_by?: number | null;
@@ -286,6 +287,7 @@ export interface SaveServiceData {
   description: string | null;
   description_ar: string | null;
   is_active: boolean;
+  is_published: boolean;
   category_ids: number[];
   image?: File | null;
   remove_image?: boolean;

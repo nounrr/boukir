@@ -71,7 +71,7 @@ export function parseServiceCategoryIds(value) {
   return { valid: true, value: ids };
 }
 
-export function validateServiceInput(body, { defaultActive = true } = {}) {
+export function validateServiceInput(body, { defaultActive = true, defaultPublished = false } = {}) {
   const source = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
   const errors = {};
   const nom = normalizeRequiredText(source.nom, 'nom', errors);
@@ -79,9 +79,14 @@ export function validateServiceInput(body, { defaultActive = true } = {}) {
   const description = normalizeOptionalText(source.description, 'description', errors);
   const description_ar = normalizeOptionalText(source.description_ar, 'description_ar', errors);
   const is_active = parseBoolean(source.is_active, 'is_active', errors, defaultActive);
+  const is_published = parseBoolean(source.is_published, 'is_published', errors, defaultPublished);
   const remove_image = parseBoolean(source.remove_image, 'remove_image', errors, false);
   const categories = parseServiceCategoryIds(source.category_ids);
   if (!categories.valid) errors.category_ids = categories.error;
+  if (is_published && !is_active) errors.is_published = 'Un service publié doit être actif';
+  if (is_published && !description && !description_ar) {
+    errors.is_published = 'Une description française ou arabe est requise avant publication';
+  }
 
   return {
     valid: Object.keys(errors).length === 0,
@@ -92,6 +97,7 @@ export function validateServiceInput(body, { defaultActive = true } = {}) {
       description,
       description_ar,
       is_active,
+      is_published,
       remove_image,
       category_ids: categories.valid ? categories.value : [],
     },
@@ -105,6 +111,13 @@ export function parseServiceStatus(body) {
   return { valid: true, is_active: body.is_active };
 }
 
+export function parseServicePublication(body) {
+  if (!body || typeof body !== 'object' || typeof body.is_published !== 'boolean') {
+    return { valid: false, error: 'La publication doit être un booléen' };
+  }
+  return { valid: true, is_published: body.is_published };
+}
+
 export function canManageServices(user) {
   return user?.role === 'PDG';
 }
@@ -114,6 +127,7 @@ export function normalizeServiceRow(row) {
     ...row,
     id: Number(row.id),
     is_active: Boolean(row.is_active),
+    is_published: Boolean(row.is_published),
     categories: Array.isArray(row.categories) ? row.categories : [],
   };
 }

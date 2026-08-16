@@ -10,6 +10,7 @@ import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import {
   canManageServices,
   normalizeServiceRow,
+  parseServicePublication,
   parseServiceStatus,
   validateServiceInput,
 } from '../utils/serviceCatalog.js';
@@ -63,6 +64,29 @@ function parseId(value) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+function parseBoundedInteger(value, fallback, minimum, maximum) {
+  if (value == null || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
+}
+
+function publicVisibilitySql(alias = 's') {
+  return `${alias}.is_active = 1
+    AND ${alias}.is_published = 1
+    AND ${alias}.deleted_at IS NULL
+    AND TRIM(${alias}.nom) <> ''
+    AND TRIM(${alias}.nom_ar) <> ''
+    AND (NULLIF(TRIM(${alias}.description), '') IS NOT NULL OR NULLIF(TRIM(${alias}.description_ar), '') IS NOT NULL)
+    AND EXISTS (
+      SELECT 1
+      FROM service_maalem_categories visible_smc
+      INNER JOIN maalem_categories visible_mc ON visible_mc.id = visible_smc.category_id
+      WHERE visible_smc.service_id = ${alias}.id
+        AND visible_mc.is_active = 1
+        AND visible_mc.deleted_at IS NULL
+    )`;
+}
+
 function requireServiceAdmin(req, res, next) {
   if (!canManageServices(req.user)) return res.status(403).json({ message: 'Rôle insuffisant' });
   return next();
@@ -96,15 +120,18 @@ function handleDatabaseError(error, res, next) {
 }
 
 function toPublicService(service) {
-  const {
-    created_by: _createdBy,
-    updated_by: _updatedBy,
-    deleted_at: _deletedAt,
-    ...publicService
-  } = service;
   return {
-    ...publicService,
-    categories: service.categories.map(({ deleted_at: _categoryDeletedAt, ...category }) => category),
+    id: Number(service.id),
+    nom: service.nom,
+    nom_ar: service.nom_ar,
+    description: service.description ?? null,
+    description_ar: service.description_ar ?? null,
+    image_url: service.image_url ?? null,
+    categories: service.categories.map((category) => ({
+      id: Number(category.id),
+      nom: category.nom,
+      nom_ar: category.nom_ar,
+    })),
   };
 }
 
@@ -140,12 +167,15 @@ async function loadCategoriesForServices(db, services, { publicOnly = false } = 
 }
 
 async function findServiceById(db, id, { publicOnly = false, forUpdate = false } = {}) {
-  const conditions = ['id = ?', 'deleted_at IS NULL'];
-  if (publicOnly) conditions.push('is_active = 1');
+  const conditions = ['s.id = ?', 's.deleted_at IS NULL'];
+  if (publicOnly) conditions.push(publicVisibilitySql('s'));
   const [rows] = await db.query(
-    `SELECT id, nom, nom_ar, description, description_ar, image_url, is_active,
-            created_by, updated_by, created_at, updated_at, deleted_at
-     FROM services
+    `SELECT s.id, s.nom, s.nom_ar,
+            ${publicOnly ? 'LEFT(s.description, 320)' : 's.description'} AS description,
+            ${publicOnly ? 'LEFT(s.description_ar, 320)' : 's.description_ar'} AS description_ar,
+            s.image_url, s.is_active, s.is_published,
+            s.created_by, s.updated_by, s.created_at, s.updated_at, s.deleted_at
+     FROM services s
      WHERE ${conditions.join(' AND ')}
      LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [id]
@@ -189,17 +219,185 @@ async function replaceCategoryAssociations(db, serviceId, categoryIds) {
   );
 }
 
-publicRouter.get('/', async (_req, res, next) => {
+publicRouter.get('/', async (req, res, next) => {
   try {
+    const q = String(req.query.q || '').trim();
+    if (q.length > 100) return res.status(400).json({ message: 'La recherche ne peut pas dépasser 100 caractères' });
+    const page = parseBoundedInteger(req.query.page, 1, 1, 1000000);
+    const perPage = parseBoundedInteger(req.query.per_page, 12, 6, 48);
+    if (!page || !perPage) return res.status(400).json({ message: 'Pagination invalide' });
+    const categoryId = req.query.category_id == null || req.query.category_id === ''
+      ? null
+      : parseId(req.query.category_id);
+    if (req.query.category_id != null && req.query.category_id !== '' && !categoryId) {
+      return res.status(400).json({ message: 'Filtre de catégorie invalide' });
+    }
+
+    const conditions = [publicVisibilitySql('s')];
+    const params = [];
+    if (q) {
+      const term = `%${q}%`;
+      conditions.push('(s.nom LIKE ? OR s.nom_ar LIKE ? OR s.description LIKE ? OR s.description_ar LIKE ?)');
+      params.push(term, term, term, term);
+    }
+    if (categoryId) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM service_maalem_categories filter_smc
+        INNER JOIN maalem_categories filter_mc ON filter_mc.id = filter_smc.category_id
+        WHERE filter_smc.service_id = s.id AND filter_smc.category_id = ?
+          AND filter_mc.is_active = 1 AND filter_mc.deleted_at IS NULL
+      )`);
+      params.push(categoryId);
+    }
+
+    const whereSql = conditions.join(' AND ');
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total_items FROM services s WHERE ${whereSql}`,
+      params
+    );
+    const totalItems = Number(countRow?.total_items || 0);
+    const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / perPage);
+    const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
+    const offset = (currentPage - 1) * perPage;
     const [rows] = await pool.query(
-      `SELECT id, nom, nom_ar, description, description_ar, image_url, is_active,
-              created_by, updated_by, created_at, updated_at, deleted_at
-       FROM services
-       WHERE is_active = 1 AND deleted_at IS NULL
-       ORDER BY nom ASC, id ASC`
+      `SELECT s.id, s.nom, s.nom_ar,
+              LEFT(s.description, 320) AS description,
+              LEFT(s.description_ar, 320) AS description_ar,
+              s.image_url
+       FROM services s
+       WHERE ${whereSql}
+       ORDER BY s.nom ASC, s.id ASC
+       LIMIT ? OFFSET ?`,
+      [...params, perPage, offset]
     );
     const services = await loadCategoriesForServices(pool, rows, { publicOnly: true });
-    return res.json(services.map(toPublicService));
+    const [categoryRows] = await pool.query(
+      `SELECT DISTINCT mc.id, mc.nom, mc.nom_ar
+       FROM maalem_categories mc
+       INNER JOIN service_maalem_categories smc ON smc.category_id = mc.id
+       INNER JOIN services s ON s.id = smc.service_id
+       WHERE mc.is_active = 1 AND mc.deleted_at IS NULL AND ${publicVisibilitySql('s')}
+       ORDER BY mc.nom ASC, mc.id ASC`
+    );
+    const from = totalItems === 0 ? 0 : offset + 1;
+    const to = totalItems === 0 ? 0 : Math.min(offset + rows.length, totalItems);
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      services: services.map(toPublicService),
+      pagination: {
+        current_page: currentPage,
+        per_page: perPage,
+        total_items: totalItems,
+        total_pages: totalPages,
+        has_previous: currentPage > 1,
+        has_next: currentPage < totalPages,
+        from,
+        to,
+      },
+      filters: {
+        categories: categoryRows.map((category) => ({
+          id: Number(category.id),
+          nom: category.nom,
+          nom_ar: category.nom_ar,
+        })),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+publicRouter.get('/sitemap', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT s.id, s.updated_at FROM services s
+       WHERE ${publicVisibilitySql('s')}
+       ORDER BY s.id ASC`
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({ services: rows.map((row) => ({ id: Number(row.id), updated_at: row.updated_at ?? null })) });
+  } catch (error) { return next(error); }
+});
+
+publicRouter.get('/:id/maalems', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
+  const page = parseBoundedInteger(req.query.page, 1, 1, 1000000);
+  const perPage = parseBoundedInteger(req.query.per_page, 6, 3, 24);
+  if (!page || !perPage) return res.status(400).json({ message: 'Pagination invalide' });
+  try {
+    const service = await findServiceById(pool, id, { publicOnly: true });
+    if (!service) return res.status(404).json({ message: 'Service introuvable' });
+
+    const compatibleWhere = `mp.status = 'approved'
+      AND mp.deleted_at IS NULL
+      AND c.deleted_at IS NULL
+      AND c.is_active = 1
+      AND COALESCE(c.is_blocked, 0) = 0
+      AND mc.is_active = 1
+      AND mc.deleted_at IS NULL
+      AND EXISTS (
+        SELECT 1 FROM service_maalem_categories compatible_smc
+        WHERE compatible_smc.service_id = ? AND compatible_smc.category_id = mp.category_id
+      )`;
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total_items
+       FROM maalem_profiles mp
+       INNER JOIN contacts c ON c.id = mp.contact_id
+       INNER JOIN maalem_categories mc ON mc.id = mp.category_id
+       WHERE ${compatibleWhere}`,
+      [id]
+    );
+    const totalItems = Number(countRow?.total_items || 0);
+    const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / perPage);
+    const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
+    const offset = (currentPage - 1) * perPage;
+    const [rows] = await pool.query(
+      `SELECT mp.id, c.nom_complet AS public_name, c.avatar_url AS photo_url,
+              mc.id AS category_id, mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+              JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.city')) AS city,
+              JSON_EXTRACT(mp.professional_data, '$.intervention_areas') AS intervention_areas,
+              COALESCE(verified.closed_interventions, 0) AS closed_interventions_for_service
+       FROM maalem_profiles mp
+       INNER JOIN contacts c ON c.id = mp.contact_id
+       INNER JOIN maalem_categories mc ON mc.id = mp.category_id
+       LEFT JOIN (
+         SELECT sra.maalem_profile_id, COUNT(*) AS closed_interventions
+         FROM service_interventions si
+         INNER JOIN service_requests sr ON sr.id = si.service_request_id
+         INNER JOIN service_request_assignments sra ON sra.id = si.executing_assignment_id
+         WHERE si.status = 'closed' AND si.closed_at IS NOT NULL
+           AND si.closed_by_employee_id IS NOT NULL AND si.executing_assignment_id IS NOT NULL
+           AND sr.status = 'closed' AND sr.deleted_at IS NULL
+           AND sra.service_request_id = sr.id AND si.planned_service_id = ?
+         GROUP BY sra.maalem_profile_id
+       ) verified ON verified.maalem_profile_id = mp.id
+       WHERE ${compatibleWhere}
+       ORDER BY closed_interventions_for_service DESC, c.nom_complet ASC, mp.id ASC
+       LIMIT ? OFFSET ?`,
+      [id, id, perPage, offset]
+    );
+    const from = totalItems === 0 ? 0 : offset + 1;
+    const to = totalItems === 0 ? 0 : Math.min(offset + rows.length, totalItems);
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      maalems: rows.map((row) => {
+        let areas = row.intervention_areas;
+        if (typeof areas === 'string') {
+          try { areas = JSON.parse(areas); } catch { areas = []; }
+        }
+        return {
+          id: Number(row.id), public_name: row.public_name, photo_url: row.photo_url ?? null,
+          is_verified: true,
+          category: { id: Number(row.category_id), name: row.category_name, name_ar: row.category_name_ar },
+          city: row.city ?? null,
+          intervention_areas: Array.isArray(areas) ? areas.filter((area) => typeof area === 'string').slice(0, 30) : [],
+          closed_interventions_for_service: Number(row.closed_interventions_for_service || 0),
+        };
+      }),
+      pagination: { current_page: currentPage, per_page: perPage, total_items: totalItems, total_pages: totalPages,
+        has_previous: currentPage > 1, has_next: currentPage < totalPages, from, to },
+    });
   } catch (error) {
     return next(error);
   }
@@ -211,6 +409,7 @@ publicRouter.get('/:id', async (req, res, next) => {
   try {
     const service = await findServiceById(pool, id, { publicOnly: true });
     if (!service) return res.status(404).json({ message: 'Service introuvable' });
+    res.set('Cache-Control', 'no-store');
     return res.json(toPublicService(service));
   } catch (error) {
     return next(error);
@@ -256,7 +455,7 @@ adminRouter.get('/', async (req, res, next) => {
     }
     const [rows] = await pool.query(
       `SELECT s.id, s.nom, s.nom_ar, s.description, s.description_ar, s.image_url,
-              s.is_active, s.created_by, s.updated_by, s.created_at, s.updated_at, s.deleted_at
+              s.is_active, s.is_published, s.created_by, s.updated_by, s.created_at, s.updated_at, s.deleted_at
        FROM services s
        WHERE ${conditions.join(' AND ')}
        ORDER BY s.nom ASC, s.id ASC`,
@@ -299,10 +498,10 @@ adminRouter.post('/', maybeUploadImage, async (req, res, next) => {
     const imageUrl = req.file ? `/uploads/services/${req.file.filename}` : null;
     const [result] = await connection.query(
       `INSERT INTO services
-        (nom, nom_ar, description, description_ar, image_url, is_active, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (nom, nom_ar, description, description_ar, image_url, is_active, is_published, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [value.nom, value.nom_ar, value.description, value.description_ar, imageUrl,
-        value.is_active ? 1 : 0, req.user.id, req.user.id]
+        value.is_active ? 1 : 0, value.is_published ? 1 : 0, req.user.id, req.user.id]
     );
     await replaceCategoryAssociations(connection, result.insertId, value.category_ids);
     await connection.commit();
@@ -368,10 +567,10 @@ adminRouter.put('/:id', maybeUploadImage, async (req, res, next) => {
     await connection.query(
       `UPDATE services
        SET nom = ?, nom_ar = ?, description = ?, description_ar = ?, image_url = ?,
-           is_active = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+           is_active = ?, is_published = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND deleted_at IS NULL`,
       [value.nom, value.nom_ar, value.description, value.description_ar, nextImageUrl,
-        value.is_active ? 1 : 0, req.user.id, id]
+        value.is_active ? 1 : 0, value.is_published ? 1 : 0, req.user.id, id]
     );
     await replaceCategoryAssociations(connection, id, value.category_ids);
     await connection.commit();
@@ -438,13 +637,67 @@ adminRouter.patch('/:id/status', async (req, res, next) => {
   }
 });
 
+adminRouter.patch('/:id/publication', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
+  const publication = parseServicePublication(req.body);
+  if (!publication.valid) return res.status(400).json({ message: publication.error });
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [serviceRows] = await connection.query(
+      `SELECT id, is_active, nom, nom_ar, description, description_ar
+       FROM services WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [id]
+    );
+    const service = serviceRows[0];
+    if (!service) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Service introuvable' });
+    }
+    if (publication.is_published) {
+      const hasContent = service.is_active === 1
+        && String(service.nom || '').trim()
+        && String(service.nom_ar || '').trim()
+        && (String(service.description || '').trim() || String(service.description_ar || '').trim());
+      if (!hasContent) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'Le service doit être actif et disposer de noms bilingues et d\'une description avant publication' });
+      }
+      const [categoryRows] = await connection.query(
+        `SELECT 1 FROM service_maalem_categories smc
+         INNER JOIN maalem_categories mc ON mc.id = smc.category_id
+         WHERE smc.service_id = ? AND mc.is_active = 1 AND mc.deleted_at IS NULL
+         LIMIT 1 FOR UPDATE`,
+        [id]
+      );
+      if (categoryRows.length === 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'Une catégorie Maalem active est requise avant publication' });
+      }
+    }
+    await connection.query(
+      `UPDATE services SET is_published = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND deleted_at IS NULL`,
+      [publication.is_published ? 1 : 0, req.user.id, id]
+    );
+    await connection.commit();
+    return res.json(await findServiceById(pool, id));
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    return next(error);
+  } finally {
+    connection.release();
+  }
+});
+
 adminRouter.delete('/:id', async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
   try {
     const [result] = await pool.query(
       `UPDATE services
-       SET is_active = 0, deleted_at = CURRENT_TIMESTAMP,
+       SET is_active = 0, is_published = 0, deleted_at = CURRENT_TIMESTAMP,
            updated_by = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND deleted_at IS NULL`,
       [req.user.id, id]

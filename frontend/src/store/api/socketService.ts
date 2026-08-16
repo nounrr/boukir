@@ -7,6 +7,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001
 let socket: Socket | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
+type CashRegisterChangeListener = (data: unknown) => void;
+const cashRegisterChangeListeners = new Set<CashRegisterChangeListener>();
 
 // Notification sound
 const notificationSound = new Audio('../../../public/notification01.mp3');
@@ -29,7 +31,7 @@ function playNotificationSound() {
 /**
  * Initialize socket connection
  */
-export function initializeSocket(token: string, dispatch: AppDispatch) {
+export function initializeSocket(token: string, dispatch: AppDispatch, userRole?: string | null) {
   // Disconnect existing socket if any
   if (socket?.connected) {
     console.log('🔌 Disconnecting existing socket...');
@@ -61,7 +63,7 @@ export function initializeSocket(token: string, dispatch: AppDispatch) {
     
     // Fetch initial notification count
     console.log('📊 Fetching initial notification count...');
-    fetchNotificationCount(token, dispatch);
+    if (userRole === 'PDG') fetchNotificationCount(token, dispatch);
   });
 
   // Connection error
@@ -108,6 +110,18 @@ export function initializeSocket(token: string, dispatch: AppDispatch) {
     dispatch(removeRequest(data.contact_id));
   });
 
+  // Cash-register panels use the official fond-caisse endpoint as their source
+  // of truth. This socket event only asks them to reload it.
+  socket.on('cash-register:changed', (data) => {
+    cashRegisterChangeListeners.forEach((listener) => {
+      try {
+        listener(data);
+      } catch (error) {
+        console.error('Cash register listener failed:', error);
+      }
+    });
+  });
+
   // Ping/pong for testing
   socket.on('pong', (data) => {
     console.log('🏓 Pong received:', data);
@@ -132,6 +146,14 @@ export function disconnectSocket() {
  */
 export function getSocket(): Socket | null {
   return socket;
+}
+
+/** Subscribe even before Socket.IO is connected. */
+export function subscribeCashRegisterChanges(listener: CashRegisterChangeListener) {
+  cashRegisterChangeListeners.add(listener);
+  return () => {
+    cashRegisterChangeListeners.delete(listener);
+  };
 }
 
 /**

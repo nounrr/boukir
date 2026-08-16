@@ -108,6 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
     {
       title: 'Maalems & Services',
       items: [
+        { name: 'Demandes de service', href: '/service-requests', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Maalems', href: '/maalems', icon: HardHat, show: user?.role === 'PDG' },
         { name: 'Catégories Maalem', href: '/maalem-categories', icon: Tags, show: user?.role === 'PDG' },
         { name: 'Catalogue des services', href: '/services', icon: Wrench, show: user?.role === 'PDG' },

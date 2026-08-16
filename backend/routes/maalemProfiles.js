@@ -6,10 +6,20 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
+import { getVerifiedMaalemStatistics } from '../utils/maalemStatistics.js';
 import { requireRole } from '../middleware/auth.js';
 import { detectBufferKind } from '../utils/uploadValidation.js';
 import { canManagePendingMaalemApplication } from '../utils/maalemRegistration.js';
-import { isWhtspServiceConfigured, sendWhtspText } from '../utils/whtspService.js';
+import {
+  MAALEM_NOTIFICATION_EVENTS,
+  dispatchMaalemNotification,
+  dispatchQueuedMaalemNotifications,
+  enqueueMaalemNotifications,
+  normalizeNotificationRow,
+  notificationEventForStatus,
+  sanitizeNotificationError,
+} from '../utils/maalemNotification.js';
+import { normalizeOperationalNotificationRow } from '../utils/operationalNotification.js';
 import {
   MAALEM_PROFILE_ORIGINS,
   MAALEM_PROFILE_STATUSES,
@@ -101,7 +111,7 @@ async function loadBackofficeActor(connection, employeeId) {
 }
 
 async function insertMaalemHistory(connection, event) {
-  await connection.query(
+  const [result] = await connection.query(
     `INSERT INTO maalem_profile_history
        (profile_id, event_type, old_status, new_status,
         old_category_id, new_category_id, note, actor_type,
@@ -121,6 +131,7 @@ async function insertMaalemHistory(connection, event) {
       event.actorName,
     ]
   );
+  return Number(result.insertId);
 }
 
 function normalizeHistoryRow(row) {
@@ -158,6 +169,23 @@ async function listMaalemHistory(db, profileId) {
   return rows.map(normalizeHistoryRow);
 }
 
+async function listMaalemNotifications(db, profileId) {
+  const [rows] = await db.query(
+    `SELECT * FROM maalem_notification_deliveries
+     WHERE profile_id = ? AND service_request_id IS NULL ORDER BY created_at DESC, id DESC`, [profileId]
+  );
+  return rows.map(normalizeNotificationRow);
+}
+
+async function dispatchNotificationsSafely(deliveries, options = {}) {
+  try {
+    return await dispatchQueuedMaalemNotifications(deliveries, options);
+  } catch (error) {
+    console.error('[Maalem notification] dispatch unavailable:', sanitizeNotificationError(error));
+    return [];
+  }
+}
+
 function requireEcommerceUser(req, res, next) {
   if (!req.user?.id || req.user?.role || req.user?.type_compte == null) {
     return res.status(403).json({ message: 'Compte e-commerce requis' });
@@ -167,8 +195,8 @@ function requireEcommerceUser(req, res, next) {
 
 async function loadContactForUpdate(connection, contactId) {
   const [rows] = await connection.query(
-    `SELECT id, nom_complet, email, type_compte, demande_artisan, artisan_approuve, auth_provider,
-            telephone, shipping_city
+    `SELECT id, nom_complet, prenom, email, type_compte, demande_artisan, artisan_approuve, auth_provider,
+            telephone, shipping_city, locale
      FROM contacts
      WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'
      LIMIT 1
@@ -294,7 +322,7 @@ async function saveAvatarFile(contactId, file, detectedKind) {
 async function loadActiveCategory(connection, categoryId) {
   if (categoryId == null) return null;
   const [rows] = await connection.query(
-    `SELECT id, is_active, deleted_at
+    `SELECT id, nom, nom_ar, is_active, deleted_at
      FROM maalem_categories
      WHERE id = ? AND is_active = 1 AND deleted_at IS NULL
      LIMIT 1`,
@@ -348,7 +376,7 @@ async function findContactsByIdentity(db, identity, { forUpdate = false } = {}) 
   if (!conditions.length) return [];
   const [rows] = await db.query(
     `SELECT c.id, c.prenom, c.nom, c.nom_complet, c.email, c.telephone,
-            c.type_compte, c.artisan_approuve, c.auth_provider, c.is_active,
+            c.type_compte, c.artisan_approuve, c.auth_provider, c.locale, c.is_active,
             c.is_blocked, c.deleted_at,
             mp.id AS maalem_profile_id, mp.status AS maalem_profile_status,
             mp.origin AS maalem_profile_origin
@@ -422,6 +450,37 @@ selfRouter.get('/me', async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+
+selfRouter.get('/me/notifications', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT mnd.*
+       FROM maalem_notification_deliveries mnd
+       INNER JOIN maalem_profiles mp ON mp.id = mnd.profile_id AND mp.deleted_at IS NULL
+       WHERE mnd.contact_id = ? AND mp.contact_id = ? AND mnd.channel = 'IN_APP'
+       ORDER BY mnd.created_at DESC, mnd.id DESC LIMIT 100`,
+      [req.user.id, req.user.id]
+    );
+    return res.json({ notifications: rows.map((row) => row.service_request_id
+      ? normalizeOperationalNotificationRow(row) : normalizeNotificationRow(row)) });
+  } catch (error) { return next(error); }
+});
+
+selfRouter.post('/me/notifications/:id/read', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Notification invalide' });
+  try {
+    const [result] = await pool.query(
+      `UPDATE maalem_notification_deliveries mnd
+       INNER JOIN maalem_profiles mp ON mp.id = mnd.profile_id AND mp.deleted_at IS NULL
+       SET mnd.read_at = COALESCE(mnd.read_at, CURRENT_TIMESTAMP), mnd.updated_at = CURRENT_TIMESTAMP
+       WHERE mnd.id = ? AND mnd.contact_id = ? AND mp.contact_id = ? AND mnd.channel = 'IN_APP'`,
+      [id, req.user.id, req.user.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Notification introuvable' });
+    return res.status(204).send();
+  } catch (error) { return next(error); }
 });
 
 // Idempotent entry point for an existing Artisan joining the Maalem program.
@@ -553,6 +612,7 @@ selfRouter.put('/me', async (req, res, next) => {
 
 selfRouter.post('/me/submit', async (req, res, next) => {
   const connection = await pool.getConnection();
+  let deliveries = [];
   try {
     await connection.beginTransaction();
 
@@ -584,7 +644,7 @@ selfRouter.post('/me/submit', async (req, res, next) => {
        WHERE id = ? AND deleted_at IS NULL`,
       [profile.id]
     );
-    await insertMaalemHistory(connection, {
+    const historyId = await insertMaalemHistory(connection, {
       profileId: profile.id,
       eventType: 'STATUS_CHANGED',
       oldStatus: profile.status,
@@ -593,8 +653,20 @@ selfRouter.post('/me/submit', async (req, res, next) => {
       actorContactId: contact.id,
       actorName: String(contact.nom_complet || contact.email || `Candidat #${contact.id}`).trim(),
     });
+    deliveries = await enqueueMaalemNotifications(connection, {
+      profileId: profile.id,
+      contactId: contact.id,
+      sourceHistoryId: historyId,
+      event: MAALEM_NOTIFICATION_EVENTS.SUBMITTED,
+      locale: contact.locale,
+      telephone: contact.telephone,
+      candidateName: contact.prenom || contact.nom_complet,
+      categoryName: contact.locale === 'ar' ? category?.nom_ar : category?.nom,
+      applicationDate: new Date().toISOString(),
+    });
 
     await connection.commit();
+    await dispatchNotificationsSafely(deliveries);
     return res.json({ profile: await findMaalemProfileByContactId(pool, contact.id) });
   } catch (error) {
     await connection.rollback();
@@ -813,6 +885,8 @@ adminRouter.post('/team-create', async (req, res, next) => {
   let contactId = null;
   let createdUser = false;
   let createdProfile = false;
+  let deliveries = [];
+  const notificationLocale = req.body?.locale === 'ar' ? 'ar' : 'fr';
   try {
     identityLocks = await acquireIdentityLocks(connection, validation);
     await connection.beginTransaction();
@@ -867,11 +941,11 @@ adminRouter.post('/team-create', async (req, res, next) => {
            (nom_complet, prenom, nom, email, telephone, type, type_compte,
             demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le,
             password, auth_provider, email_verified, is_active, source,
-            shipping_city, reset_token, reset_token_expires_at, created_by, updated_by)
+            shipping_city, reset_token, reset_token_expires_at, created_by, updated_by, locale)
          VALUES (?, ?, ?, ?, ?, 'Client', 'Artisan/Promoteur',
                  1, 1, ?, CURRENT_TIMESTAMP,
                  ?, 'local', 0, 1, 'ecommerce',
-                 ?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 48 HOUR), ?, ?)`,
+                 ?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 48 HOUR), ?, ?, ?)`,
         [
           `${validation.prenom} ${validation.nom}`,
           validation.prenom,
@@ -884,19 +958,44 @@ adminRouter.post('/team-create', async (req, res, next) => {
           generated.token_hash,
           req.user.id,
           req.user.id,
+          notificationLocale,
         ]
       );
       contactId = Number(contactResult.insertId);
       createdUser = true;
     }
 
-    await connection.query(
+    const [profileResult] = await connection.query(
       `INSERT INTO maalem_profiles
          (contact_id, category_id, status, origin, professional_data, created_by_employee_id)
        VALUES (?, ?, 'draft', 'TEAM_CREATED', ?, ?)`,
       [contactId, validation.category_id, JSON.stringify(validation.professional_data), req.user.id]
     );
     createdProfile = true;
+    const profileId = Number(profileResult.insertId);
+    const historyId = await insertMaalemHistory(connection, {
+      profileId,
+      eventType: 'ACCOUNT_CREATED_BY_TEAM',
+      oldStatus: null,
+      newStatus: 'draft',
+      note: 'Compte ou extension Maalem créé(e) par le Back-office',
+      actorType: 'BACKOFFICE',
+      actorEmployeeId: req.user.id,
+      actorName: `Équipe Back-office #${req.user.id}`,
+    });
+    if (createdUser) {
+      deliveries = await enqueueMaalemNotifications(connection, {
+        profileId,
+        contactId,
+        sourceHistoryId: historyId,
+        event: MAALEM_NOTIFICATION_EVENTS.ACCOUNT_CREATED_BY_TEAM,
+        locale: notificationLocale,
+        telephone: validation.telephone,
+        candidateName: validation.prenom,
+        categoryName: notificationLocale === 'ar' ? category.nom_ar : category.nom,
+        createdByEmployeeId: req.user.id,
+      });
+    }
     await connection.commit();
     await releaseIdentityLocks(connection, identityLocks);
     identityLocks = [];
@@ -906,23 +1005,11 @@ adminRouter.post('/team-create', async (req, res, next) => {
     if (createdUser && activationToken) {
       const activationUrl = buildMaalemActivationUrl(activationToken, req.body?.locale);
       invitation = { activation_url: activationUrl, expires_in_hours: 48, delivery_status: 'manual' };
-      if (isWhtspServiceConfigured()) {
-        try {
-          await sendWhtspText({
-            phone: validation.telephone,
-            text: [
-              `Bonjour ${validation.prenom},`,
-              'Votre compte Artisan/Maalem Boukir a été créé par notre équipe.',
-              'Choisissez votre mot de passe avec ce lien sécurisé valable 48 heures :',
-              activationUrl,
-            ].join('\n'),
-          });
-          invitation.delivery_status = 'sent_whatsapp';
-        } catch (deliveryError) {
-          console.error('[Maalem invitation] WhatsApp delivery failed:', deliveryError?.message || deliveryError);
-          invitation.delivery_status = 'failed_whatsapp';
-        }
-      }
+      const results = await dispatchNotificationsSafely(deliveries, { activationUrl });
+      if (results.some((item) => item.status === 'sent')) invitation.delivery_status = 'sent_whatsapp';
+      else if (results.some((item) => item.status === 'failed')) invitation.delivery_status = 'failed_whatsapp';
+    } else {
+      await dispatchNotificationsSafely(deliveries);
     }
 
     return res.status(createdUser || createdProfile ? 201 : 200).json({
@@ -1188,7 +1275,7 @@ adminRouter.get('/', async (req, res, next) => {
     );
     const counts = Object.fromEntries(MAALEM_PROFILE_STATUSES.map((item) => [item, 0]));
     for (const row of countRows) counts[row.status] = Number(row.total);
-    return res.json({ profiles: rows.map(normalizeMaalemProfileRow), counts });
+    return res.json({ profiles: rows.map((row) => normalizeMaalemProfileRow({ ...row, _backoffice: true })), counts });
   } catch (error) {
     return next(error);
   }
@@ -1227,14 +1314,142 @@ adminRouter.get('/:id', async (req, res, next) => {
     if (!rows[0]) return res.status(404).json({ message: 'Profil Maalem introuvable' });
     const history = await listMaalemHistory(pool, id);
     return res.json({
-      profile: normalizeMaalemProfileRow(rows[0]),
+      profile: normalizeMaalemProfileRow({ ...rows[0], _backoffice: true }),
       documents: await listProfileDocuments(pool, id),
       history,
       notes: history.filter((item) => item.event_type === 'INTERNAL_NOTE'),
+      notifications: await listMaalemNotifications(pool, id),
     });
   } catch (error) {
     return next(error);
   }
+});
+
+adminRouter.patch('/:id/publication', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id || typeof req.body?.is_public !== 'boolean') return res.status(400).json({ message: 'Publication invalide' });
+  try {
+    if (req.body.is_public) {
+      const [eligible] = await pool.query(
+        `SELECT mp.id FROM maalem_profiles mp INNER JOIN contacts c ON c.id = mp.contact_id
+         INNER JOIN maalem_categories mc ON mc.id = mp.category_id
+         WHERE mp.id = ? AND mp.status = 'approved' AND mp.deleted_at IS NULL
+           AND c.deleted_at IS NULL AND c.is_active = 1 AND COALESCE(c.is_blocked,0) = 0
+           AND mc.is_active = 1 AND mc.deleted_at IS NULL LIMIT 1`, [id]
+      );
+      if (!eligible[0]) return res.status(409).json({ message: 'Ce profil ne remplit pas les conditions de publication' });
+    }
+    const [result] = await pool.query('UPDATE maalem_profiles SET is_public = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL', [req.body.is_public ? 1 : 0, id]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Profil Maalem introuvable' });
+    return res.json({ id, is_public: req.body.is_public });
+  } catch (error) { return next(error); }
+});
+
+adminRouter.get('/:id/statistics', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
+  try {
+    const [rows] = await pool.query(
+      'SELECT id FROM maalem_profiles WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [id]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'Profil Maalem introuvable' });
+    return res.json({ statistics: await getVerifiedMaalemStatistics(pool, id) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post('/:id/notifications/:notificationId/retry', async (req, res, next) => {
+  const profileId = parseId(req.params.id);
+  const notificationId = parseId(req.params.notificationId);
+  if (!profileId || !notificationId) return res.status(400).json({ message: 'Notification invalide' });
+  try {
+    const [rows] = await pool.query(
+      `SELECT * FROM maalem_notification_deliveries
+       WHERE id = ? AND profile_id = ? LIMIT 1`, [notificationId, profileId]
+    );
+    const delivery = rows[0];
+    if (!delivery) return res.status(404).json({ message: 'Notification introuvable' });
+    if (delivery.channel !== 'WHATSAPP') return res.status(409).json({ message: 'Ce canal ne nécessite pas de relance' });
+    if (delivery.notification_type === MAALEM_NOTIFICATION_EVENTS.ACCOUNT_CREATED_BY_TEAM) {
+      return res.status(409).json({ message: 'Réémettez une invitation afin de générer un nouveau lien sécurisé' });
+    }
+    const result = await dispatchMaalemNotification(notificationId, { force: true });
+    const [updatedRows] = await pool.query(
+      'SELECT * FROM maalem_notification_deliveries WHERE id = ? AND profile_id = ? LIMIT 1',
+      [notificationId, profileId]
+    );
+    return res.json({ result, notification: normalizeNotificationRow(updatedRows[0]) });
+  } catch (error) { return next(error); }
+});
+
+adminRouter.post('/:id/invitation/reissue', async (req, res, next) => {
+  const profileId = parseId(req.params.id);
+  if (!profileId) return res.status(400).json({ message: 'Profil Maalem invalide' });
+  const connection = await pool.getConnection();
+  let deliveries = [];
+  let activationUrl = null;
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT mp.id, mp.contact_id, mp.category_id, mp.origin,
+              c.prenom, c.nom_complet, c.email, c.telephone, c.locale, c.auth_provider,
+              c.reset_token, mc.nom AS category_name, mc.nom_ar AS category_name_ar
+       FROM maalem_profiles mp
+       INNER JOIN contacts c ON c.id = mp.contact_id AND c.deleted_at IS NULL
+       LEFT JOIN maalem_categories mc ON mc.id = mp.category_id
+       WHERE mp.id = ? AND mp.deleted_at IS NULL LIMIT 1 FOR UPDATE`, [profileId]
+    );
+    const row = rows[0];
+    if (!row) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Profil Maalem introuvable' });
+    }
+    if (row.origin !== 'TEAM_CREATED' || row.auth_provider !== 'local' || !row.reset_token) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Ce compte est déjà activé ou ne provient pas d’une invitation équipe' });
+    }
+    const generated = createMaalemActivationToken();
+    await connection.query(
+      `UPDATE contacts SET reset_token = ?, reset_token_expires_at = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 48 HOUR),
+              updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [generated.token_hash, row.contact_id]
+    );
+    const historyId = await insertMaalemHistory(connection, {
+      profileId,
+      eventType: 'INVITATION_REISSUED',
+      oldStatus: null,
+      newStatus: null,
+      note: 'Invitation sécurisée réémise par le Back-office',
+      actorType: 'BACKOFFICE',
+      actorEmployeeId: req.user.id,
+      actorName: `Équipe Back-office #${req.user.id}`,
+    });
+    deliveries = await enqueueMaalemNotifications(connection, {
+      profileId,
+      contactId: row.contact_id,
+      sourceHistoryId: historyId,
+      event: MAALEM_NOTIFICATION_EVENTS.ACCOUNT_CREATED_BY_TEAM,
+      locale: row.locale,
+      telephone: row.telephone,
+      candidateName: row.prenom || row.nom_complet || row.email,
+      categoryName: row.locale === 'ar' ? row.category_name_ar : row.category_name,
+      createdByEmployeeId: req.user.id,
+    });
+    activationUrl = buildMaalemActivationUrl(generated.token, row.locale);
+    await connection.commit();
+    const results = await dispatchNotificationsSafely(deliveries, { activationUrl });
+    return res.json({
+      activation_url: activationUrl,
+      expires_in_hours: 48,
+      delivery_status: results.some((item) => item.status === 'sent')
+        ? 'sent_whatsapp' : results.some((item) => item.status === 'failed') ? 'failed_whatsapp' : 'manual',
+    });
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    return next(error);
+  } finally { connection.release(); }
 });
 
 adminRouter.post('/:id/notes', async (req, res, next) => {
@@ -1453,6 +1668,7 @@ adminRouter.post('/:id/submit', async (req, res, next) => {
   if (!id) return res.status(400).json({ message: 'Identifiant invalide' });
 
   const connection = await pool.getConnection();
+  let deliveries = [];
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query(
@@ -1474,10 +1690,12 @@ adminRouter.post('/:id/submit', async (req, res, next) => {
     }
 
     const [contactRows] = await connection.query(
-      `SELECT telephone FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      `SELECT id, prenom, nom_complet, email, telephone, locale
+       FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       [profile.contact_id]
     );
-    const contactPhone = contactRows[0]?.telephone || null;
+    const contact = contactRows[0];
+    const contactPhone = contact?.telephone || null;
 
     const category = profile.category_id == null
       ? null
@@ -1502,7 +1720,7 @@ adminRouter.post('/:id/submit', async (req, res, next) => {
        WHERE id = ? AND deleted_at IS NULL`,
       [profile.id]
     );
-    await insertMaalemHistory(connection, {
+    const historyId = await insertMaalemHistory(connection, {
       profileId: profile.id,
       eventType: 'STATUS_CHANGED',
       oldStatus: profile.status,
@@ -1512,7 +1730,20 @@ adminRouter.post('/:id/submit', async (req, res, next) => {
       actorEmployeeId: actor.id,
       actorName: actor.name,
     });
+    deliveries = await enqueueMaalemNotifications(connection, {
+      profileId: profile.id,
+      contactId: profile.contact_id,
+      sourceHistoryId: historyId,
+      event: MAALEM_NOTIFICATION_EVENTS.SUBMITTED,
+      locale: contact?.locale,
+      telephone: contactPhone,
+      candidateName: contact?.prenom || contact?.nom_complet || contact?.email,
+      categoryName: contact?.locale === 'ar' ? category?.nom_ar : category?.nom,
+      applicationDate: new Date().toISOString(),
+      createdByEmployeeId: actor.id,
+    });
     await connection.commit();
+    await dispatchNotificationsSafely(deliveries);
     return res.json({ profile: await findMaalemProfileByContactId(pool, profile.contact_id) });
   } catch (error) {
     await connection.rollback();
@@ -1530,6 +1761,7 @@ adminRouter.patch('/:id/status', async (req, res, next) => {
   if (!validation.valid) return res.status(400).json({ message: validation.error });
 
   const connection = await pool.getConnection();
+  let deliveries = [];
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query(
@@ -1551,10 +1783,10 @@ adminRouter.patch('/:id/status', async (req, res, next) => {
         message: `Transition Maalem interdite de ${profile.status} vers ${validation.status}`,
       });
     }
+    const category = profile.category_id == null
+      ? null
+      : await loadActiveCategory(connection, profile.category_id);
     if (validation.status === 'approved') {
-      const category = profile.category_id == null
-        ? null
-        : await loadActiveCategory(connection, profile.category_id);
       if (!category) {
         await connection.rollback();
         return res.status(400).json({
@@ -1567,27 +1799,54 @@ adminRouter.patch('/:id/status', async (req, res, next) => {
       await connection.rollback();
       return res.status(403).json({ message: 'Utilisateur Back-office introuvable' });
     }
+    const [contactRows] = await connection.query(
+      `SELECT id, prenom, nom_complet, email, telephone, locale
+       FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [profile.contact_id]
+    );
+    const contact = contactRows[0];
+    if (!contact) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Contact Maalem introuvable' });
+    }
 
     // Deliberately updates only maalem_profiles. The Artisan account, its
     // type_compte, discounts, carts and orders remain untouched.
     await connection.query(
       `UPDATE maalem_profiles
-       SET status = ?, status_reason = ?, reviewed_at = CURRENT_TIMESTAMP,
+       SET status = ?, status_reason = ?, internal_reason = ?, public_reason = ?, reviewed_at = CURRENT_TIMESTAMP,
            reviewed_by = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND deleted_at IS NULL`,
-      [validation.status, validation.reason, req.user.id, profile.id]
+      [validation.status, validation.internalReason, validation.internalReason, validation.publicReason, req.user.id, profile.id]
     );
-    await insertMaalemHistory(connection, {
+    const historyId = await insertMaalemHistory(connection, {
       profileId: profile.id,
       eventType: 'STATUS_CHANGED',
       oldStatus: profile.status,
       newStatus: validation.status,
-      note: validation.reason,
+      note: validation.internalReason,
       actorType: 'BACKOFFICE',
       actorEmployeeId: actor.id,
       actorName: actor.name,
     });
+    const notificationEvent = notificationEventForStatus(validation.status);
+    if (notificationEvent) {
+      deliveries = await enqueueMaalemNotifications(connection, {
+        profileId: profile.id,
+        contactId: profile.contact_id,
+        sourceHistoryId: historyId,
+        event: notificationEvent,
+        locale: contact.locale,
+        telephone: contact.telephone,
+        candidateName: contact.prenom || contact.nom_complet || contact.email,
+        categoryName: contact.locale === 'ar' ? category?.nom_ar : category?.nom,
+        publicReason: validation.publicReason,
+        applicationDate: new Date().toISOString(),
+        createdByEmployeeId: actor.id,
+      });
+    }
     await connection.commit();
+    await dispatchNotificationsSafely(deliveries);
     return res.json({ profile: await findMaalemProfileByContactId(pool, profile.contact_id) });
   } catch (error) {
     await connection.rollback();

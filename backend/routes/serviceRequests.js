@@ -15,6 +15,12 @@ import {
   normalizeServiceRequestRow,
   validateServiceRequestInput,
 } from '../utils/serviceRequest.js';
+import {
+  OPERATIONAL_NOTIFICATION_EVENTS,
+  dispatchOperationalNotificationsSafely,
+  enqueueOperationalNotifications,
+  normalizeOperationalNotificationRow,
+} from '../utils/operationalNotification.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,7 +91,7 @@ function validateAttachments(files = [], { photosOnly = false } = {}) {
 
 async function loadRequesterForUpdate(connection, contactId) {
   const [rows] = await connection.query(
-    `SELECT id, nom_complet, prenom, nom, email, telephone, type_compte,
+    `SELECT id, nom_complet, prenom, nom, email, telephone, locale, type_compte,
             shipping_city, shipping_address_line1, shipping_address_line2
      FROM contacts
      WHERE id = ? AND deleted_at IS NULL
@@ -329,6 +335,7 @@ function createServiceRequest({
   const connection = await pool.getConnection();
   const writtenFiles = [];
   let committed = false;
+  let deliveries = [];
   try {
     await connection.beginTransaction();
     const contactId = Number(req.user.id);
@@ -365,6 +372,20 @@ function createServiceRequest({
       const error = new Error('Le Maalem sélectionné n’est pas validé ou disponible');
       error.status = 422;
       throw error;
+    }
+    if (service && requestedMaalem) {
+      const [compatibilityRows] = await connection.query(
+        `SELECT 1 FROM service_maalem_categories smc
+         INNER JOIN maalem_categories mc ON mc.id = smc.category_id
+         WHERE smc.service_id = ? AND smc.category_id = ?
+           AND mc.is_active = 1 AND mc.deleted_at IS NULL LIMIT 1`,
+        [service.id, requestedMaalem.category_id]
+      );
+      if (compatibilityRows.length === 0) {
+        const error = new Error('Ce Maalem n’est pas compatible avec le service sélectionné');
+        error.status = 422;
+        throw error;
+      }
     }
     if (validation.value.category_id && !explicitCategory) {
       const error = new Error('La catégorie sélectionnée est inactive ou indisponible');
@@ -494,8 +515,24 @@ function createServiceRequest({
         actorName,
       ]
     );
+    deliveries = await enqueueOperationalNotifications(connection, {
+      serviceRequestId: requestId,
+      event: OPERATIONAL_NOTIFICATION_EVENTS.CREATED,
+      audiences: ['CLIENT'],
+      versionKey: `created:${requestId}`,
+      context: {
+        id: requestId,
+        request_number: requestNumber,
+        requester_contact_id: contactId,
+        client_phone: contact.telephone,
+        client_locale: contact.locale,
+        service_name: service?.nom || explicitCategory?.nom || validation.value.title,
+        service_name_ar: service?.nom_ar || explicitCategory?.nom_ar || validation.value.title,
+      },
+    });
     await connection.commit();
     committed = true;
+    await dispatchOperationalNotificationsSafely(deliveries);
 
     return res.status(201).json({
       request: normalizeServiceRequestRow({
@@ -579,6 +616,34 @@ router.post('/quick', handleAttachments, createServiceRequest({ forceQuickReques
 router.post('/selected-maalem', handleAttachments, createServiceRequest({ forceSelectedMaalem: true, photosOnly: true }));
 router.post('/selected-service', handleAttachments, createServiceRequest({ forceSelectedService: true, photosOnly: true }));
 router.post('/', handleAttachments, createServiceRequest());
+
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT mnd.* FROM maalem_notification_deliveries mnd
+       INNER JOIN service_requests sr ON sr.id = mnd.service_request_id AND sr.deleted_at IS NULL
+       WHERE mnd.contact_id = ? AND sr.requester_contact_id = ? AND mnd.channel = 'IN_APP'
+       ORDER BY mnd.created_at DESC, mnd.id DESC LIMIT 100`, [req.user.id, req.user.id]
+    );
+    res.json({ notifications: rows.map(normalizeOperationalNotificationRow) });
+  } catch (error) { next(error); }
+});
+
+router.post('/notifications/:id(\\d+)/read', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: 'Notification invalide' });
+    const [result] = await pool.query(
+      `UPDATE maalem_notification_deliveries mnd
+       INNER JOIN service_requests sr ON sr.id = mnd.service_request_id AND sr.deleted_at IS NULL
+       SET mnd.read_at = COALESCE(mnd.read_at, CURRENT_TIMESTAMP), mnd.updated_at = CURRENT_TIMESTAMP
+       WHERE mnd.id = ? AND mnd.contact_id = ? AND sr.requester_contact_id = ? AND mnd.channel = 'IN_APP'`,
+      [id, req.user.id, req.user.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Notification introuvable' });
+    return res.status(204).send();
+  } catch (error) { return next(error); }
+});
 
 router.get('/', async (req, res, next) => {
   try {

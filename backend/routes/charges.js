@@ -17,6 +17,7 @@ async function ensureChargeTables() {
       statut VARCHAR(50) NOT NULL DEFAULT 'En attente',
       observations TEXT NULL,
       inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0,
+      inclus_en_caisse_at DATETIME NULL,
       created_by INT NULL,
       updated_by INT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +40,22 @@ async function ensureChargeTables() {
     }
   } catch (e) {
     console.error('ensureChargeTables alter inclus_en_caisse:', e);
+  }
+
+  try {
+    const [colsAt] = await pool.query(
+      "SHOW COLUMNS FROM bons_charge LIKE 'inclus_en_caisse_at'"
+    );
+    if (!Array.isArray(colsAt) || colsAt.length === 0) {
+      await pool.query(
+        "ALTER TABLE bons_charge ADD COLUMN inclus_en_caisse_at DATETIME NULL AFTER inclus_en_caisse"
+      );
+      await pool.query(
+        "UPDATE bons_charge SET inclus_en_caisse_at = created_at WHERE inclus_en_caisse = 1 AND inclus_en_caisse_at IS NULL"
+      );
+    }
+  } catch (e) {
+    console.error('ensureChargeTables bons_charge inclus_en_caisse_at:', e);
   }
 
   await pool.query(`
@@ -85,6 +102,7 @@ async function ensureChargeTables() {
       statut VARCHAR(50) NOT NULL DEFAULT 'En attente',
       observations TEXT NULL,
       inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0,
+      inclus_en_caisse_at DATETIME NULL,
       created_by INT NULL,
       updated_by INT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -465,10 +483,11 @@ router.post('/', async (req, res) => {
     const [result] = await connection.execute(
       `
         INSERT INTO ${cfg.table} (
-          date_creation, client_id, phone, adresse_livraison, montant_total, statut, observations, inclus_en_caisse, created_by, updated_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          date_creation, client_id, phone, adresse_livraison, montant_total, statut, observations,
+          inclus_en_caisse, inclus_en_caisse_at, created_by, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NOW() ELSE NULL END, ?, ?)
       `,
-      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, createdBy, createdBy]
+      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, inclusEnCaisse, createdBy, createdBy]
     );
 
     for (const item of items) {
@@ -587,10 +606,17 @@ router.put('/:id', async (req, res) => {
     await connection.execute(
       `
         UPDATE ${cfg.table}
-        SET date_creation = ?, client_id = ?, phone = ?, adresse_livraison = ?, montant_total = ?, statut = ?, observations = ?, inclus_en_caisse = ?, updated_by = ?, updated_at = NOW()
+        SET date_creation = ?, client_id = ?, phone = ?, adresse_livraison = ?, montant_total = ?, statut = ?, observations = ?,
+            inclus_en_caisse_at = CASE
+              WHEN ? = 1 AND COALESCE(inclus_en_caisse, 0) = 0 THEN NOW()
+              WHEN ? = 0 THEN NULL
+              WHEN ? = 1 AND inclus_en_caisse_at IS NULL THEN created_at
+              ELSE inclus_en_caisse_at
+            END,
+            inclus_en_caisse = ?, updated_by = ?, updated_at = NOW()
         WHERE id = ?
       `,
-      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, updatedBy, id]
+      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, inclusEnCaisse, inclusEnCaisse, inclusEnCaisse, updatedBy, id]
     );
 
     await connection.execute(`DELETE FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ?`, [id]);
@@ -659,12 +685,13 @@ router.patch('/:id/inclus-en-caisse', async (req, res) => {
     const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type ?? req.query?.operation_type);
     const cfg = getChargeConfig(operationType);
     const value = req.body?.inclus_en_caisse ? 1 : 0;
-    // Seuls les avoirs (avoirs_charge) classent leur montant en caisse à la date de cochage ;
-    // les charges normales (bons_charge) gardent la date de création du bon.
-    const sql = operationType === 'avoir'
-      ? `UPDATE ${cfg.table} SET inclus_en_caisse = ?, inclus_en_caisse_at = CASE WHEN ? = 1 THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = ?`
-      : `UPDATE ${cfg.table} SET inclus_en_caisse = ?, updated_at = NOW() WHERE id = ?`;
-    const params = operationType === 'avoir' ? [value, value, id] : [value, id];
+    // Both charges and charge credits enter the daily caisse feed at checkbox time.
+    const sql = `UPDATE ${cfg.table}
+                    SET inclus_en_caisse = ?,
+                        inclus_en_caisse_at = CASE WHEN ? = 1 THEN NOW() ELSE NULL END,
+                        updated_at = NOW()
+                  WHERE id = ?`;
+    const params = [value, value, id];
     const [result] = await pool.execute(sql, params);
     if (!result || result.affectedRows === 0) {
       return res.status(404).json({ message: 'Bon charge non trouvé' });

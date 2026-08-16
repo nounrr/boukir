@@ -42,6 +42,8 @@ const BrandsPage = React.lazy(() => import('./pages/BrandsPage'));
 const MaalemCategoriesPage = React.lazy(() => import('./pages/MaalemCategoriesPage'));
 const MaalemsPage = React.lazy(() => import('./pages/MaalemsPage'));
 const ServicesPage = React.lazy(() => import('./pages/ServicesPage'));
+const ServiceRequestsPage = React.lazy(() => import('./pages/ServiceRequestsPage'));
+const ServiceRequestDetailPage = React.lazy(() => import('./pages/ServiceRequestsPage').then((module) => ({ default: module.ServiceRequestDetailPage })));
 const StatsDetailPage = React.lazy(() => import('./pages/StatsDetailPage'));
 const ExcelUploadPage = React.lazy(() => import('./pages/ImportExcelTabs'));
 const ExportProducts = React.lazy(() => import('./pages/ExportProducts'));
@@ -530,6 +532,24 @@ const AppContent: React.FC = () => {
               <LayoutWithAccessCheck>
                 <ServicesPage />
               </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/service-requests"
+          element={
+            <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
+              <LayoutWithAccessCheck><ServiceRequestsPage /></LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/service-requests/:id"
+          element={
+            <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
+              <LayoutWithAccessCheck><ServiceRequestDetailPage /></LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />

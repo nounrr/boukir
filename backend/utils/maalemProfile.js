@@ -231,15 +231,27 @@ export function validateMaalemAdminStatusInput(body) {
   if (!['under_review', 'approved', 'rejected', 'suspended'].includes(body.status)) {
     return { valid: false, error: 'Ce statut ne peut pas être attribué par le Back-office' };
   }
-  if (body.reason != null && typeof body.reason !== 'string') {
-    return { valid: false, error: 'Le motif doit être un texte' };
+  const rawInternalReason = body.internal_reason ?? body.reason;
+  if (rawInternalReason != null && typeof rawInternalReason !== 'string') {
+    return { valid: false, error: 'Le motif interne doit être un texte' };
   }
-  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-  if (reason.length > 500) return { valid: false, error: 'Le motif ne peut pas dépasser 500 caractères' };
-  if (['rejected', 'suspended'].includes(body.status) && !reason) {
-    return { valid: false, error: 'Un motif est requis pour un refus ou une suspension' };
+  if (body.public_reason != null && typeof body.public_reason !== 'string') {
+    return { valid: false, error: 'Le motif public doit être un texte' };
   }
-  return { valid: true, status: body.status, reason: reason || null };
+  const internalReason = typeof rawInternalReason === 'string' ? rawInternalReason.trim() : '';
+  const publicReason = typeof body.public_reason === 'string' ? body.public_reason.trim() : '';
+  if (internalReason.length > 500) return { valid: false, error: 'Le motif interne ne peut pas dépasser 500 caractères' };
+  if (publicReason.length > 500) return { valid: false, error: 'Le motif public ne peut pas dépasser 500 caractères' };
+  if (['rejected', 'suspended'].includes(body.status) && !internalReason) {
+    return { valid: false, error: 'Un motif interne est requis pour un refus ou une suspension' };
+  }
+  return {
+    valid: true,
+    status: body.status,
+    reason: internalReason || null,
+    internalReason: internalReason || null,
+    publicReason: publicReason || null,
+  };
 }
 
 export function validateMaalemAdminCategoryInput(body) {
@@ -284,7 +296,10 @@ export function normalizeMaalemProfileRow(row) {
     origin_label: MAALEM_PROFILE_ORIGIN_LABELS[row.origin || 'SELF_SERVICE'] || row.origin,
     created_by_employee_id: row.created_by_employee_id == null ? null : Number(row.created_by_employee_id),
     professional_data: parseProfessionalData(row.professional_data),
-    status_reason: row.status_reason ?? null,
+    status_reason: row._backoffice === true
+      ? (row.internal_reason ?? row.status_reason ?? null)
+      : (row.public_reason ?? null),
+    public_reason: row.public_reason ?? null,
     submitted_at: row.submitted_at ?? null,
     reviewed_at: row.reviewed_at ?? null,
     reviewed_by: row.reviewed_by ?? null,
@@ -297,6 +312,7 @@ export function normalizeMaalemProfileRow(row) {
       is_active: isTruthyDatabaseFlag(row.category_is_active),
     },
   };
+  if (row._backoffice === true) profile.internal_reason = row.internal_reason ?? row.status_reason ?? null;
   if (row.contact_nom_complet !== undefined) {
     profile.user = {
       id: Number(row.contact_id),

@@ -17,6 +17,8 @@ function teamCreationDatabase({ existingContact = null, identityRows = null, cat
   } : null;
   let contactInsertParams = null;
   let profileInsertParams = null;
+  const history = [];
+  const notifications = [];
   const connection = {
     async beginTransaction() {},
     async commit() {},
@@ -25,7 +27,7 @@ function teamCreationDatabase({ existingContact = null, identityRows = null, cat
     async query(sql, params = []) {
       if (sql.includes('GET_LOCK')) return [[{ acquired: 1 }]];
       if (sql.includes('RELEASE_LOCK')) return [[{ released: 1 }]];
-      if (sql.includes('FROM maalem_categories')) return [[categoryActive ? { id: 8, is_active: 1 } : null].filter(Boolean)];
+      if (sql.includes('FROM maalem_categories')) return [[categoryActive ? { id: 8, nom: 'Plomberie', nom_ar: 'السباكة', is_active: 1 } : null].filter(Boolean)];
       if (sql.includes('FROM contacts c') && sql.includes('LEFT JOIN maalem_profiles')) {
         return [identityRows || [contact].filter(Boolean)];
       }
@@ -44,6 +46,7 @@ function teamCreationDatabase({ existingContact = null, identityRows = null, cat
           is_active: 1,
           is_blocked: 0,
           deleted_at: null,
+          locale: params[11],
           maalem_profile_id: null,
         };
         return [{ insertId: contact.id }];
@@ -67,6 +70,15 @@ function teamCreationDatabase({ existingContact = null, identityRows = null, cat
         }
         return [{ insertId: profile.id }];
       }
+      if (sql.includes('INSERT INTO maalem_profile_history')) {
+        history.push(params);
+        return [{ insertId: history.length }];
+      }
+      if (sql.includes('INSERT INTO maalem_notification_deliveries')) {
+        const item = { id: notifications.length + 1, params };
+        notifications.push(item);
+        return [{ insertId: item.id }];
+      }
       throw new Error(`Unexpected connection query: ${sql}`);
     },
   };
@@ -76,6 +88,8 @@ function teamCreationDatabase({ existingContact = null, identityRows = null, cat
     get profile() { return profile; },
     get contactInsertParams() { return contactInsertParams; },
     get profileInsertParams() { return profileInsertParams; },
+    get history() { return history; },
+    get notifications() { return notifications; },
   };
 }
 
@@ -349,8 +363,8 @@ function submitDatabase({ profile, contactPhone = '+212612345678', categoryActiv
       if (sql.includes('FROM maalem_profiles') && sql.includes('FOR UPDATE')) {
         return [[current]];
       }
-      if (sql.includes('SELECT telephone FROM contacts')) {
-        return [[{ telephone: contactPhone }]];
+      if (sql.includes('FROM contacts') && sql.includes('FOR UPDATE')) {
+        return [[{ id: current.contact_id, prenom: 'Amal', nom_complet: 'Amal Artisan', email: 'amal@example.com', telephone: contactPhone, locale: 'fr' }]];
       }
       if (sql.includes('FROM maalem_categories')) {
         return [[categoryActive ? { id: current.category_id, is_active: 1 } : null].filter(Boolean)];
@@ -370,6 +384,7 @@ function submitDatabase({ profile, contactPhone = '+212612345678', categoryActiv
         historyInsertParams = params;
         return [{ insertId: 1 }];
       }
+      if (sql.includes('INSERT INTO maalem_notification_deliveries')) return [{ insertId: 1 }];
       throw new Error(`Unexpected connection query: ${sql}`);
     },
   };
@@ -383,6 +398,10 @@ function submitDatabase({ profile, contactPhone = '+212612345678', categoryActiv
 async function withAdminSubmitServer(database, callback) {
   const originalGetConnection = pool.getConnection;
   const originalQuery = pool.query;
+  const originalWhtspBase = process.env.WHTSP_SERVICE_BASE_URL;
+  const originalWhtspKey = process.env.WHTSP_SERVICE_API_KEY;
+  delete process.env.WHTSP_SERVICE_BASE_URL;
+  delete process.env.WHTSP_SERVICE_API_KEY;
   pool.getConnection = async () => database.connection;
   pool.query = async (sql, params = []) => {
     if (sql.includes('FROM maalem_profiles mp')) {
@@ -412,6 +431,10 @@ async function withAdminSubmitServer(database, callback) {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     pool.getConnection = originalGetConnection;
     pool.query = originalQuery;
+    if (originalWhtspBase === undefined) delete process.env.WHTSP_SERVICE_BASE_URL;
+    else process.env.WHTSP_SERVICE_BASE_URL = originalWhtspBase;
+    if (originalWhtspKey === undefined) delete process.env.WHTSP_SERVICE_API_KEY;
+    else process.env.WHTSP_SERVICE_API_KEY = originalWhtspKey;
   }
 }
 

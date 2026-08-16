@@ -9,15 +9,14 @@ import { initializeSocket, disconnectSocket, refreshNotifications } from '../sto
 export function useSocketConnection() {
   const dispatch = useAppDispatch();
   const { token, user, isAuthenticated } = useAppSelector((state) => state.auth);
+  const userRole = user?.role;
   const socketInitialized = useRef(false);
 
   useEffect(() => {
-    // Only initialize socket for authenticated PDG users
-    const isPDG = user?.role === 'PDG';
-    
-    if (isAuthenticated && token && isPDG && !socketInitialized.current) {
+    // Initialize Socket.IO for every authenticated employee role.
+    if (isAuthenticated && token && userRole && !socketInitialized.current) {
       console.log('🔌 Initializing socket for PDG user...');
-      initializeSocket(token, dispatch);
+      initializeSocket(token, dispatch, userRole);
       socketInitialized.current = true;
     }
 
@@ -29,7 +28,7 @@ export function useSocketConnection() {
         socketInitialized.current = false;
       }
     };
-  }, [isAuthenticated, token, user?.role, dispatch]);
+  }, [isAuthenticated, token, userRole, dispatch]);
 
   // Provide manual refresh function
   const refresh = () => {

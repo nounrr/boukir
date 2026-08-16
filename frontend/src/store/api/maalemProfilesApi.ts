@@ -20,11 +20,14 @@ export interface AdminMaalemProfile {
   contact_id: number;
   category_id: number | null;
   status: MaalemProfileStatus;
+  is_public: boolean;
   status_label: string;
   origin: MaalemProfileOrigin;
   created_by_employee_id: number | null;
   professional_data: MaalemProfessionalData | null;
   status_reason?: string | null;
+  internal_reason?: string | null;
+  public_reason?: string | null;
   submitted_at?: string | null;
   reviewed_at?: string | null;
   reviewed_by?: number | null;
@@ -82,11 +85,30 @@ export interface MaalemDecisionHistory {
 
 export type MaalemInternalNote = MaalemDecisionHistory;
 
+export interface MaalemNotificationDelivery {
+  id: number;
+  profile_id: number;
+  notification_type: string;
+  source_event: string;
+  channel: 'IN_APP' | 'WHATSAPP';
+  locale: 'fr' | 'ar';
+  status: 'pending' | 'processing' | 'sent' | 'failed';
+  attempts: number;
+  recipient_address: string;
+  title: string;
+  body: string;
+  last_error: string | null;
+  created_at: string;
+  sent_at: string | null;
+  read_at: string | null;
+}
+
 export interface AdminMaalemDetailsResponse {
   profile: AdminMaalemProfile;
   documents: MaalemProfileDocument[];
   history: MaalemDecisionHistory[];
   notes: MaalemInternalNote[];
+  notifications: MaalemNotificationDelivery[];
 }
 
 export type MaalemLookupState =
@@ -119,7 +141,7 @@ export interface TeamCreateMaalemInput {
   telephone: string;
   reference?: string;
   category_id: number;
-  locale: 'fr';
+  locale: 'fr' | 'ar';
   professional_data: MaalemProfessionalData;
 }
 
@@ -177,13 +199,17 @@ export const maalemProfilesApi = apiSlice.injectEndpoints({
         { type: 'MaalemProfile', id: 'LIST' },
       ],
     }),
-    updateAdminMaalemStatus: builder.mutation<AdminMaalemProfile, { id: number; status: MaalemProfileStatus; reason?: string }>({
+    updateAdminMaalemStatus: builder.mutation<AdminMaalemProfile, { id: number; status: MaalemProfileStatus; internal_reason?: string; public_reason?: string }>({
       query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/status`, method: 'PATCH', body }),
       transformResponse: (response: { profile: AdminMaalemProfile }) => response.profile,
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'MaalemProfile', id },
         { type: 'MaalemProfile', id: 'LIST' },
       ],
+    }),
+    updateAdminMaalemPublication: builder.mutation<{ id: number; is_public: boolean }, { id: number; is_public: boolean }>({
+      query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/publication`, method: 'PATCH', body }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'MaalemProfile', id }, { type: 'MaalemProfile', id: 'LIST' }],
     }),
     updateAdminMaalemProfessionalData: builder.mutation<AdminMaalemProfile, { id: number; professional_data: MaalemProfessionalData }>({
       query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/professional-data`, method: 'PATCH', body }),
@@ -205,6 +231,17 @@ export const maalemProfilesApi = apiSlice.injectEndpoints({
       query: ({ id, note }) => ({ url: `/admin/maalem-profiles/${id}/notes`, method: 'POST', body: { note } }),
       transformResponse: (response: { note: MaalemInternalNote }) => response.note,
       invalidatesTags: (_result, _error, { id }) => [{ type: 'MaalemProfile', id }],
+    }),
+    retryAdminMaalemNotification: builder.mutation<{ notification: MaalemNotificationDelivery }, { profileId: number; notificationId: number }>({
+      query: ({ profileId, notificationId }) => ({
+        url: `/admin/maalem-profiles/${profileId}/notifications/${notificationId}/retry`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, { profileId }) => [{ type: 'MaalemProfile', id: profileId }],
+    }),
+    reissueAdminMaalemInvitation: builder.mutation<NonNullable<TeamCreateMaalemResponse['invitation']>, { profileId: number }>({
+      query: ({ profileId }) => ({ url: `/admin/maalem-profiles/${profileId}/invitation/reissue`, method: 'POST' }),
+      invalidatesTags: (_result, _error, { profileId }) => [{ type: 'MaalemProfile', id: profileId }],
     }),
     downloadAdminMaalemDocument: builder.mutation<Blob, { profileId: number; documentId: number }>({
       query: ({ profileId, documentId }) => ({
@@ -258,8 +295,11 @@ export const {
   useSubmitAdminMaalemProfileMutation,
   useUpdateAdminMaalemProfessionalDataMutation,
   useUpdateAdminMaalemStatusMutation,
+  useUpdateAdminMaalemPublicationMutation,
   useUpdateAdminMaalemCategoryMutation,
   useAddAdminMaalemNoteMutation,
+  useRetryAdminMaalemNotificationMutation,
+  useReissueAdminMaalemInvitationMutation,
   useDownloadAdminMaalemDocumentMutation,
   useUploadAdminMaalemAvatarMutation,
   useUploadAdminMaalemCvMutation,

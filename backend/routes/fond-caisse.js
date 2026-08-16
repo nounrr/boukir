@@ -823,7 +823,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       label: 'bons_charge',
       field: 'bonChargeInclusCaisse',
       sql: `
-        SELECT DATE(bc.created_at) AS jour,
+        SELECT DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) AS jour,
                COALESCE(SUM(COALESCE(ci_sum.total_items, bc.montant_total, 0)), 0) AS total
           FROM bons_charge bc
           LEFT JOIN (
@@ -831,11 +831,11 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
               FROM charge_items
              GROUP BY bon_charge_id
           ) ci_sum ON ci_sum.bon_charge_id = bc.id
-         WHERE DATE(bc.created_at) BETWEEN ? AND ?
+         WHERE DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) BETWEEN ? AND ?
            AND COALESCE(bc.inclus_en_caisse, 0) = 1
            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-           ${afterLatestCaisseStartSql('bc.created_at')}
-         GROUP BY DATE(bc.created_at)
+           ${afterLatestCaisseStartSql('COALESCE(bc.inclus_en_caisse_at, bc.created_at)')}
+         GROUP BY DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at))
       `,
     },
     {
@@ -1054,28 +1054,28 @@ router.get('/days/:date', async (req, res) => {
         label: 'bons_comptant',
         sql: `
           SELECT
-            id,
-            created_at AS action_date,
+            bc.id,
+            bc.created_at AS action_date,
             'Bon comptant paye' AS type,
             'ENTREE' AS direction,
-            ${netAmountSql('montant_total', 'montant_ignorer')} AS amount,
-            CONCAT('COM', ${paddedReferenceIdSql('id')}) AS reference,
-            COALESCE(client_nom, '') AS actor,
-            statut,
+            ${netAmountSql('bc.montant_total', 'bc.montant_ignorer')} AS amount,
+            CONCAT('COM', ${paddedReferenceIdSql('bc.id')}) AS reference,
+            COALESCE(bc.client_nom, '') AS actor,
+            bc.statut,
             'Bon comptant regle en caisse' AS description
-          FROM bons_comptant
-          WHERE DATE(created_at) = ?
-            AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
-            AND LOWER(COALESCE(statut, '')) <> 'avoir'
-            AND COALESCE(non_paye, 0) = 0
+          FROM bons_comptant bc
+          WHERE DATE(bc.created_at) = ?
+            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+            AND COALESCE(bc.non_paye, 0) = 0
             AND NOT EXISTS (
               SELECT 1
                 FROM paiement_boncomptant_nonpaye pbcnp
-               WHERE pbcnp.bon_comptant_id = bons_comptant.id
+               WHERE pbcnp.bon_comptant_id = bc.id
                  AND LOWER(COALESCE(pbcnp.statut, '')) NOT LIKE 'annul%'
             )
-            AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
-            ${afterLatestCaisseStartSql('created_at')}
+            AND ${netAmountSql('bc.montant_total', 'bc.montant_ignorer')} > 0
+            ${afterLatestCaisseStartSql('bc.created_at')}
         `,
       },
       {
@@ -1160,7 +1160,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            bc.created_at AS action_date,
+            COALESCE(bc.inclus_en_caisse_at, bc.created_at) AS action_date,
             'Charge incluse caisse' AS type,
             'SORTIE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM charge_items ci WHERE ci.bon_charge_id = bc.id), bc.montant_total, 0) AS amount,
@@ -1170,10 +1170,10 @@ router.get('/days/:date', async (req, res) => {
             COALESCE(bc.observations, 'Charge sortie de caisse') AS description
           FROM bons_charge bc
           LEFT JOIN contacts c ON c.id = bc.client_id
-          WHERE DATE(bc.created_at) = ?
+          WHERE DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('bc.created_at')}
+            ${afterLatestCaisseStartSql('COALESCE(bc.inclus_en_caisse_at, bc.created_at)')}
         `,
       },
       {
@@ -1308,11 +1308,6 @@ router.get('/days/:date', async (req, res) => {
       modePaiement: '',
       description: 'Solde final de la veille',
     };
-    const activeBonCutoffTime = Math.max(
-      Number.isFinite(activeInitialCaisseTime) ? activeInitialCaisseTime : 0,
-      Number.isFinite(activeInitialCoffreTime) ? activeInitialCoffreTime : 0
-    ) || null;
-
     const isBeforeCutoff = (action, cutoffTime) => {
       if (!cutoffTime) return false;
       const actionTime = new Date(action.date || 0).getTime();
@@ -1336,7 +1331,9 @@ router.get('/days/:date', async (req, res) => {
       if (isCaisseInitial(action)) return action.id === activeInitialCaisseId;
       if (isCoffreInitial(action)) return action.id === activeInitialCoffreId;
       if (action.sourceTable === 'coffre') return !isBeforeCutoff(action, activeInitialCoffreTime);
-      return !isBeforeCutoff(action, activeBonCutoffTime);
+      // Le fond coffre ne remet jamais la caisse a zero. Les actions de caisse
+      // suivent uniquement le dernier fond initial caisse, comme la liste des jours.
+      return !isBeforeCutoff(action, activeInitialCaisseTime);
       }),
     ].sort((a, b) => {
       const byDate = new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -1372,13 +1369,16 @@ router.get('/days/:date', async (req, res) => {
     const totalSorties = data
       .filter((action) => action.affectsCaisse && action.direction === 'SORTIE')
       .reduce((sum, action) => sum + action.amount, 0);
+    const totalCumule = data.length > 0 ? toNumber(data[data.length - 1].cumulative) : 0;
 
     res.json({
       jour,
       summary: {
         totalEntrees,
         totalSorties,
-        totalCumule: totalEntrees - totalSorties,
+        // Solde final reel: report/debut caisse + entrees - sorties.
+        // C'est la meme valeur que "Total caisse" dans la liste des jours.
+        totalCumule,
         actionsCount: data.length,
       },
       data,
@@ -1535,7 +1535,7 @@ router.get('/mouvements', async (req, res) => {
         label: 'bons_charge',
         field: 'bonChargeInclusCaisse',
         sql: `
-          SELECT DATE(bc.created_at) AS jour,
+          SELECT DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) AS jour,
                  COALESCE(SUM(COALESCE(ci_sum.total_items, bc.montant_total, 0)), 0) AS total
             FROM bons_charge bc
             LEFT JOIN (
@@ -1543,11 +1543,11 @@ router.get('/mouvements', async (req, res) => {
                 FROM charge_items
                GROUP BY bon_charge_id
             ) ci_sum ON ci_sum.bon_charge_id = bc.id
-           WHERE DATE(bc.created_at) BETWEEN ? AND ?
+           WHERE DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at)) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('bc.created_at')}
-           GROUP BY DATE(bc.created_at)
+             ${afterLatestCaisseStartSql('COALESCE(bc.inclus_en_caisse_at, bc.created_at)')}
+           GROUP BY DATE(COALESCE(bc.inclus_en_caisse_at, bc.created_at))
         `,
       },
       {

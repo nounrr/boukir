@@ -12,6 +12,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { showConfirmation, showSuccess } from '../../utils/notifications';
 import NotificationBell from '../NotificationBell';
+import CashRegisterBell from '../CashRegisterBell';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -60,6 +61,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
         <div className="flex items-center space-x-2 md:space-x-4">
           {/* Version mobile compacte */}
           <div className="sm:hidden flex items-center space-x-1">
+            <CashRegisterBell />
             <button
               type="button"
               onClick={() => navigate('/profile')}
@@ -116,6 +118,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
               </div>
 
               {/* Notification Bell */}
+              <CashRegisterBell />
               <NotificationBell />
 
               {/* Bouton de vérification d'accès manuelle */}

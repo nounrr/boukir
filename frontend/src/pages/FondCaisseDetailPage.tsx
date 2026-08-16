@@ -514,16 +514,11 @@ const FondCaisseDetailPage = () => {
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr>
-                  <td colSpan={6} className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
+                  <td colSpan={7} className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
                     Total cumule final
                   </td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
-                    {fmt(summary.totalCumule)}
-                  </td>
                   <td className="px-4 py-3 text-right text-base font-bold text-gray-900">
-                    {filteredActions.length > 0
-                      ? fmt(filteredActions[filteredActions.length - 1].cumulative)
-                      : fmt(0)}
+                    {fmt(summary.totalCumule)}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-300">-</td>
                 </tr>

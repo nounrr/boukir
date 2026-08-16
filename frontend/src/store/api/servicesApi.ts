@@ -16,6 +16,7 @@ function toFormData(data: SaveServiceData) {
   body.append('description', data.description || '');
   body.append('description_ar', data.description_ar || '');
   body.append('is_active', String(data.is_active));
+  body.append('is_published', String(data.is_published));
   body.append('category_ids', JSON.stringify(data.category_ids));
   body.append('remove_image', String(Boolean(data.remove_image)));
   if (data.image) body.append('image', data.image);
@@ -43,10 +44,6 @@ export const servicesApi = apiSlice.injectEndpoints({
     getServiceById: builder.query<Service, number>({
       query: (id) => ({ url: `/admin/services/${id}` }),
       providesTags: (_result, _error, id) => [{ type: 'Service', id }],
-    }),
-    getActiveServices: builder.query<Service[], void>({
-      query: () => ({ url: '/services' }),
-      providesTags: [{ type: 'Service', id: 'ACTIVE' }],
     }),
     createService: builder.mutation<Service, SaveServiceData>({
       query: (data) => ({ url: '/admin/services', method: 'POST', body: toFormData(data) }),
@@ -79,6 +76,18 @@ export const servicesApi = apiSlice.injectEndpoints({
         { type: 'Service', id: 'ACTIVE' },
       ],
     }),
+    setServicePublication: builder.mutation<Service, { id: number; is_published: boolean }>({
+      query: ({ id, is_published }) => ({
+        url: `/admin/services/${id}/publication`,
+        method: 'PATCH',
+        body: { is_published },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Service', id },
+        { type: 'Service', id: 'LIST' },
+        { type: 'Service', id: 'ACTIVE' },
+      ],
+    }),
     deleteService: builder.mutation<void, number>({
       query: (id) => ({ url: `/admin/services/${id}`, method: 'DELETE' }),
       invalidatesTags: (_result, _error, id) => [
@@ -93,9 +102,9 @@ export const servicesApi = apiSlice.injectEndpoints({
 export const {
   useGetServicesQuery,
   useGetServiceByIdQuery,
-  useGetActiveServicesQuery,
   useCreateServiceMutation,
   useUpdateServiceMutation,
   useSetServiceStatusMutation,
+  useSetServicePublicationMutation,
   useDeleteServiceMutation,
 } = servicesApi;

@@ -32,6 +32,7 @@ function isDatabaseTrue(value) {
 export function isPubliclyOrderableMaalem(row) {
   return Boolean(
     row
+    && isDatabaseTrue(row.is_public)
     && row.deleted_at == null
     && row.contact_deleted_at == null
     && isDatabaseTrue(row.contact_is_active)
@@ -60,6 +61,5 @@ export function normalizePublicMaalem(row) {
       ? Math.max(0, Number(professional.experience_years))
       : null,
     professional_summary: publicString(professional.professional_summary, 3000),
-    availability: publicString(professional.availability, 100),
   };
 }

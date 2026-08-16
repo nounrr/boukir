@@ -6,6 +6,7 @@ function approvedRow(overrides = {}) {
   return {
     id: 9,
     status: 'approved',
+    is_public: 1,
     category_id: 3,
     category_name: 'Plomberie',
     category_name_ar: 'سباكة',
@@ -49,6 +50,7 @@ test('draft, rejected, suspended, supprimé, bloqué ou inactif ne sont jamais p
     { contact_deleted_at: '2026-08-09' },
     { contact_is_blocked: 1 },
     { contact_is_active: 0 },
+    { is_public: 0 },
   ];
   for (const overrides of cases) assert.equal(normalizePublicMaalem(approvedRow(overrides)), null);
 });

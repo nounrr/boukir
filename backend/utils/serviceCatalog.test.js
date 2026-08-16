@@ -26,6 +26,7 @@ test('normalise un service multipart et déduplique ses catégories', () => {
     description: 'Intervention rapide',
     description_ar: null,
     is_active: true,
+    is_published: false,
     remove_image: false,
     category_ids: [3, 4],
   });

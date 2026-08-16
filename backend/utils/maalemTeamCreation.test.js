@@ -114,3 +114,20 @@ test('consomme une invitation une seule fois et stocke uniquement un hash bcrypt
     password: 'AutreMotDePasse!',
   }), null);
 });
+
+test('refuse une invitation expirée sans écrire de mot de passe', async () => {
+  let writes = 0;
+  const connection = {
+    async query(sql) {
+      if (sql.includes('SELECT id') && sql.includes('reset_token_expires_at > CURRENT_TIMESTAMP')) return [[]];
+      writes += 1;
+      return [{ affectedRows: 0 }];
+    },
+  };
+  const contactId = await consumeMaalemActivationToken(connection, {
+    token: createMaalemActivationToken().token,
+    password: 'MotDePasseSolide!',
+  });
+  assert.equal(contactId, null);
+  assert.equal(writes, 0);
+});

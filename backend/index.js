@@ -14,6 +14,7 @@ import { initializeSocketServer } from './socket/socketServer.js';
 import pool, { requestContext } from './db/pool.js';
 import { getJwtSecret, requireRole, verifyCurrentUserWithSchedule, verifyToken } from './middleware/auth.js';
 import { enforceWeeklyPasswordChange } from './middleware/passwordPolicy.js';
+import { notifyCashRegisterChanges } from './middleware/cashRegisterRealtime.js';
 import jwt from 'jsonwebtoken';
 
 import employeesRouter from './routes/employees.js';
@@ -27,6 +28,8 @@ import maalemProfilesRouter, { adminMaalemProfilesRouter } from './routes/maalem
 import servicesRouter, { publicServicesRouter } from './routes/services.js';
 import maalemAccessRouter from './routes/maalemAccess.js';
 import serviceRequestsRouter from './routes/serviceRequests.js';
+import adminServiceRequestsRouter from './routes/adminServiceRequests.js';
+import maalemMissionsRouter, { adminServiceInterventionsRouter } from './routes/serviceInterventions.js';
 import publicMaalemsRouter from './routes/publicMaalems.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
@@ -284,6 +287,10 @@ app.use(morgan('dev', {
   skip: (req) => req.path.startsWith('/api/payment-phone-captures/public/'),
 }));
 
+// Broadcast a lightweight signal after successful mutations that may affect
+// the fond de caisse. Connected PDG clients then reload the canonical day view.
+app.use(notifyCashRegisterChanges);
+
 // Personnel documents and payment proofs are private. Catalogue assets and
 // bon PDFs remain publicly served by the generic static mount below.
 app.use('/uploads/employee_docs', verifyCurrentUserWithSchedule, requireRole('PDG'), express.static(path.join(__dirname, 'uploads', 'employee_docs'), { fallthrough: false }));
@@ -343,6 +350,9 @@ app.use('/api/maalem-profiles', maalemProfilesRouter);
 app.use('/api/admin/maalem-profiles', adminMaalemProfilesRouter);
 app.use('/api/maalem-access', maalemAccessRouter);
 app.use('/api/service-requests', serviceRequestsRouter);
+app.use('/api/admin/service-requests', adminServiceRequestsRouter);
+app.use('/api/maalem-missions', maalemMissionsRouter);
+app.use('/api/admin/service-interventions', adminServiceInterventionsRouter);
 app.use('/api/maalems', publicMaalemsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
@@ -424,6 +434,7 @@ app.use((err, _req, res, _next) => {
   const payload = {
     message: err?.message || 'Internal Server Error',
   };
+  if (err?.errors && typeof err.errors === 'object') payload.errors = err.errors;
   if (!isProd) {
     payload.code = err?.code;
     payload.errno = err?.errno;

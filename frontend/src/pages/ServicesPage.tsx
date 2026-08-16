@@ -3,6 +3,8 @@ import { Field, Form, Formik } from 'formik';
 import * as yup from 'yup';
 import {
   ImagePlus,
+  Eye,
+  EyeOff,
   Pencil,
   Plus,
   Power,
@@ -20,6 +22,7 @@ import {
   useDeleteServiceMutation,
   useGetServicesQuery,
   useSetServiceStatusMutation,
+  useSetServicePublicationMutation,
   useUpdateServiceMutation,
 } from '../store/api/servicesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
@@ -32,6 +35,7 @@ const validationSchema = yup.object({
   description_ar: yup.string().trim().max(5000, 'Maximum 5000 caractères'),
   category_ids: yup.array().of(yup.number().integer().positive()).min(1, 'Sélectionnez au moins une catégorie Maalem'),
   is_active: yup.boolean().required(),
+  is_published: yup.boolean().required(),
 });
 
 interface FormValues {
@@ -41,6 +45,7 @@ interface FormValues {
   description_ar: string;
   category_ids: number[];
   is_active: boolean;
+  is_published: boolean;
 }
 
 function apiErrorMessage(error: unknown) {
@@ -105,6 +110,7 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
     description_ar: service?.description_ar || '',
     category_ids: service?.categories.map(({ id }) => id) || [],
     is_active: service?.is_active ?? true,
+    is_published: service?.is_published ?? false,
   };
 
   return (
@@ -130,6 +136,7 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
               description_ar: values.description_ar.trim() || null,
               category_ids: values.category_ids,
               is_active: values.is_active,
+              is_published: values.is_published,
               image: imageFile,
               remove_image: removeImage,
             };
@@ -247,6 +254,19 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
                 <input type="checkbox" checked={values.is_active} onChange={(event) => void setFieldValue('is_active', event.target.checked)} className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
               </label>
 
+              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                <span>
+                  <span className="block text-sm font-medium text-gray-800">Publier sur le site</span>
+                  <span className="block text-xs text-gray-500">Rend le service visible dans le catalogue public s'il est actif et complet.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={values.is_published}
+                  onChange={(event) => void setFieldValue('is_published', event.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </label>
+
               <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
                 <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50">Annuler</button>
                 <button type="submit" disabled={isSubmitting || categoriesLoading} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
@@ -279,6 +299,7 @@ const ServicesPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const { data: categoryOptions = [] } = useGetActiveMaalemCategoriesQuery();
   const [setServiceStatus, { isLoading: statusUpdating }] = useSetServiceStatusMutation();
+  const [setServicePublication, { isLoading: publicationUpdating }] = useSetServicePublicationMutation();
   const [deleteService, { isLoading: deleting }] = useDeleteServiceMutation();
   const queryArgs = useMemo(() => ({ status, q: search.trim() || undefined, category_id: categoryId }), [status, search, categoryId]);
   const { data: services = [], isLoading, isFetching, isError, refetch } = useGetServicesQuery(queryArgs);
@@ -298,6 +319,15 @@ const ServicesPage: React.FC = () => {
     try {
       await setServiceStatus({ id: service.id, is_active: !service.is_active }).unwrap();
       void showSuccess(service.is_active ? 'Service désactivé' : 'Service activé');
+    } catch (error) {
+      await showError(apiErrorMessage(error));
+    }
+  };
+
+  const togglePublication = async (service: Service) => {
+    try {
+      await setServicePublication({ id: service.id, is_published: !service.is_published }).unwrap();
+      void showSuccess(service.is_published ? 'Service retiré du site public' : 'Service publié sur le site');
     } catch (error) {
       await showError(apiErrorMessage(error));
     }
@@ -379,11 +409,12 @@ const ServicesPage: React.FC = () => {
                         <div><div className="font-medium text-gray-900">{service.nom}</div><div dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</div></div>
                       </div></td>
                       <td className="max-w-sm px-5 py-4"><CategoryBadges categories={service.categories} /></td>
-                      <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${service.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{service.is_active ? 'Actif' : 'Inactif'}</span></td>
+                      <td className="px-5 py-4"><div className="flex flex-wrap gap-1.5"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${service.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{service.is_active ? 'Actif' : 'Inactif'}</span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${service.is_published ? 'bg-blue-100 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{service.is_published ? 'Publié' : 'Non publié'}</span></div></td>
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-gray-500">{formatDate(service.updated_at)}</td>
                       <td className="whitespace-nowrap px-5 py-4 text-right"><div className="flex justify-end gap-1">
                         <button type="button" onClick={() => openEdit(service)} className="rounded-md p-2 text-blue-700 hover:bg-blue-50" title="Modifier"><Pencil className="h-4 w-4" /></button>
                         <button type="button" onClick={() => toggleStatus(service)} disabled={statusUpdating} className={`rounded-md p-2 disabled:opacity-50 ${service.is_active ? 'text-amber-700 hover:bg-amber-50' : 'text-green-700 hover:bg-green-50'}`} title={service.is_active ? 'Désactiver' : 'Activer'}>{service.is_active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}</button>
+                        <button type="button" onClick={() => togglePublication(service)} disabled={publicationUpdating} className="rounded-md p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50" title={service.is_published ? 'Retirer du site public' : 'Publier sur le site'}>{service.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                         <button type="button" onClick={() => removeService(service)} disabled={deleting} className="rounded-md p-2 text-red-700 hover:bg-red-50 disabled:opacity-50" title="Supprimer"><Trash2 className="h-4 w-4" /></button>
                       </div></td>
                     </tr>
@@ -397,12 +428,13 @@ const ServicesPage: React.FC = () => {
                 <article key={service.id} className="space-y-3 p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">{service.image_url ? <img src={toBackendUrl(service.image_url)} alt="" className="h-full w-full object-cover" /> : <Wrench className="h-5 w-5 text-gray-400" />}</div>
-                    <div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><h2 className="font-semibold text-gray-900">{service.nom}</h2><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${service.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{service.is_active ? 'Actif' : 'Inactif'}</span></div><p dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</p></div>
+                    <div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><h2 className="font-semibold text-gray-900">{service.nom}</h2><div className="flex flex-col items-end gap-1"><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${service.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{service.is_active ? 'Actif' : 'Inactif'}</span><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${service.is_published ? 'bg-blue-100 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{service.is_published ? 'Publié' : 'Non publié'}</span></div></div><p dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</p></div>
                   </div>
                   <CategoryBadges categories={service.categories} />
-                  <div className="grid grid-cols-3 gap-2 pt-1">
+                  <div className="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-4">
                     <button type="button" onClick={() => openEdit(service)} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 px-2 py-2 text-sm font-medium text-blue-700"><Pencil className="h-4 w-4" /> Modifier</button>
                     <button type="button" onClick={() => toggleStatus(service)} disabled={statusUpdating} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 px-2 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">{service.is_active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />} Statut</button>
+                    <button type="button" onClick={() => togglePublication(service)} disabled={publicationUpdating} className="inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 px-2 py-2 text-sm font-medium text-blue-700 disabled:opacity-50">{service.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} Publication</button>
                     <button type="button" onClick={() => removeService(service)} disabled={deleting} className="inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-2 text-sm font-medium text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Supprimer</button>
                   </div>
                 </article>

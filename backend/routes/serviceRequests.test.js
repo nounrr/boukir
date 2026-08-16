@@ -113,6 +113,10 @@ function createDatabaseDouble(options = {}) {
           state.histories.push(params);
           return [{ insertId: state.histories.length }];
         }
+        if (sql.includes('INSERT INTO maalem_notification_deliveries')) {
+          return [{ insertId: 0, affectedRows: 1 }];
+        }
+        if (sql.includes('FROM maalem_notification_deliveries WHERE idempotency_key')) return [[]];
         throw new Error(`Unexpected connection query: ${sql}`);
       },
     };

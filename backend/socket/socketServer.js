@@ -104,6 +104,12 @@ export function initializeSocketServer(httpServer) {
 
     // Join user to their personal room
     socket.join(`user:${socket.user.id}`);
+
+    // Every backoffice employee role receives cash-register updates.
+    // E-commerce contacts are intentionally excluded from this room.
+    if (socket.user.type === 'employee') {
+      socket.join('cash-register-notifications');
+    }
     console.log(`  → Joined room: user:${socket.user.id}`);
 
     // Join PDG users to PDG room for notifications
@@ -186,6 +192,16 @@ export function emitToPDG(event, data) {
   }
   io.to('pdg-notifications').emit(event, data);
   console.log(`📢 Emitted ${event} to PDG room:`, data);
+}
+
+/** Emit a cash-register change to every connected employee role. */
+export function emitCashRegisterChange(data) {
+  if (!io) {
+    console.warn('Socket.IO not initialized, cannot emit cash-register change');
+    return;
+  }
+  io.to('cash-register-notifications').emit('cash-register:changed', data);
+  console.log('Cash-register change emitted to all employee roles:', data);
 }
 
 /**

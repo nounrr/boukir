@@ -11,7 +11,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     root: 'frontend',
-    publicDir: 'frontend/public',
+    // `root` already points to frontend, so this resolves to frontend/public.
+    publicDir: 'public',
     build: {
       outDir: 'dist',
       emptyOutDir: true,

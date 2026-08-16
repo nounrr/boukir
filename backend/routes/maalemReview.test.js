@@ -42,6 +42,7 @@ function createReviewDatabase(overrides = {}) {
     profile: profileRow(overrides.profile),
     activeCategory: overrides.activeCategory !== false,
     history: [],
+    notifications: [],
     queries: [],
     commits: 0,
     rollbacks: 0,
@@ -63,7 +64,17 @@ function createReviewDatabase(overrides = {}) {
         }]];
       }
       if (sql.includes('FROM maalem_categories')) {
-        return [state.activeCategory ? [{ id: Number(params[0]), is_active: 1, deleted_at: null }] : []];
+        return [state.activeCategory ? [{ id: Number(params[0]), nom: 'Plomberie', nom_ar: 'السباكة', is_active: 1, deleted_at: null }] : []];
+      }
+      if (sql.includes('FROM contacts') && sql.includes('FOR UPDATE')) {
+        return [[{
+          id: state.profile.contact_id,
+          prenom: 'Artisan',
+          nom_complet: state.profile.contact_nom_complet,
+          email: state.profile.contact_email,
+          telephone: state.profile.contact_telephone,
+          locale: 'fr',
+        }]];
       }
       if (sql.includes('FROM employees')) {
         return [[{ id: 9, nom_complet: 'PDG Test', cin: 'PDG1' }]];
@@ -71,7 +82,9 @@ function createReviewDatabase(overrides = {}) {
       if (sql.includes('UPDATE maalem_profiles') && sql.includes('SET status =')) {
         state.profile.status = params[0];
         state.profile.status_reason = params[1];
-        state.profile.reviewed_by = params[2];
+        state.profile.internal_reason = params[2];
+        state.profile.public_reason = params[3];
+        state.profile.reviewed_by = params[4];
         return [{ affectedRows: 1 }];
       }
       if (sql.includes('UPDATE maalem_profiles') && sql.includes('SET category_id =')) {
@@ -97,6 +110,11 @@ function createReviewDatabase(overrides = {}) {
         });
         return [{ insertId: state.history[0].id }];
       }
+      if (sql.includes('INSERT INTO maalem_notification_deliveries')) {
+        const notification = { id: state.notifications.length + 1, channel: params[5], status: params[11] };
+        state.notifications.push(notification);
+        return [{ insertId: notification.id }];
+      }
       throw new Error(`Unexpected connection query: ${sql}`);
     },
   };
@@ -106,6 +124,10 @@ function createReviewDatabase(overrides = {}) {
 async function withAdminServer(database, callback, { role = 'PDG' } = {}) {
   const originalGetConnection = pool.getConnection;
   const originalQuery = pool.query;
+  const originalWhtspBase = process.env.WHTSP_SERVICE_BASE_URL;
+  const originalWhtspKey = process.env.WHTSP_SERVICE_API_KEY;
+  delete process.env.WHTSP_SERVICE_BASE_URL;
+  delete process.env.WHTSP_SERVICE_API_KEY;
   pool.getConnection = async () => database.connection;
   pool.query = async (sql, params = []) => {
     database.state.queries.push({ sql, params, pool: true });
@@ -113,6 +135,7 @@ async function withAdminServer(database, callback, { role = 'PDG' } = {}) {
       return [database.state.history];
     }
     if (sql.includes('FROM maalem_profile_documents')) return [[]];
+    if (sql.includes('FROM maalem_notification_deliveries')) return [[]];
     if (sql.includes('SELECT mp.*') && sql.includes('mp.contact_id = ?')) {
       return [[database.state.profile]];
     }
@@ -142,6 +165,10 @@ async function withAdminServer(database, callback, { role = 'PDG' } = {}) {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     pool.getConnection = originalGetConnection;
     pool.query = originalQuery;
+    if (originalWhtspBase === undefined) delete process.env.WHTSP_SERVICE_BASE_URL;
+    else process.env.WHTSP_SERVICE_BASE_URL = originalWhtspBase;
+    if (originalWhtspKey === undefined) delete process.env.WHTSP_SERVICE_API_KEY;
+    else process.env.WHTSP_SERVICE_API_KEY = originalWhtspKey;
   }
 }
 
@@ -210,6 +237,7 @@ test('la décision et son audit sont atomiques', async () => {
   });
   assert.equal(database.state.commits, 0);
   assert.equal(database.state.rollbacks, 1);
+  assert.equal(database.state.notifications.length, 0);
 });
 
 test('la correction de catégorie exige une catégorie active et conserve un événement', async () => {
@@ -277,6 +305,7 @@ test('la liste applique les filtres métier et la fiche agrège dossier, documen
     assert.equal(detail.profile.id, 71);
     assert.equal(detail.history.length, 1);
     assert.deepEqual(detail.documents, []);
+    assert.deepEqual(detail.notifications, []);
   });
 });
 
@@ -303,6 +332,7 @@ test('la soumission publique journalise le candidat sans lui ouvrir une décisio
     auth_provider: 'local',
   };
   const events = [];
+  const notificationQueries = [];
   const connection = {
     async beginTransaction() {},
     async commit() {},
@@ -319,13 +349,32 @@ test('la soumission publique journalise le candidat sans lui ouvrir une décisio
         events.push(params);
         return [{ insertId: 1 }];
       }
+      if (sql.includes('INSERT INTO maalem_notification_deliveries')) return [{ insertId: 1 }];
       throw new Error(`Unexpected submission query: ${sql}`);
     },
   };
   const originalGetConnection = pool.getConnection;
   const originalQuery = pool.query;
+  const originalWhtspBase = process.env.WHTSP_SERVICE_BASE_URL;
+  const originalWhtspKey = process.env.WHTSP_SERVICE_API_KEY;
+  delete process.env.WHTSP_SERVICE_BASE_URL;
+  delete process.env.WHTSP_SERVICE_API_KEY;
   pool.getConnection = async () => connection;
-  pool.query = async (sql) => {
+  pool.query = async (sql, params = []) => {
+    if (sql.includes('FROM maalem_notification_deliveries')) {
+      notificationQueries.push({ sql, params });
+      return [[{
+        id: 1, profile_id: 71, contact_id: 42,
+        notification_type: 'MaalemApplicationSubmitted',
+        source_event: 'MaalemApplicationSubmitted', channel: 'IN_APP', locale: 'fr',
+        status: 'sent', attempts: 1, recipient_address: '42', payload: '{}',
+        created_at: '2026-08-12 10:00:00', sent_at: '2026-08-12 10:00:00', read_at: null,
+      }]];
+    }
+    if (sql.includes('UPDATE maalem_notification_deliveries')) {
+      notificationQueries.push({ sql, params });
+      return [{ affectedRows: 1 }];
+    }
     if (sql.includes('FROM maalem_profiles')) return [[profile]];
     throw new Error(`Unexpected submission pool query: ${sql}`);
   };
@@ -349,9 +398,19 @@ test('la soumission publique journalise le candidat sans lui ouvrir une décisio
     assert.equal(events[0][3], 'submitted');
     assert.equal(events[0][7], 'CANDIDATE');
     assert.equal(events[0][9], 42);
+    const notificationsResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/maalem-profiles/me/notifications`);
+    assert.equal(notificationsResponse.status, 200);
+    assert.equal((await notificationsResponse.json()).notifications.length, 1);
+    const readResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/maalem-profiles/me/notifications/1/read`, { method: 'POST' });
+    assert.equal(readResponse.status, 204);
+    assert.deepEqual(notificationQueries.map(({ params }) => params), [[42, 42], [1, 42, 42]]);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     pool.getConnection = originalGetConnection;
     pool.query = originalQuery;
+    if (originalWhtspBase === undefined) delete process.env.WHTSP_SERVICE_BASE_URL;
+    else process.env.WHTSP_SERVICE_BASE_URL = originalWhtspBase;
+    if (originalWhtspKey === undefined) delete process.env.WHTSP_SERVICE_API_KEY;
+    else process.env.WHTSP_SERVICE_API_KEY = originalWhtspKey;
   }
 });
