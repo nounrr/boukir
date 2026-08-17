@@ -2,7 +2,9 @@ import { io, Socket } from 'socket.io-client';
 import type { AppDispatch } from '../index';
 import { setCount, setRequests, setLoading, removeRequest } from '../slices/notificationsSlice';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+// Sans VITE_API_BASE_URL (build de production), on cible l'origine courante
+// (ex. https://backoffice.boukirdiamond.com) pour le socket et les fetch.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 let socket: Socket | null = null;
 let reconnectAttempts = 0;

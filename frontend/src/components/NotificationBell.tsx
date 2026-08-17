@@ -5,7 +5,8 @@ import { setRequests, setLoading, removeRequest } from '../store/slices/notifica
 import axios from 'axios';
 import ConfirmModal from './ConfirmModal';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+// Sans VITE_API_BASE_URL (build de production), chemins relatifs vers l'origine courante.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 interface ArtisanRequest {
   id: number;

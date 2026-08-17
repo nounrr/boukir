@@ -13,7 +13,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
 import { subscribeCashRegisterChanges } from '../store/api/socketService';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+// Sans VITE_API_BASE_URL (build de production), on reste sur l'origine courante
+// pour que /api/... parte vers le même domaine que le back-office.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const CASH_SOUND_STORAGE_KEY = 'cash_register_notification_sound_enabled';
 
 type CashAction = {
