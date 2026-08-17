@@ -42,7 +42,7 @@ import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
   import { uploadBonPdf } from '../utils/uploads';
-  import { formatDateSpecial, formatDateTimeWithHour } from '../utils/dateUtils';
+  import { formatDateTimeWithHour } from '../utils/dateUtils';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
   import { getBonNumeroDisplay } from '../utils/numero';
@@ -1019,9 +1019,10 @@ const BonsPage = () => {
       push(bon?.immatriculation || bon?.vehicle_immatriculation || bon?.numero_immatriculation || '');
 
       // Dates: include ISO and simple local date so searching by yyyy-mm-dd or dd/mm/yyyy can match
-      if (bon?.date_creation) {
+      const bonDateForSearch = bon?.created_at || bon?.date_creation;
+      if (bonDateForSearch) {
         try {
-          const d = new Date(bon.date_creation);
+          const d = new Date(bonDateForSearch);
           if (!isNaN(d.getTime())) {
             // full ISO with time
             push(d.toISOString());
@@ -1039,10 +1040,10 @@ const BonsPage = () => {
             // mm/dd/yyyy also (some users may type month first)
             push(`${mm}/${dd}/${yyyy}`);
           } else {
-            push(String(bon.date_creation));
+            push(String(bonDateForSearch));
           }
         } catch {
-          push(String(bon.date_creation));
+          push(String(bonDateForSearch));
         }
       }
     } catch (e) {
@@ -1465,8 +1466,8 @@ const BonsPage = () => {
           bValue = getDisplayNumero(b).toLowerCase();
           break;
         case 'date':
-          aValue = new Date(a.date_creation || 0).getTime();
-          bValue = new Date(b.date_creation || 0).getTime();
+          aValue = new Date(a.created_at || a.date_creation || 0).getTime();
+          bValue = new Date(b.created_at || b.date_creation || 0).getTime();
           break;
         case 'contact':
           aValue = (effectiveCurrentTab === 'Vehicule' ? (a.vehicule_nom || '') : getContactName(a)).toLowerCase();
@@ -1736,7 +1737,7 @@ const BonsPage = () => {
         `Type: ${bon.type || effectiveCurrentTab}`,
         `Numéro: ${getDisplayNumero(bon)}`,
         `Montant: ${formatNumber2(computeMontantTotal(bon))} DH`,
-        bon.date_creation ? `Date: ${formatDateTimeWithHour(bon.date_creation)}` : '',
+        (bon.created_at || bon.date_creation) ? `Date: ${formatDateTimeWithHour(bon.created_at || bon.date_creation)}` : '',
         bon.adresse_livraison ? `Adresse: ${bon.adresse_livraison}` : '',
         bon.lieu_chargement ? `Lieu de chargement: ${bon.lieu_chargement}` : '',
         bon.observations ? `Note: ${bon.observations}` : '',
@@ -3068,7 +3069,7 @@ const BonsPage = () => {
                     >
                       <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
                       <td className="px-4 py-2 text-sm">
-                        <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</div>
+                        <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at || bon.date_creation)}</div>
                       </td>
                       {showContactRefCol && (
                         <td className="px-4 py-2 text-sm font-medium text-gray-700">
@@ -4266,7 +4267,7 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Date de création:</p>
-                      <p className="text-lg">{formatDateSpecial(selectedBon.date_creation)}</p>
+                      <p className="text-lg">{formatDateTimeWithHour(selectedBon.created_at || selectedBon.date_creation)}</p>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Statut:</p>
