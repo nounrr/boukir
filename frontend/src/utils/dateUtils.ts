@@ -158,6 +158,28 @@ export const formatDateTimeWithHour = (date: string | Date | number): string => 
 };
 
 /**
+ * Affiche une valeur DATETIME provenant de MySQL sans appliquer de fuseau.
+ * Exemple: `2026-08-20 14:30:00` reste `20-08-2026 14:30` quel que soit
+ * le fuseau configure dans le navigateur.
+ */
+export const formatDatabaseDateTimeLiteral = (value: string | Date | number): string => {
+  if (!value) return '';
+
+  if (typeof value === 'string') {
+    const input = value.trim();
+    const match = input.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?)?$/);
+    if (match) {
+      const [, year, month, day, hours, minutes] = match;
+      return hours && minutes
+        ? `${day}-${month}-${year} ${hours}:${minutes}`
+        : `${day}-${month}-${year}`;
+    }
+  }
+
+  return formatDateTimeWithHour(value);
+};
+
+/**
  * Convertit une date d'input HTML (YYYY-MM-DD) vers le format DATETIME MySQL
  * @param dateInput - Date au format YYYY-MM-DD (ou vide)
  * @param withCurrentTime - Si true, utilise l'heure actuelle, sinon 00:00:00

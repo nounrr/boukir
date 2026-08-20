@@ -25,7 +25,7 @@
 -- ---------------------------------------------------------------------------
 -- 1. Commentaires clients
 -- ---------------------------------------------------------------------------
-use boukir;
+use boukir3;
 CREATE TABLE IF NOT EXISTS contact_comments (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   contact_id INT NOT NULL,
@@ -1096,7 +1096,7 @@ ALTER TABLE services
 -- Source: 2026-08-13-kan-26-public-maalems.sql
 -- ============================================================
 
-USE boukir;
+USE boukir3;
 
 SET @is_public_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maalem_profiles' AND COLUMN_NAME = 'is_public');
 SET @is_public_sql := IF(@is_public_exists = 0, 'ALTER TABLE maalem_profiles ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0 AFTER status', 'SELECT 1');

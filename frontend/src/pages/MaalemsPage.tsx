@@ -53,7 +53,8 @@ import {
   useUploadAdminMaalemCvMutation,
   useUploadAdminMaalemRealizationsMutation,
 } from '../store/api/maalemProfilesApi';
-import { showError, showSuccess } from '../utils/notifications';
+import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import { useAppSelector } from '../hooks/redux';
 
 const EMPTY_PROFESSIONAL_DATA: MaalemProfessionalData = {
   skills: [],
@@ -535,7 +536,7 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
   const { data, isLoading, isError, refetch } = useGetAdminMaalemProfileDetailsQuery(profileId);
   const { data: categories = [] } = useGetActiveMaalemCategoriesQuery();
   const [updateStatus, { isLoading: isUpdatingStatus }] = useUpdateAdminMaalemStatusMutation();
-  const [updatePublication, { isLoading: isUpdatingPublication }] = useUpdateAdminMaalemPublicationMutation();
+  const { isPDG, isLoading: isUpdatingPublication, togglePublication } = useMaalemPublication();
   const [submitDraft, { isLoading: isSubmittingDraft }] = useSubmitAdminMaalemProfileMutation();
   const [updateCategory, { isLoading: isUpdatingCategory }] = useUpdateAdminMaalemCategoryMutation();
   const [updateProfessionalData, { isLoading: isSavingProfessionalData }] = useUpdateAdminMaalemProfessionalDataMutation();
@@ -674,7 +675,7 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
       <aside ref={dialogRef} tabIndex={-1} className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col bg-white shadow-2xl outline-none" role="dialog" aria-modal="true" aria-labelledby="dossier-title">
         <header className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4 sm:px-7">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Dossier #{profileId}</p>{profile && <><StatusBadge status={profile.status} /><span className={`rounded-md px-2 py-1 text-xs font-semibold ${profile.is_public ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{profile.is_public ? 'Public' : 'Non publié'}</span><button type="button" disabled={isUpdatingPublication || (!profile.is_public && profile.status !== 'approved')} onClick={() => void updatePublication({ id: profile.id, is_public: !profile.is_public })} className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-40">{profile.is_public ? 'Retirer du public' : 'Publier'}</button></>}</div>
+            <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Dossier #{profileId}</p>{profile && <><StatusBadge status={profile.status} /><PublicationBadge isPublic={profile.is_public} />{isPDG && <button type="button" disabled={isUpdatingPublication || (!profile.is_public && profile.status !== 'approved')} title={!profile.is_public && profile.status !== 'approved' ? PUBLICATION_REQUIREMENT : undefined} onClick={() => void togglePublication(profile)} className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-40">{profile.is_public ? 'Retirer du public' : 'Publier'}</button>}</>}</div>
             <h2 id="dossier-title" className="mt-1 truncate text-xl font-bold text-gray-950">{profile?.user?.nom_complet || (isLoading ? 'Chargement…' : 'Candidature Maalem')}</h2>
           </div>
           <button data-dialog-initial-focus type="button" onClick={onClose} className="ml-4 rounded-md p-2 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Fermer"><X className="h-5 w-5" /></button>
@@ -869,7 +870,50 @@ const DossierDrawer: React.FC<{ profileId: number; onClose: () => void }> = ({ p
   );
 };
 
-const ProfileRow = ({ profile, onOpen }: { profile: AdminMaalemProfile; onOpen: () => void }) => (
+// La publication expose le profil dans l'annuaire public : réservée au PDG et
+// conditionnée au statut approuvé, comme la vérification d'éligibilité du back-end.
+const PUBLICATION_REQUIREMENT = 'Seuls les dossiers approuvés peuvent être publiés.';
+
+function useMaalemPublication() {
+  const role = useAppSelector((state) => state.auth.user?.role);
+  const isPDG = role === 'PDG';
+  const [updatePublication, { isLoading }] = useUpdateAdminMaalemPublicationMutation();
+
+  const togglePublication = async (profile: Pick<AdminMaalemProfile, 'id' | 'is_public' | 'status'> & { user?: { nom_complet: string } }) => {
+    if (!isPDG) return;
+    const nextPublic = !profile.is_public;
+    if (nextPublic && profile.status !== 'approved') {
+      await showError(PUBLICATION_REQUIREMENT);
+      return;
+    }
+    const name = profile.user?.nom_complet || `le dossier #${profile.id}`;
+    const confirmation = await showConfirmation(
+      nextPublic
+        ? `${name} apparaîtra dans l'annuaire public des Maalems, avec son nom, sa catégorie et ses statistiques vérifiées.`
+        : `${name} sera retiré de l'annuaire public. Le dossier et le compte restent inchangés.`,
+      nextPublic ? 'Publier ce Maalem ?' : `Retirer de l'annuaire public ?`,
+      nextPublic ? 'Publier' : 'Retirer',
+    );
+    if (!confirmation.isConfirmed) return;
+    try {
+      await updatePublication({ id: profile.id, is_public: nextPublic }).unwrap();
+      await showSuccess(nextPublic ? `Maalem publié dans l'annuaire public.` : `Maalem retiré de l'annuaire public.`);
+    } catch (error) { await showError(apiErrorMessage(error)); }
+  };
+
+  return { isPDG, isLoading, togglePublication };
+}
+
+const PublicationBadge = ({ isPublic }: { isPublic: boolean }) => (
+  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isPublic ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
+    {isPublic ? 'Public' : 'Non publié'}
+  </span>
+);
+
+const ProfileRow = ({ profile, onOpen }: { profile: AdminMaalemProfile; onOpen: () => void }) => {
+  const { isPDG, isLoading, togglePublication } = useMaalemPublication();
+  const canPublish = profile.is_public || profile.status === 'approved';
+  return (
   <tr className="group hover:bg-blue-50/40">
     <td className={`border-l-4 px-4 py-3.5 ${STATUS_RAILS[profile.status]}`}><div className="flex items-center gap-3"><AvatarThumb name={profile.user?.nom_complet} avatarUrl={profile.user?.avatar_url} size="sm" /><div className="min-w-0"><p className="truncate font-semibold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-0.5 truncate text-xs text-gray-500">{profile.user?.email || 'Sans email'}</p></div></div></td>
     <td className="px-4 py-3.5 text-sm text-gray-700">{profile.category?.nom || <span className="text-amber-700">À compléter</span>}</td>
@@ -878,9 +922,11 @@ const ProfileRow = ({ profile, onOpen }: { profile: AdminMaalemProfile; onOpen: 
     <td className="px-4 py-3.5 text-sm text-gray-600"><span className="block">{formatDate(profile.submitted_at || profile.created_at)}</span>{queueAge(profile) && <span className={`mt-0.5 block text-[11px] font-semibold ${queueAge(profile)!.urgent ? 'text-red-700' : 'text-blue-700'}`}>{queueAge(profile)!.label}</span>}</td>
     <td className="px-4 py-3.5 text-xs font-medium text-gray-600">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</td>
     <td className="px-4 py-3.5"><StatusBadge status={profile.status} /></td>
+    <td className="px-4 py-3.5"><div className="flex flex-col items-start gap-1"><PublicationBadge isPublic={profile.is_public} />{isPDG && <button type="button" disabled={isLoading || !canPublish} title={canPublish ? undefined : PUBLICATION_REQUIREMENT} onClick={() => void togglePublication(profile)} className="rounded-md border border-gray-300 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40">{profile.is_public ? 'Retirer' : 'Publier'}</button>}</div></td>
     <td className="px-4 py-3.5 text-right"><button type="button" onClick={onOpen} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">Examiner<ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></button></td>
   </tr>
-);
+  );
+};
 
 const MaalemsPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
@@ -940,7 +986,7 @@ const MaalemsPage: React.FC = () => {
         {isLoading ? <div className="flex min-h-64 items-center justify-center text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Chargement des candidatures…</div>
           : isError ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><AlertCircle className="h-8 w-8 text-red-500" /><p className="mt-3 font-semibold text-gray-900">Impossible de charger les dossiers Maalem.</p><button type="button" onClick={() => refetch()} className="mt-3 rounded-md px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Réessayer</button></div>
             : profiles.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><BriefcaseBusiness className="h-9 w-9 text-gray-300" /><p className="mt-3 font-semibold text-gray-900">Aucun dossier ne correspond.</p><p className="mt-1 text-sm text-gray-500">Modifiez les filtres ou ajoutez un Maalem depuis le Back-office.</p>{hasFilters && <button type="button" onClick={resetFilters} className="mt-4 text-sm font-semibold text-blue-700">Effacer tous les filtres</button>}</div>
-              : <><div className="hidden overflow-x-auto md:block"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-slate-50"><tr>{['Candidat', 'Catégorie', 'Ville', 'Contact', 'Demande', 'Origine', 'Statut', ''].map((heading) => <th key={heading || 'actions'} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} onOpen={() => setSelectedProfileId(profile.id)} />)}</tbody></table></div><ul className="divide-y divide-gray-200 md:hidden">{profiles.map((profile) => <li key={profile.id}><button type="button" onClick={() => setSelectedProfileId(profile.id)} className="w-full p-4 text-left hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><AvatarThumb name={profile.user?.nom_complet} avatarUrl={profile.user?.avatar_url} size="sm" /><div className="min-w-0"><p className="truncate font-bold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-1 truncate text-sm text-gray-600">{profile.category?.nom || 'Catégorie à compléter'} · {profile.professional_data?.city || 'Ville inconnue'}</p></div></div><ChevronRight className="mt-1 h-5 w-5 shrink-0 text-gray-400" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={profile.status} /><span className="text-xs text-gray-500">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</span><span className="text-xs text-gray-400">· {formatDate(profile.submitted_at || profile.created_at)}</span></div><p className="mt-2 text-xs text-gray-500">{profile.user?.telephone || profile.professional_data?.contact_phone || 'Contact non renseigné'}</p></button></li>)}</ul></>}
+              : <><div className="hidden overflow-x-auto md:block"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-slate-50"><tr>{['Candidat', 'Catégorie', 'Ville', 'Contact', 'Demande', 'Origine', 'Statut', 'Annuaire', ''].map((heading) => <th key={heading || 'actions'} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} onOpen={() => setSelectedProfileId(profile.id)} />)}</tbody></table></div><ul className="divide-y divide-gray-200 md:hidden">{profiles.map((profile) => <li key={profile.id}><button type="button" onClick={() => setSelectedProfileId(profile.id)} className="w-full p-4 text-left hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><AvatarThumb name={profile.user?.nom_complet} avatarUrl={profile.user?.avatar_url} size="sm" /><div className="min-w-0"><p className="truncate font-bold text-gray-950">{profile.user?.nom_complet || `Contact #${profile.contact_id}`}</p><p className="mt-1 truncate text-sm text-gray-600">{profile.category?.nom || 'Catégorie à compléter'} · {profile.professional_data?.city || 'Ville inconnue'}</p></div></div><ChevronRight className="mt-1 h-5 w-5 shrink-0 text-gray-400" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={profile.status} /><PublicationBadge isPublic={profile.is_public} /><span className="text-xs text-gray-500">{ORIGIN_LABELS[profile.origin] || ORIGIN_LABELS.SELF_SERVICE}</span><span className="text-xs text-gray-400">· {formatDate(profile.submitted_at || profile.created_at)}</span></div><p className="mt-2 text-xs text-gray-500">{profile.user?.telephone || profile.professional_data?.contact_phone || 'Contact non renseigné'}</p></button></li>)}</ul></>}
       </section>
 
       {selectedProfileId !== null && <DossierDrawer profileId={selectedProfileId} onClose={() => setSelectedProfileId(null)} />}

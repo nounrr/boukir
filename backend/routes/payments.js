@@ -139,6 +139,21 @@ const dbDateTimeToYMDOrNull = (d) => {
 // Nouvelle fonction pour retourner le DATETIME complet
 const dbDateTimeToFullOrNull = (d) => {
   if (!d) return null;
+
+  // mysql2 transforme normalement les DATETIME/TIMESTAMP en Date JavaScript.
+  // Reconstruire les composantes locales restitue exactement la valeur envoyee
+  // par MySQL, sans conversion UTC lors de la serialisation JSON.
+  if (d instanceof Date) {
+    if (Number.isNaN(d.getTime())) return null;
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
   const s = String(d);
   
   // Vérifier si c'est un DATETIME valide (YYYY-MM-DD HH:MM:SS)
@@ -146,9 +161,9 @@ const dbDateTimeToFullOrNull = (d) => {
     return s;
   }
   
-  // Si c'est une DATE simple (YYYY-MM-DD), ajouter l'heure par défaut (08:00:00)
+  // Une DATE simple reste identique: ne jamais inventer une heure.
   if (s.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    return `${s} 08:00:00`;
+    return s;
   }
   
   // Si c'est '0000-00-00 00:00:00' ou format invalide
@@ -187,9 +202,9 @@ const toPayment = (r) => ({
   statut: r.statut || null,
   created_by: r.created_by ?? null,
   updated_by: r.updated_by ?? null,
-  created_at: r.created_at,
-  updated_at: r.updated_at,
-  date_ajout_reelle: r.date_ajout_reelle || null,
+  created_at: dbDateTimeToFullOrNull(r.created_at),
+  updated_at: dbDateTimeToFullOrNull(r.updated_at),
+  date_ajout_reelle: dbDateTimeToFullOrNull(r.date_ajout_reelle),
 });
 
 const paymentPaidAmount = (payment) => Math.max(Number(payment?.montant_total || 0) || 0, 0);

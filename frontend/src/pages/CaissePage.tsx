@@ -37,7 +37,7 @@ import { useGetClientRemisesQuery, useGetDirectContactRemiseBalancesQuery } from
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { canModifyPayments } from '../utils/permissions';
-import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
+import { formatDatabaseDateTimeLiteral, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
 import { paymentsApi, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
@@ -1595,9 +1595,9 @@ const paymentValidationSchema = Yup.object({
         </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-700">{payment.created_at ? formatDateTimeWithHour(payment.created_at) : '-'}</div>
+        <div className="text-sm text-gray-700">{payment.created_at ? formatDatabaseDateTimeLiteral(payment.created_at) : '-'}</div>
         {payment.date_paiement && (
-          <div className="text-xs text-gray-400">Paiement : {formatDateTimeWithHour(payment.date_paiement)}</div>
+          <div className="text-xs text-gray-400">Paiement : {formatDatabaseDateTimeLiteral(payment.date_paiement)}</div>
         )}
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
@@ -2318,9 +2318,9 @@ const paymentValidationSchema = Yup.object({
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <h3 className="text-base font-semibold text-gray-900">{getDisplayNumeroPayment(payment)}</h3>
-                    <p className="text-xs text-gray-500">{payment.created_at ? formatDateTimeWithHour(payment.created_at) : '-'}</p>
+                    <p className="text-xs text-gray-500">{payment.created_at ? formatDatabaseDateTimeLiteral(payment.created_at) : '-'}</p>
                     {payment.date_paiement && (
-                      <p className="text-[11px] text-gray-400">Paiement : {formatDateTimeWithHour(payment.date_paiement)}</p>
+                      <p className="text-[11px] text-gray-400">Paiement : {formatDatabaseDateTimeLiteral(payment.date_paiement)}</p>
                     )}
                   </div>
                   <div>
@@ -3452,11 +3452,11 @@ const paymentValidationSchema = Yup.object({
 
               <div className="border-t pt-4">
                 <p className="text-xs text-gray-500">
-                  Date de paiement: {selectedPayment.date_paiement ? new Date(selectedPayment.date_paiement).toLocaleString('fr-FR') : '-'}
+                  Date de paiement: {selectedPayment.date_paiement ? formatDatabaseDateTimeLiteral(selectedPayment.date_paiement) : '-'}
                   {selectedPayment.updated_at && (
                     <>
                       <br />
-                      Modifié le {new Date(selectedPayment.updated_at).toLocaleString('fr-FR')}
+                      Modifié le {formatDatabaseDateTimeLiteral(selectedPayment.updated_at)}
                     </>
                   )}
                 </p>

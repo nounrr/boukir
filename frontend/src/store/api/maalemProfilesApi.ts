@@ -209,7 +209,27 @@ export const maalemProfilesApi = apiSlice.injectEndpoints({
     }),
     updateAdminMaalemPublication: builder.mutation<{ id: number; is_public: boolean }, { id: number; is_public: boolean }>({
       query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/publication`, method: 'PATCH', body }),
-      invalidatesTags: (_result, _error, { id }) => [{ type: 'MaalemProfile', id }, { type: 'MaalemProfile', id: 'LIST' }],
+      // La publication ne change qu'un booléen : on patche le profil concerné dans les
+      // caches déjà chargés au lieu d'invalider la liste, qui déclencherait un refetch complet.
+      async onQueryStarted({ id }, { dispatch, getState, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          const patchProfile = (profile: AdminMaalemProfile) => {
+            if (profile.id === id) profile.is_public = data.is_public;
+          };
+          dispatch(maalemProfilesApi.util.updateQueryData('getAdminMaalemProfileDetails', id, (draft) => {
+            patchProfile(draft.profile);
+          }));
+          const listArgs = maalemProfilesApi.util.selectCachedArgsForQuery(getState(), 'getAdminMaalemProfiles');
+          listArgs.forEach((args) => {
+            dispatch(maalemProfilesApi.util.updateQueryData('getAdminMaalemProfiles', args, (draft) => {
+              draft.profiles.forEach(patchProfile);
+            }));
+          });
+        } catch {
+          // L'échec laisse les caches intacts : le back-end n'a rien modifié.
+        }
+      },
     }),
     updateAdminMaalemProfessionalData: builder.mutation<AdminMaalemProfile, { id: number; professional_data: MaalemProfessionalData }>({
       query: ({ id, ...body }) => ({ url: `/admin/maalem-profiles/${id}/professional-data`, method: 'PATCH', body }),
