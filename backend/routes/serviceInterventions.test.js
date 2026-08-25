@@ -65,6 +65,7 @@ function databaseDouble() {
       if (sql.includes('UPDATE service_requests SET status = ?')) { state.requestStatus = params[0]; return [{ affectedRows: 1 }]; }
       if (sql.includes('INSERT INTO service_intervention_history')) { state.history.push({ event: params[1], oldStatus: params[2], newStatus: params[3] }); return [{ insertId: state.history.length }]; }
       if (sql.includes('INSERT INTO maalem_notification_deliveries')) return [{ insertId: 500 + state.history.length, affectedRows: 1 }];
+      if (sql.includes('UPDATE maalem_review_invitations')) return [{ affectedRows: 0 }];
       throw new Error(`Unexpected query: ${sql}`);
     },
   };

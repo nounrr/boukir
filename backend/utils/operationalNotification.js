@@ -18,6 +18,8 @@ export const OPERATIONAL_NOTIFICATION_EVENTS = Object.freeze({
   STATUS_CHANGED: 'InterventionStatusChanged',
   COMPLETED: 'InterventionCompleted',
   CLOSED: 'InterventionClosed',
+  REVIEW_INVITATION: 'MaalemReviewInvitation',
+  REVIEW_REMINDER: 'MaalemReviewReminder',
 });
 
 const TEMPLATE_KEY_BY_EVENT = Object.freeze(Object.fromEntries(
@@ -64,6 +66,7 @@ export function renderOperationalNotification({ event, locale, payload = {} }) {
   const oldSlot = clean(payload.old_planned_time_slot, 100);
   const link = clean(payload.detail_url, 1000);
   const removed = payload.assignment_action === 'removed';
+  const maalemName = clean(payload.maalem_name, 255) || (language === 'ar' ? 'المعلم' : 'votre Maalem');
 
   const fr = {
     [OPERATIONAL_NOTIFICATION_EVENTS.CREATED]: ['Demande de service reçue', [`Votre demande ${requestNumber} a bien été reçue.`, `Type : ${serviceName}.`, 'Notre équipe prendra contact avec vous.']],
@@ -79,6 +82,8 @@ export function renderOperationalNotification({ event, locale, payload = {} }) {
     [OPERATIONAL_NOTIFICATION_EVENTS.STATUS_CHANGED]: ['Avancement de l’intervention', [`Pour ${requestNumber}, le Maalem est ${publicStatus('fr', payload.public_status)}.`, link]],
     [OPERATIONAL_NOTIFICATION_EVENTS.COMPLETED]: ['Intervention déclarée terminée', [`L’intervention ${requestNumber} a été déclarée terminée par le Maalem.`, 'Elle attend encore la vérification et la clôture Back-office.']],
     [OPERATIONAL_NOTIFICATION_EVENTS.CLOSED]: ['Intervention clôturée', [`L’intervention ${requestNumber} est clôturée.`, 'Vous pouvez consulter le détail de votre demande.', link]],
+    [OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_INVITATION]: ['Comment s’est passée votre intervention ?', [`Votre intervention avec ${maalemName} est terminée. Partagez votre expérience pour aider les autres clients et améliorer la qualité de nos Services.`, `Demande : ${requestNumber}.`]],
+    [OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_REMINDER]: ['Votre avis compte', [`Vous n’avez pas encore évalué votre intervention avec ${maalemName}. Partagez votre expérience tant que votre invitation est disponible.`, `Demande : ${requestNumber}.`]],
   };
   const ar = {
     [OPERATIONAL_NOTIFICATION_EVENTS.CREATED]: ['تم استلام طلب الخدمة', [`تم استلام طلبكم ${requestNumber}.`, `نوع الخدمة: ${serviceName}.`, 'سيتواصل معكم فريقنا.']],
@@ -94,6 +99,8 @@ export function renderOperationalNotification({ event, locale, payload = {} }) {
     [OPERATIONAL_NOTIFICATION_EVENTS.STATUS_CHANGED]: ['تقدم التدخل', [`بالنسبة للطلب ${requestNumber}، حالة المعلم: ${publicStatus('ar', payload.public_status)}.`, link]],
     [OPERATIONAL_NOTIFICATION_EVENTS.COMPLETED]: ['تم التصريح بانتهاء التدخل', [`صرّح المعلم بانتهاء التدخل ${requestNumber}.`, 'ينتظر التدخل التحقق والإغلاق من طرف الإدارة.']],
     [OPERATIONAL_NOTIFICATION_EVENTS.CLOSED]: ['تم إغلاق التدخل', [`تم إغلاق التدخل ${requestNumber}.`, 'يمكنكم الاطلاع على تفاصيل الطلب.', link]],
+    [OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_INVITATION]: ['كيف كانت عملية التدخل؟', [`اكتمل تدخلكم مع ${maalemName}. شاركوا تجربتكم لمساعدة العملاء الآخرين وتحسين جودة خدماتنا.`, `الطلب: ${requestNumber}.`]],
+    [OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_REMINDER]: ['رأيكم مهم', [`لم تقيّموا بعد تدخلكم مع ${maalemName}. شاركوا تجربتكم قبل انتهاء صلاحية الدعوة.`, `الطلب: ${requestNumber}.`]],
   };
   const template = (language === 'ar' ? ar : fr)[event];
   if (!template) throw new Error(`Unsupported operational notification event: ${event}`);
@@ -150,9 +157,10 @@ function payloadFor(context, input, audience, locale) {
     old_planned_time_slot: input.oldPlannedTimeSlot || null,
     public_status: input.publicStatus || null,
     assignment_action: audience === 'PREVIOUS_MAALEM' ? 'removed' : 'assigned',
-    detail_url: audience.includes('MAALEM') && interventionId
+    maalem_name: clean(input.maalemName, 255),
+    detail_url: clean(input.detailUrl, 1000) || (audience.includes('MAALEM') && interventionId
       ? `${base}/${locale}/profile/maalem/missions/${interventionId}`
-      : `${base}/${locale}/profile/requests/${context.id}`,
+      : `${base}/${locale}/profile/requests/${context.id}`),
   };
 }
 
@@ -227,9 +235,11 @@ export async function dispatchOperationalNotificationsSafely(deliveries, options
   }
 }
 
-export function normalizeOperationalNotificationRow(row) {
+export function normalizeOperationalNotificationRow(row, { includeAction = false } = {}) {
   const payload = parseNotificationPayload(row.payload);
   const rendered = renderOperationalNotification({ event: row.notification_type, locale: row.locale, payload });
+  const isReviewInvitation = [OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_INVITATION, OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_REMINDER]
+    .includes(row.notification_type);
   return {
     id: Number(row.id), service_request_id: Number(row.service_request_id),
     intervention_id: row.intervention_id == null ? null : Number(row.intervention_id),
@@ -240,6 +250,8 @@ export function normalizeOperationalNotificationRow(row) {
     status: row.status, attempts: Number(row.attempts), title: rendered.title, body: rendered.body,
     last_error: row.last_error || null, created_at: row.created_at, sent_at: row.sent_at || null,
     read_at: row.read_at || null,
+    action_url: includeAction && isReviewInvitation ? clean(payload.detail_url, 1000) : null,
+    cta_label: includeAction && isReviewInvitation ? (row.locale === 'ar' ? 'إضافة تقييم' : 'Donner mon avis') : null,
   };
 }
 
@@ -249,4 +261,3 @@ export function scheduleHasMeaningfulChange(oldSchedule, nextSchedule) {
   return date(oldSchedule.planned_date) !== date(nextSchedule.planned_date)
     || String(oldSchedule.planned_time_slot || '').trim() !== String(nextSchedule.planned_time_slot || '').trim();
 }
-

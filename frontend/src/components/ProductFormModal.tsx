@@ -131,6 +131,7 @@ const validationSchema = Yup.object({
       variant_name_ar: Yup.string().nullable().optional(),
       variant_name_en: Yup.string().nullable().optional(),
       variant_name_zh: Yup.string().nullable().optional(),
+      color_name: Yup.string().max(100, 'Le nom de couleur ne peut pas dépasser 100 caractères').nullable().optional(),
       variant_type: Yup.string().required('Type requis'),
       reference: Yup.string().optional(),
       prix_achat: Yup.number().transform(numberTransform()).typeError('Prix achat requis').min(0).required('Prix achat requis'),
@@ -563,6 +564,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           variant_name_ar: variant?.variant_name_ar ?? '',
           variant_name_en: variant?.variant_name_en ?? '',
           variant_name_zh: variant?.variant_name_zh ?? '',
+          color_name: variant?.variant_type === 'Couleur' ? (variant?.color_name ?? '') : '',
           variant_type: variant?.variant_type || 'Autre',
           reference: variant?.reference ?? '',
           prix_achat: prixAchat,
@@ -690,26 +692,31 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         : values.variants;
 
       const variantsSanitized = Array.isArray(variantsNormalized)
-        ? variantsNormalized.map((v: any) => ({
-            id: v.id,
-            variant_name: v.variant_name,
-            variant_name_ar: v.variant_name_ar ?? null,
-            variant_name_en: v.variant_name_en ?? null,
-            variant_name_zh: v.variant_name_zh ?? null,
-            variant_type: v.variant_type,
-            reference: v.reference,
-            prix_achat: toNonNegativeNum(v.prix_achat),
-            cout_revient: toNonNegativeNum(v.cout_revient),
-            cout_revient_pourcentage: toNonNegativeNum(v.cout_revient_pourcentage),
-            prix_gros: toNonNegativeNum(v.prix_gros),
-            prix_gros_pourcentage: toNonNegativeNum(v.prix_gros_pourcentage),
-            prix_vente_pourcentage: toNonNegativeNum(v.prix_vente_pourcentage),
-            prix_vente: toNonNegativeNum(v.prix_vente),
-            prix_vente_2: toNonNegativeNum(v.prix_vente_2 ?? 0),
-            stock_quantity: toNonNegativeNum(v.stock_quantity),
-            remise_client: toNonNegativeNum(v.remise_client ?? 0),
-            remise_artisan: toNonNegativeNum(v.remise_artisan ?? 0),
-          }))
+        ? variantsNormalized.map((v: any) => {
+            const variantType = v.variant_type || 'Autre';
+            const colorName = String(v.color_name ?? '').trim().slice(0, 100);
+            return {
+              id: v.id,
+              variant_name: v.variant_name,
+              variant_name_ar: v.variant_name_ar ?? null,
+              variant_name_en: v.variant_name_en ?? null,
+              variant_name_zh: v.variant_name_zh ?? null,
+              color_name: variantType === 'Couleur' && colorName ? colorName : null,
+              variant_type: variantType,
+              reference: v.reference,
+              prix_achat: toNonNegativeNum(v.prix_achat),
+              cout_revient: toNonNegativeNum(v.cout_revient),
+              cout_revient_pourcentage: toNonNegativeNum(v.cout_revient_pourcentage),
+              prix_gros: toNonNegativeNum(v.prix_gros),
+              prix_gros_pourcentage: toNonNegativeNum(v.prix_gros_pourcentage),
+              prix_vente_pourcentage: toNonNegativeNum(v.prix_vente_pourcentage),
+              prix_vente: toNonNegativeNum(v.prix_vente),
+              prix_vente_2: toNonNegativeNum(v.prix_vente_2 ?? 0),
+              stock_quantity: toNonNegativeNum(v.stock_quantity),
+              remise_client: toNonNegativeNum(v.remise_client ?? 0),
+              remise_artisan: toNonNegativeNum(v.remise_artisan ?? 0),
+            };
+          })
         : variantsNormalized;
 
       const productData: Partial<Product> = {
@@ -2501,13 +2508,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           </button>
 
                           {/* Ligne 1: Infos de base */}
-                          <div className="grid grid-cols-1 md:grid-cols-6 gap-4 pr-8">
+                          <div className={`grid grid-cols-1 gap-4 pr-8 ${variant.variant_type === 'Couleur' ? 'md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7' : 'md:grid-cols-6'}`}>
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
                               <select
                                 name={`variants.${index}.variant_type`}
                                 value={variant.variant_type || 'Autre'}
-                                onChange={formik.handleChange}
+                                onChange={(event) => {
+                                  const nextType = event.target.value;
+                                  void formik.setFieldValue(`variants.${index}.variant_type`, nextType);
+                                  if (nextType !== 'Couleur') {
+                                    void formik.setFieldValue(`variants.${index}.color_name`, '');
+                                  }
+                                }}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                               >
                                 <option value="Couleur">Couleur</option>
@@ -2521,14 +2534,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               )}
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom (ex: Rouge, XL)</label>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom / code de variante</label>
                               <input
-                                list={`suggestions-${index}`}
+                                list={variant.variant_type === 'Couleur' ? undefined : `suggestions-${index}`}
                                 name={`variants.${index}.variant_name`}
                                 value={variant.variant_name}
                                 onChange={formik.handleChange}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="Nom"
+                                placeholder="Ex. KK4, XL"
                               />
                               {asStringError((formik.errors.variants?.[index] as any)?.variant_name) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.variant_name)}</p>
@@ -2539,6 +2552,28 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 ))}
                               </datalist>
                             </div>
+                            {variant.variant_type === 'Couleur' && (
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Nom de couleur (optionnel)</label>
+                                <input
+                                  list={`color-suggestions-${index}`}
+                                  name={`variants.${index}.color_name`}
+                                  value={variant.color_name || ''}
+                                  onChange={formik.handleChange}
+                                  maxLength={100}
+                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  placeholder="Ex. Rouge, Vert, Gris"
+                                />
+                                {asStringError((formik.errors.variants?.[index] as any)?.color_name) && (
+                                  <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.color_name)}</p>
+                                )}
+                                <datalist id={`color-suggestions-${index}`}>
+                                  {VARIANT_SUGGESTIONS.Couleur.map((color) => (
+                                    <option key={color} value={color} />
+                                  ))}
+                                </datalist>
+                              </div>
+                            )}
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Référence</label>
                               <input
@@ -3068,6 +3103,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         variant_name_ar: '',
                         variant_name_en: '',
                         variant_name_zh: '',
+                        color_name: '',
                         variant_type: 'Couleur',
                         reference: '',
                         prix_achat: 0,

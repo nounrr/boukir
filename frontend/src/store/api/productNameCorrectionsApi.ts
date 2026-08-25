@@ -9,6 +9,10 @@ export type ProductNameCorrectionStatus =
 
 export type ProductNameCorrectionMatchFilter = 'all' | 'matched' | 'unmatched';
 export type ProductNameCorrectionImageFilter = 'all' | 'with' | 'without';
+export type ProductNameCorrectionTranslationTarget = 'fr' | 'ar' | 'both';
+export type ProductNameCorrectionTranslationMode =
+  | 'professional'
+  | 'professional_transliteration';
 
 export interface ProductNameCorrectionRow {
   id: number;
@@ -86,6 +90,28 @@ export interface ReplaceProductNameCorrectionNamesResult {
   matched: number;
   updated: number;
   skippedApplied: number;
+}
+
+export interface TranslateProductNameCorrectionsResult {
+  ok: boolean;
+  target: ProductNameCorrectionTranslationTarget;
+  mode: ProductNameCorrectionTranslationMode;
+  model: string;
+  requested: number;
+  translated: number;
+  skipped: number;
+  failed: number;
+  results: Array<{
+    id: number;
+    status: 'translated' | 'skipped' | 'error';
+    entityType?: 'product' | 'variant';
+    fr_pro?: string | null;
+    ar_pro?: string | null;
+    darija_detected?: boolean;
+    confidence?: number | null;
+    notes?: string | null;
+    message?: string;
+  }>;
 }
 
 export const productNameCorrectionsApi = api.injectEndpoints({
@@ -183,6 +209,22 @@ export const productNameCorrectionsApi = api.injectEndpoints({
       invalidatesTags: ['ProductNameCorrection'],
     }),
 
+    translateProductNameCorrections: builder.mutation<
+      TranslateProductNameCorrectionsResult,
+      {
+        ids: number[];
+        target: ProductNameCorrectionTranslationTarget;
+        mode: ProductNameCorrectionTranslationMode;
+      }
+    >({
+      query: (body) => ({
+        url: '/ai/product-name-corrections/translate',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['ProductNameCorrection'],
+    }),
+
     updateProductCorrectionNames: builder.mutation<
       {
         ok: boolean;
@@ -238,6 +280,7 @@ export const {
   useSetProductNameCorrectionCheckedMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
   useReplaceProductNameCorrectionNamesMutation,
+  useTranslateProductNameCorrectionsMutation,
   useUpdateProductCorrectionNamesMutation,
   useApplyProductNameCorrectionsMutation,
   useUpdateProductCorrectionCategoryMutation,

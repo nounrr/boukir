@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
 import { canManageEmployees } from '../../utils/permissions';
+import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import {
   Users,
   Package,
@@ -34,6 +35,7 @@ import {
   HardHat,
   Wrench,
   Download,
+  MessageSquareText,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -44,6 +46,9 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const { user } = useAuth();
   const isChefChauffeur = user?.role === 'ChefChauffeur';
+  const reviewRole = user?.role === 'Manager' || user?.role === 'ManagerPlus';
+  const { data: reviewPermissions } = useGetMyMaalemReviewPermissionsQuery(undefined, { skip: !reviewRole });
+  const canViewMaalemReviews = user?.role === 'PDG' || reviewPermissions?.view === true;
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
@@ -109,6 +114,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Maalems & Services',
       items: [
         { name: 'Demandes de service', href: '/service-requests', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Avis Maalem', href: '/maalem-reviews', icon: MessageSquareText, show: canViewMaalemReviews },
         { name: 'Maalems', href: '/maalems', icon: HardHat, show: user?.role === 'PDG' },
         { name: 'Catégories Maalem', href: '/maalem-categories', icon: Tags, show: user?.role === 'PDG' },
         { name: 'Catalogue des services', href: '/services', icon: Wrench, show: user?.role === 'PDG' },
@@ -129,6 +135,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Salaires', href: '/salaires', icon: Wallet, show: user?.role === 'PDG' },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', href: '/employees/client-collaboration-permissions', icon: UserCheck, show: user?.role === 'PDG' },
+        { name: 'Permissions avis Maalem', href: '/employees/maalem-review-permissions', icon: ShieldCheck, show: user?.role === 'PDG' },
       ],
     },
     {

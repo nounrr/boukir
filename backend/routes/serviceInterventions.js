@@ -22,6 +22,8 @@ import {
   scheduleHasMeaningfulChange,
   shouldNotifyOperationalPolicy,
 } from '../utils/operationalNotification.js';
+import { suspendReviewInvitationsForRequest } from '../utils/reviewInvitation.js';
+import { queueReviewInvitationScheduling } from '../workers/reviewInvitationWorker.js';
 
 const maalemRouter = Router();
 export const adminServiceInterventionsRouter = Router();
@@ -327,6 +329,9 @@ adminServiceInterventionsRouter.post('/:id(\\d+)/transition', async (req, res, n
     }
     await connection.query('UPDATE service_requests SET status = ? WHERE id = ?', [nextStatus, intervention.service_request_id]);
     await history(connection, id, actor, nextStatus === 'closed' ? 'InterventionClosed' : 'MissionReleased', intervention.status, nextStatus);
+    if (nextStatus !== 'closed') {
+      await suspendReviewInvitationsForRequest(connection, intervention.service_request_id, 'REQUEST_REOPENED');
+    }
     if (nextStatus === 'closed') deliveries = await enqueueOperationalNotifications(connection, {
       serviceRequestId: intervention.service_request_id,
       interventionId: id,
@@ -337,6 +342,7 @@ adminServiceInterventionsRouter.post('/:id(\\d+)/transition', async (req, res, n
       createdByEmployeeId: actor.id,
     });
     await connection.commit();
+    if (nextStatus === 'closed') queueReviewInvitationScheduling(intervention.service_request_id);
     await dispatchOperationalNotificationsSafely(deliveries);
     res.json({ intervention_id: id, status: nextStatus, event: nextStatus === 'closed' ? 'InterventionClosed' : 'MissionReleased' });
   } catch (error) { await connection.rollback().catch(() => {}); next(error); }

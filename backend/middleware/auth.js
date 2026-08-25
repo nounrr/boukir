@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import pool, { requestContext } from '../db/pool.js';
 import { checkUserAccess } from './accessSchedule.js';
 import { normalizeClientCollaborationPermissions } from '../utils/clientCollaborationPermissions.js';
+import { normalizeMaalemReviewPermissions } from '../utils/maalemReviewPermissions.js';
 
 export function getJwtSecret() {
   const secret = String(process.env.JWT_SECRET || '').trim();
@@ -52,7 +53,9 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
 
       if (isEmployeePayload(req.user)) {
         const [rows] = await pool.query(
-          `SELECT id, cin, role, acces_commentaires_clients, acces_rappels_clients
+          `SELECT id, cin, role, acces_commentaires_clients, acces_rappels_clients,
+                  acces_avis_maalem, moderation_avis_maalem,
+                  restauration_avis_maalem, details_prives_avis_maalem
            FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
           [userId]
         );
@@ -67,6 +70,11 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
           acces_commentaires_clients: employee.acces_commentaires_clients,
           acces_rappels_clients: employee.acces_rappels_clients,
           client_collaboration_permissions: normalizeClientCollaborationPermissions(employee),
+          acces_avis_maalem: employee.acces_avis_maalem,
+          moderation_avis_maalem: employee.moderation_avis_maalem,
+          restauration_avis_maalem: employee.restauration_avis_maalem,
+          details_prives_avis_maalem: employee.details_prives_avis_maalem,
+          maalem_review_permissions: normalizeMaalemReviewPermissions(employee),
           _currentUserValidated: true,
         };
 

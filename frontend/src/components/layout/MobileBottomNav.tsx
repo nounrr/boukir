@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/redux';
 import { canManageEmployees } from '../../utils/permissions';
+import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 
 // Bottom navigation bar (mobile). Groups pages: one icon per group; tap shows group's pages.
 interface MobileBottomNavProps {
@@ -23,6 +24,9 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
   const navigate = useNavigate();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const isChefChauffeur = user?.role === 'ChefChauffeur';
+  const reviewRole = user?.role === 'Manager' || user?.role === 'ManagerPlus';
+  const { data: reviewPermissions } = useGetMyMaalemReviewPermissionsQuery(undefined, { skip: !reviewRole });
+  const canViewMaalemReviews = user?.role === 'PDG' || reviewPermissions?.view === true;
 
   const groups = isChefChauffeur ? [
     {
@@ -81,6 +85,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
         { name: 'Accès commentaires & rappels', to: '/employees/client-collaboration-permissions', show: user?.role === 'PDG' },
+        { name: 'Permissions avis Maalem', to: '/employees/maalem-review-permissions', show: user?.role === 'PDG' },
         { name: 'Contacts', to: '/contacts', show: user?.role !== 'Employé' },
         { name: 'Paramètres UI', to: '/settings/ui', show: user?.role === 'PDG' },
       ],
@@ -88,6 +93,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
     {
       key: 'maalems', label: 'Maalems', icon: HardHat,
       items: [
+        { name: 'Demandes de service', to: '/service-requests', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Avis Maalem', to: '/maalem-reviews', show: canViewMaalemReviews },
         { name: 'Maalems', to: '/maalems', show: user?.role === 'PDG' },
         { name: 'Catégories Maalem', to: '/maalem-categories', show: user?.role === 'PDG' },
         { name: 'Catalogue des services', to: '/services', show: user?.role === 'PDG' },

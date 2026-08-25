@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, RefreshCcw, RefreshCw, Replace as ReplaceIcon, Search, Upload, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Languages, Loader2, Pencil, RefreshCcw, RefreshCw, Replace as ReplaceIcon, Search, Upload, XCircle } from 'lucide-react';
 import {
   useApplyProductNameCorrectionsMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
@@ -9,12 +9,15 @@ import {
   useReplaceProductNameCorrectionNamesMutation,
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
+  useTranslateProductNameCorrectionsMutation,
   useUpdateProductCorrectionNamesMutation,
   useUpdateProductCorrectionCategoryMutation,
   useUploadProductNameCorrectionsMutation,
   type ProductNameCorrectionImageFilter,
   type ProductNameCorrectionMatchFilter,
   type ProductNameCorrectionRow,
+  type ProductNameCorrectionTranslationMode,
+  type ProductNameCorrectionTranslationTarget,
 } from '../store/api/productNameCorrectionsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { toBackendUrl } from '../utils/url';
@@ -292,6 +295,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [replaceScope, setReplaceScope] = useState<ReplaceScope>('selected');
   const [replaceSearch, setReplaceSearch] = useState('');
   const [replaceValue, setReplaceValue] = useState('');
+  const [translationTarget, setTranslationTarget] = useState<ProductNameCorrectionTranslationTarget>('both');
+  const [translationMode, setTranslationMode] = useState<ProductNameCorrectionTranslationMode>('professional_transliteration');
   const exportInProgressRef = useRef(false);
   const uploadInProgressRef = useRef(false);
 
@@ -312,6 +317,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [setChecked] = useSetProductNameCorrectionCheckedMutation();
   const [bulkSetChecked, { isLoading: isBulkUpdating }] = useBulkSetProductNameCorrectionsCheckedMutation();
   const [replaceCorrectionNames, { isLoading: isReplacingNames }] = useReplaceProductNameCorrectionNamesMutation();
+  const [translateCorrections, { isLoading: isTranslatingCorrections }] = useTranslateProductNameCorrectionsMutation();
   const [updateCorrectionNames] = useUpdateProductCorrectionNamesMutation();
   const [applyCorrections, { isLoading: isApplying }] = useApplyProductNameCorrectionsMutation();
   const [updateProductCategory] = useUpdateProductCorrectionCategoryMutation();
@@ -532,6 +538,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   };
 
   const handleApply = async () => {
+    if (isTranslatingCorrections || processingIds.size > 0) return;
     setMessage('');
     try {
       const result = await applyCorrections({}).unwrap();
@@ -544,6 +551,10 @@ const ProductNameCorrectionsPage: React.FC = () => {
   };
 
   const handleReplaceNames = async () => {
+    if (isTranslatingCorrections) {
+      setMessage('Attendez la fin de la traduction IA avant de remplacer des noms.');
+      return;
+    }
     const searchText = replaceSearch.trim();
     const replacementText = replaceValue.trim();
     if (!searchText) {
@@ -597,6 +608,52 @@ const ProductNameCorrectionsPage: React.FC = () => {
       );
     } catch (error: any) {
       setMessage(`Recherche/remplacement echoue: ${getErrorMessage(error)}`);
+    }
+  };
+
+  const handleTranslateSelected = async () => {
+    if (isReplacingNames) {
+      setMessage('Attendez la fin du remplacement avant de lancer la traduction IA.');
+      return;
+    }
+    const ids = selectedRows
+      .filter((row) => !row.applied_at)
+      .map((row) => row.id);
+    if (!ids.length) {
+      setMessage('Traduction IA : sélectionnez au moins une ligne non appliquée.');
+      return;
+    }
+    if (ids.length > 100) {
+      setMessage('Traduction IA : sélectionnez au maximum 100 lignes par lot.');
+      return;
+    }
+
+    setMessage('');
+    setProcessingIds((previous) => new Set([...previous, ...ids]));
+    try {
+      const result = await translateCorrections({
+        ids,
+        target: translationTarget,
+        mode: translationMode,
+      }).unwrap();
+      const details = [
+        `${result.translated} ligne(s) traduite(s)`,
+        result.skipped ? `${result.skipped} ignorée(s)` : '',
+        result.failed ? `${result.failed} en échec` : '',
+      ].filter(Boolean).join(', ');
+      const firstFailure = result.results.find((item) => item.status === 'error')?.message;
+      setMessage(
+        `Traduction IA terminée : ${details}. Les noms sont enregistrés dans les colonnes temporaires FR Pro/AR Pro pour vérification.` +
+        (firstFailure ? ` Première erreur : ${firstFailure}` : '')
+      );
+    } catch (error: any) {
+      setMessage(`Traduction IA échouée : ${getErrorMessage(error)}`);
+    } finally {
+      setProcessingIds((previous) => {
+        const next = new Set(previous);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
     }
   };
 
@@ -739,6 +796,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   };
 
   const markSelected = async (checked: boolean) => {
+    if (isTranslatingCorrections || processingIds.size > 0) return;
     const ids = selectedRows
       .filter((row) => !row.applied_at)
       .map((row) => row.id);
@@ -877,7 +935,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
           <button
             type="button"
             onClick={handleApply}
-            disabled={isApplying || Number(summary?.ready_apply || 0) === 0}
+            disabled={isApplying || isTranslatingCorrections || processingIds.size > 0 || Number(summary?.ready_apply || 0) === 0}
             className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-800 disabled:bg-gray-300"
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -1056,7 +1114,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 <select
                   value={replaceColumn}
                   onChange={(event) => setReplaceColumn(event.target.value as ReplaceColumn)}
-                  disabled={isReplacingNames}
+                  disabled={isReplacingNames || isTranslatingCorrections}
                   className="w-full rounded-md border border-sky-300 bg-white px-2 py-2 text-sm text-gray-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-gray-100"
                   aria-label="Colonne a remplacer"
                 >
@@ -1070,7 +1128,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setReplaceScope('selected')}
-                    disabled={isReplacingNames}
+                    disabled={isReplacingNames || isTranslatingCorrections}
                     className={`min-h-10 flex-1 px-3 text-sm font-medium ${
                       replaceScope === 'selected'
                         ? 'bg-sky-700 text-white'
@@ -1082,7 +1140,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setReplaceScope('tab')}
-                    disabled={isReplacingNames}
+                    disabled={isReplacingNames || isTranslatingCorrections}
                     className={`min-h-10 flex-1 border-l border-sky-300 px-3 text-sm font-medium ${
                       replaceScope === 'tab'
                         ? 'bg-sky-700 text-white'
@@ -1098,7 +1156,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 <input
                   value={replaceSearch}
                   onChange={(event) => setReplaceSearch(event.target.value)}
-                  disabled={isReplacingNames}
+                  disabled={isReplacingNames || isTranslatingCorrections}
                   maxLength={255}
                   dir={replaceColumn === 'ar' ? 'rtl' : 'ltr'}
                   placeholder="Mot a remplacer"
@@ -1110,7 +1168,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 <input
                   value={replaceValue}
                   onChange={(event) => setReplaceValue(event.target.value)}
-                  disabled={isReplacingNames}
+                  disabled={isReplacingNames || isTranslatingCorrections}
                   maxLength={255}
                   dir={replaceColumn === 'ar' ? 'rtl' : 'ltr'}
                   placeholder="Nouveau mot"
@@ -1122,6 +1180,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 onClick={() => void handleReplaceNames()}
                 disabled={
                   isReplacingNames ||
+                  isTranslatingCorrections ||
                   !replaceSearch.trim() ||
                   (replaceScope === 'selected' && selectedIds.size === 0)
                 }
@@ -1138,6 +1197,63 @@ const ProductNameCorrectionsPage: React.FC = () => {
             <div className="mt-2 text-xs text-sky-900">
               Selection modifie les lignes cochees. Onglet modifie toutes les lignes non appliquees de l'onglet actif, avec les filtres actuels.
             </div>
+          </fieldset>
+          <fieldset className="rounded-md border border-violet-200 bg-violet-50/60 px-3 pb-3 pt-2">
+            <legend className="flex items-center gap-1.5 px-1 text-xs font-semibold text-violet-950">
+              <Languages className="h-3.5 w-3.5" aria-hidden="true" />
+              Traduire avec l’IA
+            </legend>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[220px_minmax(300px,1fr)_auto] lg:items-end">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-violet-950">Langue à remplir</span>
+                <select
+                  value={translationTarget}
+                  onChange={(event) => setTranslationTarget(event.target.value as ProductNameCorrectionTranslationTarget)}
+                  disabled={isTranslatingCorrections || isReplacingNames}
+                  className="w-full rounded-md border border-violet-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 disabled:bg-gray-100"
+                  aria-label="Langue de traduction IA"
+                >
+                  <option value="both">Français + arabe</option>
+                  <option value="fr">Français seulement</option>
+                  <option value="ar">Arabe seulement</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-violet-950">Style de traduction</span>
+                <select
+                  value={translationMode}
+                  onChange={(event) => setTranslationMode(event.target.value as ProductNameCorrectionTranslationMode)}
+                  disabled={isTranslatingCorrections || isReplacingNames}
+                  className="w-full rounded-md border border-violet-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 disabled:bg-gray-100"
+                  aria-label="Style de traduction IA"
+                >
+                  <option value="professional">Professionnelle — termes techniques standard</option>
+                  <option value="professional_transliteration">Professionnelle + translittération arabe des termes sans équivalent</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleTranslateSelected()}
+                disabled={
+                  selectedIds.size === 0 ||
+                  selectedIds.size > 100 ||
+                  isTranslatingCorrections ||
+                  isReplacingNames ||
+                  processingIds.size > 0
+                }
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-800 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {isTranslatingCorrections ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Languages className="h-4 w-4" aria-hidden="true" />
+                )}
+                Traduire {selectedIds.size ? `${selectedIds.size} ligne${selectedIds.size > 1 ? 's' : ''}` : 'la sélection'}
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-violet-900">
+              L’IA compare le nom actuel, l’ancien nom et les propositions FR Pro/AR Pro, détecte aussi la Darija et l’Arabizi, puis modifie uniquement les colonnes temporaires. Références, codes et unités sont conservés. Maximum 100 lignes par lot.
+            </p>
           </fieldset>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PageSizeSelect value={limit} onChange={setLimit} />
@@ -1156,7 +1272,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => markSelected(true)}
-              disabled={selectedIds.size === 0 || isBulkUpdating || isApplying}
+              disabled={selectedIds.size === 0 || isBulkUpdating || isApplying || isTranslatingCorrections || processingIds.size > 0}
               className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:bg-gray-300"
             >
               <CheckCircle2 className="h-4 w-4" />
@@ -1165,7 +1281,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => markSelected(false)}
-              disabled={selectedIds.size === 0 || isBulkUpdating || isApplying}
+              disabled={selectedIds.size === 0 || isBulkUpdating || isApplying || isTranslatingCorrections || processingIds.size > 0}
               className="inline-flex items-center gap-2 rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:bg-gray-300"
             >
               <XCircle className="h-4 w-4" />

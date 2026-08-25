@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, Bell, CalendarDays, CheckCircle2, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, CircleDot,
   Clock3, ExternalLink, FileText, Filter, HardHat, Loader2, MapPin, MessageCircle, Paperclip, Phone, RefreshCw, RotateCcw,
-  Save, Search, SlidersHorizontal, UserRound, Wrench, X, XCircle,
+  Save, Search, SlidersHorizontal, Star, UserRound, Wrench, X, XCircle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 import { ServiceInterventionPanel } from '../components/service-requests/ServiceInterventionPanel';
@@ -37,6 +37,10 @@ const statusLabels: Record<ServiceRequestStatus, string> = {
 };
 const sourceLabels = { selected_maalem: 'Maalem choisi', selected_service: 'Service choisi', quick_request: 'Demande rapide' };
 const priorityLabels: Record<ServiceRequestPriority, string> = { low: 'Basse', normal: 'Normale', high: 'Haute', urgent: 'Urgente' };
+const reviewInvitationLabels = {
+  scheduled: 'Programmée', sent: 'Envoyée', failed: 'Échouée', suspended: 'Suspendue',
+  expired: 'Expirée', review_received: 'Avis reçu',
+} as const;
 const nextStatuses: Record<ServiceRequestStatus, ServiceRequestStatus[]> = {
   new: ['to_contact'], to_contact: ['processing'], processing: ['waiting_customer', 'confirmed', 'cancelled'],
   waiting_customer: ['processing', 'cancelled'], confirmed: [], assigned: [], scheduled: [], to_do: [],
@@ -454,6 +458,30 @@ export function ServiceRequestDetailPage() {
             {item.last_error && <p className="mt-1 break-words text-red-700">{item.last_error}</p>}
             {item.channel === 'WHATSAPP' && item.status === 'failed' && <button disabled={retryNotificationState.isLoading} onClick={() => void action(() => retryNotification({ requestId: id, notificationId: item.id }).unwrap(), 'Notification relancée.')} className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 font-semibold text-red-700 disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" /> Relancer</button>}
           </div>)}{data.notifications.length === 0 && <p className="text-sm text-slate-500">Aucune notification opérationnelle.</p>}</div>
+        </Panel>
+        <Panel title="Invitation à donner un avis" icon={<Star className="h-5 w-5" />}>
+          {!data.review_invitation ? (
+            <div className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500">Non programmée</div>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-500">État</span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${data.review_invitation.status === 'review_received' ? 'bg-emerald-100 text-emerald-700' : data.review_invitation.status === 'failed' ? 'bg-red-100 text-red-700' : data.review_invitation.status === 'expired' || data.review_invitation.status === 'suspended' ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {reviewInvitationLabels[data.review_invitation.status]}
+                </span>
+              </div>
+              <dl className="grid grid-cols-2 gap-3 text-xs">
+                <Fact label="Prévue" value={dateTime(data.review_invitation.scheduled_at)} />
+                <Fact label="Expire" value={dateTime(data.review_invitation.expires_at)} />
+                <Fact label="Dernier envoi" value={dateTime(data.review_invitation.last_sent_at)} />
+                <Fact label="Ouverture" value={dateTime(data.review_invitation.opened_at)} />
+                <Fact label="Relances" value={`${data.review_invitation.reminder_count} / ${data.review_invitation.max_reminders}`} />
+                <Fact label="Avis soumis" value={dateTime(data.review_invitation.submitted_at)} />
+              </dl>
+              {data.review_invitation.last_error && <p className="break-words rounded-md bg-red-50 p-2 text-xs text-red-700">{data.review_invitation.last_error}</p>}
+              <p className="text-xs text-slate-500">Consultation uniquement : aucun avis ne peut être publié depuis le Back-office.</p>
+            </div>
+          )}
         </Panel>
         <Panel title="Workflow" icon={<CheckCircle2 className="h-5 w-5" />}><div className="space-y-2">{nextStatuses[request.status].map((status) => <button key={status} disabled={transitionState.isLoading} onClick={() => { const reason = status === 'cancelled' ? window.prompt("Motif interne obligatoire de l’annulation") : undefined; if (status === 'cancelled' && !reason?.trim()) return; const publicReason = status === 'cancelled' ? window.prompt('Motif partageable avec le client (facultatif)') || undefined : undefined; void action(() => transition({ id, status, reason: reason || undefined, public_reason: publicReason }).unwrap(), `Demande passée au statut « ${statusLabels[status]} ».`); }} className={`flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${status === 'cancelled' ? 'bg-red-600 hover:bg-red-700' : status === 'confirmed' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'}`}>{status === 'cancelled' ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}{statusLabels[status]}</button>)}{nextStatuses[request.status].length === 0 && <p className="text-sm text-gray-500">{request.status === 'assigned' ? 'Le Maalem est affecté. Aucun travail ni planning n’a été démarré automatiquement.' : 'Cette demande est terminée.'}</p>}</div>{request.cancellation_reason && <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800"><strong>Motif interne :</strong> {request.cancellation_reason}{request.cancellation_public_reason && <p className="mt-1"><strong>Motif partagé :</strong> {request.cancellation_public_reason}</p>}</div>}</Panel>
       </aside>

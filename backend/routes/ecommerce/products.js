@@ -203,11 +203,14 @@ router.get('/', async (req, res, next) => {
         : color.split(',').map(c => c.trim()).filter(Boolean);
       
       if (colors.length > 0) {
-        const colorConditions = colors.map(() => 'pv.variant_name = ?').join(' OR ');
+        const colorConditions = colors
+          .map(() => "COALESCE(NULLIF(TRIM(pv.color_name), ''), pv.variant_name) = ?")
+          .join(' OR ');
         whereConditions.push(`EXISTS (
-          SELECT 1 FROM product_variants pv 
-          WHERE pv.product_id = p.id 
-          AND pv.variant_type = 'Couleur' 
+          SELECT 1 FROM product_variants pv
+          WHERE pv.product_id = p.id
+          AND pv.variant_type = 'Couleur'
+          AND COALESCE(pv.is_deleted, 0) = 0
           AND (${colorConditions})
         )`);
         params.push(...colors);
@@ -383,6 +386,7 @@ router.get('/', async (req, res, next) => {
             SELECT 
               pv.id,
               pv.variant_name,
+              pv.color_name,
               pv.variant_type,
               COALESCE((
                 SELECT ps.prix_vente
@@ -401,12 +405,14 @@ router.get('/', async (req, res, next) => {
               pv.image_url
             FROM product_variants pv
             WHERE pv.product_id = ?
+              AND COALESCE(pv.is_deleted, 0) = 0
             ORDER BY pv.variant_type, pv.variant_name
           `
           : `
             SELECT 
               id,
               variant_name,
+              color_name,
               variant_type,
               prix_vente,
               remise_client,
@@ -415,6 +421,7 @@ router.get('/', async (req, res, next) => {
               image_url
             FROM product_variants
             WHERE product_id = ?
+              AND COALESCE(is_deleted, 0) = 0
             ORDER BY variant_type, variant_name
           `;
 
@@ -424,6 +431,8 @@ router.get('/', async (req, res, next) => {
           const variantObj = {
             id: v.id,
             name: v.variant_name,
+            variant_name: v.variant_name,
+            color_name: v.color_name,
             type: v.variant_type,
             prix_vente: Number(v.prix_vente),
             remise_client: Number(v.remise_client || 0),
@@ -439,6 +448,8 @@ router.get('/', async (req, res, next) => {
             colors.push({
               id: v.id,
               name: v.variant_name,
+              variant_name: v.variant_name,
+              color_name: v.color_name,
               image_url: v.image_url,
               available: isInStock(v.stock_quantity)
             });
@@ -579,14 +590,15 @@ router.get('/', async (req, res, next) => {
         : '(p.stock_partage_ecom_qty > 0 OR pv.stock_quantity > 0)'})`
       : '';
     const [allColors] = await pool.query(`
-      SELECT DISTINCT pv.variant_name as color
+      SELECT DISTINCT COALESCE(NULLIF(TRIM(pv.color_name), ''), pv.variant_name) as color
       FROM product_variants pv
       INNER JOIN products p ON p.id = pv.product_id
       WHERE pv.variant_type = 'Couleur'
+        AND COALESCE(pv.is_deleted, 0) = 0
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
         ${colorsStockClause}
-      ORDER BY pv.variant_name
+      ORDER BY color
     `);
 
     // 3. Get all available units
@@ -806,6 +818,7 @@ router.get('/:id', async (req, res, next) => {
           SELECT 
             pv.id,
             pv.variant_name,
+            pv.color_name,
             pv.variant_type,
             pv.reference,
             COALESCE((
@@ -825,12 +838,14 @@ router.get('/:id', async (req, res, next) => {
             pv.image_url
           FROM product_variants pv
           WHERE pv.product_id = ?
+            AND COALESCE(pv.is_deleted, 0) = 0
           ORDER BY pv.variant_name
         `
         : `
           SELECT 
             id,
             variant_name,
+            color_name,
             variant_type,
             reference,
             prix_vente,
@@ -840,6 +855,7 @@ router.get('/:id', async (req, res, next) => {
             image_url
           FROM product_variants
           WHERE product_id = ?
+            AND COALESCE(is_deleted, 0) = 0
           ORDER BY variant_name
         `;
 
@@ -857,6 +873,7 @@ router.get('/:id', async (req, res, next) => {
         variants.push({
           id: v.id,
           variant_name: v.variant_name,
+          color_name: v.color_name,
           variant_type: v.variant_type,
           reference: v.reference,
           prix_vente: Number(v.prix_vente),

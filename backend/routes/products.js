@@ -106,6 +106,12 @@ function normalizeOptionalReference2(value) {
   return normalized || null;
 }
 
+function normalizeVariantColorName(variant) {
+  if (String(variant?.variant_type || '').trim() !== 'Couleur') return null;
+  const normalized = String(variant?.color_name ?? '').trim().slice(0, 100);
+  return normalized || null;
+}
+
 function accentFoldSql(expression) {
   const replacements = [
     ['à', 'a'], ['á', 'a'], ['â', 'a'], ['ã', 'a'], ['ä', 'a'], ['å', 'a'],
@@ -555,6 +561,15 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN variant_type VARCHAR(50) DEFAULT 'Autre'`);
   }
 
+  // Check optional canonical color name in product_variants
+  const [colsVariantColorName] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'color_name'`
+  );
+  if (!colsVariantColorName.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN color_name VARCHAR(100) NULL`);
+  }
+
   // Check image_url in product_variants
   const [colsVariantImage] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
@@ -966,6 +981,7 @@ async function runProductSearch(query) {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
         'prix_achat', pv.prix_achat,
@@ -1028,6 +1044,7 @@ async function runProductSearch(query) {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
         'prix_achat', pv.prix_achat,
@@ -1559,7 +1576,7 @@ router.get('/with-snapshots', async (req, res, next) => {
              p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
              p.remise_client, p.remise_artisan,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
-               'id', pv2.id, 'variant_name', pv2.variant_name,
+               'id', pv2.id, 'variant_name', pv2.variant_name, 'color_name', pv2.color_name,
                'prix_achat', pv2.prix_achat, 'cout_revient', pv2.cout_revient,
                'prix_vente', pv2.prix_vente, 'prix_vente_2', pv2.prix_vente_2,
                'stock_quantity', pv2.stock_quantity
@@ -1757,6 +1774,7 @@ router.get('/', async (req, res, next) => {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
         'prix_achat', pv.prix_achat,
@@ -1818,6 +1836,7 @@ router.get('/', async (req, res, next) => {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
         'prix_achat', pv.prix_achat,
@@ -3259,7 +3278,7 @@ router.post('/', upload.fields([
           await pool.query(
             `INSERT INTO product_variants (
                   product_id,
-                  variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+                  variant_name, variant_name_ar, variant_name_en, variant_name_zh, color_name,
                   variant_type, reference,
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
@@ -3267,13 +3286,14 @@ router.post('/', upload.fields([
                   remise_client, remise_artisan, stock_quantity,
                   created_at, updated_at
                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               id,
               v.variant_name,
               v.variant_name_ar || null,
               v.variant_name_en || null,
               v.variant_name_zh || null,
+              normalizeVariantColorName(v),
               v.variant_type || 'Autre',
               v.reference,
               isService ? 0 : Number(v.prix_achat ?? 0),
@@ -3730,6 +3750,7 @@ router.put('/:id', upload.fields([
               v?.variant_name_ar || null,
               v?.variant_name_en || null,
               v?.variant_name_zh || null,
+              normalizeVariantColorName(v),
               v?.variant_type || 'Autre',
               v?.reference,
               isService ? 0 : Number(v?.prix_achat ?? 0),
@@ -3748,7 +3769,7 @@ router.put('/:id', upload.fields([
             if (variantId && Number.isFinite(variantId)) {
               const [updated] = await pool.query(
                 `UPDATE product_variants
-                 SET variant_name = ?, variant_name_ar = ?, variant_name_en = ?, variant_name_zh = ?,
+                 SET variant_name = ?, variant_name_ar = ?, variant_name_en = ?, variant_name_zh = ?, color_name = ?,
                      variant_type = ?, reference = ?,
                      prix_achat = ?, cout_revient = ?, cout_revient_pourcentage = ?,
                      prix_gros = ?, prix_gros_pourcentage = ?,
@@ -3765,14 +3786,14 @@ router.put('/:id', upload.fields([
                 await pool.query(
                   `INSERT INTO product_variants (
                     product_id,
-                    variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+                    variant_name, variant_name_ar, variant_name_en, variant_name_zh, color_name,
                     variant_type, reference,
                     prix_achat, cout_revient, cout_revient_pourcentage,
                     prix_gros, prix_gros_pourcentage,
                     prix_vente_pourcentage, prix_vente, prix_vente_2,
                     remise_client, remise_artisan, stock_quantity,
                     is_deleted, created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                   [id, ...payloadVals, now, now]
                 );
               }
@@ -3780,14 +3801,14 @@ router.put('/:id', upload.fields([
               await pool.query(
                 `INSERT INTO product_variants (
                   product_id,
-                  variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+                  variant_name, variant_name_ar, variant_name_en, variant_name_zh, color_name,
                   variant_type, reference,
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
                   prix_vente_pourcentage, prix_vente, prix_vente_2,
                   remise_client, remise_artisan, stock_quantity,
                   is_deleted, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                 [id, ...payloadVals, now, now]
               );
             }

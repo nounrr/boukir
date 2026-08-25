@@ -183,6 +183,7 @@ export interface ProductVariant {
   variant_name_ar?: string | null;
   variant_name_en?: string | null;
   variant_name_zh?: string | null;
+  color_name?: string | null;
   variant_type?: string;
   reference?: string;
   prix_achat: number;

@@ -625,7 +625,7 @@ router.get('/notifications', async (req, res, next) => {
        WHERE mnd.contact_id = ? AND sr.requester_contact_id = ? AND mnd.channel = 'IN_APP'
        ORDER BY mnd.created_at DESC, mnd.id DESC LIMIT 100`, [req.user.id, req.user.id]
     );
-    res.json({ notifications: rows.map(normalizeOperationalNotificationRow) });
+    res.json({ notifications: rows.map((row) => normalizeOperationalNotificationRow(row, { includeAction: true })) });
   } catch (error) { next(error); }
 });
 

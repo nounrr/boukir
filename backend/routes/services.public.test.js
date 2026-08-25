@@ -28,6 +28,7 @@ function createDb({ total = 1, detailVisible = true } = {}) {
       id: 12, public_name: 'Maalem Public', photo_url: null, category_id: 3,
       category_name: 'Plombier', category_name_ar: 'سباك', city: 'Rabat',
       intervention_areas: '["Rabat"]', closed_interventions_for_service: 4,
+      review_count: 8, average_rating: '4.63',
     }]];
     if (sql.includes('FROM maalem_profiles mp') && sql.includes('COUNT(*)')) return [[{ total_items: 1 }]];
     if (sql.includes('COUNT(*) AS total_items')) return [[{ total_items: total }]];
@@ -137,6 +138,8 @@ test('les Maalems compatibles sont filtrés, paginés et exposés sans données 
     assert.equal(response.status, 200);
     const payload = await response.json();
     assert.equal(payload.maalems[0].closed_interventions_for_service, 4);
+    assert.equal(payload.maalems[0].review_count, 8);
+    assert.equal(payload.maalems[0].average_rating, 4.63);
     assert.deepEqual(payload.maalems[0].intervention_areas, ['Rabat']);
     for (const privateField of ['telephone', 'email', 'professional_data', 'status', 'documents']) {
       assert.equal(privateField in payload.maalems[0], false);
@@ -149,6 +152,10 @@ test('les Maalems compatibles sont filtrés, paginés et exposés sans données 
   const listSql = db.queries.find(({ sql }) => sql.includes('closed_interventions_for_service')).sql;
   assert.match(listSql, /si\.planned_service_id = \?/);
   assert.match(listSql, /si\.closed_by_employee_id IS NOT NULL/);
+  assert.match(listSql, /mr\.status = 'published'/);
+  assert.match(listSql, /mr\.hidden_at IS NULL/);
+  assert.match(listSql, /sr\.cancelled_at IS NULL/);
+  assert.match(listSql, /sra\.id = si\.executing_assignment_id/);
   assert.match(listSql, /ORDER BY closed_interventions_for_service DESC/);
 });
 

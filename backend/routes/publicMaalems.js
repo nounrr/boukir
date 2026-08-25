@@ -2,6 +2,11 @@ import { Router } from 'express';
 import pool from '../db/pool.js';
 import { normalizePublicMaalem } from '../utils/publicMaalem.js';
 import { getVerifiedMaalemStatistics } from '../utils/maalemStatistics.js';
+import {
+  PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL,
+  getPublishedMaalemReviews,
+  getPublishedMaalemReviewStatistics,
+} from '../utils/maalemReview.js';
 
 const router = Router();
 
@@ -27,9 +32,10 @@ router.get('/', async (req, res, next) => {
   const page = bounded(req.query.page, 1, 1, 1000000), perPage = bounded(req.query.per_page, 12, 6, 48);
   const minExperience = bounded(req.query.min_experience, 0, 0, 70), minInterventions = bounded(req.query.min_interventions, 0, 0, 1000000);
   const categoryId = req.query.category_id ? parseId(req.query.category_id) : null, serviceId = req.query.service_id ? parseId(req.query.service_id) : null;
+  const minRating = req.query.min_rating == null || req.query.min_rating === '' ? null : bounded(req.query.min_rating, null, 1, 5);
   const sort = String(req.query.sort || 'recommended');
-  const orders = { recommended: 'closed_interventions DESC, experience_years DESC, public_name ASC, mp.id ASC', interventions_desc: 'closed_interventions DESC, public_name ASC, mp.id ASC', experience_desc: 'experience_years DESC, public_name ASC, mp.id ASC', name_asc: 'public_name ASC, mp.id ASC' };
-  if (!page || !perPage || minExperience == null || minInterventions == null || (req.query.category_id && !categoryId) || (req.query.service_id && !serviceId) || !orders[sort]) return res.status(400).json({ message: 'Filtres invalides' });
+  const orders = { recommended: 'closed_interventions DESC, experience_years DESC, public_name ASC, mp.id ASC', interventions_desc: 'closed_interventions DESC, public_name ASC, mp.id ASC', experience_desc: 'experience_years DESC, public_name ASC, mp.id ASC', name_asc: 'public_name ASC, mp.id ASC', rating_desc: 'CASE WHEN review_count >= 3 THEN 0 ELSE 1 END ASC, CASE WHEN review_count >= 3 THEN average_rating END DESC, review_count DESC, closed_interventions DESC, public_name ASC, mp.id ASC' };
+  if (!page || !perPage || minExperience == null || minInterventions == null || (req.query.min_rating && minRating == null) || (req.query.category_id && !categoryId) || (req.query.service_id && !serviceId) || !orders[sort]) return res.status(400).json({ message: 'Filtres invalides' });
   const q = String(req.query.q || '').trim(), city = String(req.query.city || '').trim(), zone = String(req.query.zone || '').trim();
   if ([q, city, zone].some((v) => v.length > 100)) return res.status(400).json({ message: 'Filtre trop long' });
   try {
@@ -46,15 +52,16 @@ router.get('/', async (req, res, next) => {
     if (serviceId) { conditions.push('EXISTS (SELECT 1 FROM service_maalem_categories smc WHERE smc.category_id = mp.category_id AND smc.service_id = ?)'); params.push(serviceId); }
     if (city) { conditions.push("JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.city')) LIKE ?"); params.push(`%${city}%`); }
     if (zone) { conditions.push("JSON_SEARCH(JSON_EXTRACT(mp.professional_data, '$.intervention_areas'), 'one', ?) IS NOT NULL"); params.push(zone); }
-    const fromSql = `FROM maalem_profiles mp INNER JOIN contacts c ON c.id = mp.contact_id INNER JOIN maalem_categories mc ON mc.id = mp.category_id ${VERIFIED_AGGREGATE} WHERE ${conditions.join(' AND ')}`;
+    if (minRating != null) { conditions.push('COALESCE(review_stats.review_count, 0) >= 3 AND review_stats.average_rating >= ?'); params.push(minRating); }
+    const fromSql = `FROM maalem_profiles mp INNER JOIN contacts c ON c.id = mp.contact_id INNER JOIN maalem_categories mc ON mc.id = mp.category_id ${VERIFIED_AGGREGATE} ${PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL} WHERE ${conditions.join(' AND ')}`;
     const [[count]] = await pool.query(`SELECT COUNT(*) AS total_items ${fromSql}`, params);
     const total = Number(count?.total_items || 0), pages = total ? Math.ceil(total / perPage) : 0, current = pages ? Math.min(page, pages) : 1, offset = (current - 1) * perPage;
-    const [rows] = await pool.query(`SELECT mp.id, mp.is_public, mp.status, mp.category_id, mp.professional_data, mp.deleted_at, c.nom_complet, c.avatar_url, c.is_active AS contact_is_active, c.is_blocked AS contact_is_blocked, c.deleted_at AS contact_deleted_at, mc.nom AS category_name, mc.nom_ar AS category_name_ar, COALESCE(stats.closed_interventions,0) AS closed_interventions, stats.last_closed_intervention_at, COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.experience_years')) AS UNSIGNED),0) AS experience_years, c.nom_complet AS public_name ${fromSql} ORDER BY ${orders[sort]} LIMIT ? OFFSET ?`, [...params, perPage, offset]);
+    const [rows] = await pool.query(`SELECT mp.id, mp.is_public, mp.status, mp.category_id, mp.professional_data, mp.deleted_at, c.nom_complet, c.avatar_url, c.is_active AS contact_is_active, c.is_blocked AS contact_is_blocked, c.deleted_at AS contact_deleted_at, mc.nom AS category_name, mc.nom_ar AS category_name_ar, COALESCE(stats.closed_interventions,0) AS closed_interventions, stats.last_closed_intervention_at, COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.experience_years')) AS UNSIGNED),0) AS experience_years, c.nom_complet AS public_name, COALESCE(review_stats.review_count, 0) AS review_count, review_stats.average_rating ${fromSql} ORDER BY ${orders[sort]} LIMIT ? OFFSET ?`, [...params, perPage, offset]);
     const [categories] = await pool.query(`SELECT id, nom, nom_ar FROM maalem_categories WHERE is_active = 1 AND deleted_at IS NULL ORDER BY nom`);
     const [services] = await pool.query(`SELECT s.id, s.nom, s.nom_ar FROM services s WHERE s.is_active = 1 AND s.is_published = 1 AND s.deleted_at IS NULL AND NULLIF(TRIM(s.nom), '') IS NOT NULL AND NULLIF(TRIM(s.description), '') IS NOT NULL AND EXISTS (SELECT 1 FROM service_maalem_categories smc INNER JOIN maalem_categories mc ON mc.id = smc.category_id WHERE smc.service_id = s.id AND mc.is_active = 1 AND mc.deleted_at IS NULL) ORDER BY s.nom`);
-    const maalems = rows.map((row) => { const item = normalizePublicMaalem(row); return item ? { ...item, statistics: { closed_interventions: Number(row.closed_interventions), last_closed_intervention_at: row.last_closed_intervention_at ?? null } } : null; }).filter(Boolean);
+    const maalems = rows.map((row) => { const item = normalizePublicMaalem(row); const reviewCount = Number(row.review_count || 0); return item ? { ...item, statistics: { closed_interventions: Number(row.closed_interventions), last_closed_intervention_at: row.last_closed_intervention_at ?? null, average_rating: reviewCount ? Number(row.average_rating) : null, review_count: reviewCount } } : null; }).filter(Boolean);
     res.set('Cache-Control', 'no-store');
-    return res.json({ maalems, pagination: { current_page: current, per_page: perPage, total_items: total, total_pages: pages, has_previous: current > 1, has_next: current < pages, from: total ? offset + 1 : 0, to: total ? Math.min(offset + maalems.length, total) : 0 }, filters: { categories: categories.map((x) => ({ id: Number(x.id), nom: x.nom, nom_ar: x.nom_ar })), services: services.map((x) => ({ id: Number(x.id), nom: x.nom, nom_ar: x.nom_ar })) } });
+    return res.json({ maalems, pagination: { current_page: current, per_page: perPage, total_items: total, total_pages: pages, has_previous: current > 1, has_next: current < pages, from: total ? offset + 1 : 0, to: total ? Math.min(offset + maalems.length, total) : 0 }, filters: { categories: categories.map((x) => ({ id: Number(x.id), nom: x.nom, nom_ar: x.nom_ar })), services: services.map((x) => ({ id: Number(x.id), nom: x.nom, nom_ar: x.nom_ar })), rating_sort_min_reviews: 3 } });
   } catch (error) { return next(error); }
 });
 
@@ -66,6 +73,26 @@ router.get('/sitemap', async (_req, res, next) => {
       WHERE ${PUBLIC_GUARDS} ORDER BY mp.id`);
     res.set('Cache-Control', 'no-store');
     return res.json({ maalems: rows.map((row) => ({ id: Number(row.id), updated_at: row.updated_at ?? null })) });
+  } catch (error) { return next(error); }
+});
+
+router.get('/:id/reviews', async (req, res, next) => {
+  const profileId = parseId(req.params.id);
+  const page = bounded(req.query.page, 1, 1, 1000000);
+  const perPage = bounded(req.query.per_page, 6, 1, 20);
+  if (!profileId || !page || !perPage) return res.status(400).json({ message: 'Pagination invalide' });
+  try {
+    const [profiles] = await pool.query(
+      `SELECT mp.id FROM maalem_profiles mp
+       INNER JOIN contacts c ON c.id = mp.contact_id
+       INNER JOIN maalem_categories mc ON mc.id = mp.category_id
+       WHERE mp.id = ? AND ${PUBLIC_GUARDS} LIMIT 1`,
+      [profileId]
+    );
+    if (!profiles[0]) return res.status(404).json({ message: 'Maalem indisponible' });
+    const result = await getPublishedMaalemReviews(pool, profileId, { page, perPage });
+    res.set('Cache-Control', 'no-store');
+    return res.json(result);
   } catch (error) { return next(error); }
 });
 
@@ -88,8 +115,9 @@ router.get('/:id', async (req, res, next) => {
     );
     const maalem = normalizePublicMaalem(rows[0]);
     if (!maalem || !maalem.category) return res.status(404).json({ message: 'Maalem indisponible' });
-    const [statistics, [serviceRows]] = await Promise.all([
+    const [statistics, reviewStatistics, [serviceRows]] = await Promise.all([
       getVerifiedMaalemStatistics(pool, profileId),
+      getPublishedMaalemReviewStatistics(pool, profileId),
       pool.query(`SELECT s.id, s.nom, s.nom_ar, s.description, s.description_ar, s.image_url,
           mc.id AS category_id, mc.nom AS category_name, mc.nom_ar AS category_name_ar
         FROM services s
@@ -113,6 +141,9 @@ router.get('/:id', async (req, res, next) => {
       last_closed_intervention_at: statistics.last_closed_intervention_at,
       by_service: statistics.by_service.filter((item) => publicServiceIds.has(item.id)),
       by_category: statistics.by_category.filter((item) => item.id === maalem.category.id),
+      average_rating: reviewStatistics.average_rating,
+      review_count: reviewStatistics.review_count,
+      rating_distribution: reviewStatistics.rating_distribution,
     };
     maalem.compatible_services = compatibleServices;
     res.set('Cache-Control', 'no-store');

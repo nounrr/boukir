@@ -20,6 +20,7 @@ import { AccessWarningPopup } from './components/AccessWarningPopup';
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const EmployeePage = React.lazy(() => import('./pages/EmployeePage'));
 const ClientCollaborationPermissionsPage = React.lazy(() => import('./pages/ClientCollaborationPermissionsPage'));
+const MaalemReviewPermissionsPage = React.lazy(() => import('./pages/MaalemReviewPermissionsPage'));
 const EmployeeSelfPage = React.lazy(() => import('./pages/EmployeeSelfPage'));
 const EmployeeArchivePage = React.lazy(() => import('./pages/EmployeeArchivePage'));
 const EmployeeDocumentsPage = React.lazy(() => import('./pages/EmployeeDocumentsPage'));
@@ -44,6 +45,7 @@ const MaalemsPage = React.lazy(() => import('./pages/MaalemsPage'));
 const ServicesPage = React.lazy(() => import('./pages/ServicesPage'));
 const ServiceRequestsPage = React.lazy(() => import('./pages/ServiceRequestsPage'));
 const ServiceRequestDetailPage = React.lazy(() => import('./pages/ServiceRequestsPage').then((module) => ({ default: module.ServiceRequestDetailPage })));
+const MaalemReviewsPage = React.lazy(() => import('./pages/MaalemReviewsPage'));
 const StatsDetailPage = React.lazy(() => import('./pages/StatsDetailPage'));
 const ExcelUploadPage = React.lazy(() => import('./pages/ImportExcelTabs'));
 const ExportProducts = React.lazy(() => import('./pages/ExportProducts'));
@@ -537,6 +539,15 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/employees/maalem-review-permissions"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck><MaalemReviewPermissionsPage /></LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/service-requests"
           element={
             <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
@@ -550,6 +561,15 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
               <LayoutWithAccessCheck><ServiceRequestDetailPage /></LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/maalem-reviews"
+          element={
+            <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
+              <LayoutWithAccessCheck><MaalemReviewsPage /></LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />

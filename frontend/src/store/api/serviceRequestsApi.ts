@@ -143,6 +143,24 @@ export interface ServiceRequestDetailResponse {
     is_current: boolean;
   }>;
   notifications: OperationalNotification[];
+  review_invitation: ReviewInvitationStatus | null;
+}
+
+export interface ReviewInvitationStatus {
+  status: 'scheduled' | 'sent' | 'failed' | 'suspended' | 'expired' | 'review_received';
+  scheduled_at: string;
+  expires_at: string;
+  first_sent_at: string | null;
+  last_sent_at: string | null;
+  next_reminder_at: string | null;
+  reminder_count: number;
+  max_reminders: number;
+  processing_attempts: number;
+  opened_at: string | null;
+  submitted_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface OperationalNotification {

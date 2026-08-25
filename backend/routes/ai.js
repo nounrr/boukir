@@ -2,6 +2,12 @@ import { Router } from 'express';
 import OpenAI from 'openai';
 import pool from '../db/pool.js';
 import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
+import {
+  buildProductNameCorrectionTranslationMessages,
+  getProductNameCorrectionTranslationContext,
+  normalizeProductNameCorrectionTranslationResult,
+  normalizeProductNameTranslationRequest,
+} from '../utils/productNameCorrectionTranslation.js';
 
 const router = Router();
 
@@ -1515,6 +1521,141 @@ router.post('/products/translate', async (req, res) => {
   } catch (err) {
     console.error('[AI] products translate error:', err);
     res.status(500).json({ message: err?.message || 'Erreur interne (AI/products/translate)' });
+  }
+});
+
+// ----------------------------
+// Product-name correction staging translation
+// POST /api/ai/product-name-corrections/translate
+// Body: { ids: number[], target: 'fr'|'ar'|'both', mode: 'professional'|'professional_transliteration' }
+// Only updates the temporary correction table. Applying names to products remains
+// an explicit review action in /api/product-name-corrections/apply.
+// ----------------------------
+router.post('/product-name-corrections/translate', async (req, res) => {
+  try {
+    if (!requireKey(res)) return;
+
+    const client = getClient();
+    if (!client) {
+      return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
+    }
+
+    const { ids, target, mode } = normalizeProductNameTranslationRequest(req.body);
+    const [rows] = await pool.query(
+      `SELECT
+         pnc.*,
+         p.designation AS product_designation,
+         p.designation_ar AS product_designation_ar,
+         pv.variant_name AS current_variant_name,
+         pv.variant_name_ar AS current_variant_name_ar
+       FROM product_name_corrections pnc
+       LEFT JOIN products p ON p.id = pnc.matched_product_id
+       LEFT JOIN product_variants pv ON pv.id = pnc.matched_variant_id
+       WHERE pnc.id IN (?)`,
+      [ids]
+    );
+
+    const rowsById = new Map((rows || []).map((row) => [Number(row.id), row]));
+    const effectiveModel = CLEAN_MODEL;
+
+    const translateOne = async (id) => {
+      const row = rowsById.get(id);
+      if (!row) {
+        return { id, status: 'error', message: 'Ligne de correction introuvable' };
+      }
+      if (row.applied_at) {
+        return { id, status: 'skipped', message: 'Correction déjà appliquée' };
+      }
+
+      const context = getProductNameCorrectionTranslationContext(row);
+      if (!context.sourceText) {
+        return { id, status: 'skipped', message: 'Aucun nom disponible pour guider la traduction' };
+      }
+
+      try {
+        const darija = detectDarija(context.sourceText);
+        const protectedTokens = extractProtectedTokens(context.sourceText);
+        const messages = buildProductNameCorrectionTranslationMessages({
+          context,
+          target,
+          mode,
+          darija,
+          protectedTokens,
+          darijaGlossary: DARIJA_GLOSSARY,
+        });
+        const response = await client.chat.completions.create({
+          model: effectiveModel,
+          messages,
+          temperature: sanitizeTemperature(effectiveModel, 0.1),
+        });
+        const parsed = safeJsonParse(response.choices?.[0]?.message?.content);
+        const translated = normalizeProductNameCorrectionTranslationResult(parsed, target);
+        const isVariant = context.isVariant;
+        const assignments = [];
+        const params = [];
+
+        if (target === 'fr' || target === 'both') {
+          assignments.push(`${isVariant ? 'variante_fr_pro' : 'designation_fr_pro'} = ?`);
+          params.push(translated.fr_pro);
+        }
+        if (target === 'ar' || target === 'both') {
+          assignments.push(`${isVariant ? 'variante_ar_pro' : 'designation_ar_pro'} = ?`);
+          params.push(translated.ar_pro);
+        }
+        params.push(id);
+
+        const [updateResult] = await pool.query(
+          `UPDATE product_name_corrections
+           SET ${assignments.join(', ')}, updated_at = NOW()
+           WHERE id = ? AND applied_at IS NULL`,
+          params
+        );
+        if (!Number(updateResult?.affectedRows || 0)) {
+          return { id, status: 'skipped', message: 'Correction appliquée pendant la traduction' };
+        }
+
+        return {
+          id,
+          status: 'translated',
+          entityType: context.entityType,
+          fr_pro: translated.fr_pro,
+          ar_pro: translated.ar_pro,
+          darija_detected: translated.darija_detected || darija.isDarija,
+          confidence: translated.confidence,
+          notes: translated.notes,
+        };
+      } catch (error) {
+        console.error(`[AI] product-name correction ${id} translation error:`, error);
+        return {
+          id,
+          status: 'error',
+          message: trimOrNull(error?.message) || 'Échec de la traduction',
+        };
+      }
+    };
+
+    const results = await asyncPool(Math.min(CONCURRENCY, 4), ids, translateOne);
+    const translated = results.filter((result) => result.status === 'translated').length;
+    const skipped = results.filter((result) => result.status === 'skipped').length;
+    const failed = results.filter((result) => result.status === 'error').length;
+
+    res.json({
+      ok: failed === 0,
+      target,
+      mode,
+      model: effectiveModel,
+      requested: ids.length,
+      translated,
+      skipped,
+      failed,
+      results,
+    });
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    if (status >= 500) console.error('[AI] product-name corrections translate error:', err);
+    res.status(status).json({
+      message: err?.message || 'Erreur interne (AI/product-name-corrections/translate)',
+    });
   }
 });
 

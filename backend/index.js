@@ -28,9 +28,13 @@ import maalemProfilesRouter, { adminMaalemProfilesRouter } from './routes/maalem
 import servicesRouter, { publicServicesRouter } from './routes/services.js';
 import maalemAccessRouter from './routes/maalemAccess.js';
 import serviceRequestsRouter from './routes/serviceRequests.js';
+import serviceRequestReviewsRouter from './routes/serviceRequestReviews.js';
+import reviewInvitationsRouter from './routes/reviewInvitations.js';
 import adminServiceRequestsRouter from './routes/adminServiceRequests.js';
+import adminMaalemReviewsRouter from './routes/adminMaalemReviews.js';
 import maalemMissionsRouter, { adminServiceInterventionsRouter } from './routes/serviceInterventions.js';
 import publicMaalemsRouter from './routes/publicMaalems.js';
+import { startReviewInvitationWorker } from './workers/reviewInvitationWorker.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceSearchRouter from './routes/ecommerce/search.js';
@@ -350,7 +354,10 @@ app.use('/api/maalem-profiles', maalemProfilesRouter);
 app.use('/api/admin/maalem-profiles', adminMaalemProfilesRouter);
 app.use('/api/maalem-access', maalemAccessRouter);
 app.use('/api/service-requests', serviceRequestsRouter);
+app.use('/api/service-requests', serviceRequestReviewsRouter);
+app.use('/api/review-invitations', reviewInvitationsRouter);
 app.use('/api/admin/service-requests', adminServiceRequestsRouter);
+app.use('/api/admin/maalem-reviews', adminMaalemReviewsRouter);
 app.use('/api/maalem-missions', maalemMissionsRouter);
 app.use('/api/admin/service-interventions', adminServiceInterventionsRouter);
 app.use('/api/maalems', publicMaalemsRouter);
@@ -435,6 +442,7 @@ app.use((err, _req, res, _next) => {
     message: err?.message || 'Internal Server Error',
   };
   if (err?.errors && typeof err.errors === 'object') payload.errors = err.errors;
+  if (typeof err?.publicCode === 'string' && err.publicCode) payload.error_type = err.publicCode;
   if (!isProd) {
     payload.code = err?.code;
     payload.errno = err?.errno;
@@ -485,6 +493,7 @@ ensureDb()
     httpServer.listen(PORT, () => {
       console.log(`\n✅ API listening on http://localhost:${PORT}`);
       console.log(`✅ Socket.IO ready on ws://localhost:${PORT}\n`);
+      startReviewInvitationWorker();
     });
   })
   .catch((err) => {

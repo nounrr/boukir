@@ -6,6 +6,7 @@ import path from 'path';
 import { Router } from 'express';
 import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
+import { PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL } from '../utils/maalemReview.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import {
   canManageServices,
@@ -357,7 +358,9 @@ publicRouter.get('/:id/maalems', async (req, res, next) => {
               mc.id AS category_id, mc.nom AS category_name, mc.nom_ar AS category_name_ar,
               JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.city')) AS city,
               JSON_EXTRACT(mp.professional_data, '$.intervention_areas') AS intervention_areas,
-              COALESCE(verified.closed_interventions, 0) AS closed_interventions_for_service
+              COALESCE(verified.closed_interventions, 0) AS closed_interventions_for_service,
+              COALESCE(review_stats.review_count, 0) AS review_count,
+              review_stats.average_rating
        FROM maalem_profiles mp
        INNER JOIN contacts c ON c.id = mp.contact_id
        INNER JOIN maalem_categories mc ON mc.id = mp.category_id
@@ -372,6 +375,7 @@ publicRouter.get('/:id/maalems', async (req, res, next) => {
            AND sra.service_request_id = sr.id AND si.planned_service_id = ?
          GROUP BY sra.maalem_profile_id
        ) verified ON verified.maalem_profile_id = mp.id
+       ${PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL}
        WHERE ${compatibleWhere}
        ORDER BY closed_interventions_for_service DESC, c.nom_complet ASC, mp.id ASC
        LIMIT ? OFFSET ?`,
@@ -393,6 +397,8 @@ publicRouter.get('/:id/maalems', async (req, res, next) => {
           city: row.city ?? null,
           intervention_areas: Array.isArray(areas) ? areas.filter((area) => typeof area === 'string').slice(0, 30) : [],
           closed_interventions_for_service: Number(row.closed_interventions_for_service || 0),
+          review_count: Number(row.review_count || 0),
+          average_rating: Number(row.review_count || 0) > 0 ? Number(row.average_rating) : null,
         };
       }),
       pagination: { current_page: currentPage, per_page: perPage, total_items: totalItems, total_pages: totalPages,

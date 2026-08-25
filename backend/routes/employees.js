@@ -6,6 +6,10 @@ import {
   normalizeClientCollaborationPermissions,
   parseStrictClientCollaborationPermissions,
 } from '../utils/clientCollaborationPermissions.js';
+import {
+  normalizeMaalemReviewPermissions,
+  parseStrictMaalemReviewPermissions,
+} from '../utils/maalemReviewPermissions.js';
 
 const router = Router();
 
@@ -150,6 +154,59 @@ router.put('/client-collaboration-permissions/:id(\\d+)', requireRole('PDG'), as
       verrouille: false,
     });
   } catch (err) { next(err); }
+});
+
+router.get('/me/maalem-review-permissions', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(normalizeMaalemReviewPermissions(req.user));
+});
+
+router.get('/maalem-review-permissions', requireRole('PDG'), async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, nom_complet, cin, role, acces_avis_maalem, moderation_avis_maalem,
+              restauration_avis_maalem, details_prives_avis_maalem
+       FROM employees
+       WHERE deleted_at IS NULL AND role IN ('PDG', 'Manager', 'ManagerPlus')
+       ORDER BY FIELD(role, 'PDG', 'ManagerPlus', 'Manager'), nom_complet ASC, id ASC`
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json(rows.map((employee) => ({
+      id: Number(employee.id), nom_complet: employee.nom_complet, cin: employee.cin,
+      role: employee.role, ...normalizeMaalemReviewPermissions(employee),
+      verrouille: employee.role === 'PDG',
+    })));
+  } catch (error) { return next(error); }
+});
+
+router.put('/maalem-review-permissions/:id(\\d+)', requireRole('PDG'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const parsed = parseStrictMaalemReviewPermissions(req.body);
+    if (!parsed.valid) return res.status(400).json({ message: parsed.error });
+    const [rows] = await pool.query(
+      'SELECT id, nom_complet, cin, role FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [id]
+    );
+    const employee = rows[0];
+    if (!employee) return res.status(404).json({ message: 'Employé introuvable' });
+    if (employee.role === 'PDG') return res.status(400).json({ message: 'Le PDG est toujours autorisé.' });
+    if (!['Manager', 'ManagerPlus'].includes(employee.role)) {
+      return res.status(400).json({ message: 'Seuls Manager et ManagerPlus peuvent recevoir cet accès.' });
+    }
+    const permissions = parsed.permissions;
+    await pool.query(
+      `UPDATE employees SET acces_avis_maalem = ?, moderation_avis_maalem = ?,
+         restauration_avis_maalem = ?, details_prives_avis_maalem = ?,
+         updated_by = ?, updated_at = NOW()
+       WHERE id = ? AND deleted_at IS NULL`,
+      [permissions.view ? 1 : 0, permissions.moderate ? 1 : 0,
+        permissions.restore ? 1 : 0, permissions.view_private_details ? 1 : 0,
+        req.user.id, id]
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({ ...employee, ...permissions, verrouille: false });
+  } catch (error) { return next(error); }
 });
 
 router.get('/:id(\\d+)', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
