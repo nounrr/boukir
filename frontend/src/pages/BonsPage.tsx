@@ -32,6 +32,7 @@ import { api } from '../store/api/apiSlice';
   } from '../store/api/contactsApi';
 import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { isProductNonCalcule } from '../utils/productNonCalcule';
+import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designationLang';
 import {
   useGetComptantPaymentsQuery,
   useCreateComptantPaymentMutation,
@@ -1754,6 +1755,7 @@ const BonsPage = () => {
       let editedMessage = initialMessage;
       let selectedCompany: 'DIAMOND' | 'MPC' = 'DIAMOND';
       let selectedUsePromo: boolean = false;
+      let selectedDesignationLang: DesignationLang = 'fr';
 
       // 1) Popup de prévisualisation/édition du message (sauf si skipConfirmation)
       if (!skipConfirmation) {
@@ -1769,6 +1771,12 @@ const BonsPage = () => {
                 <select id="company-select" class="swal2-input" style="width:100%;padding:8px;font-size:14px">
                   <option value="DIAMOND">DIAMOND BOUKIR</option>
                   <option value="MPC">MPC</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px">
+                <label style="font-weight:600;display:block;margin-bottom:4px">Langue désignation:</label>
+                <select id="designation-lang-select" class="swal2-input" style="width:100%;padding:8px;font-size:14px">
+                  ${DESIGNATION_LANG_OPTIONS.map((opt) => `<option value="${opt.value}">${opt.label}</option>`).join('')}
                 </select>
               </div>
               <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
@@ -1788,10 +1796,12 @@ const BonsPage = () => {
           preConfirm: (val) => {
             const companySelect = document.getElementById('company-select') as HTMLSelectElement;
             const usePromoCheckbox = document.getElementById('use-promo-checkbox') as HTMLInputElement;
+            const langSelect = document.getElementById('designation-lang-select') as HTMLSelectElement;
             return {
               message: typeof val === 'string' ? val : initialMessage,
               company: (companySelect?.value || 'DIAMOND') as 'DIAMOND' | 'MPC',
-              usePromo: !!usePromoCheckbox?.checked
+              usePromo: !!usePromoCheckbox?.checked,
+              designationLang: (langSelect?.value || 'fr') as DesignationLang
             };
           }
         });
@@ -1799,6 +1809,7 @@ const BonsPage = () => {
         editedMessage = (result.value as any)?.message || initialMessage;
         selectedCompany = (result.value as any)?.company || 'DIAMOND';
         selectedUsePromo = (result.value as any)?.usePromo === true;
+        selectedDesignationLang = ((result.value as any)?.designationLang || 'fr') as DesignationLang;
       }
 
       // 2) Générer le PDF et envoyer
@@ -1829,6 +1840,8 @@ const BonsPage = () => {
           companyType={selectedCompany}
           usePromo={selectedUsePromo}
           paymentHistory={printPaymentHistory}
+          designationLang={selectedDesignationLang}
+          showDesignationLangSelect={false}
         />
       );
 

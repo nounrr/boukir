@@ -6,6 +6,8 @@ import BonPrintTemplate from './BonPrintTemplate';
 import { getBonNumeroDisplay } from '../utils/numero';
 import type { Contact } from '../types';
 import { useGetComptantPaymentsQuery } from '../store/api/comptantApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
+import type { DesignationLang } from '../utils/designationLang';
 
 interface BonPrintModalProps {
   isOpen: boolean;
@@ -29,6 +31,15 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const [usePromo, setUsePromo] = useState(false);
+  const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
+  // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
+  // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).
+  const { data: fetchedProducts = [] } = useGetProductsQuery(undefined, {
+    skip: !isOpen || (Array.isArray(products) && products.length > 0),
+  });
+  const effectiveProducts = (Array.isArray(products) && products.length > 0)
+    ? products
+    : (fetchedProducts as any[]);
   const isUnpaidComptant = bon?.type === 'Comptant'
     && (Number(bon?.reste || 0) > 0 || bon?.non_paye === true || Number(bon?.non_paye ?? 0) === 1);
   const { data: comptantPayments = [] } = useGetComptantPaymentsQuery(bon?.id, {
@@ -227,10 +238,12 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 bon={bon}
                 client={client}
                 fournisseur={fournisseur}
-                products={products}
+                products={effectiveProducts}
                 size={size}
                 usePromo={usePromo}
                 paymentHistory={comptantPayments as any[]}
+                designationLang={designationLang}
+                onDesignationLangChange={setDesignationLang}
               />
             </div>
           </div>

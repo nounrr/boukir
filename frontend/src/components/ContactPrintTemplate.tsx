@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
+import { isRtlLang, pickDesignationForLang, type DesignationLang } from '../utils/designationLang';
 
 export type CompanyType = 'DIAMOND' | 'MPC';
 export type ContactPrintMode = 'transactions' | 'products';
@@ -27,6 +28,10 @@ interface ContactPrintTemplateProps {
   totalDebit?: number;
   totalCredit?: number;
   totalDebitSubtitle?: string;
+  // Langue des désignations produits (repli sur la désignation actuelle si traduction absente)
+  designationLang?: DesignationLang;
+  // Catalogue produits pour retrouver les traductions par product_id
+  products?: any[];
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
@@ -144,7 +149,24 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   totalDebit,
   totalCredit,
   totalDebitSubtitle,
+  designationLang = 'fr',
+  products = [],
 }) => {
+  const langIsRtl = isRtlLang(designationLang);
+  const productsById = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const p of Array.isArray(products) ? products : []) {
+      if (p?.id != null) map.set(String(p.id), p);
+    }
+    return map;
+  }, [products]);
+  // Désignation de la ligne dans la langue choisie (repli: désignation actuelle)
+  const rowDesignation = (row: any): string => {
+    const fallback = row?.product_designation || '';
+    if (designationLang === 'fr') return fallback;
+    const product = row?.product_id != null ? productsById.get(String(row.product_id)) : undefined;
+    return pickDesignationForLang(designationLang, fallback, row, product);
+  };
   // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
   const showPrices = priceMode === 'WITH_PRICES';
   const initialSolde = Number((contact as any)?.solde ?? 0);
@@ -487,8 +509,12 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                       )}
 
                       {/* Désignation (wrap libre) */}
-                      <td className="cell-wrap col-designation">
-                        {it.syntheticInitial ? 'Solde initial' : it.product_designation}
+                      <td
+                        className="cell-wrap col-designation"
+                        dir={langIsRtl && !it.syntheticInitial ? 'rtl' : undefined}
+                        style={langIsRtl && !it.syntheticInitial ? { textAlign: 'right' } : undefined}
+                      >
+                        {it.syntheticInitial ? 'Solde initial' : rowDesignation(it)}
                         {!it.syntheticInitial && getProductHistorySnapshotLabel(it) ? (
                           <span className="block text-[10px] text-amber-700 font-semibold">
                             {getProductHistorySnapshotLabel(it)}

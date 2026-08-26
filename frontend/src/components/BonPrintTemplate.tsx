@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
 import { getBonNumeroDisplay } from '../utils/numero';
+import {
+  DESIGNATION_LANG_OPTIONS,
+  isRtlLang,
+  pickDesignationForLang,
+  pickVariantNameForLang,
+  type DesignationLang,
+} from '../utils/designationLang';
 import boukirCachet from './boukir_cachet.webp';
 import mpcCachet from './mpc_cachet.webp';
 
@@ -14,6 +21,10 @@ interface BonPrintTemplateProps {
   companyType?: 'DIAMOND' | 'MPC';
   usePromo?: boolean; // afficher prix original et colonne promo si applicable
   paymentHistory?: any[];
+  // Langue des désignations produits (repli sur la désignation actuelle si traduction absente)
+  designationLang?: DesignationLang;
+  onDesignationLangChange?: (lang: DesignationLang) => void;
+  showDesignationLangSelect?: boolean;
 }
 
 // Pied de page adaptatif selon le nombre d'articles et le format A4/A5
@@ -87,9 +98,20 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   size = 'A4',
   companyType = 'DIAMOND',
   usePromo = false,
-  paymentHistory = []
+  paymentHistory = [],
+  designationLang,
+  onDesignationLangChange,
+  showDesignationLangSelect = true
 }) => {
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
+  const [internalLang, setInternalLang] = useState<DesignationLang>('fr');
+  // Contrôlé par le parent si `designationLang` est fourni, sinon état interne
+  const activeLang: DesignationLang = designationLang ?? internalLang;
+  const handleLangChange = (lang: DesignationLang) => {
+    if (onDesignationLangChange) onDesignationLangChange(lang);
+    else setInternalLang(lang);
+  };
+  const langIsRtl = isRtlLang(activeLang);
   const [printMode, setPrintMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES' | 'PRODUCTS_ONLY'>('WITH_PRICES');
 
   // Date
@@ -429,6 +451,22 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
             <option value="PRODUCTS_ONLY">Produits seulement</option>
           </select>
         </div>
+
+        {showDesignationLangSelect && (
+          <div className="flex items-center">
+            <label htmlFor="designation-lang" className="mr-2 text-sm font-medium">Langue désignation :</label>
+            <select
+              id="designation-lang"
+              value={activeLang}
+              onChange={(e) => handleLangChange(e.target.value as DesignationLang)}
+              className="border rounded px-2 py-1 text-sm"
+            >
+              {DESIGNATION_LANG_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* En-tête */}
@@ -544,15 +582,21 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               const productId = item.product_id ?? item.produit_id ?? item.id ?? '';
               const rowKey = productId || `${item.designation}-${index}`;
               // Build designation with variant name if available
-              let variantName: string | undefined = (item.variant_name || item.variant || item.variantLabel) as string | undefined;
               const vIdRaw = item.variant_id ?? item.variantId;
-              if (!variantName && vIdRaw && products && products.length) {
-                const product = findProductById(productId);
-                const variants = product?.variants || [];
-                const vFound = variants.find((v: any) => String(v.id) === String(vIdRaw));
-                if (vFound && vFound.variant_name) variantName = String(vFound.variant_name);
-              }
-              const designationText = variantName ? `${item.designation || ''} - ${variantName}` : (item.designation || '');
+              const rowProduct = findProductById(productId);
+              const variantRow = (vIdRaw && Array.isArray(rowProduct?.variants))
+                ? rowProduct.variants.find((v: any) => String(v.id) === String(vIdRaw))
+                : undefined;
+              let variantName: string | undefined = (item.variant_name || item.variant || item.variantLabel) as string | undefined;
+              if (!variantName && variantRow?.variant_name) variantName = String(variantRow.variant_name);
+              // Langue choisie: on prend la traduction si elle existe, sinon la désignation actuelle
+              const baseDesignation = pickDesignationForLang(activeLang, item.designation, item, rowProduct);
+              const localizedVariantName = variantName
+                ? pickVariantNameForLang(activeLang, variantName, item, variantRow)
+                : '';
+              const designationText = localizedVariantName
+                ? `${baseDesignation} - ${localizedVariantName}`
+                : baseDesignation;
               // Resolve unit name
               const itemUnitId = item?.unit_id ?? item?.unite_id ?? item?.uniteId;
               const itemProduct = findProductById(productId);
@@ -570,7 +614,13 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                   <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
                   <td className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'}`}>
-                    <div className={`font-medium ${textSizes.tableCell}`}>{designationText}</div>
+                    <div
+                      className={`font-medium ${textSizes.tableCell}`}
+                      dir={langIsRtl ? 'rtl' : undefined}
+                      style={langIsRtl ? { textAlign: 'right' } : undefined}
+                    >
+                      {designationText}
+                    </div>
                     {item.description && (
                       <div className={`${textSizes.small} text-gray-600 italic`}>{item.description}</div>
                     )}

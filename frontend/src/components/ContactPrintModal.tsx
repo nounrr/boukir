@@ -4,6 +4,8 @@ import html2canvas from 'html2canvas';
 import { Download, Printer } from 'lucide-react';
 import type { Contact } from '../types';
 import ContactPrintTemplate, { type CompanyType, type ContactPrintMode, type PriceMode } from './ContactPrintTemplate';
+import { useGetProductsQuery } from '../store/api/productsApi';
+import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designationLang';
 
 interface ContactPrintModalProps {
   isOpen: boolean;
@@ -32,8 +34,13 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
+  const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  // Catalogue produits pour les désignations traduites (cache RTK Query partagé)
+  const { data: products = [] } = useGetProductsQuery(undefined, {
+    skip: !isOpen || designationLang === 'fr',
+  });
 
   if (!isOpen) return null;
 
@@ -131,6 +138,19 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 <option value="WITHOUT_PRICES">Sans prix</option>
               </select>
             </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="contact-designation-lang" className="text-sm">Langue désignation:</label>
+              <select
+                id="contact-designation-lang"
+                value={designationLang}
+                onChange={(e) => setDesignationLang(e.target.value as DesignationLang)}
+                className="px-2 py-1 border rounded text-sm"
+              >
+                {DESIGNATION_LANG_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handlePrint} disabled={isGenerating} className="flex items-center px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
@@ -163,6 +183,8 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 totalDebit={totalDebit}
                 totalCredit={totalCredit}
                 totalDebitSubtitle={totalDebitSubtitle}
+                designationLang={designationLang}
+                products={products as any[]}
               />
             </div>
           </div>
