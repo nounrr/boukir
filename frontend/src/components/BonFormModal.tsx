@@ -5494,8 +5494,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             }
                           }}
                         />
-                        Même client du bon
+                        {values.type === 'Comptant'
+                          ? 'Client remise automatique du bon'
+                          : 'Même client du bon'}
                       </label>
+
+                      {values.type === 'Comptant' && remiseTargetIsBonClient && (
+                        <span className="text-xs text-purple-800">
+                          Créé ou réutilisé dans Clients remise, sans créer de contact.
+                        </span>
+                      )}
 
                       {!remiseTargetIsBonClient && (
                         <div className="min-w-[280px]">
