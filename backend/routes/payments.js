@@ -765,10 +765,6 @@ router.post('/', verifyToken, async (req, res) => {
     try {
       await connection.beginTransaction();
 
-      // Récupérer la vraie date d'ajout (maintenant)
-      const dateAjoutReelle = new Date();
-      const dateAjoutReelleStr = dateAjoutReelle.toISOString().slice(0, 19).replace('T', ' ');
-
       // normalize statut to canonical French labels and default to 'En attente'
       const rawStatut = req.body && Object.hasOwn(req.body, 'statut') ? req.body.statut : undefined;
       const statut = mapToCanonical(rawStatut);
@@ -817,7 +813,9 @@ router.post('/', verifyToken, async (req, res) => {
       });
 
       // Si un bon est associé, récupérer sa date pour l'ordre chronologique
-      let createdAtValue = dateAjoutReelleStr;
+      // NULL laisse l'INSERT utiliser NOW() de MySQL. Une date calculée n'est
+      // fournie que pour conserver l'ordre d'un paiement rattaché à un bon.
+      let createdAtValue = null;
       if (cleanBonId) {
         try {
           console.log('🔍 Recherche bon ID:', cleanBonId, '| BonType:', cleanBonType, '| TypePaiement:', remiseFields.typePaiement, '| Contact:', remiseFields.contactId);
@@ -854,15 +852,31 @@ router.post('/', verifyToken, async (req, res) => {
         
         for (const { table, dateField } of bonTables) {
           try {
-            const [bonRows] = await connection.query(`SELECT ${dateField} as date_doc, created_at FROM ${table} WHERE id = ?`, [cleanBonId]);
-            if (bonRows.length > 0) {
-              // Prendre la date la plus récente entre date_creation et created_at
-              const dateDoc = new Date(bonRows[0].date_doc);
-              const dateCreated = new Date(bonRows[0].created_at);
-              bonDate = dateDoc > dateCreated ? dateDoc : dateCreated;
-              console.log(`✅ Bon trouvé dans ${table} - Date doc: ${bonRows[0].date_doc} | Created: ${bonRows[0].created_at}`);
-              console.log(`   Date retenue (la plus récente): ${bonDate.toISOString()}`);
-              break;
+              const [bonRows] = await connection.query(
+                `SELECT
+                   DATE_FORMAT(${dateField}, '%Y-%m-%d %H:%i:%s') AS date_doc,
+                   DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                   DATE_FORMAT(
+                     DATE_ADD(
+                       GREATEST(
+                         COALESCE(${dateField}, created_at),
+                         COALESCE(created_at, ${dateField})
+                       ),
+                       INTERVAL 1 HOUR
+                     ),
+                     '%Y-%m-%d %H:%i:%s'
+                   ) AS payment_created_at
+                 FROM ${table}
+                 WHERE id = ?`,
+                [cleanBonId]
+              );
+              if (bonRows.length > 0) {
+               // Le calcul reste entièrement dans le fuseau de la session
+               // MySQL : date la plus récente du bon, puis +1 heure.
+               bonDate = bonRows[0].payment_created_at || null;
+               console.log(`✅ Bon trouvé dans ${table} - Date doc: ${bonRows[0].date_doc} | Created: ${bonRows[0].created_at}`);
+               console.log(`   Date paiement calculée (+1h): ${bonDate}`);
+               break;
             }
           } catch (e) {
             console.log(`⚠️ Erreur recherche dans ${table}:`, e.message);
@@ -871,11 +885,9 @@ router.post('/', verifyToken, async (req, res) => {
         }
         
         if (bonDate) {
-          // Ajouter 1 heure à la date du bon pour garantir que le paiement apparaît toujours après
-          const paymentDate = new Date(bonDate.getTime() + (60 * 60 * 1000)); // +1 heure en millisecondes
-          createdAtValue = paymentDate.toISOString().slice(0, 19).replace('T', ' ');
-          console.log('📅 Date bon:', bonDate.toISOString());
-          console.log('📅 Date paiement (+1h):', paymentDate.toISOString());
+          // Valeur déjà calculée par MySQL, sans conversion UTC JavaScript.
+          createdAtValue = bonDate;
+          console.log('📅 Date paiement liée au bon (+1h):', bonDate);
           console.log('📅 created_at MySQL:', createdAtValue);
         }
         } catch (err) {
@@ -883,16 +895,16 @@ router.post('/', verifyToken, async (req, res) => {
         }
       }
 
-      console.log('💾 Insertion paiement - created_at:', createdAtValue, '| date_ajout_reelle:', dateAjoutReelleStr);
+      console.log('💾 Insertion paiement - created_at:', createdAtValue || 'NOW()', '| date_ajout_reelle: NOW()');
       console.log('💾 Bon associé ID:', cleanBonId);
 
       const [result] = await connection.query(
       `INSERT INTO payments
         (numero, payment_group_id, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, montant_ignorer, remise, mode_paiement, date_paiement, designation,
          date_echeance, banque, personnel, code_reglement, image_url, payment, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, NOW()),NOW())`,
       ['', cleanPaymentGroupId, remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, cleanMontantIgnorer, cleanRemise, mode_paiement, cleanDatePaiement, designation,
-        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
+        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue]
     );
       await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
       const [rows] = await connection.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
