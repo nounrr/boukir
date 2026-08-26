@@ -812,99 +812,19 @@ router.post('/', verifyToken, async (req, res) => {
         statut,
       });
 
-      // Si un bon est associé, récupérer sa date pour l'ordre chronologique
-      // NULL laisse l'INSERT utiliser NOW() de MySQL. Une date calculée n'est
-      // fournie que pour conserver l'ordre d'un paiement rattaché à un bon.
-      let createdAtValue = null;
-      if (cleanBonId) {
-        try {
-          console.log('🔍 Recherche bon ID:', cleanBonId, '| BonType:', cleanBonType, '| TypePaiement:', remiseFields.typePaiement, '| Contact:', remiseFields.contactId);
-        
-        // Déterminer les tables à rechercher en fonction du type de paiement
-        let bonTables = [];
-        const bonTypeToTable = {
-          Sortie: { table: 'bons_sortie', dateField: 'date_creation' },
-          Comptant: { table: 'bons_comptant', dateField: 'date_creation' },
-          Avoir: { table: 'avoirs_client', dateField: 'date_creation' },
-          Commande: { table: 'bons_commande', dateField: 'date_creation' },
-          AvoirFournisseur: { table: 'avoirs_fournisseur', dateField: 'date_creation' },
-        };
-
-        if (cleanBonType && bonTypeToTable[cleanBonType]) {
-          // Si le type du bon est fourni, ne chercher que dans la table correspondante
-          bonTables = [bonTypeToTable[cleanBonType]];
-        } else if (remiseFields.typePaiement === 'Client') {
-          // Pour les clients: chercher d'abord dans bons sortie/comptant, puis avoirs client
-          bonTables = [
-            { table: 'bons_sortie', dateField: 'date_creation' },
-            { table: 'bons_comptant', dateField: 'date_creation' },
-            { table: 'avoirs_client', dateField: 'date_creation' }
-          ];
-        } else if (remiseFields.typePaiement === 'Fournisseur') {
-          // Pour les fournisseurs: chercher dans bons commande puis avoirs fournisseur
-          bonTables = [
-            { table: 'bons_commande', dateField: 'date_creation' },
-            { table: 'avoirs_fournisseur', dateField: 'date_creation' }
-          ];
-        }
-        
-        let bonDate = null;
-        
-        for (const { table, dateField } of bonTables) {
-          try {
-              const [bonRows] = await connection.query(
-                `SELECT
-                   DATE_FORMAT(${dateField}, '%Y-%m-%d %H:%i:%s') AS date_doc,
-                   DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
-                   DATE_FORMAT(
-                     DATE_ADD(
-                       GREATEST(
-                         COALESCE(${dateField}, created_at),
-                         COALESCE(created_at, ${dateField})
-                       ),
-                       INTERVAL 1 HOUR
-                     ),
-                     '%Y-%m-%d %H:%i:%s'
-                   ) AS payment_created_at
-                 FROM ${table}
-                 WHERE id = ?`,
-                [cleanBonId]
-              );
-              if (bonRows.length > 0) {
-               // Le calcul reste entièrement dans le fuseau de la session
-               // MySQL : date la plus récente du bon, puis +1 heure.
-               bonDate = bonRows[0].payment_created_at || null;
-               console.log(`✅ Bon trouvé dans ${table} - Date doc: ${bonRows[0].date_doc} | Created: ${bonRows[0].created_at}`);
-               console.log(`   Date paiement calculée (+1h): ${bonDate}`);
-               break;
-            }
-          } catch (e) {
-            console.log(`⚠️ Erreur recherche dans ${table}:`, e.message);
-            // Continue avec la table suivante
-          }
-        }
-        
-        if (bonDate) {
-          // Valeur déjà calculée par MySQL, sans conversion UTC JavaScript.
-          createdAtValue = bonDate;
-          console.log('📅 Date paiement liée au bon (+1h):', bonDate);
-          console.log('📅 created_at MySQL:', createdAtValue);
-        }
-        } catch (err) {
-          console.log('Erreur lors de la récupération de la date du bon:', err);
-        }
-      }
-
-      console.log('💾 Insertion paiement - created_at:', createdAtValue || 'NOW()', '| date_ajout_reelle: NOW()');
-      console.log('💾 Bon associé ID:', cleanBonId);
+      // Règle métier : les trois dates d'un paiement sont identiques et
+      // date_paiement est la valeur de référence, y compris pour un paiement
+      // rattaché à un bon.
+      const createdAtValue = cleanDatePaiement;
+      const dateAjoutReelleValue = cleanDatePaiement;
 
       const [result] = await connection.query(
       `INSERT INTO payments
         (numero, payment_group_id, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, montant_ignorer, remise, mode_paiement, date_paiement, designation,
          date_echeance, banque, personnel, code_reglement, image_url, payment, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, NOW()),NOW())`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ['', cleanPaymentGroupId, remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, cleanMontantIgnorer, cleanRemise, mode_paiement, cleanDatePaiement, designation,
-        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue]
+        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleValue]
     );
       await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
       const [rows] = await connection.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
@@ -1001,6 +921,10 @@ router.put('/:id', verifyToken, async (req, res) => {
           values.push(data[f]);
         }
       }
+      if (Object.hasOwn(data, 'date_paiement')) {
+        setParts.push('created_at = ?', 'date_ajout_reelle = ?');
+        values.push(data.date_paiement, data.date_paiement);
+      }
       if (!setParts.length) {
         await connection.rollback();
         connection.release();
@@ -1087,9 +1011,15 @@ router.patch('/reorder', verifyToken, async (req, res) => {
         }
         
         // Mettre à jour date_paiement pour l'ordre d'affichage
+        const normalizedDate = toYMDTime(newDate, false);
+        if (!normalizedDate) {
+          throw new Error(`Date de paiement invalide pour le paiement ${id}`);
+        }
         await connection.query(
-          'UPDATE payments SET date_paiement = ?, updated_at = NOW() WHERE id = ? AND contact_id = ?',
-          [newDate, id, contactId]
+          `UPDATE payments
+           SET date_paiement = ?, created_at = ?, date_ajout_reelle = ?, updated_at = NOW()
+           WHERE id = ? AND contact_id = ?`,
+          [normalizedDate, normalizedDate, normalizedDate, id, contactId]
         );
       }
       
