@@ -271,6 +271,28 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE products ADD COLUMN designation_zh VARCHAR(255) DEFAULT NULL`);
   }
 
+  // Ensure product_variants multilingual name columns exist (read by the GET queries below).
+  try {
+    const [variantsTbl] = await pool.query(
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants'`
+    );
+    if (variantsTbl?.length) {
+      for (const col of ['variant_name_ar', 'variant_name_en', 'variant_name_zh']) {
+        const [rows] = await pool.query(
+          `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = ?`,
+          [col]
+        );
+        if (!rows?.length) {
+          await pool.query(`ALTER TABLE product_variants ADD COLUMN ${col} VARCHAR(255) DEFAULT NULL`);
+        }
+      }
+    }
+  } catch (e) {
+    console.log('ensureProductsColumns: product_variants multilingual check skipped', e?.message || e);
+  }
+
   // Check old_designation (ancienne désignation — kept when a product is renamed, searchable)
   const [colsOldDes] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -981,6 +1003,9 @@ async function runProductSearch(query) {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'variant_name_ar', pv.variant_name_ar,
+        'variant_name_en', pv.variant_name_en,
+        'variant_name_zh', pv.variant_name_zh,
         'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
@@ -1044,6 +1069,9 @@ async function runProductSearch(query) {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'variant_name_ar', pv.variant_name_ar,
+        'variant_name_en', pv.variant_name_en,
+        'variant_name_zh', pv.variant_name_zh,
         'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
@@ -1774,6 +1802,9 @@ router.get('/', async (req, res, next) => {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'variant_name_ar', pv.variant_name_ar,
+        'variant_name_en', pv.variant_name_en,
+        'variant_name_zh', pv.variant_name_zh,
         'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
@@ -1836,6 +1867,9 @@ router.get('/', async (req, res, next) => {
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id,
         'variant_name', pv.variant_name,
+        'variant_name_ar', pv.variant_name_ar,
+        'variant_name_en', pv.variant_name_en,
+        'variant_name_zh', pv.variant_name_zh,
         'color_name', pv.color_name,
         'variant_type', pv.variant_type,
         'reference', pv.reference,
@@ -1886,6 +1920,9 @@ router.get('/', async (req, res, next) => {
         reference: String(r.id),
         reference_2: r.reference_2 ?? null,
         designation: r.designation,
+        designation_ar: r.designation_ar,
+        designation_en: r.designation_en,
+        designation_zh: r.designation_zh,
         categorie_id: r.categorie_id || 0,
         categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
         categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
