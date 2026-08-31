@@ -1,9 +1,17 @@
 import express from 'express';
 import pool from '../db/pool.js';
-import { forbidRoles } from '../middleware/auth.js';
-import { verifyToken } from '../middleware/auth.js';
+import { forbidRoles, requireRoles, verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// The global authentication layer accepts both employees and e-commerce
+// contacts. Avoirs are a backoffice resource and can change inventory, so
+// reject contact tokens at the router boundary.
+router.use((req, res, next) => {
+  const role = req.user?.role != null ? String(req.user.role).trim() : '';
+  if (!role) return res.status(403).json({ message: 'Accès réservé au personnel' });
+  return next();
+});
 
 async function ensureAvoirEcommerceTables(conn) {
   const db = conn || pool;
@@ -45,6 +53,20 @@ async function ensureAvoirEcommerceTables(conn) {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_avoir_ecom_id (avoir_ecommerce_id),
         INDEX idx_avoir_ecom_product_id (product_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS avoir_ecommerce_snapshot_restores (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        avoir_ecommerce_id INT NOT NULL,
+        product_id INT NOT NULL,
+        variant_id INT DEFAULT NULL,
+        snapshot_id INT NOT NULL,
+        quantite DECIMAL(12,3) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_avoir_ecom_snapshot_restore_avoir (avoir_ecommerce_id),
+        INDEX idx_avoir_ecom_snapshot_restore_snapshot (snapshot_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     const [cols] = await db.query(
@@ -109,24 +131,259 @@ function normalizeItem(raw) {
   };
 }
 
-async function applyEcommerceStockRestore(connection, items, userId = null) {
-  // Restore stock similarly to ecommerce order cancel:
-  // - if variant_id => product_variants.stock_quantity + quantite
-  // - else => products.stock_partage_ecom_qty + quantite
-  // userId kept for future audit compatibility (not used yet).
+async function getSnapshotSchemaState(connection) {
+  const [rows] = await connection.query(
+    `SELECT
+       COUNT(*) AS table_exists,
+       SUM(CASE WHEN column_name = 'en_validation' THEN 1 ELSE 0 END) AS has_en_validation
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = 'product_snapshot'`
+  );
+  return {
+    enabled: Number(rows?.[0]?.table_exists || 0) > 0,
+    hasEnValidation: Number(rows?.[0]?.has_en_validation || 0) > 0,
+  };
+}
+
+async function getStockQuantityBase(connection, item) {
+  const quantity = Number(item?.quantite);
+  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+  if (!item?.unit_id) return quantity;
+  const [rows] = await connection.query(
+    'SELECT COALESCE(NULLIF(conversion_factor, 0), 1) AS factor FROM product_units WHERE id = ? AND product_id = ?',
+    [item.unit_id, item.product_id]
+  );
+  return quantity * Number(rows?.[0]?.factor || 1);
+}
+
+async function validateEcommerceAvoirItems(connection, { orderId, items, excludeAvoirId = null }) {
+  const normalizedOrderId = Number(orderId);
+  if (!Number.isFinite(normalizedOrderId) || normalizedOrderId <= 0) {
+    throw Object.assign(new Error('Un avoir e-commerce actif doit être lié à une commande e-commerce'), { statusCode: 400 });
+  }
+
+  const [orderRows] = await connection.query('SELECT id FROM ecommerce_orders WHERE id = ? FOR UPDATE', [normalizedOrderId]);
+  if (orderRows.length === 0) {
+    throw Object.assign(new Error('Commande e-commerce introuvable'), { statusCode: 404 });
+  }
+
+  const [soldRows] = await connection.query(
+    `SELECT product_id, variant_id, unit_id, SUM(quantity) AS quantity
+     FROM ecommerce_order_items
+     WHERE order_id = ?
+     GROUP BY product_id, variant_id, unit_id`,
+    [normalizedOrderId]
+  );
+  const [returnedRows] = await connection.query(
+    `SELECT i.product_id, i.variant_id, i.unit_id, SUM(i.quantite) AS quantity
+     FROM avoir_ecommerce_items i
+     JOIN avoirs_ecommerce a ON a.id = i.avoir_ecommerce_id
+     WHERE a.ecommerce_order_id = ?
+       AND a.statut <> 'Annulé'
+       AND (? IS NULL OR a.id <> ?)
+     GROUP BY i.product_id, i.variant_id, i.unit_id`,
+    [normalizedOrderId, excludeAvoirId, excludeAvoirId]
+  );
+  const keyOf = (row) => `${Number(row.product_id)}:${row.variant_id == null ? '' : Number(row.variant_id)}:${row.unit_id == null ? '' : Number(row.unit_id)}`;
+  const sold = new Map(soldRows.map((row) => [keyOf(row), Number(row.quantity || 0)]));
+  const alreadyReturned = new Map(returnedRows.map((row) => [keyOf(row), Number(row.quantity || 0)]));
+  const requested = new Map();
+
+  for (const item of items) {
+    const quantity = Number(item.quantite);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw Object.assign(new Error('Quantité d’avoir invalide'), { statusCode: 400 });
+    }
+    const key = keyOf(item);
+    requested.set(key, Number(requested.get(key) || 0) + quantity);
+  }
+
+  for (const [key, quantity] of requested) {
+    const soldQuantity = Number(sold.get(key) || 0);
+    const returnedQuantity = Number(alreadyReturned.get(key) || 0);
+    if (soldQuantity <= 0) {
+      throw Object.assign(new Error('Un article de l’avoir n’appartient pas à la commande e-commerce'), { statusCode: 400 });
+    }
+    if (returnedQuantity + quantity > soldQuantity + 0.000001) {
+      throw Object.assign(new Error('La quantité totale des avoirs dépasse la quantité vendue'), { statusCode: 409 });
+    }
+  }
+}
+
+async function applyEcommerceStockRestore(connection, items, userId = null, avoirEcommerceId = null) {
+  // Keep returns on the same stock source as ecommerce checkout.  When
+  // snapshots are enabled, checkout consumes product_snapshot rows; restoring
+  // products.stock_partage_ecom_qty / product_variants.stock_quantity here
+  // would make the ecommerce catalogue continue to show the item as sold out.
   void userId;
+
+  const snapshotSchema = await getSnapshotSchemaState(connection);
+  const useSnapshots = snapshotSchema.enabled;
 
   for (const it of items) {
     if (!it?.product_id || it?.quantite == null) continue;
+    const quantity = await getStockQuantityBase(connection, it);
+    if (!(quantity > 0)) continue;
+
+    if (useSnapshots) {
+      const [snapshots] = await connection.query(
+        `SELECT id
+         FROM product_snapshot
+         WHERE product_id = ?
+           AND ((variant_id = ?) OR (variant_id IS NULL AND ? IS NULL))
+           ${snapshotSchema.hasEnValidation ? 'AND COALESCE(en_validation, 0) <> 0' : ''}
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [it.product_id, it.variant_id || null, it.variant_id || null]
+      );
+
+      if (snapshots.length > 0) {
+        await connection.query(
+          'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
+          [quantity, snapshots[0].id]
+        );
+      } else {
+        // A legacy product may have no active snapshot yet. Create an active
+        // lot so both ecommerce and the backoffice stock selector can see it.
+        const [prices] = await connection.query(
+          it.variant_id
+            ? `SELECT COALESCE(pv.prix_vente, p.prix_vente, 0) AS prix_vente
+               FROM product_variants pv
+               JOIN products p ON p.id = pv.product_id
+               WHERE pv.id = ? AND pv.product_id = ?`
+            : 'SELECT COALESCE(prix_vente, 0) AS prix_vente FROM products WHERE id = ?',
+          it.variant_id ? [it.variant_id, it.product_id] : [it.product_id]
+        );
+        const [insertResult] = await connection.query(
+          snapshotSchema.hasEnValidation
+            ? `INSERT INTO product_snapshot (product_id, variant_id, prix_vente, quantite, en_validation, created_at)
+               VALUES (?, ?, ?, ?, 1, NOW())`
+            : `INSERT INTO product_snapshot (product_id, variant_id, prix_vente, quantite, created_at)
+               VALUES (?, ?, ?, ?, NOW())`,
+          [it.product_id, it.variant_id || null, Number(prices[0]?.prix_vente || 0), quantity]
+        );
+        snapshots.push({ id: insertResult.insertId });
+      }
+
+      if (avoirEcommerceId && snapshots[0]?.id) {
+        await connection.query(
+          `INSERT INTO avoir_ecommerce_snapshot_restores
+             (avoir_ecommerce_id, product_id, variant_id, snapshot_id, quantite)
+           VALUES (?, ?, ?, ?, ?)`,
+          [avoirEcommerceId, it.product_id, it.variant_id || null, snapshots[0].id, quantity]
+        );
+      }
+      continue;
+    }
+
     if (it.variant_id) {
       await connection.query(
         `UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?`,
-        [it.quantite, it.variant_id]
+        [quantity, it.variant_id]
       );
     } else {
       await connection.query(
         `UPDATE products SET stock_partage_ecom_qty = stock_partage_ecom_qty + ? WHERE id = ?`,
-        [it.quantite, it.product_id]
+        [quantity, it.product_id]
+      );
+    }
+  }
+}
+
+async function removeEcommerceStockRestore(connection, items, avoirEcommerceId = null) {
+  const snapshotSchema = await getSnapshotSchemaState(connection);
+  const useSnapshots = snapshotSchema.enabled;
+
+  if (useSnapshots && avoirEcommerceId) {
+    const [recordedRestores] = await connection.query(
+      `SELECT id, snapshot_id, quantite
+       FROM avoir_ecommerce_snapshot_restores
+       WHERE avoir_ecommerce_id = ?
+       ORDER BY id ASC
+       FOR UPDATE`,
+      [avoirEcommerceId]
+    );
+
+    if (recordedRestores.length > 0) {
+      for (const restore of recordedRestores) {
+        const [result] = await connection.query(
+          `UPDATE product_snapshot
+           SET quantite = quantite - ?
+           WHERE id = ? AND quantite >= ?`,
+          [restore.quantite, restore.snapshot_id, restore.quantite]
+        );
+        if (Number(result?.affectedRows || 0) !== 1) {
+          const err = new Error('Annulation impossible: le stock retourné par cet avoir a déjà été consommé');
+          err.statusCode = 409;
+          throw err;
+        }
+      }
+      await connection.query(
+        'DELETE FROM avoir_ecommerce_snapshot_restores WHERE avoir_ecommerce_id = ?',
+        [avoirEcommerceId]
+      );
+      return;
+    }
+
+    // An existing avoir without a restore record predates snapshot-based
+    // returns. Its stock effect was applied to the legacy product/variant
+    // columns, so reverse that legacy effect instead of touching a snapshot.
+    for (const it of items) {
+      if (!it?.product_id || it?.quantite == null) continue;
+      const quantity = Number(it.quantite);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      if (it.variant_id) {
+        await connection.query(
+          'UPDATE product_variants SET stock_quantity = stock_quantity - ? WHERE id = ?',
+          [quantity, it.variant_id]
+        );
+      } else {
+        await connection.query(
+          'UPDATE products SET stock_partage_ecom_qty = stock_partage_ecom_qty - ? WHERE id = ?',
+          [quantity, it.product_id]
+        );
+      }
+    }
+    return;
+  }
+
+  for (const it of items) {
+    if (!it?.product_id || it?.quantite == null) continue;
+    const quantity = Number(it.quantite);
+    if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+    if (useSnapshots) {
+      const [snapshots] = await connection.query(
+        `SELECT id
+         FROM product_snapshot
+         WHERE product_id = ?
+           AND ((variant_id = ?) OR (variant_id IS NULL AND ? IS NULL))
+           ${snapshotSchema.hasEnValidation ? 'AND COALESCE(en_validation, 0) <> 0' : ''}
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [it.product_id, it.variant_id || null, it.variant_id || null]
+      );
+      if (snapshots.length > 0) {
+        await connection.query(
+          'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+          [quantity, snapshots[0].id]
+        );
+      }
+      continue;
+    }
+
+    if (it.variant_id) {
+      await connection.query(
+        'UPDATE product_variants SET stock_quantity = stock_quantity - ? WHERE id = ?',
+        [quantity, it.variant_id]
+      );
+    } else {
+      await connection.query(
+        'UPDATE products SET stock_partage_ecom_qty = stock_partage_ecom_qty - ? WHERE id = ?',
+        [quantity, it.product_id]
       );
     }
   }
@@ -256,7 +513,6 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       date_creation,
       montant_total,
       statut = 'En attente',
-      created_by,
       items = [],
     } = req.body || {};
 
@@ -264,11 +520,12 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     const dt = normalizeDateTime(date_creation) || new Date().toISOString().slice(0, 19).replace('T', ' ');
     const total = normalizeMoney(montant_total);
-    const createdBy = normalizeInt(created_by);
+    // Audit identity comes from the verified token, not from request data.
+    const createdBy = normalizeInt(req.user?.id);
 
     if (!dt || total == null || !createdBy) {
       await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants (date_creation, montant_total, created_by)' });
+      return res.status(400).json({ message: 'Champs requis manquants (date_creation, montant_total)' });
     }
 
     const normalizedItems = Array.isArray(items) ? items.map(normalizeItem) : [];
@@ -282,6 +539,13 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
+    }
+
+    if ((statut ?? 'En attente') !== 'Annulé') {
+      await validateEcommerceAvoirItems(connection, {
+        orderId: ecommerce_order_id,
+        items: normalizedItems,
+      });
     }
 
     const [ins] = await connection.execute(`
@@ -328,7 +592,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     // Stock: restore on creation unless cancelled
     if ((statut ?? 'En attente') !== 'Annulé') {
-      await applyEcommerceStockRestore(connection, normalizedItems, req.user?.id ?? createdBy ?? null);
+      await applyEcommerceStockRestore(connection, normalizedItems, req.user?.id ?? createdBy ?? null, avoirId);
     }
 
     await connection.commit();
@@ -336,7 +600,11 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('POST /avoirs_ecommerce error:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    res.status(status).json({
+      message: status === 500 ? 'Erreur du serveur' : error.message,
+      error: status === 500 ? (error?.sqlMessage || error?.message) : undefined,
+    });
   } finally {
     connection.release();
   }
@@ -468,6 +736,13 @@ router.put('/:id', async (req, res) => {
     await connection.execute('DELETE FROM avoir_ecommerce_items WHERE avoir_ecommerce_id = ?', [id]);
 
     const normalizedItems = Array.isArray(items) ? items.map(normalizeItem) : [];
+    if ((st ?? null) !== 'Annulé') {
+      await validateEcommerceAvoirItems(connection, {
+        orderId: ecommerce_order_id,
+        items: normalizedItems,
+        excludeAvoirId: Number(id),
+      });
+    }
     for (const it of normalizedItems) {
       if (!it.product_id || it.quantite == null || it.prix_unitaire == null || it.total == null) {
         await connection.rollback();
@@ -495,23 +770,11 @@ router.put('/:id', async (req, res) => {
     // Stock: if previously applied and still applied, recompute delta.
     // We mimic other avoir routes: revert old effect if oldStatut != Annulé, then apply new effect if new statut != Annulé.
     if (oldStatut !== 'Annulé') {
-      // remove old restore => subtract from stock
-      for (const it of oldItems) {
-        if (it.variant_id) {
-          await connection.query(
-            `UPDATE product_variants SET stock_quantity = stock_quantity - ? WHERE id = ?`,
-            [it.quantite, it.variant_id]
-          );
-        } else {
-          await connection.query(
-            `UPDATE products SET stock_partage_ecom_qty = stock_partage_ecom_qty - ? WHERE id = ?`,
-            [it.quantite, it.product_id]
-          );
-        }
-      }
+      // Remove the old return from the same stock source used by ecommerce.
+      await removeEcommerceStockRestore(connection, oldItems, Number(id));
     }
     if ((st ?? null) !== 'Annulé') {
-      await applyEcommerceStockRestore(connection, normalizedItems, req.user?.id ?? null);
+      await applyEcommerceStockRestore(connection, normalizedItems, req.user?.id ?? null, Number(id));
     }
 
     await connection.commit();
@@ -529,7 +792,7 @@ router.put('/:id', async (req, res) => {
 
 /* ========== PATCH /:id/statut (changer) ========== */
 // PATCH /avoirs_ecommerce/:id/inclus-en-caisse - Basculer l'inclusion en caisse
-router.patch('/:id/inclus-en-caisse', verifyToken, async (req, res) => {
+router.patch('/:id/inclus-en-caisse', verifyToken, requireRoles('PDG', 'ManagerPlus'), async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
@@ -576,7 +839,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const userRole = req.user?.role;
     const isChefChauffeur = userRole === 'ChefChauffeur';
 
-    const [oldRows] = await connection.execute('SELECT statut FROM avoirs_ecommerce WHERE id = ? FOR UPDATE', [id]);
+    const [oldRows] = await connection.execute('SELECT statut, ecommerce_order_id FROM avoirs_ecommerce WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(oldRows) || oldRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Avoir ecommerce non trouvé' });
@@ -607,30 +870,23 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     }
 
     const [items] = await connection.execute(
-      'SELECT product_id, variant_id, quantite FROM avoir_ecommerce_items WHERE avoir_ecommerce_id = ?',
+      'SELECT product_id, variant_id, unit_id, quantite FROM avoir_ecommerce_items WHERE avoir_ecommerce_id = ?',
       [id]
     );
 
     // Stock transitions
     // Apply restore when leaving Annulé -> non-Annulé
     if (oldStatut === 'Annulé' && statut !== 'Annulé') {
-      await applyEcommerceStockRestore(connection, items, req.user?.id ?? null);
+      await validateEcommerceAvoirItems(connection, {
+        orderId: oldRows[0].ecommerce_order_id,
+        items,
+        excludeAvoirId: Number(id),
+      });
+      await applyEcommerceStockRestore(connection, items, req.user?.id ?? null, Number(id));
     }
     // Remove restore when going non-Annulé -> Annulé
     if (oldStatut !== 'Annulé' && statut === 'Annulé') {
-      for (const it of items) {
-        if (it.variant_id) {
-          await connection.query(
-            `UPDATE product_variants SET stock_quantity = stock_quantity - ? WHERE id = ?`,
-            [it.quantite, it.variant_id]
-          );
-        } else {
-          await connection.query(
-            `UPDATE products SET stock_partage_ecom_qty = stock_partage_ecom_qty - ? WHERE id = ?`,
-            [it.quantite, it.product_id]
-          );
-        }
-      }
+      await removeEcommerceStockRestore(connection, items, Number(id));
     }
 
     await connection.execute('UPDATE avoirs_ecommerce SET statut = ? WHERE id = ?', [statut, id]);
@@ -639,7 +895,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('PATCH /avoirs_ecommerce/:id/statut error:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    res.status(status).json({
+      message: status === 500 ? 'Erreur du serveur' : error.message,
+      error: status === 500 ? (error?.sqlMessage || error?.message) : undefined,
+    });
   } finally {
     connection.release();
   }

@@ -24,11 +24,23 @@ router.get('/', async (req, res, next) => {
         p.designation_en,
         p.designation_zh,
         p.prix_vente as base_price,
+        COALESCE((
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
+          LIMIT 1
+        ), p.prix_vente) AS snapshot_base_price,
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
         p.image_url,
         p.stock_partage_ecom_qty,
+        (SELECT COALESCE(SUM(ps.quantite), 0)
+         FROM product_snapshot ps
+         WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+           AND COALESCE(ps.en_validation, 0) <> 0) AS snapshot_base_stock,
         p.has_variants,
         p.base_unit,
         p.ecom_published,
@@ -36,7 +48,19 @@ router.get('/', async (req, res, next) => {
         pv.variant_name,
         pv.variant_type,
         pv.prix_vente as variant_price,
+        COALESCE((
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.variant_id = pv.id
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
+          LIMIT 1
+        ), pv.prix_vente) AS snapshot_variant_price,
         pv.stock_quantity as variant_stock,
+        (SELECT COALESCE(SUM(ps.quantite), 0)
+         FROM product_snapshot ps
+         WHERE ps.variant_id = pv.id
+           AND COALESCE(ps.en_validation, 0) <> 0) AS snapshot_variant_stock,
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
         pv.remise_artisan as variant_remise_artisan
@@ -53,13 +77,13 @@ router.get('/', async (req, res, next) => {
       const isAvailable = item.ecom_published === 1 && (item.is_deleted === 0 || item.is_deleted === null);
 
       // Determine effective price based on variant
-      let effectivePrice = Number(item.base_price);
+      let effectivePrice = Number(item.snapshot_base_price);
       let effectiveRemiseClient = Number(item.remise_client || 0);
       let effectiveRemiseArtisan = Number(item.remise_artisan || 0);
       
       // If variant is selected, use variant price
-      if (item.variant_id && item.variant_price !== null) {
-        effectivePrice = Number(item.variant_price);
+      if (item.variant_id && item.snapshot_variant_price !== null) {
+        effectivePrice = Number(item.snapshot_variant_price);
         effectiveRemiseClient = Number(item.variant_remise_client || 0);
         effectiveRemiseArtisan = Number(item.variant_remise_artisan || 0);
       }
@@ -73,9 +97,9 @@ router.get('/', async (req, res, next) => {
       // Calculate stock availability
       let availableStock;
       if (item.variant_id) {
-        availableStock = Number(item.variant_stock || 0);
+        availableStock = Number(item.snapshot_variant_stock || 0);
       } else {
-        availableStock = Number(item.stock_partage_ecom_qty || 0);
+        availableStock = Number(item.snapshot_base_stock || 0);
       }
 
       const inStock = availableStock > 0;
@@ -101,7 +125,7 @@ router.get('/', async (req, res, next) => {
           image_url: item.variant_image_url
         } : null,
         pricing: {
-          base_price: Number(item.base_price),
+          base_price: Number(item.snapshot_base_price),
           effective_price: effectivePrice,
           promo_percentage: promoPercentage,
           price_after_promo: priceAfterPromo,
@@ -200,12 +224,22 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
-          p.prix_vente,
+          COALESCE((
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+              AND COALESCE(ps.en_validation, 0) <> 0
+            ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
+            LIMIT 1
+          ), p.prix_vente) AS prix_vente,
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
           p.image_url,
-          p.stock_partage_ecom_qty,
+          (SELECT COALESCE(SUM(ps.quantite), 0)
+           FROM product_snapshot ps
+           WHERE ps.product_id = p.id
+             AND COALESCE(ps.en_validation, 0) <> 0) AS stock_partage_ecom_qty,
           p.has_variants,
           p.categorie_id,
           p.brand_id,
@@ -221,7 +255,10 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
-          AND p.stock_partage_ecom_qty > 0
+          AND (SELECT COALESCE(SUM(ps.quantite), 0)
+               FROM product_snapshot ps
+               WHERE ps.product_id = p.id
+                 AND COALESCE(ps.en_validation, 0) <> 0) > 0
           ${wishlistedProductIds.length > 0 ? `AND p.id NOT IN (${wishlistPlaceholders})` : ''}
         ORDER BY relevance_score DESC, p.created_at DESC
         LIMIT ?
@@ -297,12 +334,22 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
-          p.prix_vente,
+          COALESCE((
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+              AND COALESCE(ps.en_validation, 0) <> 0
+            ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
+            LIMIT 1
+          ), p.prix_vente) AS prix_vente,
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
           p.image_url,
-          p.stock_partage_ecom_qty,
+          (SELECT COALESCE(SUM(ps.quantite), 0)
+           FROM product_snapshot ps
+           WHERE ps.product_id = p.id
+             AND COALESCE(ps.en_validation, 0) <> 0) AS stock_partage_ecom_qty,
           p.has_variants,
           b.id as brand_id,
           b.nom as brand_nom,
@@ -313,7 +360,10 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
-          AND p.stock_partage_ecom_qty > 0
+          AND (SELECT COALESCE(SUM(ps.quantite), 0)
+               FROM product_snapshot ps
+               WHERE ps.product_id = p.id
+                 AND COALESCE(ps.en_validation, 0) <> 0) > 0
         ORDER BY 
           CASE WHEN p.pourcentage_promo > 0 THEN 1 ELSE 2 END,
           p.pourcentage_promo DESC,
@@ -627,16 +677,18 @@ router.post('/items/:id/move-to-cart', async (req, res, next) => {
 
     // Get wishlist item
     const [wishlistItems] = await pool.query(`
-      SELECT 
+      SELECT
         w.product_id,
         w.variant_id,
-        p.stock_partage_ecom_qty,
+        (SELECT COALESCE(SUM(ps.quantite), 0)
+         FROM product_snapshot ps
+         WHERE ps.product_id = p.id
+           AND ((ps.variant_id = w.variant_id) OR (ps.variant_id IS NULL AND w.variant_id IS NULL))
+           AND COALESCE(ps.en_validation, 0) <> 0) AS snapshot_stock,
         p.ecom_published,
-        p.is_deleted,
-        pv.stock_quantity as variant_stock
+        p.is_deleted
       FROM wishlist_items w
       INNER JOIN products p ON w.product_id = p.id
-      LEFT JOIN product_variants pv ON w.variant_id = pv.id
       WHERE w.id = ? AND w.user_id = ?
     `, [wishlistItemId, userId]);
 
@@ -651,16 +703,29 @@ router.post('/items/:id/move-to-cart', async (req, res, next) => {
       return res.status(400).json({ message: 'Ce produit n\'est plus disponible' });
     }
 
-    // Check stock
-    const availableStock = item.variant_id 
-      ? Number(item.variant_stock || 0)
-      : Number(item.stock_partage_ecom_qty || 0);
+    let conversionFactor = 1;
+    if (unitId) {
+      const [unitRows] = await pool.query(
+        `SELECT COALESCE(NULLIF(conversion_factor, 0), 1) AS conversion_factor
+         FROM product_units
+         WHERE id = ? AND product_id = ?`,
+        [unitId, item.product_id]
+      );
+      if (!unitRows.length) {
+        return res.status(400).json({ message: 'Unité invalide' });
+      }
+      conversionFactor = Number(unitRows[0].conversion_factor || 1);
+    }
 
-    if (qty > availableStock) {
-      return res.status(400).json({ 
+    // Snapshot stock is held in the product's base unit.
+    const availableStock = Number(item.snapshot_stock || 0);
+    const requestedStock = qty * conversionFactor;
+
+    if (requestedStock > availableStock) {
+      return res.status(400).json({
         message: 'Quantité non disponible en stock',
         available_stock: availableStock,
-        requested_quantity: qty
+        requested_quantity: requestedStock
       });
     }
 
@@ -679,11 +744,11 @@ router.post('/items/:id/move-to-cart', async (req, res, next) => {
       const existingCartItem = existingCartItems[0];
       const newQuantity = Number(existingCartItem.quantity) + qty;
 
-      if (newQuantity > availableStock) {
-        return res.status(400).json({ 
+      if (newQuantity * conversionFactor > availableStock) {
+        return res.status(400).json({
           message: 'Quantité totale non disponible en stock',
           available_stock: availableStock,
-          requested_quantity: newQuantity
+          requested_quantity: newQuantity * conversionFactor
         });
       }
 

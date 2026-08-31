@@ -681,13 +681,20 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       // Tables that can have is_indisponible items referencing products
       // ecommerce_order_items uses 'quantity' instead of 'quantite'
       const indispoTables = [
-        { name: 'sortie_items', qtyCol: 'quantite' },
-        { name: 'comptant_items', qtyCol: 'quantite' },
-        { name: 'ecommerce_order_items', qtyCol: 'quantity' },
-        { name: 'avoir_client_items', qtyCol: 'quantite' },
-        { name: 'avoir_comptant_items', qtyCol: 'quantite' },
-        { name: 'avoir_fournisseur_items', qtyCol: 'quantite' },
-        { name: 'avoir_ecommerce_items', qtyCol: 'quantite' },
+        { name: 'sortie_items', qtyExpr: 'quantite' },
+        { name: 'comptant_items', qtyExpr: 'quantite' },
+        {
+          name: 'ecommerce_order_items',
+          qtyExpr: `GREATEST(
+            quantity * COALESCE((SELECT NULLIF(pu.conversion_factor, 0) FROM product_units pu WHERE pu.id = ecommerce_order_items.unit_id), 1)
+            - COALESCE((SELECT SUM(a.quantity) FROM ecommerce_order_item_snapshot_allocations a WHERE a.order_item_id = ecommerce_order_items.id), 0),
+            0
+          )`,
+        },
+        { name: 'avoir_client_items', qtyExpr: 'quantite' },
+        { name: 'avoir_comptant_items', qtyExpr: 'quantite' },
+        { name: 'avoir_fournisseur_items', qtyExpr: 'quantite' },
+        { name: 'avoir_ecommerce_items', qtyExpr: 'quantite' },
       ];
 
       for (const snap of newSnapshots) {
@@ -699,12 +706,12 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
           : 'AND variant_id IS NULL';
         const variantParams = snap.variant_id ? [snap.variant_id] : [];
 
-        for (const { name: table, qtyCol } of indispoTables) {
+        for (const { name: table, qtyExpr } of indispoTables) {
           if (remainingQty <= 0) break;
 
           // Find is_indisponible items matching this product+variant (oldest first)
           const [indispoItems] = await connection.execute(
-            `SELECT id, ${qtyCol} AS quantite FROM ${table}
+            `SELECT id, ${qtyExpr} AS quantite${table === 'ecommerce_order_items' ? ', order_id' : ''} FROM ${table}
              WHERE product_id = ? ${variantMatch}
                AND is_indisponible = 1
              ORDER BY id ASC`,
@@ -715,6 +722,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             if (remainingQty <= 0) break;
 
             const itemQty = Number(item.quantite);
+            if (!(itemQty > 0) || itemQty > remainingQty) continue;
             // Deduct this item's qty from remaining snapshot qty
             remainingQty -= itemQty;
 
@@ -723,6 +731,15 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               `UPDATE ${table} SET product_snapshot_id = ?, is_indisponible = 0 WHERE id = ?`,
               [snap.id, item.id]
             );
+
+            if (table === 'ecommerce_order_items') {
+              await connection.execute(
+                `INSERT INTO ecommerce_order_item_snapshot_allocations
+                   (order_id, order_item_id, product_id, variant_id, snapshot_id, quantity)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [item.order_id, item.id, snap.product_id, snap.variant_id || null, snap.id, itemQty]
+              );
+            }
           }
         }
 

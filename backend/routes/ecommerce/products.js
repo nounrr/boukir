@@ -66,7 +66,8 @@ router.get('/', async (req, res, next) => {
           SELECT ps.prix_vente
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
-          ORDER BY ps.created_at DESC, ps.id DESC
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
           LIMIT 1
         ), p.prix_vente)`
       : 'p.prix_vente';
@@ -75,6 +76,7 @@ router.get('/', async (req, res, next) => {
           SELECT COALESCE(SUM(ps.quantite), 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id
+            AND COALESCE(ps.en_validation, 0) <> 0
         )`
       : 'COALESCE(p.stock_partage_ecom_qty, 0)';
     const anyInStockWhereExpr = snapshotEnabled
@@ -82,6 +84,7 @@ router.get('/', async (req, res, next) => {
           SELECT 1
           FROM product_snapshot ps
           WHERE ps.product_id = p.id
+            AND COALESCE(ps.en_validation, 0) <> 0
             AND ps.quantite > 0
         )`
       : 'p.stock_partage_ecom_qty > 0';
@@ -392,7 +395,8 @@ router.get('/', async (req, res, next) => {
                 SELECT ps.prix_vente
                 FROM product_snapshot ps
                 WHERE ps.variant_id = pv.id
-                ORDER BY ps.created_at DESC, ps.id DESC
+                  AND COALESCE(ps.en_validation, 0) <> 0
+                ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
                 LIMIT 1
               ), pv.prix_vente) as prix_vente,
               pv.remise_client,
@@ -401,6 +405,7 @@ router.get('/', async (req, res, next) => {
                 SELECT COALESCE(SUM(ps.quantite), 0)
                 FROM product_snapshot ps
                 WHERE ps.variant_id = pv.id
+                  AND COALESCE(ps.en_validation, 0) <> 0
               ), pv.stock_quantity) as stock_quantity,
               pv.image_url
             FROM product_variants pv
@@ -585,6 +590,7 @@ router.get('/', async (req, res, next) => {
               SELECT 1
               FROM product_snapshot ps
               WHERE ps.variant_id = pv.id
+                AND COALESCE(ps.en_validation, 0) <> 0
                 AND ps.quantite > 0
             )`
         : '(p.stock_partage_ecom_qty > 0 OR pv.stock_quantity > 0)'})`
@@ -608,6 +614,7 @@ router.get('/', async (req, res, next) => {
               SELECT 1
               FROM product_snapshot ps
               WHERE ps.product_id = p.id
+                AND COALESCE(ps.en_validation, 0) <> 0
                 AND ps.quantite > 0
             ) OR p.has_variants = 1`
         : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})`
@@ -636,6 +643,7 @@ router.get('/', async (req, res, next) => {
               SELECT 1
               FROM product_snapshot ps
               WHERE ps.product_id = p.id
+                AND COALESCE(ps.en_validation, 0) <> 0
                 AND ps.quantite > 0
             ) OR p.has_variants = 1`
         : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})`
@@ -658,6 +666,7 @@ router.get('/', async (req, res, next) => {
               SELECT 1
               FROM product_snapshot ps
               WHERE ps.product_id = products.id
+                AND COALESCE(ps.en_validation, 0) <> 0
                 AND ps.quantite > 0
             ) OR has_variants = 1`
         : '(stock_partage_ecom_qty > 0 OR has_variants = 1)'})`
@@ -669,7 +678,8 @@ router.get('/', async (req, res, next) => {
               SELECT ps.prix_vente
               FROM product_snapshot ps
               WHERE ps.product_id = products.id AND ps.variant_id IS NULL
-              ORDER BY ps.created_at DESC, ps.id DESC
+                AND COALESCE(ps.en_validation, 0) <> 0
+              ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
               LIMIT 1
             ), products.prix_vente)`
         : 'prix_vente'}) as min_price,
@@ -678,7 +688,8 @@ router.get('/', async (req, res, next) => {
               SELECT ps.prix_vente
               FROM product_snapshot ps
               WHERE ps.product_id = products.id AND ps.variant_id IS NULL
-              ORDER BY ps.created_at DESC, ps.id DESC
+                AND COALESCE(ps.en_validation, 0) <> 0
+              ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
               LIMIT 1
             ), products.prix_vente)`
         : 'prix_vente'}) as max_price
@@ -766,13 +777,15 @@ router.get('/:id', async (req, res, next) => {
             SELECT ps.prix_vente
             FROM product_snapshot ps
             WHERE ps.product_id = ? AND ps.variant_id IS NULL
-            ORDER BY ps.created_at DESC, ps.id DESC
+              AND COALESCE(ps.en_validation, 0) <> 0
+            ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
             LIMIT 1
           ) as snapshot_base_price,
           (
             SELECT COALESCE(SUM(ps.quantite), 0)
             FROM product_snapshot ps
             WHERE ps.product_id = ?
+              AND COALESCE(ps.en_validation, 0) <> 0
           ) as snapshot_stock_any`,
         [id, id]
       );
@@ -825,7 +838,8 @@ router.get('/:id', async (req, res, next) => {
               SELECT ps.prix_vente
               FROM product_snapshot ps
               WHERE ps.variant_id = pv.id
-              ORDER BY ps.created_at DESC, ps.id DESC
+                AND COALESCE(ps.en_validation, 0) <> 0
+              ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
               LIMIT 1
             ), pv.prix_vente) as prix_vente,
             pv.remise_client,
@@ -834,6 +848,7 @@ router.get('/:id', async (req, res, next) => {
               SELECT COALESCE(SUM(ps.quantite), 0)
               FROM product_snapshot ps
               WHERE ps.variant_id = pv.id
+                AND COALESCE(ps.en_validation, 0) <> 0
             ), pv.stock_quantity) as stock_quantity,
             pv.image_url
           FROM product_variants pv
@@ -940,7 +955,8 @@ router.get('/:id', async (req, res, next) => {
                 SELECT ps.prix_vente
                 FROM product_snapshot ps
                 WHERE ps.product_id = p.id AND ps.variant_id IS NULL
-                ORDER BY ps.created_at DESC, ps.id DESC
+                  AND COALESCE(ps.en_validation, 0) <> 0
+                ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
                 LIMIT 1
               ), p.prix_vente) as prix_vente,`
           : 'p.prix_vente,'}
@@ -953,6 +969,7 @@ router.get('/:id', async (req, res, next) => {
                 SELECT COALESCE(SUM(ps.quantite), 0)
                 FROM product_snapshot ps
                 WHERE ps.product_id = p.id
+                  AND COALESCE(ps.en_validation, 0) <> 0
               ) as stock_qty,`
           : 'p.stock_partage_ecom_qty as stock_qty,'}
           p.has_variants,
@@ -978,6 +995,7 @@ router.get('/:id', async (req, res, next) => {
                 SELECT 1
                 FROM product_snapshot ps
                 WHERE ps.product_id = p.id
+                  AND COALESCE(ps.en_validation, 0) <> 0
                   AND ps.quantite > 0
               )`
           : 'p.stock_partage_ecom_qty > 0'}
@@ -1170,7 +1188,8 @@ router.get('/featured/promo', async (req, res, next) => {
           SELECT ps.prix_vente
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
-          ORDER BY ps.created_at DESC, ps.id DESC
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
           LIMIT 1
         ), p.prix_vente)`
       : 'p.prix_vente';
@@ -1179,6 +1198,7 @@ router.get('/featured/promo', async (req, res, next) => {
           SELECT COALESCE(SUM(ps.quantite), 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id
+            AND COALESCE(ps.en_validation, 0) <> 0
         )`
       : 'COALESCE(p.stock_partage_ecom_qty, 0)';
 
@@ -1284,7 +1304,8 @@ router.get('/featured/new', async (req, res, next) => {
           SELECT ps.prix_vente
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
-          ORDER BY ps.created_at DESC, ps.id DESC
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
           LIMIT 1
         ), p.prix_vente)`
       : 'p.prix_vente';
@@ -1293,6 +1314,7 @@ router.get('/featured/new', async (req, res, next) => {
           SELECT COALESCE(SUM(ps.quantite), 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id
+            AND COALESCE(ps.en_validation, 0) <> 0
         )`
       : 'COALESCE(p.stock_partage_ecom_qty, 0)';
 

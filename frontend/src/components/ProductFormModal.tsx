@@ -197,6 +197,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [snapshotEdits, setSnapshotEdits] = useState<Record<number, any>>({});
   const [expandedSnapshots, setExpandedSnapshots] = useState<Set<number>>(new Set());
   const [savingSnapshots, setSavingSnapshots] = useState(false);
+  const [bulkSnapshotSalePrice, setBulkSnapshotSalePrice] = useState('');
   const [submitErrorMessages, setSubmitErrorMessages] = useState<string[]>([]);
 
   const toggleSnapshotExpanded = (id: number) => {
@@ -309,6 +310,26 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     } finally {
       setSavingSnapshots(false);
     }
+  };
+
+  const applySalePriceToVisibleSnapshots = () => {
+    const price = Number(String(bulkSnapshotSalePrice).replace(',', '.'));
+    if (!Number.isFinite(price) || price < 0 || !Array.isArray(productSnapshotRows)) return;
+
+    const updates: Record<number, any> = {};
+    productSnapshotRows.forEach((snapshot: any) => {
+      const purchasePrice = Number(String(
+        snapshotEdits[snapshot.id]?.prix_achat ?? snapshot.prix_achat ?? 0
+      ).replace(',', '.')) || 0;
+      updates[snapshot.id] = {
+        ...(snapshotEdits[snapshot.id] || {}),
+        prix_vente: String(price),
+        prix_vente_pourcentage: String(
+          purchasePrice > 0 ? Number((((price / purchasePrice) - 1) * 100).toFixed(2)) : 0
+        ),
+      };
+    });
+    setSnapshotEdits((previous) => ({ ...previous, ...updates }));
   };
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteMainImage, setDeleteMainImage] = useState(false);
@@ -2055,13 +2076,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     </h4>
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Bulk prix vente input — visible when multiple visible snapshots */}
-                      {false && Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
+                      {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
                         <div className="flex items-center gap-1.5">
                           <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
                           <input
                             type="text"
                             inputMode="decimal"
                             placeholder="0"
+                            value={bulkSnapshotSalePrice}
                             className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -2088,6 +2110,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             onChange={(e) => {
                               // Also apply on change (live) for better UX
                               const rawValue = e.target.value;
+                              setBulkSnapshotSalePrice(rawValue);
                               const val = parseFloat(String(rawValue).replace(',', '.'));
                               if (!Number.isFinite(val) || val < 0) return;
                               const updates: Record<number, any> = {};
@@ -2106,6 +2129,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             }}
                           />
                           <span className="text-xs text-gray-500">DH</span>
+                          <button
+                            type="button"
+                            onClick={applySalePriceToVisibleSnapshots}
+                            className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          >
+                            Appliquer à tous
+                          </button>
                         </div>
                       )}
                     </div>
@@ -2146,6 +2176,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   { key: 'cout_revient_pourcentage', label: '% Coût Rev.' },
                                   { key: 'prix_gros', label: 'Prix Gros' },
                                   { key: 'prix_gros_pourcentage', label: '% Gros' },
+                                  { key: 'prix_vente', label: 'Prix Vente' },
+                                  { key: 'prix_vente_pourcentage', label: '% Vente' },
+                                  { key: 'prix_vente_2', label: 'Prix Vente 2' },
                                 ].map(({ key, label }) => (
                                   <div key={key}>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
@@ -2730,6 +2763,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                               { key: 'cout_revient_pourcentage', label: '% Coût Rev.' },
                                               { key: 'prix_gros', label: 'Prix Gros' },
                                               { key: 'prix_gros_pourcentage', label: '% Gros' },
+                                              { key: 'prix_vente', label: 'Prix Vente' },
+                                              { key: 'prix_vente_pourcentage', label: '% Vente' },
+                                              { key: 'prix_vente_2', label: 'Prix Vente 2' },
                                             ].map(({ key, label }) => (
                                               <div key={key}>
                                                 <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>

@@ -590,6 +590,14 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
     const totalExpr = type === 'Commande'
       ? `CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(${itemAlias}.total, ${itemAlias}.prix_unitaire * ${itemAlias}.quantite) END`
       : `COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`})`;
+    const costExpr = type === 'Ecommerce'
+      ? `(CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE((
+          SELECT SUM(a.quantity * COALESCE(psa.cout_revient, psa.prix_achat, 0)) / NULLIF(SUM(a.quantity), 0)
+          FROM ecommerce_order_item_snapshot_allocations a
+          JOIN product_snapshot psa ON psa.id = a.snapshot_id
+          WHERE a.order_item_id = ${itemAlias}.id
+        ), ${buildBaseCoutRevientExpr('p', 'ps', 'pv')}) * COALESCE(pu.conversion_factor, 1) END)`
+      : buildConvertedCostExpr('p', 'ps', 'pv', 'pu');
 
     return `
       SELECT
@@ -617,7 +625,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${unitPriceExpr} AS prix_unitaire,
         ${totalExpr} AS total,
         ${type === 'Ecommerce' ? `COALESCE(${itemAlias}.remise_amount, 0)` : `COALESCE(${itemAlias}.remise_montant, 0)`} AS remise_montant,
-        ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')} AS cout_revient
+        ${costExpr} AS cout_revient
     `;
   };
 
@@ -859,6 +867,28 @@ function buildBaseCoutRevientExpr(productAlias = 'p', snapshotAlias = 'ps', vari
 
 function buildConvertedCostExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv', unitAlias = 'pu') {
   return `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE ${buildBaseCoutRevientExpr(productAlias, snapshotAlias, variantAlias)} * COALESCE(${unitAlias}.conversion_factor, 1) END)`;
+}
+
+function buildEcommerceAllocatedBaseCostExpr(itemAlias = 'oi', productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
+  return `COALESCE((
+    SELECT SUM(a.quantity * COALESCE(psa.cout_revient, psa.prix_achat, 0)) / NULLIF(SUM(a.quantity), 0)
+    FROM ecommerce_order_item_snapshot_allocations a
+    JOIN product_snapshot psa ON psa.id = a.snapshot_id
+    WHERE a.order_item_id = ${itemAlias}.id
+  ), ${buildBaseCoutRevientExpr(productAlias, snapshotAlias, variantAlias)})`;
+}
+
+function buildEcommerceAllocatedConvertedCostExpr(itemAlias = 'oi', productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv', unitAlias = 'pu') {
+  return `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE ${buildEcommerceAllocatedBaseCostExpr(itemAlias, productAlias, snapshotAlias, variantAlias)} * COALESCE(${unitAlias}.conversion_factor, 1) END)`;
+}
+
+function buildEcommerceAllocatedBasePurchaseExpr(itemAlias = 'oi', productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
+  return `COALESCE((
+    SELECT SUM(a.quantity * COALESCE(psa.prix_achat, psa.cout_revient, 0)) / NULLIF(SUM(a.quantity), 0)
+    FROM ecommerce_order_item_snapshot_allocations a
+    JOIN product_snapshot psa ON psa.id = a.snapshot_id
+    WHERE a.order_item_id = ${itemAlias}.id
+  ), ${buildBasePrixAchatExpr(productAlias, snapshotAlias, variantAlias)})`;
 }
 
 async function tryQuery(sql, params) {
@@ -1129,8 +1159,8 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE_FORMAT(o.created_at, '%Y-%m-%d') AS day,
                o.id AS bon_id,
                COALESCE(SUM(CASE WHEN COALESCE(p.rappel_non_calcule, 0) = 1 THEN 0 ELSE COALESCE(oi.subtotal, oi.unit_price * oi.quantity) END), 0) AS totalBon,
-           COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
-           COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity), 0) AS profitBrutBon,
+           COALESCE(SUM((oi.unit_price - ${buildEcommerceAllocatedConvertedCostExpr('oi', 'p', 'ps', 'pv', 'pu')}) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
+           COALESCE(SUM((oi.unit_price - ${buildEcommerceAllocatedConvertedCostExpr('oi', 'p', 'ps', 'pv', 'pu')}) * oi.quantity), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(oi.remise_amount, 0)), 0) AS remiseBon,
                1 AS bonCount
         FROM ecommerce_orders o
@@ -1658,14 +1688,14 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               COALESCE(oi.unit_name, pu.unit_name) AS unit_name,
               oi.quantity AS quantite,
               oi.unit_price AS prix_unitaire,
-              ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
-              ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
+              ${buildEcommerceAllocatedBaseCostExpr('oi', 'p', 'ps', 'pv')} AS cout_revient,
+              ${buildEcommerceAllocatedBasePurchaseExpr('oi', 'p', 'ps', 'pv')} AS prix_achat,
               COALESCE(oi.subtotal, (oi.unit_price * oi.quantity)) AS montant_ligne,
               COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-              ((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity) AS profitBrut,
+              ((oi.unit_price - ${buildEcommerceAllocatedConvertedCostExpr('oi', 'p', 'ps', 'pv', 'pu')}) * oi.quantity) AS profitBrut,
               COALESCE(oi.remise_percent_applied, 0) AS remise_unitaire,
               COALESCE(oi.remise_amount, 0) AS remise_total,
-              (((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
+              (((oi.unit_price - ${buildEcommerceAllocatedConvertedCostExpr('oi', 'p', 'ps', 'pv', 'pu')}) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
             FROM ecommerce_orders o
             LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
             LEFT JOIN products p ON p.id = oi.product_id

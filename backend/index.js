@@ -40,7 +40,9 @@ import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceSearchRouter from './routes/ecommerce/search.js';
 import ecommerceCartRouter from './routes/ecommerce/cart.js';
 import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
-import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
+import ecommerceOrdersRouter, {
+  ensureEcommerceSnapshotAllocationsTable,
+} from './routes/ecommerce/orders.js';
 import ecommercePromoRouter from './routes/ecommerce/promo.js';
 import ecommercePickupLocationsRouter from './routes/ecommerce/pickupLocations.js';
 import promoCodesRouter from './routes/promoCodes.js';
@@ -134,6 +136,7 @@ async function ensureSchemas() {
   await ensurePricePrecisionColumns();
   await ensureUiSettingsTable();
   await ensureAccessScheduleTables();
+  await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 
 const app = express();

@@ -45,40 +45,6 @@ function isBackofficeRequest(req) {
   return role.length > 0;
 }
 
-// ==================== DEBUG: CHECK USER ====================
-// GET /api/ecommerce/cart/debug/user - Check current authenticated user
-router.get('/debug/user', async (req, res, next) => {
-  try {
-    const userId = getUserId(req);
-
-    if (!userId) {
-      return res.json({
-        authenticated: !!req.user,
-        jwtPayload: req.user,
-        extractedUserId: userId,
-        userExists: null
-      });
-    }
-
-    const [userRows] = await pool.query(`
-      SELECT id, nom, prenom, email, role FROM contacts WHERE id = ?
-    `, [userId]);
-
-    return res.json({
-      authenticated: true,
-      jwtPayload: req.user,
-      extractedUserId: userId,
-      userExists: userRows.length > 0,
-      userData: userRows.length > 0 ? userRows[0] : null,
-      hint: userRows.length === 0
-        ? 'User ID from JWT does not exist in contacts table'
-        : 'User found successfully'
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
 // ==================== GET USER CART ====================
 // GET /api/ecommerce/cart - Get current user's cart with all items
 router.get('/', async (req, res, next) => {
@@ -109,7 +75,8 @@ router.get('/', async (req, res, next) => {
           SELECT ps.prix_vente
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
-          ORDER BY ps.created_at DESC, ps.id DESC
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
           LIMIT 1
         ) as snapshot_base_price,
         p.pourcentage_promo,
@@ -121,6 +88,7 @@ router.get('/', async (req, res, next) => {
           SELECT COALESCE(SUM(ps.quantite), 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+            AND COALESCE(ps.en_validation, 0) <> 0
         ) as snapshot_stock,
         p.has_variants,
         p.is_obligatoire_variant,
@@ -130,7 +98,8 @@ router.get('/', async (req, res, next) => {
           SELECT ps.prix_vente
           FROM product_snapshot ps
           WHERE ps.variant_id = pv.id
-          ORDER BY ps.created_at DESC, ps.id DESC
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
           LIMIT 1
         ) as snapshot_variant_price,
         pv.stock_quantity as variant_stock,
@@ -138,6 +107,7 @@ router.get('/', async (req, res, next) => {
           SELECT COALESCE(SUM(ps.quantite), 0)
           FROM product_snapshot ps
           WHERE ps.variant_id = pv.id
+            AND COALESCE(ps.en_validation, 0) <> 0
         ) as snapshot_variant_stock,
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
@@ -434,7 +404,8 @@ router.post('/items', async (req, res, next) => {
       const [stockRows] = await pool.query(
         `SELECT COALESCE(SUM(quantite), 0) as qty
          FROM product_snapshot
-         WHERE product_id = ? AND variant_id IS NULL`,
+         WHERE product_id = ? AND variant_id IS NULL
+           AND COALESCE(en_validation, 0) <> 0`,
         [productId]
       );
       availableStock = toSafeNumber(stockRows?.[0]?.qty);
@@ -455,7 +426,8 @@ router.post('/items', async (req, res, next) => {
         const [stockRows] = await pool.query(
           `SELECT COALESCE(SUM(quantite), 0) as qty
            FROM product_snapshot
-           WHERE variant_id = ?`,
+           WHERE variant_id = ?
+             AND COALESCE(en_validation, 0) <> 0`,
           [variantId]
         );
         availableStock = toSafeNumber(stockRows?.[0]?.qty);
@@ -635,7 +607,8 @@ router.put('/items/:id', async (req, res, next) => {
         const [stockRows] = await pool.query(
           `SELECT COALESCE(SUM(quantite), 0) as qty
            FROM product_snapshot
-           WHERE variant_id = ?`,
+           WHERE variant_id = ?
+             AND COALESCE(en_validation, 0) <> 0`,
           [cartItem.variant_id]
         );
         availableStock = toSafeNumber(stockRows?.[0]?.qty);
@@ -643,7 +616,8 @@ router.put('/items/:id', async (req, res, next) => {
         const [stockRows] = await pool.query(
           `SELECT COALESCE(SUM(quantite), 0) as qty
            FROM product_snapshot
-           WHERE product_id = ? AND variant_id IS NULL`,
+           WHERE product_id = ? AND variant_id IS NULL
+             AND COALESCE(en_validation, 0) <> 0`,
           [cartItem.product_id]
         );
         availableStock = toSafeNumber(stockRows?.[0]?.qty);
@@ -745,7 +719,8 @@ router.get('/suggestions', async (req, res, next) => {
           SELECT ps.prix_vente
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
-          ORDER BY ps.created_at DESC, ps.id DESC
+            AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
           LIMIT 1
         ), p.prix_vente)`
       : 'p.prix_vente';
@@ -754,6 +729,7 @@ router.get('/suggestions', async (req, res, next) => {
           SELECT COALESCE(SUM(ps.quantite), 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id
+            AND COALESCE(ps.en_validation, 0) <> 0
         )`
       : 'COALESCE(p.stock_partage_ecom_qty, 0)';
     const inStockWhereExpr = snapshotEnabled
@@ -761,6 +737,7 @@ router.get('/suggestions', async (req, res, next) => {
           SELECT 1
           FROM product_snapshot ps
           WHERE ps.product_id = p.id
+            AND COALESCE(ps.en_validation, 0) <> 0
             AND ps.quantite > 0
         )`
       : 'p.stock_partage_ecom_qty > 0';
@@ -1093,7 +1070,8 @@ router.post('/validate', async (req, res, next) => {
           const [stockRows] = await pool.query(
             `SELECT COALESCE(SUM(quantite), 0) as qty
              FROM product_snapshot
-             WHERE variant_id = ?`,
+             WHERE variant_id = ?
+               AND COALESCE(en_validation, 0) <> 0`,
             [item.variant_id]
           );
           availableStock = toSafeNumber(stockRows?.[0]?.qty);
@@ -1101,7 +1079,8 @@ router.post('/validate', async (req, res, next) => {
           const [stockRows] = await pool.query(
             `SELECT COALESCE(SUM(quantite), 0) as qty
              FROM product_snapshot
-             WHERE product_id = ? AND variant_id IS NULL`,
+             WHERE product_id = ? AND variant_id IS NULL
+               AND COALESCE(en_validation, 0) <> 0`,
             [item.product_id]
           );
           availableStock = toSafeNumber(stockRows?.[0]?.qty);

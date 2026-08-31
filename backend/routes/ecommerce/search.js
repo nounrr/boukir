@@ -75,6 +75,23 @@ router.get('/suggestions', async (req, res, next) => {
     const limitCategories = Math.min(50, Math.max(0, Number(req.query.limit_categories || 6)));
     const limitBrands = Math.min(50, Math.max(0, Number(req.query.limit_brands || 6)));
     const inStockOnly = String(req.query.in_stock_only ?? 'true') === 'true';
+    const snapshotPriceExpr = `COALESCE((
+      SELECT ps.prix_vente FROM product_snapshot ps
+      WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+        AND COALESCE(ps.en_validation, 0) <> 0
+      ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
+      LIMIT 1
+    ), p.prix_vente)`;
+    const snapshotStockExpr = `(
+      SELECT COALESCE(SUM(ps.quantite), 0) FROM product_snapshot ps
+      WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+        AND COALESCE(ps.en_validation, 0) <> 0
+    )`;
+    const snapshotVariantStockExpr = `EXISTS (
+      SELECT 1 FROM product_snapshot ps
+      WHERE ps.product_id = p.id AND ps.variant_id IS NOT NULL
+        AND COALESCE(ps.en_validation, 0) <> 0 AND ps.quantite > 0
+    )`;
 
     if (!qNorm) {
       return res.json({
@@ -180,11 +197,8 @@ router.get('/suggestions', async (req, res, next) => {
     if (inStockOnly) {
       productWhere.push(
         `(
-          p.stock_partage_ecom_qty > 0
-          OR EXISTS (
-            SELECT 1 FROM product_variants pv
-            WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
-          )
+          ${snapshotStockExpr} > 0
+          OR ${snapshotVariantStockExpr}
         )`
       );
     }
@@ -261,11 +275,8 @@ router.get('/suggestions', async (req, res, next) => {
       if (inStockOnly) {
         directWhere.push(
           `(
-            COALESCE(p.stock_partage_ecom_qty, 0) > 0
-            OR EXISTS (
-              SELECT 1 FROM product_variants pv
-              WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
-            )
+            ${snapshotStockExpr} > 0
+            OR ${snapshotVariantStockExpr}
           )`
         );
       }
@@ -278,14 +289,11 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
-          p.prix_vente,
+          ${snapshotPriceExpr} AS prix_vente,
           p.pourcentage_promo,
           p.image_url,
-          COALESCE(p.stock_partage_ecom_qty, 0) AS stock_partage_ecom_qty,
-          EXISTS (
-            SELECT 1 FROM product_variants pv
-            WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
-          ) AS has_variant_stock,
+          ${snapshotStockExpr} AS stock_partage_ecom_qty,
+          ${snapshotVariantStockExpr} AS has_variant_stock,
           b.id AS brand_id,
           b.nom AS brand_nom,
           b.image_url AS brand_image_url,
@@ -323,14 +331,11 @@ router.get('/suggestions', async (req, res, next) => {
         p.designation_ar,
         p.designation_en,
         p.designation_zh,
-        p.prix_vente,
+        ${snapshotPriceExpr} AS prix_vente,
         p.pourcentage_promo,
         p.image_url,
-        COALESCE(p.stock_partage_ecom_qty, 0) AS stock_partage_ecom_qty,
-        EXISTS (
-          SELECT 1 FROM product_variants pv
-          WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
-        ) AS has_variant_stock,
+        ${snapshotStockExpr} AS stock_partage_ecom_qty,
+        ${snapshotVariantStockExpr} AS has_variant_stock,
         b.id AS brand_id,
         b.nom AS brand_nom,
         b.image_url AS brand_image_url,
