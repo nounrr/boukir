@@ -32,6 +32,7 @@ import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
 import { printProductTicket } from '../utils/productTicketPrint';
 import { isProductNonCalcule } from '../utils/productNonCalcule';
+import { toBackendUrl } from '../utils/url';
 
 /* -------------------------- Select avec recherche -------------------------- */
 interface SearchableSelectProps {
@@ -5739,7 +5740,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
                     : [];
-                  const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0) + (isPDG ? 2 : 0);
+                  const emptyColSpan = 9 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0) + (isPDG ? 2 : 0);
 
                   return (
                     <>
@@ -5757,6 +5758,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <table className="min-w-full divide-y divide-gray-200 table-mobile-compact">
                               <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
                           <tr>
+                            <th className="w-[68px] px-2 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                              Image
+                            </th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[200px]">
                               Produit (Réf - Désignation)
                             </th>
@@ -5830,8 +5834,38 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             </tr>
                           ) : (
                             visibleEntries.map(({ row, index }: any) => {
+                              const catalogProduct = (products as any[]).find(
+                                (product: any) => String(product.id) === String(row?.product_id)
+                              );
+                              const catalogVariant = (catalogProduct?.variants ?? []).find(
+                                (variant: any) => String(variant.id) === String(row?.variant_id)
+                              );
+                              const snapshotProduct = (snapshotProducts as any[]).find(
+                                (product: any) => String(product.id) === String(row?.product_id)
+                                  && String(product.variant_id || '') === String(row?.variant_id || '')
+                              );
+                              const productImageUrl = toBackendUrl(
+                                catalogVariant?.image_url
+                                || snapshotProduct?.variant_image_url
+                                || snapshotProduct?.image_url
+                                || catalogProduct?.image_url
+                              );
                               return (
                               <tr key={row._rowId || `item-${index}`}>
+                                <td className="w-[68px] px-2 py-2">
+                                  {productImageUrl ? (
+                                    <img
+                                      src={productImageUrl}
+                                      alt={String(row?.designation || 'Produit')}
+                                      className="h-10 w-10 rounded-md border border-gray-200 object-cover"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
+                                      —
+                                    </div>
+                                  )}
+                                </td>
                                 {/* Produit combiné (Réf - Désignation) */}
                                 <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
