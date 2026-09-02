@@ -1249,6 +1249,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [isContactModalOpen, setIsContactModalOpen] = useState<null | 'Client' | 'Fournisseur'>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [targetRowIndex, setTargetRowIndex] = useState<number | null>(null);
+  const [hoverPreview, setHoverPreview] = useState<null | { url: string; x: number; y: number; alt: string }>(null);
   const [restoreProduct] = useRestoreProductMutation();
   const [restoringProductIds, setRestoringProductIds] = useState<Set<number>>(new Set());
 
@@ -4135,10 +4136,14 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     let bestPrice: number | null = null;
     let bestTime = -1;
     let bestBonId = -1;
-    const acceptedStatuses = new Set(['validÃ©', 'valide', 'validÃ©e', 'livrÃ©', 'livre', 'en attente']);
+    const acceptedStatuses = new Set(['valide', 'validee', 'livre', 'en attente']);
 
     const scan = (bon: any, matchVariant: boolean, matchUnit: boolean) => {
-      const statut = String(bon.statut || '').toLowerCase();
+      const statut = String(bon.statut || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
       if (!acceptedStatuses.has(statut)) return;
 
       const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
@@ -4673,6 +4678,25 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   <div
     className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2"
   >
+    {hoverPreview?.url && typeof window !== 'undefined' && (() => {
+      const maxWidth = 420;
+      const maxHeight = 320;
+      const padding = 16;
+      const left = Math.max(padding, Math.min(hoverPreview.x + 18, window.innerWidth - maxWidth - padding));
+      const top = Math.max(padding, Math.min(hoverPreview.y + 18, window.innerHeight - maxHeight - padding));
+
+      return (
+        <div className="pointer-events-none fixed z-[9999]" style={{ left, top, maxWidth, maxHeight }}>
+          <div className="h-fit w-fit max-h-[320px] max-w-[420px] overflow-hidden rounded-lg border border-gray-200 bg-white p-2 shadow-2xl">
+            <img
+              src={hoverPreview.url}
+              alt={hoverPreview.alt}
+              className="block max-h-[304px] max-w-full object-contain"
+            />
+          </div>
+        </div>
+      );
+    })()}
     <div className="bg-white rounded-lg w-[90vw] max-h-[96vh] flex flex-col shadow-lg">
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
@@ -5859,6 +5883,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       alt={String(row?.designation || 'Produit')}
                                       className="h-10 w-10 rounded-md border border-gray-200 object-cover"
                                       loading="lazy"
+                                      onMouseEnter={(event) => {
+                                        setHoverPreview({
+                                          url: productImageUrl,
+                                          x: event.clientX,
+                                          y: event.clientY,
+                                          alt: String(row?.designation || 'Produit'),
+                                        });
+                                      }}
+                                      onMouseMove={(event) => {
+                                        setHoverPreview((previous) => previous?.url === productImageUrl
+                                          ? { ...previous, x: event.clientX, y: event.clientY }
+                                          : previous);
+                                      }}
+                                      onMouseLeave={() => setHoverPreview(null)}
                                     />
                                   ) : (
                                     <div className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
@@ -7183,18 +7221,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           values.items[index].variant_id,
           values.items[index].unit_id
         );
-    // 🔎 DEBUG TEMP — dernier prix client
-    console.log('🔵 [DERNIER PRIX CLIENT]', {
-      type: values.type,
-      client_id: values.client_id,
-      product_id: values.items[index].product_id,
-      variant_id: values.items[index].variant_id,
-      unit_id: values.items[index].unit_id,
-      last,
-      sortiesHistoryCount: (sortiesHistory as any[])?.length,
-      comptantHistoryCount: (comptantHistory as any[])?.length,
-      sampleStatuts: (sortiesHistory as any[])?.slice(0, 5).map((b: any) => ({ id: b.id, statut: b.statut, client_id: b.client_id })),
-    });
     return last && Number.isFinite(last) ? (
       <div className="text-xs text-blue-600 font-medium mt-1">
         {values.type === 'Avoir' && !values.vendre_au_fournisseur ? 'Dernier prix Bon Sortie' : 'Dernier prix client'}: {formatFull(Number(last))} DH

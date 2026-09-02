@@ -269,6 +269,18 @@ const buildItemsSql = (cfg, { includeHistoricalAverage = true } = {}) => {
   const totalExpr = cfg.type === 'Commande'
     ? `CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${i}.total END`
     : `${i}.total`;
+  // Les remises du client remise sont stockées dans item_remises, comme
+  // dans GET /comptant. La liste fournit aussi les valeurs du formulaire d'édition.
+  const remiseMontantExpr = cfg.type === 'Comptant'
+    ? `COALESCE(NULLIF(${i}.remise_montant, 0), (
+        SELECT COALESCE(SUM(ir.prix_remise), 0)
+        FROM item_remises ir
+        WHERE ir.bon_type = 'Comptant'
+          AND ir.bon_id = b.id
+          AND ir.product_id = ${i}.product_id
+          AND COALESCE(ir.statut, '') NOT LIKE 'Annul%'
+      ))`
+    : `${i}.remise_montant`;
   return `COALESCE((
     SELECT JSON_ARRAYAGG(JSON_OBJECT(
       'id', ${i}.id,
@@ -285,7 +297,7 @@ const buildItemsSql = (cfg, { includeHistoricalAverage = true } = {}) => {
       ${priceFields}
       ${extraJsonFields}
       'remise_pourcentage', ${i}.remise_pourcentage,
-      'remise_montant', ${i}.remise_montant,
+      'remise_montant', ${remiseMontantExpr},
       'total', ${totalExpr},
       'montant_ligne', ${totalExpr}
     ))
