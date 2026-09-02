@@ -12,6 +12,7 @@ import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
 import { CategoryTreeSelect } from './CategoryTreeSelect';
+import { getVariantColor } from '../utils/variant-color';
 
 const VARIANT_SUGGESTIONS: Record<string, string[]> = {
   Couleur: ['Rouge', 'Bleu', 'Vert', 'Jaune', 'Noir', 'Blanc', 'Gris', 'Orange', 'Violet', 'Rose', 'Marron', 'Beige', 'Argent', 'Or'],
@@ -2587,16 +2588,36 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             </div>
                             {variant.variant_type === 'Couleur' && (
                               <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Nom de couleur (optionnel)</label>
-                                <input
-                                  list={`color-suggestions-${index}`}
-                                  name={`variants.${index}.color_name`}
-                                  value={variant.color_name || ''}
-                                  onChange={formik.handleChange}
-                                  maxLength={100}
-                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  placeholder="Ex. Rouge, Vert, Gris"
-                                />
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Couleur : nom ou code hex (optionnel)</label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    aria-label={`Choisir la couleur de ${variant.variant_name || 'la variante'}`}
+                                    value={getVariantColor(variant.color_name, variant.variant_name).background}
+                                    onChange={(event) => void formik.setFieldValue(`variants.${index}.color_name`, event.target.value)}
+                                    className="h-9 w-10 shrink-0 cursor-pointer rounded border border-gray-200 bg-white p-0.5"
+                                  />
+                                  <input
+                                    aria-label="Nom ou code hex de la couleur"
+                                    list={`color-suggestions-${index}`}
+                                    name={`variants.${index}.color_name`}
+                                    value={variant.color_name || ''}
+                                    onChange={formik.handleChange}
+                                    maxLength={100}
+                                    className="min-w-0 w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    placeholder="Ex. Rouge, #FF0000"
+                                  />
+                                </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <span
+                                    className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-300 p-1 text-center text-[10px] font-semibold leading-tight break-all"
+                                    style={{ backgroundColor: getVariantColor(variant.color_name, variant.variant_name).background, color: getVariantColor(variant.color_name, variant.variant_name).foreground }}
+                                    title={variant.variant_name || 'Aperçu couleur'}
+                                  >
+                                    {variant.variant_name}
+                                  </span>
+                                  <span className="text-xs text-gray-500">Si vide, la couleur est déduite du nom de variante.</span>
+                                </div>
                                 {asStringError((formik.errors.variants?.[index] as any)?.color_name) && (
                                   <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.color_name)}</p>
                                 )}
