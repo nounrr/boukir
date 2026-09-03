@@ -1,3 +1,5 @@
+import { filterInternalPriceFields, isInternalPriceField } from '../utils/internalPrices';
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
 
@@ -18,6 +20,7 @@ type Product = {
 };
 
 export default function ExportProducts() {
+  const showInternalPrices = useCanViewInternalPrices();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
@@ -45,7 +48,7 @@ export default function ExportProducts() {
         kg: p.kg ?? null,
       }));
 
-      const ws = XLSX.utils.json_to_sheet(rows, {
+      const ws = XLSX.utils.json_to_sheet(rows.map((row) => filterInternalPriceFields(row, showInternalPrices)), {
         header: [
           'id',
           'designation',
@@ -60,7 +63,7 @@ export default function ExportProducts() {
           'prix_vente_pourcentage',
           'prix_vente',
           'kg',
-        ],
+        ].filter((key) => showInternalPrices || !isInternalPriceField(key)),
         skipHeader: false,
       });
 

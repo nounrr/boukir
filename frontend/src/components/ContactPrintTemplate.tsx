@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
@@ -168,7 +169,8 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     return pickDesignationForLang(designationLang, fallback, row, product);
   };
   // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
-  const showPrices = priceMode === 'WITH_PRICES';
+
+  const showInternalPrices = useCanViewInternalPrices();
   const initialSolde = Number((contact as any)?.solde ?? 0);
   const visibleSoldeCumule = (value: any) => {
     const numericValue = Number(value) || 0;
@@ -186,6 +188,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     if ((contact as any)?.is_fournisseur === true) return true;
     return false;
   })();
+  const showPrices = priceMode === 'WITH_PRICES' && (showInternalPrices || !isFournisseur);
 
   // Lignes synthétiques “Solde initial”
   const txInitialRow: any = {

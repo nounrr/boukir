@@ -1,3 +1,4 @@
+import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
@@ -822,6 +823,12 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     if (itemValidationError) {
       await connection.rollback();
       return res.status(400).json(itemValidationError);
+    }
+
+    const minimumPriceError = await validateEmployeeSalePrices(connection, items, { role: req.user?.role, type: 'Comptant' });
+    if (minimumPriceError) {
+      await connection.rollback();
+      return res.status(400).json(minimumPriceError);
     }
 
     const [comptantResult] = await connection.execute(`

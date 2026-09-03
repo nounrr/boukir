@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState } from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
@@ -103,6 +104,8 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   onDesignationLangChange,
   showDesignationLangSelect = true
 }) => {
+  const showInternalPrices = useCanViewInternalPrices();
+  const allowPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(bon.type);
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
   const [internalLang, setInternalLang] = useState<DesignationLang>('fr');
   // Contrôlé par le parent si `designationLang` est fourni, sinon état interne
@@ -442,11 +445,11 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
           <label htmlFor="print-mode" className="mr-2 text-sm font-medium">Mode impression :</label>
           <select
             id="print-mode"
-            value={printMode}
+            value={allowPrices || printMode === 'PRODUCTS_ONLY' ? printMode : 'WITHOUT_PRICES'}
             onChange={(e) => setPrintMode(e.target.value as 'WITH_PRICES' | 'WITHOUT_PRICES' | 'PRODUCTS_ONLY')}
             className="border rounded px-2 py-1 text-sm"
           >
-            <option value="WITH_PRICES">Avec prix</option>
+            {allowPrices && <option value="WITH_PRICES">Avec prix</option>}
             <option value="WITHOUT_PRICES">Sans prix</option>
             <option value="PRODUCTS_ONLY">Produits seulement</option>
           </select>
@@ -544,7 +547,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               {printMode !== 'PRODUCTS_ONLY' && (
                 <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center font-semibold ${textSizes.tableHeader}`}>Qté</th>
               )}
-              {printMode === 'WITH_PRICES' && (
+              {allowPrices && printMode === 'WITH_PRICES' && (
                 <>
                   {bon?.type === 'Commande' ? (
                     <>
@@ -629,7 +632,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                   {printMode !== 'PRODUCTS_ONLY' && (
                     <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center ${textSizes.tableCell}`}>{quantite}</td>
                   )}
-                  {printMode === 'WITH_PRICES' && (
+                  {allowPrices && printMode === 'WITH_PRICES' && (
                     <>
                       {bon?.type === 'Commande' ? (
                         <>
@@ -655,7 +658,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       </div>
 
       {/* Totaux */}
-      {printMode === 'WITH_PRICES' && (
+      {allowPrices && printMode === 'WITH_PRICES' && (
         <div className={`flex justify-end ${spacing.margin} totals-section`}>
           <div className={isA5 ? 'w-60' : 'w-80'}>
             <div className={`${spacing.padding} rounded`}>

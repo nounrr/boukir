@@ -1447,6 +1447,7 @@ router.get('/stock-pdf', async (req, res, next) => {
     const pdfStream = createStockPdfStream(allProducts, {
       tabLabel,
       filtersText: filterParts.join(' | '),
+      showInternalPrices: Boolean(req.user?.role) && req.user.role !== 'Employé',
     });
 
     const fileSuffix = type === 'service'

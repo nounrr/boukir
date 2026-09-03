@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useMemo, useState } from 'react';
 import { ArrowLeftRight, Eye, Package, Plus, RotateCcw, Search, X } from 'lucide-react';
 import {
@@ -32,6 +33,7 @@ const productLabel = (row: { designation?: string; variant_name?: string | null;
 };
 
 const DepotDetailsModal: React.FC<{ row: DepotStockRow | null; onClose: () => void }> = ({ row, onClose }) => {
+  const showInternalPrices = useCanViewInternalPrices();
   if (!row) return null;
 
   return (
@@ -60,9 +62,9 @@ const DepotDetailsModal: React.FC<{ row: DepotStockRow | null; onClose: () => vo
           <div className="border rounded-lg p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Prix snapshot</h3>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span>Prix achat</span><strong>{money(row.prix_achat)}</strong></div>
-              <div className="flex justify-between"><span>Cout revient</span><strong>{money(row.cout_revient)}</strong></div>
-              <div className="flex justify-between"><span>Prix gros</span><strong>{money(row.prix_gros)}</strong></div>
+              {showInternalPrices && (<div className="flex justify-between"><span>Prix achat</span><strong>{money(row.prix_achat)}</strong></div>)}
+              {showInternalPrices && (<div className="flex justify-between"><span>Cout revient</span><strong>{money(row.cout_revient)}</strong></div>)}
+              {showInternalPrices && (<div className="flex justify-between"><span>Prix gros</span><strong>{money(row.prix_gros)}</strong></div>)}
               <div className="flex justify-between"><span>Prix vente</span><strong>{money(row.prix_vente)}</strong></div>
               <div className="flex justify-between"><span>Prix vente 2</span><strong>{money(row.prix_vente_2)}</strong></div>
             </div>
@@ -86,6 +88,7 @@ const DepotDetailsModal: React.FC<{ row: DepotStockRow | null; onClose: () => vo
 };
 
 const TransferModal: React.FC<{ direction: TransferDirection; onClose: () => void }> = ({ direction, onClose }) => {
+  const showInternalPrices = useCanViewInternalPrices();
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<TransferProduct | null>(null);
   const [quantite, setQuantite] = useState('');
@@ -171,7 +174,7 @@ const TransferModal: React.FC<{ direction: TransferDirection; onClose: () => voi
                     >
                       <td className="px-3 py-2">
                         <div className="font-medium text-gray-900">{productLabel(p)}</div>
-                        <div className="text-xs text-gray-500">Achat {money(p.prix_achat)} | Vente {money(p.prix_vente)}</div>
+                        <div className="text-xs text-gray-500">{showInternalPrices && <>Achat {money(p.prix_achat)} | </>}Vente {money(p.prix_vente)}</div>
                       </td>
                       <td className="px-3 py-2 text-right font-semibold">{formatNum(p.quantite_disponible)}</td>
                     </tr>
@@ -237,6 +240,7 @@ const TransferModal: React.FC<{ direction: TransferDirection; onClose: () => voi
 };
 
 const StockDepot2Page: React.FC = () => {
+  const showInternalPrices = useCanViewInternalPrices();
   const [activeTab, setActiveTab] = useState<'products' | 'history'>('products');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -289,10 +293,10 @@ const StockDepot2Page: React.FC = () => {
           <div className="text-sm text-gray-500">Quantite affichee</div>
           <div className="text-2xl font-semibold">{formatNum(rows.reduce((sum, row) => sum + Number(row.depot_quantite || 0), 0))}</div>
         </div>
-        <div className="bg-white border rounded-lg p-4">
+        {showInternalPrices && (<div className="bg-white border rounded-lg p-4">
           <div className="text-sm text-gray-500">Valeur cout</div>
           <div className="text-2xl font-semibold">{money(totalValue)}</div>
-        </div>
+        </div>)}
       </div>
 
       <div className="bg-white border rounded-lg">
@@ -345,9 +349,9 @@ const StockDepot2Page: React.FC = () => {
                   <th className="text-right px-4 py-3">Quantite depot</th>
                   <th className="text-right px-4 py-3">Stock normal</th>
                   <th className="text-left px-4 py-3">Unite</th>
-                  <th className="text-right px-4 py-3">Prix achat</th>
-                  <th className="text-right px-4 py-3">Cout revient</th>
-                  <th className="text-right px-4 py-3">Prix gros</th>
+                  {showInternalPrices && (<th className="text-right px-4 py-3">Prix achat</th>)}
+                  {showInternalPrices && (<th className="text-right px-4 py-3">Cout revient</th>)}
+                  {showInternalPrices && (<th className="text-right px-4 py-3">Prix gros</th>)}
                   <th className="text-right px-4 py-3">Prix vente</th>
                   <th className="text-right px-4 py-3">Prix vente 2</th>
                   <th className="text-left px-4 py-3">Type</th>
@@ -380,9 +384,9 @@ const StockDepot2Page: React.FC = () => {
                     <td className="px-4 py-3 text-right font-semibold">{formatNum(row.depot_quantite)}</td>
                     <td className="px-4 py-3 text-right">{formatNum(row.stock_normal_quantite)}</td>
                     <td className="px-4 py-3">{row.base_unit || '-'}</td>
-                    <td className="px-4 py-3 text-right">{money(row.prix_achat)}</td>
-                    <td className="px-4 py-3 text-right">{money(row.cout_revient)}</td>
-                    <td className="px-4 py-3 text-right">{money(row.prix_gros)}</td>
+                    {showInternalPrices && (<td className="px-4 py-3 text-right">{money(row.prix_achat)}</td>)}
+                    {showInternalPrices && (<td className="px-4 py-3 text-right">{money(row.cout_revient)}</td>)}
+                    {showInternalPrices && (<td className="px-4 py-3 text-right">{money(row.prix_gros)}</td>)}
                     <td className="px-4 py-3 text-right">{money(row.prix_vente)}</td>
                     <td className="px-4 py-3 text-right">{money(row.prix_vente_2)}</td>
                     <td className="px-4 py-3">{productTypeLabel(row)}</td>
@@ -394,7 +398,7 @@ const StockDepot2Page: React.FC = () => {
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={15} className="px-4 py-10 text-center text-gray-500">{isFetching ? 'Chargement...' : 'Aucun stock dans depot 2'}</td></tr>
+                  <tr><td colSpan={showInternalPrices ? 15 : 12} className="px-4 py-10 text-center text-gray-500">{isFetching ? 'Chargement...' : 'Aucun stock dans depot 2'}</td></tr>
                 )}
               </tbody>
             </table>

@@ -1,3 +1,4 @@
+import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
@@ -1357,6 +1358,12 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     if (blockedClient) {
       await connection.rollback();
       return res.status(400).json(blockedClientPayload(blockedClient));
+    }
+
+    const minimumPriceError = await validateEmployeeSalePrices(connection, items, { role: req.user?.role, type: type });
+    if (minimumPriceError) {
+      await connection.rollback();
+      return res.status(400).json(minimumPriceError);
     }
 
     const [bonResult] = await connection.execute(`

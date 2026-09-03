@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 ﻿
 import React, { useState, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
@@ -58,6 +59,7 @@ const hasSupportedDraggedImage = (dataTransfer: DataTransfer) => {
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
   const authToken = useSelector((state: any) => state.auth?.token);
+  const showInternalPrices = useCanViewInternalPrices();
   const [searchInput, setSearchInput] = useState('');
   const [searchInput2, setSearchInput2] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -735,10 +737,10 @@ const StockPage: React.FC = () => {
                   <tr className="bg-gray-100">
                     <th className="px-2 py-1 text-left font-semibold">Bon</th>
                     <th className="px-2 py-1 text-right font-semibold">Qté</th>
-                    <th className="px-2 py-1 text-right font-semibold">P.Achat</th>
+                    {showInternalPrices && (<th className="px-2 py-1 text-right font-semibold">P.Achat</th>)}
                     <th className="px-2 py-1 text-right font-semibold">P.Vente</th>
-                    <th className="px-2 py-1 text-right font-semibold">C.Revient</th>
-                    <th className="px-2 py-1 text-right font-semibold">P.Gros</th>
+                    {showInternalPrices && (<th className="px-2 py-1 text-right font-semibold">C.Revient</th>)}
+                    {showInternalPrices && (<th className="px-2 py-1 text-right font-semibold">P.Gros</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -769,10 +771,10 @@ const StockPage: React.FC = () => {
                       <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
                         <td className="px-2 py-1 text-gray-600 max-w-[120px] truncate" title={g.bons.join(', ')}>{g.bons.length > 1 ? `${g.bons.length} bons` : g.bons[0]}</td>
                         <td className="px-2 py-1 text-right font-semibold">{formatNum(g.quantite)}</td>
-                        <td className="px-2 py-1 text-right">{g.prix_achat != null ? `${formatNum(g.prix_achat)} DH` : '—'}</td>
+                        {showInternalPrices && (<td className="px-2 py-1 text-right">{g.prix_achat != null ? `${formatNum(g.prix_achat)} DH` : '—'}</td>)}
                         <td className="px-2 py-1 text-right">{g.prix_vente != null ? `${formatNum(g.prix_vente)} DH` : '—'}</td>
-                        <td className="px-2 py-1 text-right">{g.cout_revient != null ? `${formatNum(g.cout_revient)} DH` : '—'}</td>
-                        <td className="px-2 py-1 text-right">{g.prix_gros != null ? `${formatNum(g.prix_gros)} DH` : '—'}</td>
+                        {showInternalPrices && (<td className="px-2 py-1 text-right">{g.cout_revient != null ? `${formatNum(g.cout_revient)} DH` : '—'}</td>)}
+                        {showInternalPrices && (<td className="px-2 py-1 text-right">{g.prix_gros != null ? `${formatNum(g.prix_gros)} DH` : '—'}</td>)}
                       </tr>
                     ));
                   })()}
@@ -1464,9 +1466,9 @@ const StockPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marque</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix d'achat</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coût de revient</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix gros</th>
+                {showInternalPrices && (<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix d'achat</th>)}
+                {showInternalPrices && (<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coût de revient</th>)}
+                {showInternalPrices && (<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix gros</th>)}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix vente</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix vente 2</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
@@ -1771,13 +1773,13 @@ const StockPage: React.FC = () => {
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {showInternalPrices && (<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
                       return <>{formatNum(dp.prix_achat!)} DH</>;
                     })()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  </td>)}
+                  {showInternalPrices && (<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
                       return (
@@ -1787,8 +1789,8 @@ const StockPage: React.FC = () => {
                         </>
                       );
                     })()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  </td>)}
+                  {showInternalPrices && (<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
                       return (
@@ -1798,7 +1800,7 @@ const StockPage: React.FC = () => {
                         </>
                       );
                     })()}
-                  </td>
+                  </td>)}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
@@ -1811,7 +1813,7 @@ const StockPage: React.FC = () => {
                         <>
                           {formatNum(converted)} DH
                           <span className="text-[10px] text-gray-500 ml-1">/ {getSelectedUnitLabel(product)}</span>
-                          <span className="text-xs text-gray-500 ml-1">({computePct(basePv, pa)}%)</span>
+                          {showInternalPrices && (<span className="text-xs text-gray-500 ml-1">({computePct(basePv, pa)}%)</span>)}
                         </>
                       );
                     })()}

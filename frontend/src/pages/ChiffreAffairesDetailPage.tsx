@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, FileText, TrendingUp, DollarSign, Package, Calculator, ChevronDown, ChevronUp, ReceiptText } from 'lucide-react';
@@ -54,6 +55,7 @@ interface ChiffreDetail {
 }
 
 const ChiffreAffairesDetailPage: React.FC = () => {
+  const showInternalPrices = useCanViewInternalPrices();
   const navigate = useNavigate();
   const { date } = useParams<{ date: string }>();
   const [searchParams] = useSearchParams();
@@ -319,7 +321,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   };
 
   const chiffresDetail = useMemo(() => {
-    return chiffresDetailResp.map((section) => {
+    return chiffresDetailResp.filter((section) => showInternalPrices || section.type !== 'BENEFICIAIRE').map((section) => {
       const icon =
         section.type === 'CA_NET'
           ? <DollarSign size={20} />
@@ -342,7 +344,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         color,
       } as any;
     });
-  }, [chiffresDetailResp]);
+  }, [chiffresDetailResp, showInternalPrices]);
 
   const caNetSection = useMemo(
     () => chiffresDetail.find((section) => section.type === 'CA_NET') || null,

@@ -143,15 +143,16 @@ function flattenProducts(products) {
  * @param {Array} products  products (with variants + snapshot_display) from the search query
  * @param {object} opts     { tabLabel, filtersText }
  */
-function buildDocDefinition(products, opts = {}) {
+export function buildDocDefinition(products, opts = {}) {
   const tabLabel = opts.tabLabel || 'Produits';
   const date = new Date().toLocaleDateString('fr-FR');
   const rows = flattenProducts(products);
+  const visibleColumn = (_, index) => opts.showInternalPrices !== false || index < 5 || index > 7;
 
   const header = [
     'Ref', 'Designation', 'Cat.', 'Qte', 'Unite',
     'PA', 'CR', 'Gros', 'PV', 'PV2', 'Type', 'Snapshot',
-  ].map((h) => ({ text: h, style: 'th' }));
+  ].filter(visibleColumn).map((h) => ({ text: h, style: 'th' }));
 
   const body = [header];
 
@@ -181,7 +182,7 @@ function buildDocDefinition(products, opts = {}) {
       { text: formatNum(Number(product.prix_vente_2 || 0)), style: 'tdNum' },
       { text: type, style: 'tdNormal' },
       { text: getSnapshotPdfLabel(product), style: 'tdNormal' },
-    ]);
+    ].filter(visibleColumn));
   }
 
   return {
@@ -207,7 +208,7 @@ function buildDocDefinition(products, opts = {}) {
       {
         table: {
           headerRows: 1,
-          widths: [42, 178, 70, 34, 32, 40, 40, 40, 40, 36, 50, 70],
+          widths: [42, 178, 70, 34, 32, 40, 40, 40, 40, 36, 50, 70].filter(visibleColumn),
           body,
         },
         layout: {

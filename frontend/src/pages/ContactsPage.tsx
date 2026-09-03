@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
@@ -71,6 +72,7 @@ const ContactsPage: React.FC = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const authTokenValue = useSelector((state: RootState) => (state as any).auth?.token);
   const isEmployee = (currentUser?.role === 'Employé');
+  const showInternalPrices = useCanViewInternalPrices();
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
@@ -5961,7 +5963,7 @@ const ContactsPage: React.FC = () => {
                               </>
                             )}
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantité</th>
-                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Pr U'}</th>
+                            {(showInternalPrices || selectedContact?.type !== 'Fournisseur') && (<th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Pr U'}</th>)}
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Mouvement</th>
                             <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
@@ -6205,14 +6207,14 @@ const ContactsPage: React.FC = () => {
                                 <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
                                   {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
                                 </td>
-                                <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
+                                {(showInternalPrices || selectedContact?.type !== 'Fournisseur') && (<td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
                                   {item.syntheticInitial ? '-' : (() => {
                                     const v = selectedContact?.type === 'Fournisseur'
                                       ? (item as any).prix_achat ?? item.prix_unitaire
                                       : item.prix_unitaire;
                                     return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(3)} DH`;
                                   })()}
-                                </td>
+                                </td>)}
                                 <td className="px-6  whitespace-nowrap text-sm text-right">
                                   {(() => {
                                     const displayAmount = getHistoryDisplayDelta(selectedContact, item.type, Number(item.total) || 0);

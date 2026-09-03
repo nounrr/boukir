@@ -1,3 +1,4 @@
+import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
@@ -173,6 +174,12 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
 
     console.log('📦 POST devis payload:', { date_creation, client_id: cId, client_nom: cNom, montant_total, st, lieu });
+
+    const minimumPriceError = await validateEmployeeSalePrices(connection, items, { role: req.user?.role, type: 'Devis' });
+    if (minimumPriceError) {
+      await connection.rollback();
+      return res.status(400).json(minimumPriceError);
+    }
 
     const [devisResult] = await connection.execute(`
       INSERT INTO devis (
@@ -402,6 +409,17 @@ router.post('/:id/transform', async (req, res) => {
     const target = (typeof targetRaw === 'string' ? targetRaw.toLowerCase() : 'sortie');
     const client_id = rawClientId != null && rawClientId !== '' ? Number(rawClientId) : null;
     const fournisseur_id = rawFournisseurId != null && rawFournisseurId !== '' ? Number(rawFournisseurId) : null;
+
+    if (req.user?.role === 'Employé' && ['sortie', 'comptant'].includes(target)) {
+      const [saleItems] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
+      // The existing transformation copies product/price fields, without variant or unit IDs.
+      const copiedItems = saleItems.map((item) => ({ ...item, variant_id: null, unit_id: null }));
+      const minimumPriceError = await validateEmployeeSalePrices(connection, copiedItems, { role: req.user.role, type: target === 'sortie' ? 'Sortie' : 'Comptant' });
+      if (minimumPriceError) {
+        await connection.rollback();
+        return res.status(400).json(minimumPriceError);
+      }
+    }
 
     if (target === 'sortie') {
       // client: fourni dans le payload sinon on reuse celui du devis

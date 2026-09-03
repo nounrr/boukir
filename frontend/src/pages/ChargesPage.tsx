@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -148,6 +149,7 @@ const groupDisplayItems = (items: any[]): GroupedDisplayItem[] => {
 };
 
 const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix, accentClass, hoverClass, itemBorderClass = 'border-violet-200' }) => {
+  const showInternalPrices = useCanViewInternalPrices();
   const { data: uiSettings } = useGetUiSettingsQuery();
   const styleKeyByPrefix: Record<string, string> = {
     CHG: 'bon_charge',
@@ -169,7 +171,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Adr. Livraison</th>}
           {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Code Regl.</th>}
           {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600">Qte</th>}
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Prix unit.</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">{showInternalPrices ? 'Prix unit.' : '—'}</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600">{detail ? 'Total ligne' : 'Montant'}</th>
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Mouvement</th>}
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Statut</th>
@@ -250,7 +252,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">-</span>) : null}
                     </td>
                     <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
-                    <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-600">{showInternalPrices ? fmt(pu) : '—'}</td>
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
                     <td className="px-3 py-2 text-right text-xs">
                       {benefice != null
@@ -558,6 +560,7 @@ const BON_META: Record<string, { label: string; badgeClass: string; accentClass:
 };
 
 const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, showInitialRow = true, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
+  const showInternalPrices = useCanViewInternalPrices();
   const selectionMode = !!onToggleSelect;
   const { data: uiSettings } = useGetUiSettingsQuery();
   const paymentStyleConfig = getUiLineConfig(uiSettings, 'payment_standard');
@@ -634,7 +637,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Adr. Livraison</th>}
           {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Code Regl.</th>}
           {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Qte</th>}
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Prix unit.</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">{showInternalPrices ? 'Prix unit.' : '—'}</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise Abonne</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise Client</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise cumulee</th>}
@@ -899,7 +902,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">-</span>) : null}
                     </td>
                     <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
-                    <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-600">{showInternalPrices ? fmt(pu) : '—'}</td>
                     <td className="px-3 py-2 text-right text-xs">
                       {remiseAbonne > 0 ? <span className="text-blue-600 font-medium">{fmtRemise(remiseAbonne)}</span> : <span className="text-gray-300">-</span>}
                     </td>

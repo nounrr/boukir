@@ -89,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Correction noms', href: '/products/name-corrections', icon: FileCheck2, show: !isChefChauffeur },
         { name: 'Correction prix ventes', href: '/products/sale-price-corrections', icon: CircleDollarSign, show: user?.role === 'PDG' },
-        { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: user?.role !== 'Chauffeur' },
+        { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: user?.role !== 'Chauffeur' && user?.role !== 'Employé' },
         { name: 'Solver catégorie', href: '/solver-categorie', icon: FolderTree, show: !isChefChauffeur },
       ],
     },

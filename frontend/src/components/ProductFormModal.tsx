@@ -1,3 +1,5 @@
+import { isInternalPriceField } from '../utils/internalPrices';
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
@@ -189,6 +191,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
   const currentUserRole = useSelector((s: RootState) => (s as any)?.auth?.user?.role);
   const canEditCoutRevient = currentUserRole === 'PDG';
+  const showInternalPrices = useCanViewInternalPrices();
 
   const [createProduct] = useCreateProductMutation();
   const [updateProductMutation] = useUpdateProductMutation();
@@ -1162,8 +1165,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       }
     });
 
-    return messages;
-  }, [formik.values.prix_achat, formik.values.variants, priceRaw.cout_revient, dynamicPrices.cout_revient, productSnapshotRows, snapshotEdits]);
+    return !showInternalPrices && messages.length > 0
+      ? ['Les données tarifaires nécessitent une vérification par un responsable.']
+      : messages;
+  }, [formik.values.prix_achat, formik.values.variants, priceRaw.cout_revient, dynamicPrices.cout_revient, productSnapshotRows, snapshotEdits, showInternalPrices]);
 
   const hasCostRuleViolation = costRuleViolations.length > 0;
 
@@ -1667,7 +1672,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
             {/* Prix d'achat — masqué si snapshots existent (déjà dans l'accordion) */}
             {!(editingProduct && Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0) && (
-            <div>
+            (showInternalPrices && (<div>
               <label htmlFor="prix_achat" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
                 Prix d'achat (DH) <span className="text-xs text-gray-500">(optionnel)</span>
               </label>
@@ -1687,7 +1692,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                 placeholder="0"
               />
-            </div>
+            </div>))
             )}
 
             {/* Options & Paramètres */}
@@ -1872,7 +1877,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Coût de revient */}
-              <div className="space-y-2">
+              {showInternalPrices && (<div className="space-y-2">
                 <label htmlFor="cout_revient_pourcentage" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
                   Coût de revient
                 </label>
@@ -1927,10 +1932,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   />
                   <div className="text-xs text-gray-500">DH</div>
                 </div>
-              </div>
+              </div>)}
 
               {/* Prix gros */}
-              <div className="space-y-2">
+              {showInternalPrices && (<div className="space-y-2">
                 <label htmlFor="prix_gros_pourcentage" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
                   Prix gros
                 </label>
@@ -1985,14 +1990,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   />
                   <div className="text-xs text-gray-500">DH</div>
                 </div>
-              </div>
+              </div>)}
 
               {/* Prix de vente */}
               <div className="space-y-2">
                 <label htmlFor="prix_vente_pourcentage" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
                   Prix de vente
                 </label>
-                <div className="flex items-center space-x-2">
+                {showInternalPrices && (<div className="flex items-center space-x-2">
                   <input
                     type="text"
                     inputMode="decimal"
@@ -2009,7 +2014,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     className="w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <span className="text-sm text-gray-600">%</span>
-                </div>
+                </div>)}
                 <div className="text-lg font-semibold text-gray-900 bg-white px-3 py-2 rounded-xl border-2 border-gray-200 shadow-sm">
                   <input
                     type="text"
@@ -2161,9 +2166,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
                                 Qte: {formatNumber(Number(getSnapshotEditValue(s, 'quantite')))}
                               </span>
-                              <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                              {showInternalPrices && (<span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                                 Achat: {formatNumber(Number(getSnapshotEditValue(s, 'prix_achat')))} DH
-                              </span>
+                              </span>)}
                               {hasEdits && <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded-full text-xs font-bold">modifié</span>}
                             </div>
                           </button>
@@ -2180,7 +2185,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   { key: 'prix_vente', label: 'Prix Vente' },
                                   { key: 'prix_vente_pourcentage', label: '% Vente' },
                                   { key: 'prix_vente_2', label: 'Prix Vente 2' },
-                                ].map(({ key, label }) => (
+                                ].filter(({ key }) => showInternalPrices || !isInternalPriceField(key)).map(({ key, label }) => (
                                   <div key={key}>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
                                     <input
@@ -2768,9 +2773,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                           <span className="px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm font-semibold">
                                             Qte: {formatNumber(Number(getSnapshotEditValue(s, 'quantite')))}
                                           </span>
-                                          <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                                          {showInternalPrices && (<span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                                             Achat: {formatNumber(Number(getSnapshotEditValue(s, 'prix_achat')))} DH
-                                          </span>
+                                          </span>)}
                                           {hasEdits && <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded-full text-xs font-bold">modifié</span>}
                                         </div>
                                       </button>
@@ -2787,7 +2792,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                               { key: 'prix_vente', label: 'Prix Vente' },
                                               { key: 'prix_vente_pourcentage', label: '% Vente' },
                                               { key: 'prix_vente_2', label: 'Prix Vente 2' },
-                                            ].map(({ key, label }) => (
+                                            ].filter(({ key }) => showInternalPrices || !isInternalPriceField(key)).map(({ key, label }) => (
                                               <div key={key}>
                                                 <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
                                                 <input
@@ -2823,7 +2828,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           {!(editingProduct && Array.isArray((variant as any)?.snapshot_rows) && (variant as any).snapshot_rows.length > 0) && (
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-gray-100">
                             {/* Prix Achat */}
-                            <div>
+                            {showInternalPrices && (<div>
                               <div className="flex justify-between items-center mb-1">
                                 <label className="block text-xs font-medium text-gray-500">Prix Achat</label>
                                 <label className="flex items-center gap-1 cursor-pointer" title="Copier les prix du produit parent">
@@ -2900,10 +2905,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               {asStringError((formik.errors.variants?.[index] as any)?.prix_achat) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_achat)}</p>
                               )}
-                            </div>
+                            </div>)}
 
                             {/* Coût Revient */}
-                            <div className="flex gap-2">
+                            {showInternalPrices && (<div className="flex gap-2">
                               <div className="w-1/3">
                                 <label className="block text-xs font-medium text-gray-500 mb-1">% Marge</label>
                                 <input
@@ -2938,10 +2943,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   placeholder="0.00"
                                 />
                               </div>
-                            </div>
+                            </div>)}
 
                             {/* Prix Gros */}
-                            <div className="flex gap-2">
+                            {showInternalPrices && (<div className="flex gap-2">
                               <div className="w-1/3">
                                 <label className="block text-xs font-medium text-gray-500 mb-1">% Gros</label>
                                 <input
@@ -2973,7 +2978,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   placeholder="0.00"
                                 />
                               </div>
-                            </div>
+                            </div>)}
 
                           </div>
                           )}
@@ -3202,7 +3207,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               }}
               disabled={formik.isSubmitting || savingSnapshots || hasCostRuleViolation}
               className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all"
-              title={hasCostRuleViolation ? "Impossible d'enregistrer: prix achat supérieur au coût de revient" : undefined}
+              title={hasCostRuleViolation ? costRuleViolations[0] : undefined}
             >
               {formik.isSubmitting ? (editingProduct ? 'Mise à jour...' : 'Ajout...') : savingSnapshots ? 'Enregistrement...' : (editingProduct ? 'Mettre à jour' : 'Ajouter')}
             </button>

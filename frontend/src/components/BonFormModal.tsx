@@ -1,3 +1,5 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
+import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
@@ -649,7 +651,7 @@ const findOldestPricedSnapshotForProductVariant = (
   })[0] || null;
 };
 
-const formatPrixAchatOption = (value: any) => {
+const formatPurchasePrice = (value: any) => {
   const price = Number(value) || 0;
   const formatted = Number.isInteger(price)
     ? String(price)
@@ -1194,6 +1196,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const paymentHistoryModeInitializedForBonId = useRef<number | null>(null);
   const isEditMode = Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
+  const showInternalPrices = useCanViewInternalPrices();
+  const showBonPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
+  const formatPrixAchatOption = (value: any) => showInternalPrices ? formatPurchasePrice(value) : '';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
   const { data: myBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, { skip: !isOpen });
   const plafondAuthorizationsRemaining = Number(myBonAuthorizations?.bon_plafond_autorisations || 0);
@@ -1548,7 +1553,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     }
 
     return options;
-  }, [products, snapshotProducts]);
+  }, [products, snapshotProducts, showInternalPrices]);
 
   const variantCatalogMap = useMemo(() => {
     const map = new Map<string, any>();
@@ -1606,7 +1611,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     }
 
     return options;
-  }, [products, snapshotProducts]);
+  }, [products, snapshotProducts, showInternalPrices]);
   // PERF: options produits "simples" (référence - désignation) pour les lignes détaillées
   // (Charge). Mémoïsé pour NE PAS recalculer .map(products) à chaque frappe/render,
   // ce qui rendait la saisie très lente en édition.
@@ -3247,6 +3252,24 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         showError(msg);
         try { setTimeout(() => focusCell(invalidSalePriceRows[0], 'unit'), 0); } catch {}
         setSubmitting(false);
+        return;
+      }
+    }
+
+    if (!isEditMode && user?.role === 'Employé' && ['Sortie', 'Comptant', 'Devis'].includes(values.type)) {
+      const invalidRows: number[] = [];
+      (values.items || []).forEach((item: any, index: number) => {
+        const raw = unitPriceRaw[index] !== undefined && unitPriceRaw[index] !== ''
+          ? unitPriceRaw[index] : item.prix_unitaire;
+        const price = Number(normalizeDecimal(String(raw ?? '')));
+        const cost = resolveItemCostContext(item, products as any[], snapshotProducts as any[]).cout_revient;
+        if (!meetsEmployeeSalePrice(price, cost)) invalidRows.push(index);
+      });
+      if (invalidRows.length) {
+        const message = `Prix de vente inférieur au minimum autorisé (lignes ${invalidRows.map((index) => index + 1).join(', ')}). Contactez un responsable.`;
+        setFieldError?.('items', message);
+        showError(message);
+        setTimeout(() => focusCell(invalidRows[0], 'unit'), 0);
         return;
       }
     }
@@ -5604,9 +5627,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[220px]">Désignation</th>
                                     <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[220px]">Produit catalogue</th>
                                     <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">Qté</th>
-                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix achat</th>
-                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Cout revient</th>
-                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix gros</th>
+                                    {showInternalPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix achat</th>)}
+                                    {showInternalPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Cout revient</th>)}
+                                    {showInternalPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix gros</th>)}
                                     <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix vente</th>
                                     <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">Total</th>
                                     <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">Actions</th>
@@ -5691,7 +5714,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             disabled={isQtyOnlyEdit}
                                           />
                                         </td>
-                                        {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).map((field) => (
+                                        {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).filter((field) => showInternalPrices || field === 'prix_unitaire').map((field) => (
                                           <td key={field} className="px-1 py-2">
                                             <input
                                               type="text"
@@ -5754,7 +5777,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     );
                   }
 
-                  const showProfitColumn = ['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type);
+                  const showProfitColumn = showInternalPrices && ['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type);
                   const showCommandeSpecialColumns = values.type === 'Commande';
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
                   const visibleEntries = ((values.type === 'Charge' || values.type === 'AvoirCharge')
@@ -5764,7 +5787,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
                     : [];
-                  const emptyColSpan = 9 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0) + (isPDG ? 2 : 0);
+                  const emptyColSpan = (showBonPrices ? 9 : 7) + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0) + (isPDG ? 2 : 0);
 
                   return (
                     <>
@@ -5818,17 +5841,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               SERIE
                             </th>
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
+                            {showBonPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               {values.type === 'Commande' ? 'Prix d\'achat' : 'P. Unit.'}
-                            </th>
+                            </th>)}
                             {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                                 Remise (DH/u)
                               </th>
                             )}
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
+                            {showBonPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
-                            </th>
+                            </th>)}
                             {showProfitColumn && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
                                 Profit
@@ -7109,7 +7132,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                     return (
                                       <div>
-                                        {`PA ${formatSeriesPrice(displayPA)} DH | CR ${formatSeriesPrice(displayCR)} DH | PV ${formatSeriesPrice(displayPV)} DH | PV2 ${formatSeriesPrice(displayPV2)} DH`}
+                                        {`${showInternalPrices ? `PA ${formatSeriesPrice(displayPA)} DH | CR ${formatSeriesPrice(displayCR)} DH | ` : ''}PV ${formatSeriesPrice(displayPV)} DH | PV2 ${formatSeriesPrice(displayPV2)} DH`}
                                       </div>
                                     );
                                   })()}
@@ -7129,7 +7152,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 </td>
 
                                 {/* Prix unitaire / Prix d'achat selon le type */}
-<td className="px-1 py-2 w-[90px]">
+{showBonPrices && (<td className="px-1 py-2 w-[90px]">
   <input
     type="text"
     inputMode="decimal"
@@ -7262,7 +7285,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       <div className="text-xs text-amber-700 font-medium mt-1">Dernier prix: {formatFull(Number(lastPurchase))} DH</div>
     ) : null;
   })()}
-</td>
+</td>)}
 
 
                                 {/* Remise unitaire (DH) - Sortie/Comptant */}
@@ -7296,7 +7319,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 )}
 
                                 {/* Total */}
-<td className="px-1 py-2 w-[90px]">
+{showBonPrices && (<td className="px-1 py-2 w-[90px]">
   <div className="text-sm font-medium">
     {(() => {
       const q =
@@ -7308,7 +7331,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     })()}{' '}
     DH
   </div>
-</td>
+</td>)}
 
                                 {/* Profit par ligne */}
                                 {showProfitColumn && (
@@ -7537,7 +7560,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         disabled={isQtyOnlyEdit}
                                       />
                                     </div>
-                                    {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).map((field) => (
+                                    {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).filter((field) => showInternalPrices || field === 'prix_unitaire').map((field) => (
                                       <div key={field} className={field === 'prix_unitaire' ? '' : 'hidden'}>
                                         <label className="mb-1 block text-xs font-medium text-gray-700">
                                           {field === 'prix_achat' ? 'Prix achat' : field === 'cout_revient' ? 'Cout revient' : field === 'prix_gros' ? 'Prix gros' : 'Prix vente'}
@@ -7614,7 +7637,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   );
                 })()}
 
-                <div className="hidden mt-4 bg-amber-50 border border-amber-300 rounded-md p-3 text-xs overflow-x-auto">
+                {showInternalPrices && (<div className="hidden mt-4 bg-amber-50 border border-amber-300 rounded-md p-3 text-xs overflow-x-auto">
                   <div className="font-semibold text-amber-900 mb-2">Debug PA / CR</div>
                   <table className="w-full text-[11px] border-collapse">
                     <thead>
@@ -7688,7 +7711,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </div>)}
 
                 {/* Récapitulatif */}
                 <div className="mt-4 bg-gray-50 p-4 rounded-md">
@@ -7705,7 +7728,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   </span>
 </div>
                   {/* Total DH */}
-<div className="flex justify-between items-center border-t pt-2">
+{showBonPrices && (<div className="flex justify-between items-center border-t pt-2">
   <span className="text-md font-semibold">Total:</span>
   <span className="text-md font-semibold">
     {formatFull(
@@ -7724,7 +7747,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     )}{' '}
     DH
   </span>
-</div>
+</div>)}
 
 {/* Total Remises (DH) */}
 {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
@@ -7746,7 +7769,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 )}
 
 {/* Mouvement */}
-<div className="flex justify-between items-center mt-2">
+{showInternalPrices && (<div className="flex justify-between items-center mt-2">
   <span className="text-md font-semibold text-green-700">Mouvement:</span>
   <span className="text-md font-semibold text-green-700">
     {(() => {
@@ -7780,7 +7803,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     })()}
     DH
   </span>
-</div>
+</div>)}
                 </div>
               </div>
 

@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw } from 'lucide-react';
@@ -268,6 +269,7 @@ const BonsPage = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const { data: uiSettings } = useGetUiSettingsQuery();
   const isPdg = currentUser?.role === 'PDG';
+  const showInternalPrices = useCanViewInternalPrices();
   const isEmployee = currentUser?.role === 'Employé';
   const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
   const canMarkLivre = Boolean(currentUser);
@@ -2980,9 +2982,9 @@ const BonsPage = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                         Inclus en caisse
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-green-600 uppercase tracking-wider relative">
+                      {showInternalPrices && (<th className="px-6 py-3 text-left text-xs font-medium text-green-600 uppercase tracking-wider relative">
                         Profit
-                      </th>
+                      </th>)}
                     </>
                   )}
                   {effectiveCurrentTab === 'Commande' && (
@@ -2995,7 +2997,7 @@ const BonsPage = () => {
                       Inclus en caisse
                     </th>
                   )}
-                  {effectiveCurrentTab !== 'Charge' && (
+                  {showInternalPrices && effectiveCurrentTab !== 'Charge' && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                       Mouvement
                       <span
@@ -3070,7 +3072,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={(showAuditCols ? 15 : 13) + contactRefColOffset} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={(showAuditCols ? 15 : 13) + contactRefColOffset - (showInternalPrices ? 0 : 1)} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTabLabel}
                     </td>
                   </tr>
@@ -3277,7 +3279,7 @@ const BonsPage = () => {
                           })()}
                         </td>
                       )}
-                      {effectiveCurrentTab === 'Charge' && (
+                      {showInternalPrices && effectiveCurrentTab === 'Charge' && (
                         <td className="px-4 py-2 text-sm">
                           {(() => {
                             const productItems = parseItemsSafe(bon?.items).filter((item: any) => item?.product_id);
@@ -3292,7 +3294,7 @@ const BonsPage = () => {
                           })()}
                         </td>
                       )}
-                      {effectiveCurrentTab !== 'Charge' && (
+                      {showInternalPrices && effectiveCurrentTab !== 'Charge' && (
                       <td className="px-4 py-2 text-sm">
                         {(() => {
                           // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)

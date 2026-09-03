@@ -1,3 +1,5 @@
+import { filterInternalPriceFields } from '../utils/internalPrices';
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, DollarSign, Download, Package, Search, TrendingUp, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -82,6 +84,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
 };
 
 const InventoryPage: React.FC = () => {
+  const showInternalPrices = useCanViewInternalPrices();
   const { user } = useAuth();
   const initialDate = useMemo(() => {
     const now = new Date();
@@ -388,7 +391,7 @@ const InventoryPage: React.FC = () => {
       });
 
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(rows);
+      const ws = XLSX.utils.json_to_sheet(rows.map((row: Record<string, unknown>) => filterInternalPriceFields(row, showInternalPrices)));
       XLSX.utils.book_append_sheet(wb, ws, 'Lignes');
 
       const totals = snapshotDetail?.snapshot?.totals || {};
@@ -406,7 +409,7 @@ const InventoryPage: React.FC = () => {
           FilterCategory: filterCategory || '',
         },
       ];
-      const ws2 = XLSX.utils.json_to_sheet(resumeRows);
+      const ws2 = XLSX.utils.json_to_sheet(resumeRows.map((row) => filterInternalPriceFields(row, showInternalPrices)));
       XLSX.utils.book_append_sheet(wb, ws2, 'Résumé');
 
       const safeDate = String(selectedSnapshotDate || initialDate).replace(/[^0-9-]/g, '');
@@ -429,7 +432,7 @@ const InventoryPage: React.FC = () => {
       console.error('[InventoryPage] Excel export failed', e);
       showError(e?.message || 'Échec export Excel');
     }
-  }, [categories, filterCategory, initialDate, productById, searchTerm, selectedId, selectedSnapshotDate, snapshotDetail, totalAchatSnapshot]);
+  }, [categories, filterCategory, initialDate, productById, searchTerm, selectedId, selectedSnapshotDate, snapshotDetail, totalAchatSnapshot, showInternalPrices]);
 
   return (
     <div className="space-y-6 bg-slate-50/60 p-4 sm:p-6">
@@ -545,13 +548,13 @@ const InventoryPage: React.FC = () => {
               </div>
               <div className="text-2xl font-bold text-green-900">{Number(snapshotDetail.snapshot.totals.totalQty).toFixed(2)}</div>
             </div>
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+            {showInternalPrices && (<div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-orange-900">Total Achat</span>
                 <DollarSign className="text-orange-600" size={20} />
               </div>
               <div className="text-2xl font-bold text-orange-900">{Number(totalAchatSnapshot).toFixed(2)} DH</div>
-            </div>
+            </div>)}
           </div>
         )}
       </div>
@@ -782,9 +785,9 @@ const InventoryPage: React.FC = () => {
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Produit</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Qté</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Prix achat</th>
+                        {showInternalPrices && (<th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Prix achat</th>)}
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Prix vente</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Total achat</th>
+                        {showInternalPrices && (<th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Total achat</th>)}
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -795,9 +798,9 @@ const InventoryPage: React.FC = () => {
                             <div className="text-xs text-gray-500">Ref: #{it.id}</div>
                           </td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.quantite).toFixed(3)}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.prix_achat).toFixed(2)} DH</td>
+                          {showInternalPrices && (<td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.prix_achat).toFixed(2)} DH</td>)}
                           <td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.prix_vente).toFixed(2)} DH</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{(Number(it.quantite || 0) * Number(it.prix_achat || 0)).toFixed(2)} DH</td>
+                          {showInternalPrices && (<td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{(Number(it.quantite || 0) * Number(it.prix_achat || 0)).toFixed(2)} DH</td>)}
                         </tr>
                       ))}
                     </tbody>
@@ -819,7 +822,7 @@ const InventoryPage: React.FC = () => {
                     >
                       Comparer Snapshots
                     </button>
-                    <button
+                    {showInternalPrices && (<button
                       onClick={() => setChartType('products')}
                       className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                         chartType === 'products'
@@ -828,8 +831,8 @@ const InventoryPage: React.FC = () => {
                       }`}
                     >
                       Top Produits
-                    </button>
-                    <button
+                    </button>)}
+                    {showInternalPrices && (<button
                       onClick={() => setChartType('categories')}
                       className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                         chartType === 'categories'
@@ -838,7 +841,7 @@ const InventoryPage: React.FC = () => {
                       }`}
                     >
                       Par Catégorie
-                    </button>
+                    </button>)}
                   </div>
                 </div>
 
@@ -883,7 +886,7 @@ const InventoryPage: React.FC = () => {
                               <div className="text-xs text-green-700 mt-1">vs snapshot précédent</div>
                             </div>
 
-                            <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                            {showInternalPrices && (<div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
                               <h5 className="text-sm font-semibold text-orange-900 mb-2">Δ Total Achat</h5>
                               <div className="flex items-baseline gap-2">
                                 <span className={`text-2xl font-bold ${snapshotComparisonData[snapshotComparisonData.length - 1].deltaTotalAchat >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -895,7 +898,7 @@ const InventoryPage: React.FC = () => {
                                 </span>
                               </div>
                               <div className="text-xs text-orange-700 mt-1">vs snapshot précédent</div>
-                            </div>
+                            </div>)}
                           </div>
                         )}
 
@@ -910,8 +913,8 @@ const InventoryPage: React.FC = () => {
                                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>
                                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Stock (Qté)</th>
                                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Total Achat</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>
+                                {showInternalPrices && (<th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Total Achat</th>)}
+                                {showInternalPrices && (<th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>)}
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
@@ -935,14 +938,14 @@ const InventoryPage: React.FC = () => {
                                       </span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{s.totalAchat.toFixed(2)} DH</td>
-                                  <td className="px-4 py-3 text-sm text-right">
+                                  {showInternalPrices && (<td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{s.totalAchat.toFixed(2)} DH</td>)}
+                                  {showInternalPrices && (<td className="px-4 py-3 text-sm text-right">
                                     {idx > 0 && (
                                       <span className={`font-medium ${s.deltaTotalAchat >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                         {s.deltaTotalAchat >= 0 ? '+' : ''}{s.deltaTotalAchat.toFixed(2)}
                                       </span>
                                     )}
-                                  </td>
+                                  </td>)}
                                 </tr>
                               ))}
                             </tbody>
@@ -978,13 +981,13 @@ const InventoryPage: React.FC = () => {
                               <Legend wrapperStyle={{ paddingTop: '10px' }} />
                               <Bar yAxisId="right" dataKey="produits" fill="#3b82f6" name="Produits" radius={[4, 4, 0, 0]} />
                               <Bar yAxisId="right" dataKey="quantité" fill="#10b981" name="Quantité" radius={[4, 4, 0, 0]} />
-                              <Bar yAxisId="left" dataKey="totalAchat" fill="#f59e0b" name="Total Achat (DH)" radius={[4, 4, 0, 0]} />
+                              {showInternalPrices && (<Bar yAxisId="left" dataKey="totalAchat" fill="#f59e0b" name="Total Achat (DH)" radius={[4, 4, 0, 0]} />)}
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
 
                         {/* Graphique: Évolution Total Achat avec ligne de tendance */}
-                        <div className="bg-white border rounded-lg p-4">
+                        {showInternalPrices && (<div className="bg-white border rounded-lg p-4">
                           <h4 className="text-md font-semibold text-gray-800 mb-4">Évolution Total Achat</h4>
                           <ResponsiveContainer width="100%" height={280}>
                             <LineChart data={snapshotComparisonData}>
@@ -1018,7 +1021,7 @@ const InventoryPage: React.FC = () => {
                               />
                             </LineChart>
                           </ResponsiveContainer>
-                        </div>
+                        </div>)}
 
                         {/* Graphique: Variations (deltas) */}
                         {snapshotComparisonData.length >= 2 && (
@@ -1070,7 +1073,7 @@ const InventoryPage: React.FC = () => {
                                   {' '}{Math.abs(snapshotComparisonData[snapshotComparisonData.length - 1].quantité - snapshotComparisonData[0].quantité).toFixed(2)}
                                 </div>
                               </div>
-                              <div className="text-center">
+                              {showInternalPrices && (<div className="text-center">
                                 <div className="text-sm text-gray-600 mb-1">Total Achat</div>
                                 <div className="text-lg font-semibold text-gray-900">
                                   {snapshotComparisonData[0].totalAchat.toFixed(0)} → {snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat.toFixed(0)} DH
@@ -1079,7 +1082,7 @@ const InventoryPage: React.FC = () => {
                                   {snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat - snapshotComparisonData[0].totalAchat >= 0 ? '↑' : '↓'}
                                   {' '}{Math.abs(snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat - snapshotComparisonData[0].totalAchat).toFixed(2)} DH
                                 </div>
-                              </div>
+                              </div>)}
                             </div>
                           </div>
                         )}
@@ -1088,7 +1091,7 @@ const InventoryPage: React.FC = () => {
                   </div>
                 )}
 
-                {chartType === 'products' && (
+                {showInternalPrices && chartType === 'products' && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-semibold text-gray-900">Top Produits par Total Achat</h3>
@@ -1156,7 +1159,7 @@ const InventoryPage: React.FC = () => {
                   </div>
                 )}
 
-                {chartType === 'categories' && (
+                {showInternalPrices && chartType === 'categories' && (
                   <div className="space-y-6">
                     <h3 className="text-lg font-semibold text-gray-900">Distribution par Catégorie</h3>
                     

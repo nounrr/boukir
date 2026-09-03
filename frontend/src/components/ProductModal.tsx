@@ -1,3 +1,4 @@
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { X } from 'lucide-react';
@@ -34,6 +35,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
   onProductAdded
 }) => {
   const dispatch = useDispatch();
+  const showInternalPrices = useCanViewInternalPrices();
   const categories = useSelector(selectCategories);
 
   // États pour les calculs dynamiques
@@ -315,7 +317,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
             )}
 
             {/* Prix d'achat */}
-            <div>
+            {showInternalPrices && (<div>
               <label htmlFor="prix_achat" className="block text-sm font-medium text-gray-700 mb-1">
                 Prix d'achat (DH) *
               </label>
@@ -348,7 +350,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
               {formik.touched.prix_achat && formik.errors.prix_achat && (
                 <p className="text-red-500 text-sm mt-1">{formik.errors.prix_achat}</p>
               )}
-            </div>
+            </div>)}
           </div>
 
           {/* Section Prix calculés */}
@@ -356,7 +358,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
             <h3 className="text-lg font-medium text-gray-900 mb-4">Calcul des prix</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Coût de revient */}
-              <div className="bg-gray-50 p-4 rounded-lg">
+              {showInternalPrices && (<div className="bg-gray-50 p-4 rounded-lg">
                 <label htmlFor="cout_revient_pourcentage" className="block text-sm font-medium text-gray-700 mb-2">
                   Coût de revient
                 </label>
@@ -383,10 +385,10 @@ const ProductModal: React.FC<ProductModalProps> = ({
                     = {dynamicPrices.cout_revient.toFixed(2)} DH
                   </span>
                 </div>
-              </div>
+              </div>)}
 
               {/* Prix de gros */}
-              <div className="bg-gray-50 p-4 rounded-lg">
+              {showInternalPrices && (<div className="bg-gray-50 p-4 rounded-lg">
                 <label htmlFor="prix_gros_pourcentage" className="block text-sm font-medium text-gray-700 mb-2">
                   Prix de gros
                 </label>
@@ -413,14 +415,14 @@ const ProductModal: React.FC<ProductModalProps> = ({
                     = {dynamicPrices.prix_gros.toFixed(2)} DH
                   </span>
                 </div>
-              </div>
+              </div>)}
 
               {/* Prix de vente */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <label htmlFor="prix_vente_pourcentage" className="block text-sm font-medium text-gray-700 mb-2">
                   Prix de vente
                 </label>
-                <div className="flex items-center space-x-2">
+                {showInternalPrices && (<div className="flex items-center space-x-2">
                   <input
                     id="prix_vente_pourcentage"
                     type="text"
@@ -442,7 +444,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
                   <span className="text-sm font-medium text-purple-600">
                     = {dynamicPrices.prix_vente.toFixed(2)} DH
                   </span>
-                </div>
+                </div>)}
               </div>
             </div>
           </div>
@@ -562,7 +564,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
                         </div>
 
                         {/* Prix d'achat (variant) */}
-                        <div>
+                        {showInternalPrices && (<div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Prix d'achat (DH)</label>
                           <input
                             type="text"
@@ -583,7 +585,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                        </div>
+                        </div>)}
 
                         {/* Stock */}
                         <div>
@@ -612,7 +614,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
                       {/* Pourcentages pour calculs variant */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                        <div>
+                        {showInternalPrices && (<div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Coût de revient %</label>
                           <input
                             type="text"
@@ -633,8 +635,8 @@ const ProductModal: React.FC<ProductModalProps> = ({
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                        </div>
-                        <div>
+                        </div>)}
+                        {showInternalPrices && (<div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Prix de gros %</label>
                           <input
                             type="text"
@@ -655,8 +657,8 @@ const ProductModal: React.FC<ProductModalProps> = ({
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                        </div>
-                        <div>
+                        </div>)}
+                        {showInternalPrices && (<div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Prix de vente %</label>
                           <input
                             type="text"
@@ -677,7 +679,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                        </div>
+                        </div>)}
                       </div>
 
                       <div className="flex justify-end mt-4">
