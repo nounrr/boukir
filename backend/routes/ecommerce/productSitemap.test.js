@@ -15,7 +15,8 @@ test('compact export uses the same publication/deletion guards as product detail
   assert.doesNotMatch(query, /LIMIT|SELECT \*/);
   assert.equal(result.total_items, 3737);
   assert.equal(result.products.length, 3737);
-  assert.deepEqual(Object.keys(result.products[0]), ['id', 'updated_at']);
+  assert.deepEqual(Object.keys(result.products[0]), ['id', 'updated_at', 'designation', 'designation_ar', 'designation_en', 'designation_zh']);
+  assert.match(query, /p.designation_ar, p.designation_en, p.designation_zh/);
 });
 
 test('database failure is forwarded, never returned as an empty successful export', async () => {
