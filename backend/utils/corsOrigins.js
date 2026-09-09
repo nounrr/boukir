@@ -2,14 +2,20 @@ function normalizeOrigin(value) {
   const text = String(value || '').trim();
   if (!text) return null;
   try {
-    return new URL(text).origin;
+    const url = new URL(text);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password ||
+        url.pathname !== '/' || url.search || url.hash) return null;
+    return url.origin;
   } catch {
-    return text.replace(/\/$/, '');
+    return null;
   }
 }
 
 export function getAllowedCorsOrigins() {
   const configured = [
+    // Exact storefront origins, including old tabs during the www migration.
+    'https://boukirdiamond.com',
+    'https://www.boukirdiamond.com',
     process.env.CORS_ORIGINS,
     process.env.FRONTEND_URL,
     process.env.PUBLIC_BASE_URL,
@@ -28,6 +34,7 @@ export function isCorsOriginAllowed(origin, allowedOrigins = getAllowedCorsOrigi
   if (!origin) return true;
 
   const normalized = normalizeOrigin(origin);
+  if (!normalized) return false;
   if (allowedOrigins.has(normalized)) return true;
   if (process.env.NODE_ENV === 'production') return false;
 

@@ -1,0 +1,49 @@
+RÉPARATION DU SITEMAP — BOUKIR DIAMOND
+
+Causes confirmées dans les réponses publiques :
+- /api/ecommerce/products/sitemap : HTTP 500, colonne NaN.
+- /api/ecommerce/products/catalog-pages : HTTP 500, colonne NaN.
+- /api/services/sitemap : HTTP 500, colonne s.is_published absente.
+
+1. Publier ENSEMBLE ces fichiers du backend local vers le backend de production,
+   en conservant leur chemin relatif :
+   backend/routes/ecommerce/products.js
+   backend/routes/ecommerce/productSitemap.js
+   backend/routes/ecommerce/catalogPages.js
+   backend/migrations/2026-09-09-sitemap-services-publication-column.sql
+
+Les deux nouveaux routeurs doivent être présents avant de charger products.js.
+Ils sont montés AVANT /:id pour que sitemap et catalog-pages ne soient pas
+interprétés comme des identifiants de produits. Les exports produits sont
+complets, sans chargement de descriptions ni limitation à la première page.
+
+2. Depuis le dossier backend DE PRODUCTION, avec le même environnement DB
+   que l'API, exécuter uniquement la migration ciblée :
+
+node scripts/run-single-migration.js 2026-09-09-sitemap-services-publication-column.sql
+
+Cette commande utilise le mécanisme de migration existant. Elle ajoute la
+colonne si elle manque ; une colonne déjà présente est conservée. Aucun
+service n'est publié automatiquement. Les services sans décision de publication
+restent exclus du catalogue public et du sitemap jusqu'à validation éditoriale.
+Ne pas lancer toutes les migrations pour cette réparation isolée.
+
+3. Recharger le service API de production avec le mécanisme habituel de
+   déploiement pour charger les nouvelles routes.
+
+4. Vérifier ensuite :
+
+curl -sS -o /dev/null -w '%{http_code}\n' https://boukirdiamond.com/api/ecommerce/products/sitemap
+curl -sS -o /dev/null -w '%{http_code}\n' https://boukirdiamond.com/api/ecommerce/products/catalog-pages
+curl -sS -o /dev/null -w '%{http_code}\n' https://boukirdiamond.com/api/services/sitemap
+curl -sS -o /dev/null -w '%{http_code}\n' https://boukirdiamond.com/api/maalems/sitemap
+curl -sS -o /dev/null -w '%{http_code}\n' https://boukirdiamond.com/sitemap.xml
+
+Les cinq réponses doivent être 200. Si un export reste en erreur, consulter
+l'erreur correspondante avant de considérer le sitemap réparé.
+Vérifier ensuite le XML, les URL FR/AR/EN/ZH et le nombre de produits exportés.
+Le frontend attend les exports complets : ne pas masquer leur panne avec un
+sitemap vide ou limiter l'export à la première page de produits.
+
+Cette réparation locale n'exécute aucune migration sur le serveur et ne
+constitue pas une confirmation du rétablissement en production.

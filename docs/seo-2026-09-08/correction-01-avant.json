@@ -1,0 +1,602 @@
+{
+  "capturedAt": "2026-09-08T20:37:40.095Z",
+  "base": "https://boukirdiamond.com",
+  "expectedOrigin": "https://boukirdiamond.com",
+  "recordOnly": true,
+  "failures": [
+    "/fr: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+    "/fr: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+    "/fr: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+    "/fr: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+    "/fr: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+    "/fr: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/'\n",
+    "/fr: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr/shop: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/shop'\n- 'https://boukirdiamond.com/fr/shop'\n       ^\n",
+    "/fr/shop: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/shop'\n- 'https://boukirdiamond.com/fr/shop'\n       ^\n",
+    "/fr/shop: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/shop'\n- 'https://boukirdiamond.com/ar/shop'\n       ^\n",
+    "/fr/shop: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/shop'\n- 'https://boukirdiamond.com/en/shop'\n       ^\n",
+    "/fr/shop: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/shop'\n- 'https://boukirdiamond.com/zh/shop'\n       ^\n",
+    "/fr/shop: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/shop'\n",
+    "/fr/shop: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr/shop: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr/contact: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/contact'\n- 'https://boukirdiamond.com/fr/contact'\n       ^\n",
+    "/fr/contact: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/contact'\n- 'https://boukirdiamond.com/fr/contact'\n       ^\n",
+    "/fr/contact: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/contact'\n- 'https://boukirdiamond.com/ar/contact'\n       ^\n",
+    "/fr/contact: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/contact'\n- 'https://boukirdiamond.com/en/contact'\n       ^\n",
+    "/fr/contact: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/contact'\n- 'https://boukirdiamond.com/zh/contact'\n       ^\n",
+    "/fr/contact: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/contact'\n",
+    "/fr/contact: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr/contact: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr/contact: Non-HTTPS SEO URL: http://localhost:3000/fr/contact\n\n'http:' !== 'https:'\n",
+    "/fr/contact: Non-HTTPS SEO URL: http://localhost:3000/fr/contact\n\n'http:' !== 'https:'\n",
+    "/fr/contact: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/fr/product/6376: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+    "/fr/product/6376: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+    "/fr/product/6376: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+    "/fr/product/6376: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+    "/fr/product/6376: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+    "/fr/product/6376: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/product/6376'\n",
+    "/fr/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/fr/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/fr/product/6376: Invalid URL",
+    "/fr/product/6376: Non-HTTPS SEO URL: http://localhost:3000/fr/product/6376\n\n'http:' !== 'https:'\n",
+    "/fr/product/6696: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6696'\n- 'https://boukirdiamond.com/fr/product/6696'\n",
+    "/fr/product/6696: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6696'\n- 'https://boukirdiamond.com/fr/product/6696'\n",
+    "/fr/product/6696: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6696'\n- 'https://boukirdiamond.com/ar/product/6696'\n",
+    "/fr/product/6696: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6696'\n- 'https://boukirdiamond.com/en/product/6696'\n",
+    "/fr/product/6696: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6696'\n- 'https://boukirdiamond.com/zh/product/6696'\n",
+    "/fr/product/6696: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/product/6696'\n",
+    "/fr/product/6696: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+    "/fr/product/6696: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+    "/fr/product/6696: Invalid URL",
+    "/fr/product/6696: Non-HTTPS SEO URL: http://localhost:3000/fr/product/6696\n\n'http:' !== 'https:'\n",
+    "/ar: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+    "/ar: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+    "/ar: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+    "/ar: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+    "/ar: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+    "/ar: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/'\n",
+    "/ar: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar/shop: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/shop'\n- 'https://boukirdiamond.com/ar/shop'\n       ^\n",
+    "/ar/shop: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/shop'\n- 'https://boukirdiamond.com/fr/shop'\n       ^\n",
+    "/ar/shop: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/shop'\n- 'https://boukirdiamond.com/ar/shop'\n       ^\n",
+    "/ar/shop: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/shop'\n- 'https://boukirdiamond.com/en/shop'\n       ^\n",
+    "/ar/shop: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/shop'\n- 'https://boukirdiamond.com/zh/shop'\n       ^\n",
+    "/ar/shop: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/shop'\n",
+    "/ar/shop: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar/shop: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar/contact: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/contact'\n- 'https://boukirdiamond.com/ar/contact'\n       ^\n",
+    "/ar/contact: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/contact'\n- 'https://boukirdiamond.com/fr/contact'\n       ^\n",
+    "/ar/contact: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/contact'\n- 'https://boukirdiamond.com/ar/contact'\n       ^\n",
+    "/ar/contact: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/contact'\n- 'https://boukirdiamond.com/en/contact'\n       ^\n",
+    "/ar/contact: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/contact'\n- 'https://boukirdiamond.com/zh/contact'\n       ^\n",
+    "/ar/contact: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/contact'\n",
+    "/ar/contact: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar/contact: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar/contact: Non-HTTPS SEO URL: http://localhost:3000/ar/contact\n\n'http:' !== 'https:'\n",
+    "/ar/contact: Non-HTTPS SEO URL: http://localhost:3000/ar/contact\n\n'http:' !== 'https:'\n",
+    "/ar/contact: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/ar/product/6376: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+    "/ar/product/6376: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+    "/ar/product/6376: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+    "/ar/product/6376: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+    "/ar/product/6376: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+    "/ar/product/6376: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/product/6376'\n",
+    "/ar/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/ar/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/ar/product/6376: Invalid URL",
+    "/ar/product/6376: Non-HTTPS SEO URL: http://localhost:3000/ar/product/6376\n\n'http:' !== 'https:'\n",
+    "/ar/product/6696: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6696'\n- 'https://boukirdiamond.com/ar/product/6696'\n",
+    "/ar/product/6696: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6696'\n- 'https://boukirdiamond.com/fr/product/6696'\n",
+    "/ar/product/6696: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6696'\n- 'https://boukirdiamond.com/ar/product/6696'\n",
+    "/ar/product/6696: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6696'\n- 'https://boukirdiamond.com/en/product/6696'\n",
+    "/ar/product/6696: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6696'\n- 'https://boukirdiamond.com/zh/product/6696'\n",
+    "/ar/product/6696: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/product/6696'\n",
+    "/ar/product/6696: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+    "/ar/product/6696: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+    "/ar/product/6696: Invalid URL",
+    "/ar/product/6696: Non-HTTPS SEO URL: http://localhost:3000/ar/product/6696\n\n'http:' !== 'https:'\n",
+    "/en: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+    "/en: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+    "/en: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+    "/en: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+    "/en: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+    "/en: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/en/'\n",
+    "/en: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/en: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/zh: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+    "/zh: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+    "/zh: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+    "/zh: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+    "/zh: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+    "/zh: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/zh/'\n",
+    "/zh: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/zh: Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+    "/en/product/6376: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+    "/en/product/6376: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+    "/en/product/6376: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+    "/en/product/6376: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+    "/en/product/6376: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+    "/en/product/6376: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/en/product/6376'\n",
+    "/en/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/en/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/en/product/6376: Invalid URL",
+    "/en/product/6376: Non-HTTPS SEO URL: http://localhost:3000/en/product/6376\n\n'http:' !== 'https:'\n",
+    "/zh/product/6376: Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+    "/zh/product/6376: Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+    "/zh/product/6376: Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+    "/zh/product/6376: Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+    "/zh/product/6376: Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+    "/zh/product/6376: og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/zh/product/6376'\n",
+    "/zh/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/zh/product/6376: Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+    "/zh/product/6376: Invalid URL",
+    "/zh/product/6376: Non-HTTPS SEO URL: http://localhost:3000/zh/product/6376\n\n'http:' !== 'https:'\n",
+    "/robots.txt: unexpected URL origin",
+    "/sitemap.xml: unexpected URL origin"
+  ],
+  "results": [
+    {
+      "route": "/fr",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/fr/",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/",
+        "ar": "http://localhost:3000/ar/",
+        "en": "http://localhost:3000/en/",
+        "zh": "http://localhost:3000/zh/"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [],
+      "schemaTypes": [],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/fr/shop",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/fr/shop",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/shop",
+        "ar": "http://localhost:3000/ar/shop",
+        "en": "http://localhost:3000/en/shop",
+        "zh": "http://localhost:3000/zh/shop"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [],
+      "schemaTypes": [],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/shop'\n- 'https://boukirdiamond.com/fr/shop'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/shop'\n- 'https://boukirdiamond.com/fr/shop'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/shop'\n- 'https://boukirdiamond.com/ar/shop'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/shop'\n- 'https://boukirdiamond.com/en/shop'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/shop'\n- 'https://boukirdiamond.com/zh/shop'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/shop'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/fr/contact",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/fr/contact",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/contact",
+        "ar": "http://localhost:3000/ar/contact",
+        "en": "http://localhost:3000/en/contact",
+        "zh": "http://localhost:3000/zh/contact"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [
+        "http://localhost:3000/fr/contact",
+        "http://localhost:3000/fr/contact",
+        "http://localhost:3000/logo.png"
+      ],
+      "schemaTypes": [
+        "LocalBusiness"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/contact'\n- 'https://boukirdiamond.com/fr/contact'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/contact'\n- 'https://boukirdiamond.com/fr/contact'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/contact'\n- 'https://boukirdiamond.com/ar/contact'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/contact'\n- 'https://boukirdiamond.com/en/contact'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/contact'\n- 'https://boukirdiamond.com/zh/contact'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/contact'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/fr/contact\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/fr/contact\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/fr/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/fr/product/6376",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/product/6376",
+        "ar": "http://localhost:3000/ar/product/6376",
+        "en": "http://localhost:3000/en/product/6376",
+        "zh": "http://localhost:3000/zh/product/6376"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp",
+        "twitter:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp"
+      },
+      "schemaUrls": [
+        "/uploads/products/1780777280470-325831895.webp",
+        "http://localhost:3000/fr/product/6376"
+      ],
+      "schemaTypes": [
+        "Product"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/product/6376'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Invalid URL",
+        "Non-HTTPS SEO URL: http://localhost:3000/fr/product/6376\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/fr/product/6696",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/fr/product/6696",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/product/6696",
+        "ar": "http://localhost:3000/ar/product/6696",
+        "en": "http://localhost:3000/en/product/6696",
+        "zh": "http://localhost:3000/zh/product/6696"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/uploads/products/1785785671825-866745224.jpg",
+        "twitter:image": "http://localhost:3000/uploads/products/1785785671825-866745224.jpg"
+      },
+      "schemaUrls": [
+        "/uploads/products/1785785671825-866745224.jpg",
+        "http://localhost:3000/fr/product/6696"
+      ],
+      "schemaTypes": [
+        "Product"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6696'\n- 'https://boukirdiamond.com/fr/product/6696'\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6696'\n- 'https://boukirdiamond.com/fr/product/6696'\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6696'\n- 'https://boukirdiamond.com/ar/product/6696'\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6696'\n- 'https://boukirdiamond.com/en/product/6696'\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6696'\n- 'https://boukirdiamond.com/zh/product/6696'\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/fr/product/6696'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+        "Invalid URL",
+        "Non-HTTPS SEO URL: http://localhost:3000/fr/product/6696\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/ar",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/ar/",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/",
+        "ar": "http://localhost:3000/ar/",
+        "en": "http://localhost:3000/en/",
+        "zh": "http://localhost:3000/zh/"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [],
+      "schemaTypes": [],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/ar/shop",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/ar/shop",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/shop",
+        "ar": "http://localhost:3000/ar/shop",
+        "en": "http://localhost:3000/en/shop",
+        "zh": "http://localhost:3000/zh/shop"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [],
+      "schemaTypes": [],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/shop'\n- 'https://boukirdiamond.com/ar/shop'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/shop'\n- 'https://boukirdiamond.com/fr/shop'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/shop'\n- 'https://boukirdiamond.com/ar/shop'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/shop'\n- 'https://boukirdiamond.com/en/shop'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/shop'\n- 'https://boukirdiamond.com/zh/shop'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/shop'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/ar/contact",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/ar/contact",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/contact",
+        "ar": "http://localhost:3000/ar/contact",
+        "en": "http://localhost:3000/en/contact",
+        "zh": "http://localhost:3000/zh/contact"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [
+        "http://localhost:3000/ar/contact",
+        "http://localhost:3000/ar/contact",
+        "http://localhost:3000/logo.png"
+      ],
+      "schemaTypes": [
+        "LocalBusiness"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/contact'\n- 'https://boukirdiamond.com/ar/contact'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/contact'\n- 'https://boukirdiamond.com/fr/contact'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/contact'\n- 'https://boukirdiamond.com/ar/contact'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/contact'\n- 'https://boukirdiamond.com/en/contact'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/contact'\n- 'https://boukirdiamond.com/zh/contact'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/contact'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/ar/contact\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/ar/contact\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/ar/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/ar/product/6376",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/product/6376",
+        "ar": "http://localhost:3000/ar/product/6376",
+        "en": "http://localhost:3000/en/product/6376",
+        "zh": "http://localhost:3000/zh/product/6376"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp",
+        "twitter:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp"
+      },
+      "schemaUrls": [
+        "/uploads/products/1780777280470-325831895.webp",
+        "http://localhost:3000/ar/product/6376"
+      ],
+      "schemaTypes": [
+        "Product"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/product/6376'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Invalid URL",
+        "Non-HTTPS SEO URL: http://localhost:3000/ar/product/6376\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/ar/product/6696",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/ar/product/6696",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/product/6696",
+        "ar": "http://localhost:3000/ar/product/6696",
+        "en": "http://localhost:3000/en/product/6696",
+        "zh": "http://localhost:3000/zh/product/6696"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/uploads/products/1785785671825-866745224.jpg",
+        "twitter:image": "http://localhost:3000/uploads/products/1785785671825-866745224.jpg"
+      },
+      "schemaUrls": [
+        "/uploads/products/1785785671825-866745224.jpg",
+        "http://localhost:3000/ar/product/6696"
+      ],
+      "schemaTypes": [
+        "Product"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6696'\n- 'https://boukirdiamond.com/ar/product/6696'\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6696'\n- 'https://boukirdiamond.com/fr/product/6696'\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6696'\n- 'https://boukirdiamond.com/ar/product/6696'\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6696'\n- 'https://boukirdiamond.com/en/product/6696'\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6696'\n- 'https://boukirdiamond.com/zh/product/6696'\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/ar/product/6696'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1785785671825-866745224.jpg\n\n'http:' !== 'https:'\n",
+        "Invalid URL",
+        "Non-HTTPS SEO URL: http://localhost:3000/ar/product/6696\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/en",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/en/",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/",
+        "ar": "http://localhost:3000/ar/",
+        "en": "http://localhost:3000/en/",
+        "zh": "http://localhost:3000/zh/"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [],
+      "schemaTypes": [],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/en/'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/zh",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/zh/",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/",
+        "ar": "http://localhost:3000/ar/",
+        "en": "http://localhost:3000/en/",
+        "zh": "http://localhost:3000/zh/"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/logo.png",
+        "twitter:image": "http://localhost:3000/logo.png"
+      },
+      "schemaUrls": [],
+      "schemaTypes": [],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/'\n- 'https://boukirdiamond.com/fr'\n       ^\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/'\n- 'https://boukirdiamond.com/ar'\n       ^\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/'\n- 'https://boukirdiamond.com/en'\n       ^\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/'\n- 'https://boukirdiamond.com/zh'\n       ^\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/zh/'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/logo.png\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/en/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/en/product/6376",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/product/6376",
+        "ar": "http://localhost:3000/ar/product/6376",
+        "en": "http://localhost:3000/en/product/6376",
+        "zh": "http://localhost:3000/zh/product/6376"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp",
+        "twitter:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp"
+      },
+      "schemaUrls": [
+        "/uploads/products/1780777280470-325831895.webp",
+        "http://localhost:3000/en/product/6376"
+      ],
+      "schemaTypes": [
+        "Product"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/en/product/6376'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Invalid URL",
+        "Non-HTTPS SEO URL: http://localhost:3000/en/product/6376\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/zh/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "http://localhost:3000/zh/product/6376",
+      "alternates": {
+        "fr": "http://localhost:3000/fr/product/6376",
+        "ar": "http://localhost:3000/ar/product/6376",
+        "en": "http://localhost:3000/en/product/6376",
+        "zh": "http://localhost:3000/zh/product/6376"
+      },
+      "social": {
+        "og:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp",
+        "twitter:image": "http://localhost:3000/uploads/products/1780777280470-325831895.webp"
+      },
+      "schemaUrls": [
+        "/uploads/products/1780777280470-325831895.webp",
+        "http://localhost:3000/zh/product/6376"
+      ],
+      "schemaTypes": [
+        "Product"
+      ],
+      "errors": [
+        "Canonical must match the requested locale/path\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+        "Alternate fr\n+ actual - expected\n\n+ 'http://localhost:3000/fr/product/6376'\n- 'https://boukirdiamond.com/fr/product/6376'\n",
+        "Alternate ar\n+ actual - expected\n\n+ 'http://localhost:3000/ar/product/6376'\n- 'https://boukirdiamond.com/ar/product/6376'\n",
+        "Alternate en\n+ actual - expected\n\n+ 'http://localhost:3000/en/product/6376'\n- 'https://boukirdiamond.com/en/product/6376'\n",
+        "Alternate zh\n+ actual - expected\n\n+ 'http://localhost:3000/zh/product/6376'\n- 'https://boukirdiamond.com/zh/product/6376'\n",
+        "og:url must match canonical\n+ actual - expected\n\n+ undefined\n- 'http://localhost:3000/zh/product/6376'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Non-HTTPS SEO URL: http://localhost:3000/uploads/products/1780777280470-325831895.webp\n\n'http:' !== 'https:'\n",
+        "Invalid URL",
+        "Non-HTTPS SEO URL: http://localhost:3000/zh/product/6376\n\n'http:' !== 'https:'\n"
+      ]
+    },
+    {
+      "route": "/robots.txt",
+      "error": "/robots.txt: unexpected URL origin"
+    },
+    {
+      "route": "/sitemap.xml",
+      "error": "/sitemap.xml: unexpected URL origin"
+    }
+  ]
+}

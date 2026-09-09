@@ -1,0 +1,2181 @@
+{
+  "date": "2026-09-08",
+  "volumes": "Not measured",
+  "candidates": [
+    {
+      "keyword": "droguerie tanger",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "droguerie tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=droguerie%20tanger"
+      }
+    },
+    {
+      "keyword": "droguerie tanger ouvert actuellement",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "droguerie tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=droguerie%20tanger"
+      }
+    },
+    {
+      "keyword": "quincaillerie tanger",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "matériaux de construction tanger",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "matériaux de construction tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=mat%C3%A9riaux%20de%20construction%20tanger"
+      }
+    },
+    {
+      "keyword": "magasin matériaux construction tanger",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "fournisseur matériaux construction tanger",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "grossiste matériaux construction tanger",
+      "language": "fr",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "مواد البناء طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "مواد البناء طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D9%85%D9%88%D8%A7%D8%AF%20%D8%A7%D9%84%D8%A8%D9%86%D8%A7%D8%A1%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "بيع مواد البناء طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "مواد البناء طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D9%85%D9%88%D8%A7%D8%AF%20%D8%A7%D9%84%D8%A8%D9%86%D8%A7%D8%A1%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "عقاقير طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "عقاقير طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B9%D9%82%D8%A7%D9%82%D9%8A%D8%B1%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "دروكري طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "دروكري طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AF%D8%B1%D9%88%D9%83%D8%B1%D9%8A%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "دروجري طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "محل مواد البناء طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "لوازم البناء طنجة",
+      "language": "ar",
+      "cluster": "Magasin et fournisseur à Tanger",
+      "priority": "A",
+      "target": "/fr et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ciment tanger",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ciment tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=ciment%20tanger"
+      }
+    },
+    {
+      "keyword": "prix ciment maroc",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix ciment maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20ciment%20maroc"
+      }
+    },
+    {
+      "keyword": "prix ciment 45 maroc",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix ciment maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20ciment%20maroc"
+      }
+    },
+    {
+      "keyword": "prix ciment 35 maroc",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix ciment maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20ciment%20maroc"
+      }
+    },
+    {
+      "keyword": "prix ciment blanc maroc",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix ciment maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20ciment%20maroc"
+      }
+    },
+    {
+      "keyword": "prix sac ciment maroc",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix ciment maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20ciment%20maroc"
+      }
+    },
+    {
+      "keyword": "ciment CPJ 45 Tanger",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "livraison ciment tanger",
+      "language": "fr",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن الاسمنت في المغرب",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الاسمنت",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%A7%D8%B3%D9%85%D9%86%D8%AA"
+      }
+    },
+    {
+      "keyword": "ثمن الاسمنت بالمغرب 2026",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الاسمنت",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%A7%D8%B3%D9%85%D9%86%D8%AA"
+      }
+    },
+    {
+      "keyword": "ثمن الاسمنت الابيض في المغرب",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الاسمنت",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%A7%D8%B3%D9%85%D9%86%D8%AA"
+      }
+    },
+    {
+      "keyword": "إسمنت طنجة",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "اسمنت طنجة",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "أسمنت طنجة",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن السيما بطنجة",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "سيما طنجة",
+      "language": "ar",
+      "cluster": "Ciment",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/ciment + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "prix sable m3 maroc",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix sable maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20sable%20maroc"
+      }
+    },
+    {
+      "keyword": "prix sable lavé maroc",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix sable maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20sable%20maroc"
+      }
+    },
+    {
+      "keyword": "prix sable construction maroc",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix sable maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20sable%20maroc"
+      }
+    },
+    {
+      "keyword": "prix camion sable maroc",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "prix sable maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=prix%20sable%20maroc"
+      }
+    },
+    {
+      "keyword": "sable de construction tanger",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "livraison sable tanger",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "sable lavé tanger",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "prix sable m3 tanger",
+      "language": "fr",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن الرملة بالمغرب",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الرمل",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B1%D9%85%D9%84"
+      }
+    },
+    {
+      "keyword": "ثمن الرملة في المغرب بالدرهم",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الرمل",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B1%D9%85%D9%84"
+      }
+    },
+    {
+      "keyword": "ثمن فياج الرملة",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الرمل",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B1%D9%85%D9%84"
+      }
+    },
+    {
+      "keyword": "ثمن خنشة الرملة بالمغرب",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الرمل",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B1%D9%85%D9%84"
+      }
+    },
+    {
+      "keyword": "رملة طنجة",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "رمل البناء طنجة",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "توصيل الرمل طنجة",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن متر الرمل",
+      "language": "ar",
+      "cluster": "Sable et livraison",
+      "priority": "A",
+      "target": "/fr/materiaux-construction/sable-gravette + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الرمل",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B1%D9%85%D9%84"
+      }
+    },
+    {
+      "keyword": "gravette tanger",
+      "language": "fr",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "prix gravette m3 maroc",
+      "language": "fr",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "gravier construction tanger",
+      "language": "fr",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "brique tanger",
+      "language": "fr",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "prix brique maroc",
+      "language": "fr",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "fer à béton tanger",
+      "language": "fr",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "حصى البناء طنجة",
+      "language": "ar",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن الحصى بالمغرب",
+      "language": "ar",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "آجور طنجة",
+      "language": "ar",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن الآجور بالمغرب",
+      "language": "ar",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "حديد البناء طنجة",
+      "language": "ar",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن حديد البناء بالمغرب",
+      "language": "ar",
+      "cluster": "Gravette, briques et gros œuvre",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories distinctes de /fr/materiaux-construction et /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "carrelage tanger",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20tanger"
+      }
+    },
+    {
+      "keyword": "carrelage tanger prix",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20tanger"
+      }
+    },
+    {
+      "keyword": "magasin carrelage tanger",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20tanger"
+      }
+    },
+    {
+      "keyword": "grossiste carrelage tanger",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20tanger"
+      }
+    },
+    {
+      "keyword": "carrelage tanger vente",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20tanger"
+      }
+    },
+    {
+      "keyword": "céramique tanger",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "carrelage piscine tanger",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20tanger"
+      }
+    },
+    {
+      "keyword": "carrelage maroc salle de bain",
+      "language": "fr",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "carrelage maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=carrelage%20maroc"
+      }
+    },
+    {
+      "keyword": "سيراميك طنجة",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "سيراميك طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B3%D9%8A%D8%B1%D8%A7%D9%85%D9%8A%D9%83%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "زليج طنجة",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زليج طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%84%D9%8A%D8%AC%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "بيع زليج طنجة",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زليج طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%84%D9%8A%D8%AC%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "ثمن الزليج بالمغرب",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الزليج",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B2%D9%84%D9%8A%D8%AC"
+      }
+    },
+    {
+      "keyword": "ثمن الزليج 60/60",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الزليج",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B2%D9%84%D9%8A%D8%AC"
+      }
+    },
+    {
+      "keyword": "ثمن الزليج 120 60",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الزليج",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B2%D9%84%D9%8A%D8%AC"
+      }
+    },
+    {
+      "keyword": "ثمن الزليج للمتر",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "ثمن الزليج",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%AB%D9%85%D9%86%20%D8%A7%D9%84%D8%B2%D9%84%D9%8A%D8%AC"
+      }
+    },
+    {
+      "keyword": "زليج الحمام طنجة",
+      "language": "ar",
+      "cluster": "Carrelage et céramique",
+      "priority": "A, confirmer la vente de carreaux",
+      "target": "/fr/carrelage-ceramique + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "matériel carreleur tanger",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "outillage carrelage maroc",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "coupe carrelage maroc",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "coupe carrelage 120 cm maroc",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ventouse carrelage maroc",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "clips nivelants carrelage maroc",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "vibreur carrelage maroc",
+      "language": "fr",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "أدوات الزليج",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "معدات تركيب السيراميك",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "آلة قطع الزليج",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ماكينة قطع السيراميك",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "كليبس الزليج",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "شفاطة الزليج",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "هزاز البلاط",
+      "language": "ar",
+      "cluster": "Outils du carreleur",
+      "priority": "A",
+      "target": "/fr/outillage-carreleur + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "colle carrelage tanger",
+      "language": "fr",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "mortier colle carrelage maroc",
+      "language": "fr",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "joint carrelage maroc",
+      "language": "fr",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "colle carrelage extérieur maroc",
+      "language": "fr",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "croisillons carrelage maroc",
+      "language": "fr",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "كولا الزليج",
+      "language": "ar",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "لاصق البلاط",
+      "language": "ar",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "لاصق السيراميك المغرب",
+      "language": "ar",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "فواصل البلاط",
+      "language": "ar",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "مواد ملء فواصل الزليج",
+      "language": "ar",
+      "cluster": "Colles et joints",
+      "priority": "B",
+      "target": "/fr/colles-joints-carrelage + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "rouleau bitume toiture prix maroc",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "rouleau bitume",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=rouleau%20bitume"
+      }
+    },
+    {
+      "keyword": "rouleau bitume prix maroc",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "rouleau bitume",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=rouleau%20bitume"
+      }
+    },
+    {
+      "keyword": "rouleau bitume maroc",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "rouleau bitume",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=rouleau%20bitume"
+      }
+    },
+    {
+      "keyword": "bitume prix maroc",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "bitume maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=bitume%20maroc"
+      }
+    },
+    {
+      "keyword": "fournisseur bitume maroc",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "bitume maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=bitume%20maroc"
+      }
+    },
+    {
+      "keyword": "rouleau bitume tanger",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "membrane bitumineuse 4 mm maroc",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "zeft tanger",
+      "language": "fr",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "زفت السطح",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زفت السطح",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%81%D8%AA%20%D8%A7%D9%84%D8%B3%D8%B7%D8%AD"
+      }
+    },
+    {
+      "keyword": "زفت الاسطح",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زفت",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%81%D8%AA"
+      }
+    },
+    {
+      "keyword": "ثمن زفت السطح في المغرب",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زفت السطح",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%81%D8%AA%20%D8%A7%D9%84%D8%B3%D8%B7%D8%AD"
+      }
+    },
+    {
+      "keyword": "ثمن زفت السطح",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زفت السطح",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%81%D8%AA%20%D8%A7%D9%84%D8%B3%D8%B7%D8%AD"
+      }
+    },
+    {
+      "keyword": "زفت المنيوم",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زفت",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%81%D8%AA"
+      }
+    },
+    {
+      "keyword": "رولو زفت طنجة",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "بيتومين للعزل",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "لفائف العزل المائي",
+      "language": "ar",
+      "cluster": "Membranes bitumineuses / zeft",
+      "priority": "A",
+      "target": "/fr/etancheite/bitume-membranes + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "bitume liquide maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "bitume maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=bitume%20maroc"
+      }
+    },
+    {
+      "keyword": "bitume froid maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "bitume maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=bitume%20maroc"
+      }
+    },
+    {
+      "keyword": "étanchéité bitume maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "bitume maroc",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=bitume%20maroc"
+      }
+    },
+    {
+      "keyword": "produit étanchéité terrasse maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "résine étanchéité maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "primaire bitumineux maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "bande étanchéité autocollante maroc",
+      "language": "fr",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "مواد العزل المائي",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "بيتومين سائل المغرب",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "زفت بارد",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "عزل السطح من الماء",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "مواد منع تسرب الماء",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "شريط عازل للماء",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "عزل الاسطح المغرب",
+      "language": "ar",
+      "cluster": "Étanchéité liquide et réparation",
+      "priority": "B",
+      "target": "/fr/etancheite + sous-catégories précises /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "danosa maroc",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "danosa tanger",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "rouleau danosa prix maroc",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "soprema maroc",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "soprema tanger",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "bitu flex maroc",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "self dan maroc",
+      "language": "fr",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "دانوزا المغرب",
+      "language": "ar",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "دانوسا المغرب",
+      "language": "ar",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "زفت دانوزا",
+      "language": "ar",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "سوبريما المغرب",
+      "language": "ar",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "زفت سوبريما",
+      "language": "ar",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "رولو زفت دانوزا",
+      "language": "ar",
+      "cluster": "Marques attestées en étanchéité",
+      "priority": "B",
+      "target": "Pages Danosa / Soprema et fiches existantes",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "disque diamant carrelage maroc",
+      "language": "fr",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "disque diamant béton maroc",
+      "language": "fr",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "disque diamant 125 maroc",
+      "language": "fr",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "scie cloche carrelage maroc",
+      "language": "fr",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "disque marbre maroc",
+      "language": "fr",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ديسك الزليج",
+      "language": "ar",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "قرص ألماس للسيراميك",
+      "language": "ar",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "قرص قطع الخرسانة",
+      "language": "ar",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "قرص قطع الرخام",
+      "language": "ar",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثقب السيراميك",
+      "language": "ar",
+      "cluster": "Disques et découpe",
+      "priority": "B",
+      "target": "/fr/outillage/disques-diamant + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "peinture bâtiment tanger",
+      "language": "fr",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "peinture façade maroc",
+      "language": "fr",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "peinture intérieure tanger",
+      "language": "fr",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "matériel peinture tanger",
+      "language": "fr",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "rouleau peinture maroc",
+      "language": "fr",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "صباغة طنجة",
+      "language": "ar",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "صباغة الحيطان",
+      "language": "ar",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "صباغة الواجهات",
+      "language": "ar",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن الصباغة بالمغرب",
+      "language": "ar",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "أدوات الصباغة",
+      "language": "ar",
+      "cluster": "Peinture et droguerie",
+      "priority": "B",
+      "target": "/fr/peinture + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "plomberie tanger",
+      "language": "fr",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "raccord PPR maroc",
+      "language": "fr",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "tuyau plomberie maroc",
+      "language": "fr",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "pompe à eau maroc",
+      "language": "fr",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "pompe à eau tanger",
+      "language": "fr",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "لوازم السباكة طنجة",
+      "language": "ar",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "بلومبري طنجة",
+      "language": "ar",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "أنابيب الماء",
+      "language": "ar",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "مضخة ماء المغرب",
+      "language": "ar",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن مضخة الماء",
+      "language": "ar",
+      "cluster": "Plomberie et eau",
+      "priority": "B",
+      "target": "/fr/plomberie et /fr/pompes-eau + équivalents /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "outillage tanger",
+      "language": "fr",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "outillage professionnel maroc",
+      "language": "fr",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "perceuse maroc",
+      "language": "fr",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "meuleuse maroc",
+      "language": "fr",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "bétonnière tanger",
+      "language": "fr",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "malaxeur mortier maroc",
+      "language": "fr",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "أدوات البناء طنجة",
+      "language": "ar",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "معدات البناء المغرب",
+      "language": "ar",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "مثقاب كهربائي المغرب",
+      "language": "ar",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "صاروخ كهربائي المغرب",
+      "language": "ar",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "خلاطة إسمنت المغرب",
+      "language": "ar",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "خلاط المونة",
+      "language": "ar",
+      "cluster": "Outillage et machines",
+      "priority": "B, selon stock",
+      "target": "Sous-catégories outillage distinctes FR/AR",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "livraison matériaux construction tanger",
+      "language": "fr",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "devis matériaux construction tanger",
+      "language": "fr",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "prix matériaux construction tanger",
+      "language": "fr",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "matériaux chantier tanger",
+      "language": "fr",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "achat matériaux construction en ligne maroc",
+      "language": "fr",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "توصيل مواد البناء طنجة",
+      "language": "ar",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "أثمنة مواد البناء طنجة",
+      "language": "ar",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "ثمن مواد البناء بالمغرب",
+      "language": "ar",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "طلب مواد البناء",
+      "language": "ar",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "بيع مواد البناء عبر الإنترنت",
+      "language": "ar",
+      "cluster": "Livraison et devis",
+      "priority": "A",
+      "target": "/fr/livraison-tanger + équivalent /ar",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "societe etancheite tanger",
+      "language": "fr",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "étanchéité tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=%C3%A9tanch%C3%A9it%C3%A9%20tanger"
+      }
+    },
+    {
+      "keyword": "etancheite toit terrasse tanger",
+      "language": "fr",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "étanchéité tanger",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=fr&q=%C3%A9tanch%C3%A9it%C3%A9%20tanger"
+      }
+    },
+    {
+      "keyword": "pose carrelage tanger",
+      "language": "fr",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "artisan étanchéité tanger",
+      "language": "fr",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "معلم زليج طنجة",
+      "language": "ar",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Google suggestion observed",
+      "monthlySearches": null,
+      "source": {
+        "seed": "زليج طنجة",
+        "url": "https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&gl=ma&hl=ar&q=%D8%B2%D9%84%D9%8A%D8%AC%20%D8%B7%D9%86%D8%AC%D8%A9"
+      }
+    },
+    {
+      "keyword": "معلم عزل السطح طنجة",
+      "language": "ar",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "تركيب السيراميك طنجة",
+      "language": "ar",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    },
+    {
+      "keyword": "إصلاح تسربات السطح طنجة",
+      "language": "ar",
+      "cluster": "Pose / services à séparer de la vente",
+      "priority": "B, seulement si service réel",
+      "target": "Pages /services pertinentes FR/AR, distinctes des catégories produits",
+      "status": "Proposed; demand not measured",
+      "monthlySearches": null,
+      "source": null
+    }
+  ]
+}

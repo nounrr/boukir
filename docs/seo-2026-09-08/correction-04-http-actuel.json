@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-09-09T18:52:35.372Z",
+  "rows": [
+    {
+      "path": "/fr/categories/75-etancheite-bitume",
+      "status": 502
+    },
+    {
+      "path": "/ar/categories/75-etancheite-bitume",
+      "status": 502
+    },
+    {
+      "path": "/fr/marques/37-danosa",
+      "status": 502
+    },
+    {
+      "path": "/fr/shop?category_id=75&brand_id=37",
+      "status": 502
+    }
+  ]
+}

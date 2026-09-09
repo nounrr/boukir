@@ -1,0 +1,148 @@
+BOUKIR DIAMOND — VÉRIFICATION PRODUCTION ET QUATRE LANGUES
+Date : 9 septembre 2026
+Site : https://boukirdiamond.com
+Langues : français (fr), arabe (ar), anglais (en), chinois (zh).
+
+CONCLUSION
+Les quatre prompts ne sont pas encore entièrement résolus en production.
+01 : corrigé sur l'échantillon contrôlé.
+02 : redirection www corrigée ; CORS encore refusé.
+03 : non résolu, sitemap HTTP 500.
+04 : pages éditoriales FR/AR fonctionnelles sur les exemples contrôlés ; EN/ZH
+     encore redirigées vers les filtres. Extension quatre langues réalisée
+     localement pendant cette vérification, à déployer.
+
+Preuves HTTP : production.json dans ce dossier, horodaté.
+Il s'agit d'une vérification technique, pas d'une mesure d'indexation Google.
+
+01 — ORIGINE SEO
+Accueil, boutique, contact et produits 6376/6696 : 20 pages contrôlées,
+soit cinq routes dans chacune des quatre langues. Réponses HTTP 200,
+canonical HTTPS sur boukirdiamond.com, quatre alternates cohérents.
+Aucun localhost dans les signaux SEO extraits : canonical, hreflang,
+Open Graph, images sociales et données structurées.
+Le site répond à nouveau ; le 502 antérieur n'a pas été reproduit.
+Cela ne constitue pas un contrôle exhaustif de chaque fiche du catalogue.
+
+02 — WWW, CORS ET NAVIGATION
+HTTPS www redirige en 308 vers le domaine sans www, chemin et paramètres
+conservés. Pas de boucle sur le parcours contrôlé.
+HTTP www fait encore deux sauts : HTTPS www, puis HTTPS sans www.
+OPTIONS /api/categories avec Origin https://boukirdiamond.com ou
+https://www.boukirdiamond.com renvoie encore 403, sans en-tête CORS autorisant
+l'origine. L'origine inconnue testée est aussi refusée, ce qui est attendu.
+Les requêtes GET catalogue utilisées par la navigation publique fonctionnent.
+
+Parcours navigateur anonyme : catégorie FR depuis www, produit 6696,
+ajout au panier, affichage du panier FR ; produit AR, ajout et affichage
+du panier AR puis retrait. Aucune commande passée. Aucun message d'exception
+non interceptée observé dans le journal navigateur pendant ces parcours.
+Anomalie supplémentaire : lors d'une ouverture directe du panier AR après
+l'ajout FR, le compteur indiquait 1 mais la page affichait un panier vide.
+L'ajout effectué ensuite depuis la fiche AR affichait correctement le produit.
+La persistance lors d'un rechargement/changement de langue reste à vérifier.
+
+PROMPT DE CORRECTION COMPLÉMENTAIRE 02
+Inspecte la configuration CORS réellement chargée par le processus API de
+production et par Nginx. Reproduis OPTIONS /api/categories avec les deux
+origines Boukir Diamond et les en-têtes réellement envoyés par le navigateur.
+Déploie backend/utils/corsOrigins.js et ses consommateurs si la version
+active est ancienne. Autorise explicitement les origines nécessaires et les
+prérequêtes correspondantes, sans wildcard avec credentials. Vérifie que
+l'origine inconnue reste refusée. Redémarre uniquement le service API concerné.
+Reproduis aussi : ajout anonyme FR, ouverture directe /ar/cart, rechargement,
+changement de langue. Corrige toute divergence entre compteur et contenu en
+inspectant l'hydratation, le stockage du panier et les réponses API.
+Valide ajout/retrait en FR/AR/EN/ZH sans passer de commande. Conserve les
+preuves réseau et distingue correction locale et vérification après publication.
+FIN DU PROMPT
+
+03 — ROBOTS ET SITEMAP
+/robots.txt : HTTP 200 ; référence correcte à
+https://boukirdiamond.com/sitemap.xml et exclusions privées dans quatre langues.
+/sitemap.xml : HTTP 500, donc aucun sitemap XML exploitable validé.
+/api/ecommerce/products/sitemap : HTTP 500,
+  "Unknown column 'NaN' in 'where clause'".
+/api/ecommerce/products/catalog-pages : HTTP 500, même erreur.
+/api/services/sitemap : HTTP 500,
+  "Unknown column 's.is_published' in 'where clause'".
+/api/maalems/sitemap : HTTP 200, liste vide.
+
+Les erreurs NaN sont compatibles avec une ancienne route /products/:id qui
+intercepte les nouveaux chemins textuels : hypothèse à vérifier sur le serveur.
+L'API publique de liste annonce 3 676 produits au moment du contrôle.
+Cela représenterait 14 704 URL produits dans quatre langues si tous restent
+éligibles. Ce nombre n'est PAS un nombre d'URL publiées ou indexées : le sitemap
+est en erreur, sa couverture effective ne peut donc pas être validée.
+
+PROMPT DE CORRECTION COMPLÉMENTAIRE 03
+Rétablis le sitemap en production à partir de ces preuves. Vérifie le checkout,
+le répertoire de travail et la version réellement chargée par le service API.
+Déploie les routes backend/routes/ecommerce/products.js, productSitemap.js et
+catalogPages.js ensemble, avec les routes textuelles placées avant /:id.
+Contrôle le schéma de services et l'historique des migrations, notamment
+backend/migrations/2026-08-12-zzzz-kan-24-public-services.sql.
+Cette migration contient aussi un UPDATE qui publie certains anciens services :
+inspecte les lignes concernées et l'état existant avant application ; ne la
+relance pas aveuglément et préserve les décisions éditoriales de publication.
+Après déploiement et redémarrage ciblé du service API, exige HTTP 200 sur les
+quatre exports puis sur /sitemap.xml. Valide XML, domaine, dates réelles,
+unicité, quatre langues, canonical et nombre de produits éligibles exportés.
+Ne remplace pas les erreurs API par un sitemap presque vide. Ne déclare pas
+la réparation terminée tant que le sitemap public répond encore 500.
+URL à soumettre ensuite dans Search Console :
+https://boukirdiamond.com/sitemap.xml
+FIN DU PROMPT
+
+04 — CATÉGORIES ET MARQUES
+Exemples publics FR/AR : 73-ciment (6 produits), 75-etancheite-bitume
+(24 liens produits sur la première page, 65 au total), 37-danosa (3 produits).
+Réponses 200, canonical propre, H1 localisé, index/follow et liens produits
+présents dans le HTML initial. Slugs inconnus testés : 404.
+La deuxième page d'étanchéité répond 200. Les anciennes URL /shop avec
+filtres restent accessibles en noindex.
+En production, les mêmes pages catégories/marques EN/ZH répondent encore
+307 vers /en/shop?... ou /zh/shop?... : lot 04 incomplet pour quatre langues.
+
+EXTENSION QUATRE LANGUES RÉALISÉE LOCALEMENT
+- Traductions anglaises et chinoises des 13 pages catégories éditoriales.
+- Présentation des marques, conseils génériques, titres et interface localisés.
+- Routes catégories/marques FR/AR/EN/ZH, canonical et quatre hreflang.
+- Liens menus, fil d'Ariane et pages associées vers les routes localisées.
+- Générateur sitemap catégories/marques étendu aux quatre langues.
+- Désignations produits : traduction API si disponible, sinon texte de repli.
+  Toute la base produits n'a donc pas été traduite par cette modification.
+
+Fichiers ecom concernés :
+src/lib/catalog/translations.ts ; src/lib/catalog/i18n.ts ;
+src/lib/catalog/registry.ts ; src/lib/catalog/route.tsx ;
+src/lib/catalog/sitemap.ts ; src/components/shop/catalog-landing.tsx ;
+src/components/layout/dynamic-breadcrumb.tsx ;
+tests/catalog-pages.test.cjs ; scripts/check-catalog-pages.cjs ;
+docs/deploiement-seo.md.
+
+Validation locale : build Next.js réussi et trois tests catalogue réussis
+(routes, metadata, rendu serveur, erreurs, filtres et sitemap).
+64 rendus serveur avec les données réelles de l'API : 13 catégories et
+3 marques, dans chaque langue. Tous les produits retournés apparaissent
+comme liens dans le HTML initial. Preuve : correction-04-live-ssr.json.
+Ces rendus locaux ne constituent pas une vérification HTTP du code déployé.
+Le lancement du serveur local avait été refusé par le contrôle automatique
+d'approbation (« blocked by policy ») ; les validations utilisent le build,
+les tests et le rendu des composants serveur.
+
+PROMPT DE PUBLICATION ET VÉRIFICATION 04
+Déploie les modifications locales quatre langues de l'e-commerce. Fournis
+NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com et
+NEXT_PUBLIC_API_URL=https://boukirdiamond.com au build ET au démarrage.
+Une variable déjà présente dans PM2 ou le shell peut primer sur le fichier
+.env.production : vérifie les sources sans afficher les autres secrets.
+Après build réussi, redémarre uniquement le service e-commerce concerné.
+Vérifie en FR/AR/EN/ZH les routes categories/73-ciment,
+categories/75-etancheite-bitume et marques/37-danosa : HTTP 200, aucun renvoi
+vers shop pour ces pages éditoriales, textes localisés, quatre hreflang,
+canonical propre et liens produits dans le HTML initial.
+Après correction du backend du lot 03, vérifie leur inclusion dans le sitemap
+si elles contiennent des produits éligibles. Contrôle les traductions manquantes
+du catalogue séparément et ne considère pas le texte de repli comme traduit.
+FIN DU PROMPT

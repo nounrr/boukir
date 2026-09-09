@@ -1,0 +1,141 @@
+BOUKIR DIAMOND — CATÉGORIES ET MARQUES — 9 SEPTEMBRE 2026
+
+RÉSULTAT LOCAL
+Architecture FR/AR implémentée. Build de production réussi, TypeScript compris.
+13 sélections éditoriales et 61 slugs de marques réservés à partir des ID réels.
+Une marque doit encore exister dans l'API pour répondre ; une sélection sans
+produits reste consultable avec noindex et est exclue du sitemap.
+Aucun statut de revendeur officiel n'est affirmé.
+
+URL STABLES
+Les mêmes slugs sont utilisés sous /fr et /ar, avec canonical et alternates FR/AR.
+Les ID ancrent chaque page dans le catalogue. Les slugs sont enregistrés dans
+src/lib/catalog/registry.ts et brands.json : ils ne sont pas recalculés à chaque
+lecture du nom de la catégorie ou de la marque. Ne pas les renommer sans 308.
+Exemples :
+https://boukirdiamond.com/fr/categories/73-ciment
+https://boukirdiamond.com/ar/categories/73-ciment
+https://boukirdiamond.com/fr/categories/73-sable
+https://boukirdiamond.com/fr/categories/73-gravette
+https://boukirdiamond.com/fr/categories/75-etancheite-bitume
+https://boukirdiamond.com/fr/categories/48-outillage-carreleur
+https://boukirdiamond.com/fr/categories/50-colles-carrelage-marbre
+https://boukirdiamond.com/fr/categories/76-mastics-joints
+https://boukirdiamond.com/fr/categories/52-disques-diamant
+https://boukirdiamond.com/fr/categories/72-peinture
+https://boukirdiamond.com/fr/categories/53-plomberie
+https://boukirdiamond.com/fr/marques/37-danosa
+
+Le périmètre initial comprend aussi les pages générales catégories 73, 36 et 10.
+Les autres catégories gardent leurs liens historiques filtrés : elles ne sont
+pas transformées automatiquement en pages éditoriales sans contenu préparé.
+Les marques nouvelles après ce relevé gardent également leur lien filtré jusqu'à
+l'ajout d'un slug durable dans le registre. Une référence supprimée donne 404.
+
+CHOIX DE CONTENU ET PRODUITS
+Chaque page possède H1, title, description, conseil d'achat FR/AR, compteur,
+produits avec images disponibles et liens directs, navigation et pagination.
+Les listes sont chargées côté serveur par ID catégorie ou marque, 24 produits
+par page. Aucun tableau de références produits n'est codé en dur.
+Les catégories incluent leurs descendants, conformément à l'API existante.
+Les pages ciment, sable et gravette combinent la catégorie 73 avec une recherche
+éditoriale fixée ; leurs références actuelles ont été vérifiées par désignation.
+L'API de recherche existante consulte aussi les descriptions : contrôler la
+pertinence lors des évolutions du catalogue et créer des sous-catégories métier
+si une classification plus stricte devient nécessaire.
+La page 48 décrit l'outillage et les fournitures de pose ; elle ne prétend pas
+vendre des carreaux de revêtement. Une telle famille reste à créer si des
+références de carreaux sont effectivement ajoutées au catalogue.
+Les prix nuls sont affichés « Prix à confirmer », sans inventer de prix.
+
+FILTRES, PAGINATION ET LANGUES
+- /shop?category_id=... et /shop?brand_id=... restent disponibles et leur logique
+  de filtrage/noindex est conservée.
+- « Affiner » ouvre cette boutique filtrée avec l'ID et la recherche de la page.
+- Un filtre supplémentaire placé sur une URL éditoriale redirige vers /shop,
+  en conservant les filtres et en imposant l'ID de la sélection de départ.
+- La pagination éditoriale est rendue côté serveur. Page 2 a un canonical propre
+  avec ?page=2 et des liens précédent/suivant ; elle n'est pas ramenée à page 1.
+  Seules les premières pages entrent dans le sitemap. Les numéros invalides ou
+  hors catalogue donnent 404 ; ?page=1 a le canonical sans paramètre.
+- Les slugs inconnus sont rejetés avant tout appel produits.
+- FR/AR sont les versions éditoriales. EN/ZH conservent la boutique filtrée ;
+  une visite d'un slug connu dans ces langues y est redirigée.
+- Les Link hreflang automatiques de next-intl sont désactivés pour éviter
+  d'annoncer quatre versions quand seules FR/AR sont éditoriales. Les alternates
+  HTML des autres pages, définis par leurs métadonnées, restent conservés.
+
+MAILLAGE MODIFIÉ
+Menus catégories desktop/mobile ; footer catégories/marques ; cartes catégories
+de l'accueil ; carrousels marques ; accueil professionnel ; cibles éditoriales
+des bannières ; recherche rapide catégorie/marque ; badges des fiches produit.
+Les fiches produit possèdent aussi des liens catégorie/marque rendus côté serveur.
+Le fil d'Ariane n'envoie pas vers un index /categories ou /marques inexistant.
+Le helper catalogHref conserve les anciens filtres pour les familles non encore
+éditorialisées et pour les langues EN/ZH.
+
+SITEMAP
+backend/routes/ecommerce/catalogPages.js expose /api/ecommerce/products/catalog-pages.
+Il compte les produits publiés non supprimés par catégorie, descendants compris,
+et par marque, sans descriptions ni variantes. L'export alimente la sélection
+des pages non vides dans le sitemap du lot 03. Trois contrôles légers per_page=1
+vérifient les sélections ciblées ciment/sable/gravette.
+Une erreur API interrompt la génération, sans retirer silencieusement les pages.
+Aucune date lastModified artificielle n'est ajoutée aux textes éditoriaux.
+Le contrôle global de nombre/taille est conservé après ajout des nouvelles URL.
+scripts/check-sitemap.mjs inclut maintenant ces pages hors mode --fixture.
+
+VALIDATION
+5 tests spécifiques réussis :
+- 2 backend : comptage avec descendants, absence de double comptage, cycles et
+  orphelins, critères de publication/suppression et propagation des pannes.
+- 3 ecom : slugs, liens FR/AR/EN, 404, H1, canonical, alternates, pagination,
+  filtre renvoyé vers /shop, produits dans le HTML avant hydratation, pages
+  vides noindex, exclusion du sitemap et erreurs API non transformées en 404.
+Commandes :
+node --test backend/routes/ecommerce/catalogPages.test.js
+node --test ecom/tests/catalog-pages.test.cjs
+
+Validation des données publiques par les composants serveur réels : 32 rendus
+FR/AR couvrant 13 sélections et 3 marques. Tous les liens des produits chargés
+sont présents dans le HTML initial. Les totaux constatés :
+Ciment 6 ; sable 16 ; gravette 11 ; étanchéité 65 ; outillage carreleur 626 ;
+colles 47 ; mastics/joints 17 ; disques diamant 242 ; peinture 169 ; plomberie 224.
+Marques vérifiées : Danosa 3 ; Sika 33 ; Kerakoll 44.
+Ces totaux peuvent évoluer et certaines familles se recouvrent : ne pas les additionner.
+Commande : node ecom/scripts/check-catalog-pages.cjs
+Preuve : correction-04-live-ssr.json et correction-04-live-*.html.
+Les fichiers correction-04-ssr-*.html sont issus de tests simulés distincts.
+
+LIMITES DE LA VÉRIFICATION
+Le rendu serveur a été exécuté localement sans lancer un serveur HTTP. Le contrôle
+automatique avait refusé ce lancement (« blocked by policy ») au lot 01.
+Les déclenchements 404/noindex et la pagination sont testés dans le code réel ;
+les statuts HTTP et les interactions sur la nouvelle version doivent être
+recontrôlés après publication. Aucune publication n'a été effectuée par l'agent.
+Dernier relevé public : HTTP 502 sur les nouvelles pages ET sur l'ancienne boutique.
+Ce relevé ne permet donc pas de valider les routes déployées. Voir correction-04-http-actuel.json.
+
+ERREUR DE BUILD SIGNALÉE SUR LE SERVEUR
+Dans /var/www/boukirEcom, utiliser :
+NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com NEXT_PUBLIC_API_URL=https://boukirdiamond.com npm run build
+
+Enregistrer aussi ces deux valeurs dans .env.production et l'environnement du
+service e-commerce. Une valeur déjà exportée prime sur le fichier dotenv.
+NEXT_PUBLIC_SITE_URL est une origine : ni /fr ni /api, ni localhost en production.
+Après réussite, redémarrer le service e-commerce via son gestionnaire habituel
+avec ces mêmes valeurs. Ne pas lancer deux processus sur son port.
+L'avertissement baseline-browser-mapping n'est pas la cause de cette erreur.
+Guide détaillé : ecom/docs/deploiement-seo.md.
+Le build local final a réussi avec les variables explicites ci-dessus.
+
+APRÈS PUBLICATION
+1. Déployer aussi le nouvel endpoint backend de comptage.
+2. Vérifier /fr/shop et la disparition du 502 ; ouvrir catégorie puis produit,
+   tester « Affiner », prix/marque, pagination et navigation retour en FR/AR.
+3. Vérifier par HTTP le HTML initial, les vrais 404 des slugs inconnus et le
+   canonical auto-référent ; inspecter les alternates FR/AR.
+4. Vérifier le sitemap complet après résolution du prérequis services du lot 03,
+   puis soumettre https://boukirdiamond.com/sitemap.xml dans Search Console.
+5. Surveiller les pages découvertes, exclusions et canonical choisis. L'ajout au
+   sitemap et les métadonnées ne garantissent ni indexation ni classement.

@@ -1,0 +1,531 @@
+{
+  "capturedAt": "2026-09-08T20:08:13.142Z",
+  "method": "Public HTTP GET, French Accept-Language; no Googlebot impersonation. elapsedMs is not a Core Web Vitals metric.",
+  "results": [
+    {
+      "url": "https://boukirdiamond.com/",
+      "finalUrl": "https://boukirdiamond.com/fr",
+      "status": 200,
+      "elapsedMs": 788,
+      "bytes": 165069,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Boukir Diamond — e-commerce au Maroc spécialisé en droguerie et produits d’entretien. Découvrez nos produits, nouveautés et promotions avec livraison et paiement sécurisé.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/\"/>",
+        "<meta property=\"og:description\" content=\"Boukir Diamond — e-commerce au Maroc spécialisé en droguerie et produits d’entretien. Découvrez nos produits, nouveautés et promotions avec livraison et paiement sécurisé.\"/>",
+        "<meta name=\"twitter:description\" content=\"Boukir Diamond — e-commerce au Maroc spécialisé en droguerie et produits d’entretien. Découvrez nos produits, nouveautés et promotions avec livraison et paiement sécurisé.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Livraison Livraison rapide partout au Maroc. références en stock Une sélection pensée pour les pros. Service client Nous sommes disponibles tous les jours. Paiement sécurisé Plusieurs options de paiement sécurisé. 01 / Par usage Maison ou Professionel ? Filtrez la boutique en un clic et trouvez plus vite. 0 1 Par usage Maison Produits pour la maison et le bricolage. 0 2 Par usage Professionel Outillage et fournitures pour les pros. 02 Nouveautés Les derniers produits ajoutés à la boutique Voir tout 03 Promotions du moment Nos meilleures offres sélectionnées pour vous Voir tout Catégories populaires Accès rapide aux rayons les plus demandés. 05 / Boukir Marques Découvrez nos marques partenaires. Voir tout 06 Notre magasin Boukir Diamond Construction Store Retrouvez notre boutique sur Google Maps. Adresse: IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER Tél: 0650812894 Email: boukir.diamond23@gmail.com Ouvrir dans Google Maps Contact Ouvrir dans Google Maps Boukir Boutique Mes commandes © 2026 Boukir • Tous droits réservés. Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes Boukir Diamond"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/fr",
+      "finalUrl": "https://www.boukirdiamond.com/fr",
+      "status": 200,
+      "elapsedMs": 484,
+      "bytes": 165069,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Boukir Diamond — e-commerce au Maroc spécialisé en droguerie et produits d’entretien. Découvrez nos produits, nouveautés et promotions avec livraison et paiement sécurisé.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/\"/>",
+        "<meta property=\"og:description\" content=\"Boukir Diamond — e-commerce au Maroc spécialisé en droguerie et produits d’entretien. Découvrez nos produits, nouveautés et promotions avec livraison et paiement sécurisé.\"/>",
+        "<meta name=\"twitter:description\" content=\"Boukir Diamond — e-commerce au Maroc spécialisé en droguerie et produits d’entretien. Découvrez nos produits, nouveautés et promotions avec livraison et paiement sécurisé.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Livraison Livraison rapide partout au Maroc. références en stock Une sélection pensée pour les pros. Service client Nous sommes disponibles tous les jours. Paiement sécurisé Plusieurs options de paiement sécurisé. 01 / Par usage Maison ou Professionel ? Filtrez la boutique en un clic et trouvez plus vite. 0 1 Par usage Maison Produits pour la maison et le bricolage. 0 2 Par usage Professionel Outillage et fournitures pour les pros. 02 Nouveautés Les derniers produits ajoutés à la boutique Voir tout 03 Promotions du moment Nos meilleures offres sélectionnées pour vous Voir tout Catégories populaires Accès rapide aux rayons les plus demandés. 05 / Boukir Marques Découvrez nos marques partenaires. Voir tout 06 Notre magasin Boukir Diamond Construction Store Retrouvez notre boutique sur Google Maps. Adresse: IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER Tél: 0650812894 Email: boukir.diamond23@gmail.com Ouvrir dans Google Maps Contact Ouvrir dans Google Maps Boukir Boutique Mes commandes © 2026 Boukir • Tous droits réservés. Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes Boukir Diamond"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/ar",
+      "finalUrl": "https://www.boukirdiamond.com/ar",
+      "status": 200,
+      "elapsedMs": 479,
+      "bytes": 177450,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "بوكِير دايموند",
+      "seoTags": [
+        "<meta name=\"description\" content=\"بوكِير دايموند — تجارة إلكترونية بالمغرب متخصصة في الدروجري ومواد التنظيف. اكتشف المنتجات والجديد والعروض مع توصيل ودفع آمن.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/ar/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/\"/>",
+        "<meta property=\"og:description\" content=\"بوكِير دايموند — تجارة إلكترونية بالمغرب متخصصة في الدروجري ومواد التنظيف. اكتشف المنتجات والجديد والعروض مع توصيل ودفع آمن.\"/>",
+        "<meta name=\"twitter:description\" content=\"بوكِير دايموند — تجارة إلكترونية بالمغرب متخصصة في الدروجري ومواد التنظيف. اكتشف المنتجات والجديد والعروض مع توصيل ودفع آمن.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "WhatsApp WhatsApp Boukir AR تسجيل الدخول التسجيل الفئات المتجر أفضل العروض الأكثر شعبية الخدمات معلمونا انضم كمعلم تواصل معنا الفئات التوصيل توصيل سريع لجميع مناطق المغرب. منتج متوفر تشكيلة مختارة للمحترفين. خدمة العملاء نحن هنا لمساعدتك كل يوم. دفع آمن خيارات دفع آمنة ومتعددة. 01 / حسب الاستخدام للمنزل أم للمحترفين؟ صفِّ المتجر بنقرة واحدة واعثر على ما تحتاجه بسرعة. 0 1 حسب الاستخدام منزل منتجات للمنزل والأعمال اليدوية. 0 2 حسب الاستخدام احترافي أدوات ولوازم للمحترفين. 02 وصل حديثاً أحدث المنتجات المضافة للمتجر عرض الكل 03 عروض مميزة أفضل العروض المختارة لك عرض الكل فئات شائعة دخول سريع للأقسام الأكثر طلباً. 05 / Boukir العلامات التجارية اكتشف علاماتنا الشريكة. عرض الكل 06 موقع المتجر Boukir Diamond Construction Store اعثر على متجرنا على خرائط Google. العنوان: IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER الهاتف: 0650812894 البريد الإلكتروني: boukir.diamond23@gmail.com فتح في خرائط Google معلومات التواصل فتح في خرائط Google Boukir المتجر طلباتي © 2026 Boukir • جميع الحقوق محفوظة. التزاماتنا توصيل سريع، دفع آمن، وخدمة عملاء متجاوبة. توصيل لجميع أنحاء المغرب تتبع للطلب ودعم عملاء سريع. دفع آمن معاملات محمية وموثوقة. طرق دفع متعددة بطاقة، تحويل بنكي، الدفع عند الاستلام. طرق الدفع المقبولة الفئات جاري التحميل... اذهب للمتجر العلامات التجارية جاري التحميل... عرض كل العلامات خدمة العملاء تتبع طلباتي مساعدة وأسئلة شائعة الإرجاع والاسترداد الشروط والأحكام سياسة الخصوصية التوصيل والدفع توصيل لجميع أنحاء المغرب دفع آمن (SSL) بطاقة، تحويل بنكي، الدفع عند الاستلام تابعنا © 2026 Boukir جميع الحقوق محفوظة. سوق مغربي • توصيل سريع • دفع آمن المتجر طلباتي بوكِير دايموند"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/robots.txt",
+      "finalUrl": "https://www.boukirdiamond.com/robots.txt",
+      "status": 200,
+      "elapsedMs": 78,
+      "bytes": 992,
+      "headers": {
+        "content-type": "text/plain",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "public, max-age=0, must-revalidate"
+      },
+      "seoTags": [],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "User-Agent: * Allow: / Disallow: /api/ Disallow: /checkout Disallow: /cart Disallow: /orders Disallow: /profile Disallow: /wishlist Disallow: /login Disallow: /register Disallow: /forgot-password Disallow: /fr/checkout Disallow: /fr/cart Disallow: /fr/orders Disallow: /fr/profile Disallow: /fr/wishlist Disallow: /fr/login Disallow: /fr/register Disallow: /fr/forgot-password Disallow: /ar/checkout Disallow: /ar/cart Disallow: /ar/orders Disallow: /ar/profile Disallow: /ar/wishlist Disallow: /ar/login Disallow: /ar/register Disallow: /ar/forgot-password Disallow: /en/checkout Disallow: /en/cart Disallow: /en/orders Disallow: /en/profile Disallow: /en/wishlist Disallow: /en/login Disallow: /en/register Disallow: /en/forgot-password Disallow: /zh/checkout Disallow: /zh/cart Disallow: /zh/orders Disallow: /zh/profile Disallow: /zh/wishlist Disallow: /zh/login Disallow: /zh/register Disallow: /zh/forgot-password Host: http://localhost:3000 Sitemap: http://localhost:3000/sitemap.xml"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/sitemap.xml",
+      "finalUrl": "https://www.boukirdiamond.com/sitemap.xml",
+      "status": 200,
+      "elapsedMs": 114,
+      "bytes": 10062,
+      "headers": {
+        "content-type": "application/xml",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "public, max-age=0, must-revalidate"
+      },
+      "seoTags": [],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [
+        "http://localhost:3000/fr/",
+        "http://localhost:3000/ar/",
+        "http://localhost:3000/en/",
+        "http://localhost:3000/zh/",
+        "http://localhost:3000/fr/shop",
+        "http://localhost:3000/ar/shop",
+        "http://localhost:3000/en/shop",
+        "http://localhost:3000/zh/shop",
+        "http://localhost:3000/fr/services",
+        "http://localhost:3000/ar/services",
+        "http://localhost:3000/en/services",
+        "http://localhost:3000/zh/services",
+        "http://localhost:3000/fr/maalems",
+        "http://localhost:3000/ar/maalems",
+        "http://localhost:3000/en/maalems",
+        "http://localhost:3000/zh/maalems",
+        "http://localhost:3000/fr/contact",
+        "http://localhost:3000/ar/contact",
+        "http://localhost:3000/en/contact",
+        "http://localhost:3000/zh/contact"
+      ],
+      "jsonLd": [],
+      "text": "http://localhost:3000/fr/ 2026-09-08T20:08:01.682Z daily 1 http://localhost:3000/ar/ 2026-09-08T20:08:01.682Z daily 0.95 http://localhost:3000/en/ 2026-09-08T20:08:01.682Z daily 0.95 http://localhost:3000/zh/ 2026-09-08T20:08:01.682Z daily 0.95 http://localhost:3000/fr/shop 2026-09-08T20:08:01.682Z daily 0.9 http://localhost:3000/ar/shop 2026-09-08T20:08:01.682Z daily 0.85 http://localhost:3000/en/shop 2026-09-08T20:08:01.682Z daily 0.85 http://localhost:3000/zh/shop 2026-09-08T20:08:01.682Z daily 0.85 http://localhost:3000/fr/services 2026-09-08T20:08:01.682Z daily 0.85 http://localhost:3000/ar/services 2026-09-08T20:08:01.682Z daily 0.7999999999999999 http://localhost:3000/en/services 2026-09-08T20:08:01.682Z daily 0.7999999999999999 http://localhost:3000/zh/services 2026-09-08T20:08:01.682Z daily 0.7999999999999999 http://localhost:3000/fr/maalems 2026-09-08T20:08:01.682Z daily 0.85 http://localhost:3000/ar/maalems 2026-09-08T20:08:01.682Z daily 0.7999999999999999 http://localhost:3000/en/maalems 2026-09-08T20:08:01.682Z daily 0.7999999999999999 http://localhost:3000/zh/maalems 2026-09-08T20:08:01.682Z daily 0.7999999999999999 http://localhost:3000/fr/contact 2026-09-08T20:08:01.682Z monthly 0.6 http://localhost:3000/ar/contact 2026-09-08T20:08:01.682Z monthly 0.5499999999999999 http://localhost:3000/en/contact 2026-09-08T20:08:01.682Z monthly 0.5499999999999999 http://localhost:3000/zh/contact 2026-09-08T20:08:01.682Z monthly 0.5499999999999999"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/fr/shop",
+      "finalUrl": "https://www.boukirdiamond.com/fr/shop",
+      "status": 200,
+      "elapsedMs": 339,
+      "bytes": 156132,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Produits | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/shop\"/>",
+        "<meta property=\"og:description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>",
+        "<meta name=\"twitter:description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Filtres Vue Filtres Vue Filtres Trier par Rechercher Prix 0 MAD 10000 MAD En stock uniquement Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes Produits | Boukir Diamond"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/fr/shop?page=2",
+      "finalUrl": "https://www.boukirdiamond.com/fr/shop?page=2",
+      "status": 200,
+      "elapsedMs": 401,
+      "bytes": 156175,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Produits | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>",
+        "<meta name=\"robots\" content=\"noindex, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/shop\"/>",
+        "<meta property=\"og:description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>",
+        "<meta name=\"twitter:description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Filtres Vue Filtres Vue Filtres Trier par Rechercher Prix 0 MAD 10000 MAD En stock uniquement Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes Produits | Boukir Diamond"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/fr/shop?category_id=1",
+      "finalUrl": "https://www.boukirdiamond.com/fr/shop?category_id=1",
+      "status": 200,
+      "elapsedMs": 406,
+      "bytes": 157747,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Produits | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>",
+        "<meta name=\"robots\" content=\"noindex, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/shop\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/shop\"/>",
+        "<meta property=\"og:description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>",
+        "<meta name=\"twitter:description\" content=\"Parcourez le catalogue Boukir Diamond (droguerie, entretien, hygiène) : filtres par catégorie, marque et prix. Livraison au Maroc et paiement sécurisé.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Filtres Vue Filtres 1 Vue Filtres 1 Effacer Trier par Rechercher Prix 0 MAD 10000 MAD En stock uniquement Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes Produits | Boukir Diamond"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/fr/contact",
+      "finalUrl": "https://www.boukirdiamond.com/fr/contact",
+      "status": 200,
+      "elapsedMs": 383,
+      "bytes": 157385,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Contact | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Contactez Boukir Diamond (Tanger) : téléphones, email, adresse et plan Google Maps.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/contact\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/contact\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/contact\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/contact\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/contact\"/>",
+        "<meta property=\"og:description\" content=\"Contactez Boukir Diamond (Tanger) : téléphones, email, adresse et plan Google Maps.\"/>",
+        "<meta name=\"twitter:description\" content=\"Contactez Boukir Diamond (Tanger) : téléphones, email, adresse et plan Google Maps.\"/>"
+      ],
+      "h1": [
+        "Contact BOUKIR DIAMOND"
+      ],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [
+        {
+          "@context": "https://schema.org",
+          "@type": "LocalBusiness",
+          "@id": "http://localhost:3000/fr/contact",
+          "name": "BOUKIR DIAMOND",
+          "url": "http://localhost:3000/fr/contact",
+          "image": "http://localhost:3000/logo.png",
+          "hasMap": "https://www.google.com/maps/place/BOUKIR+DIAMOND+CONSTUCTION+STORE/@35.7532036,-5.8421462,1453m/data=!3m2!1e3!4b1!4m6!3m5!1s0xd0b87005196739b:0xfa8dc0aeae136e27!8m2!3d35.7532036!4d-5.8421462!16s%2Fg%2F11y45mc9yr?entry=ttu",
+          "email": "boukir.diamond23@gmail.com",
+          "telephone": [
+            "0650812894",
+            "0666216657"
+          ],
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER"
+          }
+        }
+      ],
+      "text": "WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Contact Informations &amp; itinéraire Contact BOUKIR DIAMOND Retrouvez toutes les informations de Boukir Diamond : téléphones, email, adresse et accès via Google Maps. BOUKIR DIAMOND CONSTRUCTION STORE Vente de Matériaux de Construction céramique, et de Marbre Ouvrir dans Google Maps Coordonnées Contactez-nous pour toute question ou demande. GSM 0650812894 Tél 0666216657 Email boukir.diamond23@gmail.com Adresse IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER Notre emplacement Carte interactive pour vous guider vers le magasin. Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes Contact | Boukir Diamond"
+    },
+    {
+      "url": "https://www.boukirdiamond.com/fr/product/999999999",
+      "finalUrl": "https://www.boukirdiamond.com/fr/product/999999999",
+      "status": 200,
+      "elapsedMs": 310,
+      "bytes": 138300,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Produit introuvable | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Nous n&#x27;avons pas trouvé ce produit.\"/>",
+        "<meta name=\"robots\" content=\"noindex, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/product/999999999\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/product/999999999\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/product/999999999\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/product/999999999\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/product/999999999\"/>",
+        "<meta property=\"og:description\" content=\"Nous n&#x27;avons pas trouvé ce produit.\"/>",
+        "<meta name=\"twitter:description\" content=\"Nous n&#x27;avons pas trouvé ce produit.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [],
+      "text": "Produit introuvable | Boukir Diamond WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Produit #999999999 Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes"
+    },
+    {
+      "url": "https://boukirdiamond.com/fr/product/6376",
+      "finalUrl": "https://boukirdiamond.com/fr/product/6376",
+      "status": 200,
+      "elapsedMs": 314,
+      "bytes": 139897,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Ciment CPJ 45 HOLCIME — MATIERE DE CONSTRUCTION | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Achetez Ciment CPJ 45 HOLCIME dans MATIERE DE CONSTRUCTION avec livraison au Maroc.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/product/6376\"/>",
+        "<meta property=\"og:description\" content=\"Achetez Ciment CPJ 45 HOLCIME dans MATIERE DE CONSTRUCTION avec livraison au Maroc.\"/>",
+        "<meta name=\"twitter:description\" content=\"Achetez Ciment CPJ 45 HOLCIME dans MATIERE DE CONSTRUCTION avec livraison au Maroc.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": "Ciment CPJ 45 HOLCIME",
+          "description": "Achetez Ciment CPJ 45 HOLCIME dans MATIERE DE CONSTRUCTION avec livraison au Maroc.",
+          "image": [
+            "/uploads/products/1780777280470-325831895.webp"
+          ],
+          "sku": "6376",
+          "category": "MATIERE DE CONSTRUCTION",
+          "offers": {
+            "@type": "Offer",
+            "url": "http://localhost:3000/fr/product/6376",
+            "priceCurrency": "MAD",
+            "price": 84,
+            "availability": "https://schema.org/InStock",
+            "itemCondition": "https://schema.org/NewCondition"
+          }
+        }
+      ],
+      "text": "Ciment CPJ 45 HOLCIME — MATIERE DE CONSTRUCTION | Boukir Diamond WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Produit #6376 Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes"
+    },
+    {
+      "url": "https://boukirdiamond.com/ar/product/6376",
+      "finalUrl": "https://boukirdiamond.com/ar/product/6376",
+      "status": 200,
+      "elapsedMs": 316,
+      "bytes": 151735,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "إسمنت CPJ 45 HOLCIME — MATIERE DE CONSTRUCTION | بوكِير دايموند",
+      "seoTags": [
+        "<meta name=\"description\" content=\"اشترِ إسمنت CPJ 45 HOLCIME من قسم MATIERE DE CONSTRUCTION مع توصيل داخل المغرب.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/ar/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/product/6376\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/product/6376\"/>",
+        "<meta property=\"og:description\" content=\"اشترِ إسمنت CPJ 45 HOLCIME من قسم MATIERE DE CONSTRUCTION مع توصيل داخل المغرب.\"/>",
+        "<meta name=\"twitter:description\" content=\"اشترِ إسمنت CPJ 45 HOLCIME من قسم MATIERE DE CONSTRUCTION مع توصيل داخل المغرب.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": "إسمنت CPJ 45 HOLCIME",
+          "description": "اشترِ إسمنت CPJ 45 HOLCIME من قسم MATIERE DE CONSTRUCTION مع توصيل داخل المغرب.",
+          "image": [
+            "/uploads/products/1780777280470-325831895.webp"
+          ],
+          "sku": "6376",
+          "category": "MATIERE DE CONSTRUCTION",
+          "offers": {
+            "@type": "Offer",
+            "url": "http://localhost:3000/ar/product/6376",
+            "priceCurrency": "MAD",
+            "price": 84,
+            "availability": "https://schema.org/InStock",
+            "itemCondition": "https://schema.org/NewCondition"
+          }
+        }
+      ],
+      "text": "إسمنت CPJ 45 HOLCIME — MATIERE DE CONSTRUCTION | بوكِير دايموند WhatsApp WhatsApp Boukir AR تسجيل الدخول التسجيل الفئات المتجر أفضل العروض الأكثر شعبية الخدمات معلمونا انضم كمعلم تواصل معنا الفئات الرئيسية المتجر منتج #6376 التزاماتنا توصيل سريع، دفع آمن، وخدمة عملاء متجاوبة. توصيل لجميع أنحاء المغرب تتبع للطلب ودعم عملاء سريع. دفع آمن معاملات محمية وموثوقة. طرق دفع متعددة بطاقة، تحويل بنكي، الدفع عند الاستلام. طرق الدفع المقبولة الفئات جاري التحميل... اذهب للمتجر العلامات التجارية جاري التحميل... عرض كل العلامات خدمة العملاء تتبع طلباتي مساعدة وأسئلة شائعة الإرجاع والاسترداد الشروط والأحكام سياسة الخصوصية التوصيل والدفع توصيل لجميع أنحاء المغرب دفع آمن (SSL) بطاقة، تحويل بنكي، الدفع عند الاستلام تابعنا © 2026 Boukir جميع الحقوق محفوظة. سوق مغربي • توصيل سريع • دفع آمن المتجر طلباتي"
+    },
+    {
+      "url": "https://boukirdiamond.com/fr/product/6696",
+      "finalUrl": "https://boukirdiamond.com/fr/product/6696",
+      "status": 200,
+      "elapsedMs": 223,
+      "bytes": 140468,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "DANOSA 4 mm Vert Rouleau Bitume — ÉTANCHÉITÉ &amp; IMPERMEABILISATION | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Achetez DANOSA 4 mm Vert Rouleau Bitume dans ÉTANCHÉITÉ &amp; IMPERMEABILISATION avec livraison au Maroc.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/product/6696\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/product/6696\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/product/6696\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/product/6696\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/product/6696\"/>",
+        "<meta property=\"og:description\" content=\"Achetez DANOSA 4 mm Vert Rouleau Bitume dans ÉTANCHÉITÉ &amp; IMPERMEABILISATION avec livraison au Maroc.\"/>",
+        "<meta name=\"twitter:description\" content=\"Achetez DANOSA 4 mm Vert Rouleau Bitume dans ÉTANCHÉITÉ &amp; IMPERMEABILISATION avec livraison au Maroc.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": "DANOSA 4 mm Vert Rouleau Bitume",
+          "description": "Achetez DANOSA 4 mm Vert Rouleau Bitume dans ÉTANCHÉITÉ & IMPERMEABILISATION avec livraison au Maroc.",
+          "image": [
+            "/uploads/products/1785785671825-866745224.jpg"
+          ],
+          "sku": "6696",
+          "brand": {
+            "@type": "Brand",
+            "name": "DANOSA"
+          },
+          "category": "ÉTANCHÉITÉ & IMPERMEABILISATION",
+          "offers": {
+            "@type": "Offer",
+            "url": "http://localhost:3000/fr/product/6696",
+            "priceCurrency": "MAD",
+            "price": 0,
+            "availability": "https://schema.org/InStock",
+            "itemCondition": "https://schema.org/NewCondition"
+          }
+        }
+      ],
+      "text": "DANOSA 4 mm Vert Rouleau Bitume — ÉTANCHÉITÉ &amp; IMPERMEABILISATION | Boukir Diamond WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Produit #6696 Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes"
+    },
+    {
+      "url": "https://boukirdiamond.com/fr/product/7325",
+      "finalUrl": "https://boukirdiamond.com/fr/product/7325",
+      "status": 200,
+      "elapsedMs": 218,
+      "bytes": 140006,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": null,
+        "location": null,
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate"
+      },
+      "title": "Cadre 1 Poste 188 Serie 24 - SIMON — INTERRUPTEURS &amp; PRISES | Boukir Diamond",
+      "seoTags": [
+        "<meta name=\"description\" content=\"Achetez Cadre 1 Poste 188 Serie 24 - SIMON dans INTERRUPTEURS &amp; PRISES avec livraison au Maroc.\"/>",
+        "<meta name=\"robots\" content=\"index, follow\"/>",
+        "<link rel=\"canonical\" href=\"http://localhost:3000/fr/product/7325\"/>",
+        "<link rel=\"alternate\" hrefLang=\"fr\" href=\"http://localhost:3000/fr/product/7325\"/>",
+        "<link rel=\"alternate\" hrefLang=\"ar\" href=\"http://localhost:3000/ar/product/7325\"/>",
+        "<link rel=\"alternate\" hrefLang=\"en\" href=\"http://localhost:3000/en/product/7325\"/>",
+        "<link rel=\"alternate\" hrefLang=\"zh\" href=\"http://localhost:3000/zh/product/7325\"/>",
+        "<meta property=\"og:description\" content=\"Achetez Cadre 1 Poste 188 Serie 24 - SIMON dans INTERRUPTEURS &amp; PRISES avec livraison au Maroc.\"/>",
+        "<meta name=\"twitter:description\" content=\"Achetez Cadre 1 Poste 188 Serie 24 - SIMON dans INTERRUPTEURS &amp; PRISES avec livraison au Maroc.\"/>"
+      ],
+      "h1": [],
+      "productLinks": [],
+      "sitemapLocs": [],
+      "jsonLd": [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": "Cadre 1 Poste 188 Serie 24 - SIMON",
+          "description": "Achetez Cadre 1 Poste 188 Serie 24 - SIMON dans INTERRUPTEURS & PRISES avec livraison au Maroc.",
+          "sku": "7325",
+          "brand": {
+            "@type": "Brand",
+            "name": "Simon"
+          },
+          "category": "INTERRUPTEURS & PRISES",
+          "offers": {
+            "@type": "Offer",
+            "url": "http://localhost:3000/fr/product/7325",
+            "priceCurrency": "MAD",
+            "price": 0,
+            "availability": "https://schema.org/InStock",
+            "itemCondition": "https://schema.org/NewCondition"
+          }
+        }
+      ],
+      "text": "Cadre 1 Poste 188 Serie 24 - SIMON — INTERRUPTEURS &amp; PRISES | Boukir Diamond WhatsApp WhatsApp Boukir FR Connexion S&#x27;inscrire Catégories Boutique Meilleures promos Les plus populaires Services Nos Maalems Devenir Maalem Contactez-nous Catégories Accueil Boutique Produit #7325 Nos engagements Livraison rapide, paiement sécurisé et service client à l’écoute. Livraison partout au Maroc Suivi et service client réactif. Paiement sécurisé Transactions protégées et fiables. Plusieurs modes de paiement Carte, virement, paiement à la livraison. Paiements acceptés Catégories Chargement... Voir la boutique Marques Chargement... Voir toutes les marques Service client Suivre mes commandes Aide &amp; FAQ Retours &amp; remboursements Conditions générales (CGV) Politique de confidentialité Livraison &amp; paiement Livraison partout au Maroc Paiement sécurisé (SSL) Carte bancaire, virement, paiement à la livraison Suivez-nous © 2026 Boukir Tous droits réservés. Marketplace marocaine • Livraison rapide • Paiement sécurisé Boutique Mes commandes"
+    }
+  ]
+}

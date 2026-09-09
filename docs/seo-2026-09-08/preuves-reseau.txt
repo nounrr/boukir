@@ -1,0 +1,16 @@
+[AA4B229C0A54B4BEB40A18980C866273] OPTIONS https://boukirdiamond.com/api/categories (Other) 403
+[17580.156] GET https://boukirdiamond.com/api/categories (Fetch)
+[17580.157] GET https://boukirdiamond.com/api/hero-slides?locale=en&limit=4 (Fetch)
+[17580.158] GET https://boukirdiamond.com/api/ecommerce/products/featured/new?limit=8 (Fetch)
+[17580.159] GET https://boukirdiamond.com/api/ecommerce/products/featured/promo?limit=12 (Fetch)
+[17580.160] GET https://boukirdiamond.com/api/brands (Fetch)
+[A44271729670D9330FE1C1B180D92971] OPTIONS https://boukirdiamond.com/api/hero-slides?locale=en&limit=4 (Other) 403
+[B8766A0E28A415E4E306187C95B6FE26] OPTIONS https://boukirdiamond.com/api/ecommerce/products/featured/new?limit=8 (Other) 403
+[B1E18994776DC0A9BE990F828D28FB25] OPTIONS https://boukirdiamond.com/api/ecommerce/products/featured/promo?limit=12 (Other) 403
+[1A7C5BF05C928C41061923825B71FF6A] OPTIONS https://boukirdiamond.com/api/brands (Other) 403
+[17580.480] GET https://boukirdiamond.com/api/categories (Fetch) 200
+[17580.481] GET https://boukirdiamond.com/api/ecommerce/products?page=1&per_page=20&in_stock_only=false&sort=newest (Fetch) 200
+[17580.482] GET https://boukirdiamond.com/api/brands (Fetch) 200
+[17580.654] GET https://boukirdiamond.com/api/categories (Fetch) 200
+[17580.655] GET https://boukirdiamond.com/api/ecommerce/products/6696 (Fetch) 200
+[17580.656] GET https://boukirdiamond.com/api/brands (Fetch) 200

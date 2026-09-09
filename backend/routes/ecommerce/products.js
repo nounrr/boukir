@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
 import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
+import { createProductSitemapRouter } from './productSitemap.js';
+import { createCatalogPagesRouter } from './catalogPages.js';
 
 const router = Router();
+// Must precede /:id.
+router.use('/sitemap', createProductSitemapRouter(pool));
+router.use('/catalog-pages', createCatalogPagesRouter(pool));
 
 let _hasProductSnapshotTableCache = null;
 async function hasProductSnapshotTable(db) {

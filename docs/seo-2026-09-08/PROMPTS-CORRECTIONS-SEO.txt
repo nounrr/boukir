@@ -1,0 +1,523 @@
+BOUKIR DIAMOND — PROMPTS POUR CORRIGER LE SEO
+Site : https://boukirdiamond.com
+Date : 8 septembre 2026
+Projet : C:/Users/med/Desktop/burequ (3)/boukitComplet/bpukir
+
+MODE D'EMPLOI
+
+Chaque bloc « DÉBUT DU PROMPT / FIN DU PROMPT » est prêt à copier dans une tâche d'agent de développement disposant du projet. Les prompts décrivent du travail à réaliser : ce fichier n'applique aucune correction.
+
+Exécuter les corrections dans l'ordre proposé. Les dépendances sont indiquées pour éviter que plusieurs tâches modifient les mêmes parties avec des règles différentes. Les numéros 22 à 28 concernent des vérifications, des données manquantes ou des améliorations proposées ; leur présence ne signifie pas qu'un défaut a déjà été démontré.
+
+Pour chaque tâche, relire les fichiers actuels et les instructions du dépôt, préserver les changements en cours, vérifier le constat avant de modifier, puis livrer la correction concrète et sa validation. Ne pas remplacer les données manquantes par des chiffres inventés. Distinguer correction locale, configuration d'hébergement préparée et résultat réellement vérifié en production.
+
+Rapport et preuves : dossier docs/seo-2026-09-08 du projet.
+Rapport principal : RAPPORT-SEO-BOUKIR-DIAMOND.md.
+Mots-clés : ANNEXE-MOTS-CLES.md et mots-cles-candidats.json.
+
+ORDRE CONSEILLÉ
+
+Urgent : 01, 02, 03.
+Structure et exploration : 04, 05, 06, 07.
+Contenu et langues : 08, 09, 10, 11.
+Données commerciales : 12, 13, 14, 15, 16.
+Confiance, recherche et catalogue : 17, 18, 19, 20, 21.
+Mesure et améliorations : 22, 23, 24, 25, 26, 27, 28.
+Recette finale : 29.
+
+============================================================
+01 — URL SEO POINTANT VERS LOCALHOST
+Priorité : P0. Constat confirmé dans le HTML public.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige les URL SEO de la partie ecom du projet Boukir Diamond, site https://boukirdiamond.com. L'audit du 8 septembre 2026 a trouvé des canonical, hreflang et URL de données structurées pointant vers http://localhost:3000. Consulte docs/seo-2026-09-08/preuves-http.json et vérifie l'état actuel.
+
+Inspecte ecom/src/lib/seo/metadata.ts, notamment getSiteUrl(), NEXT_PUBLIC_SITE_URL et leurs consommateurs. Centralise l'origine publique HTTPS. En production, une variable absente ou invalide doit être détectée explicitement ; un fallback localhost peut rester limité au développement. Complète la documentation des variables d'environnement sans recopier de secrets.
+
+Aligne canonical, alternates, Open Graph, Twitter, images de partage et URL des schémas sur l'origine retenue. Préserve les URL FR/AR et les autres langues existantes. Évite les doubles préfixes de langue et les redirections inutiles de slash final.
+
+Vérifie le HTML initial de l'accueil, boutique, contact et de deux produits en FR/AR. Aucun localhost ne doit apparaître dans leurs signaux SEO de production. Fournis les fichiers modifiés, les contrôles exécutés et les paramètres de build/déploiement encore nécessaires. N'affirme pas que la production est corrigée sur la seule base du code local.
+
+FIN DU PROMPT
+
+============================================================
+02 — VERSION WWW CASSÉE, API REFUSÉE ET DOUBLE HÔTE
+Priorité : P0. Dépendance : origine retenue au prompt 01.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige le parcours avec et sans www de Boukir Diamond. Dans l'audit, https://www.boukirdiamond.com affichait des erreurs de catalogue et des prérequêtes OPTIONS vers https://boukirdiamond.com/api/... renvoyaient 403. Le catalogue sans www fonctionnait. Consulte les preuves réseau et captures dans docs/seo-2026-09-08, puis reproduis les différences actuelles.
+
+Inspecte l'hébergement, le reverse proxy, la configuration API et CORS réellement utilisés. Utilise https://boukirdiamond.com comme domaine canonique, sauf configuration existante justifiant un autre choix documenté. Redirige durablement l'autre hôte en 301/308 en conservant chemins et paramètres. Vérifie HTTPS, cookies de session, appels API et en-têtes nécessaires.
+
+Corrige les origines et prérequêtes nécessaires sans autoriser arbitrairement toutes les origines avec des credentials. Identifie aussi l'exception côté client observée dans la boutique et rends la gestion d'erreur récupérable.
+
+Valide une navigation anonyme accueil → catégorie → produit et un parcours de panier sans passer de commande réelle, en FR/AR. Contrôle les réponses réseau et l'absence de boucle de redirection. Si une modification dépend du proxy externe, fournis la configuration précise à appliquer et indique ce qui a réellement été vérifié.
+
+FIN DU PROMPT
+
+============================================================
+03 — SITEMAP INCORRECT, PRODUITS ABSENTS ET DATES ARTIFICIELLES
+Priorité : P0/P1. Dépendance : prompt 01 ; intégrer 04 ensuite.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige robots.txt et les sitemaps de Boukir Diamond. L'audit a observé un sitemap de 20 URL sur localhost, sans fiche produit, alors que l'API annonçait 3 737 produits. Inspecte ecom/app/robots.ts, ecom/app/sitemap.ts et les endpoints publics disponibles.
+
+Génère des URL absolues HTTPS sur le domaine canonique. Ajoute tous les produits publics admissibles à l'indexation et les catégories/marques éditoriales réellement créées. Préserve les pages de services et artisans admissibles déjà gérées. Utilise un endpoint paginé ou dédié : ne te limite pas à la première page de l'API et ne charge pas inutilement toutes les descriptions.
+
+Exclus brouillons, pages privées, recherches internes, filtres non indexables et URL supprimées. Utilise les vraies dates de modification ; n'actualise pas lastModified à chaque lecture sans changement du contenu. Prévois une stratégie explicite en cas de panne API pour éviter de publier silencieusement un sitemap presque vide. Fractionne le sitemap seulement si les limites ou performances le nécessitent.
+
+Valide XML, unicité, domaine, langues, canonical et un échantillon de statuts HTTP. Compare le nombre de produits éligibles au nombre d'URL produits générées, sans promettre leur indexation. Termine par l'URL exacte à soumettre à Search Console et les vérifications après publication.
+
+FIN DU PROMPT
+
+============================================================
+04 — CATÉGORIES ET MARQUES NON INDEXABLES
+Priorité : P1. Dépendance : prompt 01.
+============================================================
+
+DÉBUT DU PROMPT
+
+Crée une architecture de pages catégories et marques indexables pour l'e-commerce Boukir Diamond. Actuellement, les liens catégories/marques passent principalement par /shop?category_id=... et /shop?brand_id=..., dont le code demande noindex. Vérifie le catalogue et les routes actuelles avant de choisir les URL.
+
+Implémente des pages publiques stables FR/AR avec slug durable, H1, title, description, canonical propre, alternates, contenu utile et produits rendus côté serveur. Appuie-toi sur les identifiants existants, pas sur une liste de produits codée en dur. Préserve les anciennes URL et le fonctionnement des filtres. Réutilise toute route déjà créée par une tâche précédente.
+
+Commence par ciment, sable/gravette, étanchéité/bitume, outillage du carreleur, colles/joints, disques diamant, peinture et plomberie selon les produits réellement présents. Sépare vente de carreaux et outils du carreleur. Les pages de marques ne doivent affirmer un statut de revendeur officiel que s'il est prouvé.
+
+Mets à jour menus, footer, liens produits et sitemap pour pointer vers les pages canoniques. Les combinaisons de filtres ordinaires restent gérées séparément. Vérifie les listes de produits, les pages vides, les 404 de slug inconnu, FR/AR, les filtres existants et la présence de liens produits dans le HTML initial.
+
+FIN DU PROMPT
+
+============================================================
+05 — PAGINATION NON EXPLORABLE ET CANONICAL DES FILTRES
+Priorité : P1. Dépendance : prompts 01 et 04 si terminé.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige la pagination SEO et la politique d'URL à paramètres de Boukir Diamond. L'audit a trouvé /shop?page=2 en noindex avec canonical vers la première page, et des boutons de pagination pilotés par JavaScript. Inspecte ecom/app/[locale]/(shop)/shop/page.tsx et ecom/src/components/shop/products-list.tsx.
+
+Rends les pages du catalogue explorables avec de vrais liens href, une URL propre par page et un canonical cohérent avec son contenu. Normalise page=1, les numéros invalides et les pages hors limites. Préserve les filtres actifs et la navigation côté client sans en dépendre pour la découverte des produits.
+
+Établis des règles distinctes pour pagination simple, catégorie éditoriale, recherche interne, tri, combinaison de filtres et paramètres marketing. Ne rends pas toutes les facettes indexables et ne canonise pas un contenu réellement différent vers la première page par défaut. Les alternates doivent conserver la même sélection lorsque les équivalents existent.
+
+Vérifie pages 1, 2 et dernière, URL invalide, catégorie paginée, recherche et tri. Contrôle les meta robots, canonical, liens précédent/suivant, cohérence des produits et absence d'espace infini d'URL. Documente les règles retenues avec des exemples réels.
+
+FIN DU PROMPT
+
+============================================================
+06 — CONTENU COMMERCIAL ABSENT DU HTML INITIAL
+Priorité : P1. Dépendance : corriger l'accès API au prompt 02.
+============================================================
+
+DÉBUT DU PROMPT
+
+Améliore le rendu serveur SEO de Boukir Diamond. L'audit a trouvé un HTML initial sans contenu produit principal/H1 sur plusieurs pages, et sans liens produits dans le catalogue. Les composants récupèrent leurs données après JavaScript, alors que /api/ est interdit par robots.txt. Google peut rendre du JavaScript : vérifie les dépendances réelles plutôt que conclure automatiquement à une invisibilité.
+
+Inspecte accueil, boutique, pages catégories et fiches produits. Rends côté serveur les informations publiques essentielles : titre principal, description, prix/unité valides, disponibilité publique, image et liens produits. Préserve les interactions client de variantes, panier, recherche et filtres. Évite des lectures incohérentes entre le composant serveur, les métadonnées et l'hydratation.
+
+Sépare données publiques et session utilisateur pour éviter toute fuite par cache. Prévois un comportement stable lors d'un échec API. Examine les ressources nécessaires au rendu Google sans rendre accessibles les routes privées ; privilégie un HTML déjà complet.
+
+Compare HTML brut et DOM hydraté en FR/AR. Vérifie la présence d'un titre principal cohérent et de liens explorables, l'absence d'erreurs d'hydratation et le fonctionnement des interactions. Prépare un échantillon d'URL pour l'inspection Search Console après publication.
+
+FIN DU PROMPT
+
+============================================================
+07 — PRODUIT INTROUVABLE EN HTTP 200
+Priorité : P1. Dépendance : coordonner avec prompt 06.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige les statuts HTTP des fiches produits de Boukir Diamond. L'URL /fr/product/999999999 a renvoyé 200 avec titre « Produit introuvable » et noindex. Inspecte les fichiers page/layout de product/[id] et ecom/src/lib/seo/product.ts.
+
+Distingue côté serveur : identifiant invalide, produit confirmé absent, produit public existant et erreur temporaire du backend. Retourne une vraie 404 pour l'absence confirmée. Une panne API ne doit pas être traitée comme la suppression de tous les produits ni provoquer une modification persistante de leur indexabilité. Évite de découvrir l'absence uniquement après hydratation ou après l'envoi d'un statut 200.
+
+Conserve une page 404 utile, traduite et des liens vers le catalogue. Un produit temporairement indisponible commercialement ne doit pas automatiquement devenir une 404. N'ajoute une redirection vers un remplacement que si elle correspond à un remplacement réel.
+
+Valide les statuts HTTP réels et le HTML pour identifiant invalide, numéro inexistant, produit existant, rupture temporaire et panne API simulée. Vérifie aussi canonical, robots et absence de données structurées de vente sur une vraie page d'erreur.
+
+FIN DU PROMPT
+
+============================================================
+08 — POSITIONNEMENT SEO CENTRÉ SUR LE NETTOYAGE
+Priorité : P1. Dépendance : prompt 01.
+============================================================
+
+DÉBUT DU PROMPT
+
+Repositionne les textes SEO et le contenu visible de Boukir Diamond sur les matériaux de construction, l'outillage et l'étanchéité à Tanger. Les descriptions générales observées parlent surtout d'entretien, hygiène et nettoyage. Inspecte les métadonnées, l'accueil, la boutique et les messages de traduction.
+
+Rédige et intègre des title, descriptions, H1 et introductions adaptés au catalogue réel en français et en arabe. Utilise comme direction « Matériaux de construction et outillage à Tanger » et « مواد البناء ولوازم الورش بطنجة ». Intègre naturellement droguerie/quincaillerie et عقاقير lorsque pertinent. Ne supprime pas les familles entretien réellement vendues ; replace-les au bon niveau.
+
+Évite répétitions excessives, promesses de première place, livraison gratuite non prouvée et descriptions identiques sur toutes les pages. Ne considère pas meta keywords comme un levier de classement. Préserve le fonctionnement des autres langues, avec des textes adaptés ou une gestion explicite du contenu manquant.
+
+Vérifie les textes effectivement rendus, y compris dans le HTML initial, les aperçus de partage, les traductions et la cohérence entre promesse commerciale et catalogue. Fournis la liste avant/après des pages principales.
+
+FIN DU PROMPT
+
+============================================================
+09 — CATÉGORIES MAL NOMMÉES ET TRADUCTIONS ARABES ABSENTES
+Priorité : P1. Dépendance : coordonner les slugs avec prompt 04.
+============================================================
+
+DÉBUT DU PROMPT
+
+Nettoie la nomenclature des catégories de Boukir Diamond et complète les noms arabes. L'audit de l'API publique a trouvé 72 noms arabes manquants sur 79 catégories, avec des libellés comme MATIERE DE CONSTRUCTION, MATERIAL DE CONSTRUCTION et UNCATEGORIZED. Refais l'inventaire actuel avant intervention.
+
+Prépare un mapping par identifiant : nom actuel, nom français corrigé, nom arabe proposé, parent, slug et statut de validation. Distingue matériaux de construction, machines, outils, consommables et services. Préserve les liens produits/catégories et les références utilisées par le backoffice. Ne fusionne pas automatiquement des catégories ressemblantes sans vérifier leur rôle et leurs produits.
+
+Implémente les champs/écrans ou scripts réversibles nécessaires pour appliquer et maintenir ce mapping. Pour les données, conserve les valeurs initiales et rends les mises à jour répétables. Évite une traduction arbitraire des marques et références techniques.
+
+Vérifie l'arbre des catégories, les menus FR/AR, les filtres, les pages SEO et les produits rattachés. Livrer les nombres avant/après de catégories sans traduction ou sans classement, et les seuls cas métier réellement ambigus à arbitrer.
+
+FIN DU PROMPT
+
+============================================================
+10 — FICHES PRODUITS NON TRADUITES EN ARABE
+Priorité : P1. Dépendance : nomenclature du prompt 09.
+============================================================
+
+DÉBUT DU PROMPT
+
+Améliore les traductions produit FR/AR de Boukir Diamond. Les 20 produits de la première page examinée n'avaient pas de désignation arabe renseignée ; cet échantillon ne représente pas automatiquement tout le catalogue. Mesure la couverture actuelle des champs publics.
+
+Sélectionne 40 produits prioritaires selon catalogue, ventes/marge disponibles et besoins ciment, sable, étanchéité et outillage du carreleur. Produis une traduction arabe naturelle du nom, de la description, des attributs utiles et des textes SEO. Conserve marques, références, dimensions, unités et valeurs techniques exactes. N'invente ni caractéristiques ni notices manquantes.
+
+Utilise les termes techniques et les synonymes marocains utiles : إسمنت/سيما, رمل/رملة, بيتومين/زفت, بلاط/زليج selon le produit. Ne transforme pas une membrane acoustique en membrane d'étanchéité. Prépare/applique les mises à jour via le mécanisme existant avec traçabilité et conservation des valeurs d'origine.
+
+Corrige les fallbacks incohérents entre l'interface, title, description et JSON-LD. Vérifie les 40 fiches choisies en FR/AR, les accents/caractères arabes, le RTL, les unités et la recherche. Fournis un état de complétude et les fiches qui nécessitent de vraies données fabricant.
+
+FIN DU PROMPT
+
+============================================================
+11 — HREFLANG ET COHÉRENCE DES LANGUES
+Priorité : P1. Dépendances : prompts 01, 04 et 10.
+============================================================
+
+DÉBUT DU PROMPT
+
+Fiabilise le SEO multilingue de Boukir Diamond avec next-intl. L'audit a constaté des alternates vers localhost et une traduction incomplète du contenu commercial. Après correction de l'origine, contrôle routing, middleware, génération de métadonnées et sitemap.
+
+Chaque page FR/AR doit avoir un canonical vers sa propre URL publique et des hreflang réciproques vers les véritables équivalents. Préserve la langue dans navigation, catégories, produits et pagination. Vérifie que /fr et /ar restent directement accessibles même si le navigateur préfère une autre langue.
+
+Utilise des codes linguistiques valides ; ne crée pas un code SEO inventé pour la darija. N'ajoute x-default que si sa destination a un sens. Traite explicitement les pages ou traductions inexistantes au lieu d'annoncer de faux équivalents. Ne supprime pas les langues anglaise/chinoise existantes sans analyser leurs contenus et usages.
+
+Valide HTML lang, direction RTL, canonical, alternates dans HTML/sitemap, réciprocité et statuts sur accueil, catégorie, produit et page paginée. Vérifie l'absence de redirections linguistiques en boucle ou de canonical arabe vers français.
+
+FIN DU PROMPT
+
+============================================================
+12 — PRIX NUL CONFONDU AVEC PRIX MANQUANT
+Priorité : P1. Dépendances : coordonner avec prompts 13 à 16.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige le traitement des prix inconnus dans Boukir Diamond. L'audit a trouvé 13 produits à prix API 0 dans un échantillon de 20, avec affichage 0 MAD dans la boutique. Vérifie la signification métier actuelle de zéro avant modification.
+
+Différencie prix de vente valide, prix manquant, produit sur devis et éventuel produit réellement gratuit. Centralise cette logique entre API, cartes, fiche, panier et JSON-LD. Empêche qu'une valeur inconnue soit présentée comme un prix de vente nul ou ajoutée au panier comme vente gratuite. Pour les produits sur devis, intègre un affichage FR/AR et une action de demande de prix adaptés au parcours existant.
+
+Respecte remises, promotions et prix par variante/unité. Ne remplace aucun prix par une estimation. Rends la règle maintenable dans le backoffice et prépare la migration des données si un champ explicite est nécessaire.
+
+Vérifie produit à prix valide, manquant, promo, variante et devis, en FR/AR. Contrôle le montant affiché, le total panier et les données structurées. Documente les références dont le prix doit être renseigné par l'équipe commerciale.
+
+FIN DU PROMPT
+
+============================================================
+13 — UNITÉS AMBIGUËS : MÈTRE, M², ROULEAU, SAC ET CAMION
+Priorité : P1. Dépendance : coordonner avec prompt 12.
+============================================================
+
+DÉBUT DU PROMPT
+
+Fiabilise les unités commerciales de Boukir Diamond. La fiche 6696 « DANOSA 4 mm Vert Rouleau Bitume » affichait une unité m, alors que le titre évoquait un rouleau. Vérifie les données actuelles et le modèle des unités produit avant de conclure à l'unité correcte.
+
+Sépare unité de vente, unité du prix, conditionnement, dimensions et quantité commandée. Affiche clairement MAD/m, MAD/m², MAD/rouleau, MAD/sac ou autre unité confirmée sur carte, fiche, panier, devis et commande. Pour les carreaux, indique m²/boîte si connu ; pour le ciment, poids du sac ; pour le sable, volume exact ou quantité facturée.
+
+N'invente aucune conversion : un camion/fiaj n'est pas un volume universel, et tonnes/m³ nécessitent une donnée fiable. Une surface nominale de membrane n'est pas automatiquement la surface utile après recouvrements. Conserve la compatibilité avec les commandes existantes.
+
+Valide les calculs quantité × prix, les changements d'unité et la persistance de l'unité dans la commande sur plusieurs familles FR/AR. Liste les conversions ou caractéristiques restant à confirmer par le magasin.
+
+FIN DU PROMPT
+
+============================================================
+14 — PRIX DIFFÉRENT SELON LA CAPTURE / LE CACHE
+Priorité : P1. Constat ponctuel à reproduire.
+============================================================
+
+DÉBUT DU PROMPT
+
+Diagnostique la cohérence de prix entre HTML, JSON-LD, API et interface de Boukir Diamond. Dans les preuves d'audit, la fiche 6696 avait un prix de schéma 0 lors d'un GET, puis 89,78 MAD dans l'interface et le schéma lors d'une lecture ultérieure. Cette divergence n'est pas démontrée permanente : reproduis-la ou explique ce que les traces permettent réellement de conclure.
+
+Inspecte getProductForSeo(), cache React/Next, revalidate, source API, types de prix, invalidation et données initiales client. Vérifie si plusieurs chemins récupèrent des données de fraîcheur ou de forme différentes. Corrige la cause démontrée et définis une stratégie cohérente de rafraîchissement après modification d'un prix.
+
+Préserve les performances et l'isolation des données utilisateur. Ne désactive pas tous les caches sans nécessité. Le prix retenu doit être celui de l'offre et de l'unité effectivement présentées.
+
+En environnement de test, compare HTML brut, DOM, schéma et API avant/après un changement de prix. Contrôle aussi promo et variante. Donne la cause trouvée, le délai de propagation attendu et les observations si le problème n'a pas pu être reproduit.
+
+FIN DU PROMPT
+
+============================================================
+15 — DISPONIBILITÉ IN STOCK CODÉE EN DUR
+Priorité : P1.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige la disponibilité publique des produits de Boukir Diamond. L'audit du code a trouvé inStock = true dans ecom/src/lib/seo/product.ts et une disponibilité InStock constante dans le JSON-LD produit. Vérifie les règles métier et les flags d'achat réellement disponibles dans l'API.
+
+Centralise une disponibilité publique cohérente entre carte, fiche, variante, panier et schéma. Distingue en stock, rupture, commande différée/précommande et disponibilité inconnue uniquement lorsque ces états existent réellement. Ne déduis pas le stock d'une limite d'achat fictive destinée à l'interface. N'expose pas les quantités internes si elles ne sont pas publiques.
+
+Préserve les produits temporairement épuisés avec une page utile ; ne les supprime pas automatiquement de l'index. Affiche un délai ou une possibilité de commande seulement si l'activité le permet.
+
+Valide produit disponible, rupture, variante indisponible, disponibilité inconnue et changement de disponibilité. Assure la même interprétation dans le bouton d'achat et le JSON-LD, en FR/AR.
+
+FIN DU PROMPT
+
+============================================================
+16 — DONNÉES STRUCTURÉES PRODUIT À FIABILISER
+Priorité : P1. Dépendances : prompts 01 et 12 à 15.
+============================================================
+
+DÉBUT DU PROMPT
+
+Fiabilise le JSON-LD Product/Offer de Boukir Diamond à partir des données commerciales corrigées. Inspecte le layout product/[id], ecom/src/lib/seo/product.ts et les fiches 6376, 6696 et 7325 citées dans l'audit.
+
+Utilise URL canoniques HTTPS et images publiques absolues effectivement accessibles. Aligne nom, description, marque, référence, prix, devise, unité et disponibilité sur l'offre visible. Évite les fausses offres à 0 pour les produits sur devis. Gère les variantes selon le modèle réel et les recommandations officielles actuelles. Ajoute livraison/retours seulement à partir des politiques publiées et applicables.
+
+N'invente ni GTIN, note, nombre d'avis, marque ou certification. Sérialise le JSON-LD de manière sûre pour le HTML. Réutilise une source de données cohérente avec le rendu serveur plutôt que dupliquer des règles.
+
+Valide la syntaxe et la cohérence de plusieurs fiches FR/AR, dont une en rupture et une sur devis. Prépare ou exécute le test de résultats enrichis sur les URL accessibles et distingue erreurs bloquantes, recommandations optionnelles et fonctionnalités sans garantie d'affichage.
+
+FIN DU PROMPT
+
+============================================================
+17 — LIENS FAQ, RETOURS, CGV ET CONFIDENTIALITÉ VERS #
+Priorité : P2.
+============================================================
+
+DÉBUT DU PROMPT
+
+Remplace les liens factices du footer de Boukir Diamond par des pages utiles FR/AR. L'audit a observé href="#" pour Aide/FAQ, Retours et remboursements, Conditions générales et Politique de confidentialité. Inspecte les routes et contenus déjà présents pour les réutiliser.
+
+Crée les pages manquantes, leurs métadonnées, leurs liens dans le footer et leur navigation mobile. Pour la FAQ, utilise les réponses confirmées sur commande, retrait, devis, livraison et paiement. Pour les autres pages, décris les pratiques réellement appliquées ; vérifie les références officielles applicables avant toute affirmation juridique.
+
+N'invente pas identité légale, délais de rétractation, conditions de remboursement, durée de conservation ou moyen de paiement. Prépare le contenu et les champs manquants de façon reviewable ; les affirmations non confirmées doivent être signalées dans un document de travail, pas publiées comme politiques définitives.
+
+Valide les liens, les pages sans authentification, FR/AR, la lisibilité et la cohérence avec checkout/paiement/livraison. Fournis les points métier manquants qui empêchent uniquement la finalisation des passages concernés.
+
+FIN DU PROMPT
+
+============================================================
+18 — LIENS SOCIAUX GÉNÉRIQUES ET INFORMATIONS LOCALES
+Priorité : P2. Dépendance : prompt 01.
+============================================================
+
+DÉBUT DU PROMPT
+
+Corrige les liens sociaux et la cohérence des coordonnées de Boukir Diamond. L'audit a trouvé des liens vers les accueils Facebook/Instagram/YouTube et un schéma LocalBusiness dont les URL pointaient vers localhost. Inspecte contact, footer, section magasin et variables de configuration publiques.
+
+Centralise nom d'enseigne, adresse, téléphone, email, coordonnées géographiques, horaires et vrais profils sociaux. Utilise uniquement des informations vérifiées dans le projet ou auprès du propriétaire. Si aucun profil n'est connu, rends le lien configurable et masque l'icône sans destination plutôt que pointer vers une plateforme générique.
+
+Complète le schéma local avec un identifiant stable, adresse structurée, ville Tanger, pays Maroc et les autres données confirmées. Relie les vrais profils avec sameAs si pertinent. Vérifie le libellé CONSTUCTION aperçu dans le lien Maps sans inventer un changement de nom commercial.
+
+Valide contact, footer, page magasin et JSON-LD FR/AR, les liens téléphone/WhatsApp/Maps et les destinations sociales. Ne confonds pas cette correction du site avec une modification déjà réalisée de la fiche Google Maps.
+
+FIN DU PROMPT
+
+============================================================
+19 — SYNONYMES ARABES / DARIJA NON GÉRÉS DANS LA RECHERCHE
+Priorité : P2.
+============================================================
+
+DÉBUT DU PROMPT
+
+Améliore la recherche interne et les suggestions de Boukir Diamond avec un dictionnaire métier FR/arabe/darija. L'audit a trouvé une recherche textuelle et une normalisation latine, sans dictionnaire métier dans les routes examinées. Inspecte backend/routes/ecommerce/search.js, products.js et les composants de recherche.
+
+Implémente des alias contrôlés : ciment/إسمنت/أسمنت/اسمنت/سيما, sable/رمل/رملة, bitume/بيتومين/زفت, carrelage/بلاط/سيراميك/زليج, et des fautes fréquentes comme cimant ou carelage. Normalise raisonnablement espaces, accents et caractères arabes sans casser les références exactes.
+
+Priorise les références et correspondances exactes. Garde des synonymes limités par catégorie/usage pour ne pas confondre zellige artisanal et carreaux industriels, ou bitume acoustique et étanchéité. Préserve filtres et pagination. Utilise des requêtes paramétrées et une stratégie compatible avec la taille réelle du catalogue.
+
+Valide une série de requêtes réelles, dont « ثمن زفت السطح », « سيما », « رملة » et une référence fabricant. Compare résultats pertinents, erreurs et temps de réponse. Prévois le suivi des recherches sans résultat sans enregistrer de données personnelles inutiles.
+
+FIN DU PROMPT
+
+============================================================
+20 — FICHES TROP PAUVRES, IMAGES ET ATTRIBUTS MANQUANTS
+Priorité : P1/P2. Dépendances : prompts 09, 10 et 13.
+============================================================
+
+DÉBUT DU PROMPT
+
+Enrichis les fiches commerciales prioritaires de Boukir Diamond. Les produits ciment/bitume examinés utilisaient des descriptions SEO de secours ; la fiche DANOSA 6696 avait des descriptions FR/AR vides. Mesure l'état actuel sans généraliser cet échantillon à tout le catalogue.
+
+Définis des attributs utiles par famille : marque/référence et conditionnement pour ciment ; type et unité pour sable ; dimensions, usage et finition pour carrelage ; épaisseur, conditionnement et usage pour membranes ; diamètre, support et compatibilité pour outils. Réutilise les données existantes et les notices fabricant officielles vérifiées.
+
+Complète les produits prioritaires avec un texte propre FR/AR, images réelles, alt descriptifs, dimensions d'image et fiche technique lorsqu'elle existe. Conserve la cohérence nom/prix/unité. N'invente aucune conformité, compatibilité, photo de produit ou performance technique. Les données absentes doivent rester identifiées comme manquantes.
+
+Vérifie images cassées, lisibilité mobile/RTL, contenu serveur, métadonnées, cohérence des attributs et sélection de variantes. Fournis une liste de fiches améliorées et un tableau des éléments restant à obtenir du magasin ou du fabricant.
+
+FIN DU PROMPT
+
+============================================================
+21 — LIVRAISON ET PROMESSES COMMERCIALES TROP GÉNÉRALES
+Priorité : P2. Dépendances : prompts 12, 13 et 17.
+============================================================
+
+DÉBUT DU PROMPT
+
+Rends les informations de livraison et de paiement de Boukir Diamond précises et cohérentes. L'audit a observé des promesses générales de livraison partout au Maroc et plusieurs moyens de paiement, sans validation de leur application à toutes les familles. Vérifie le fonctionnement réel du checkout et les règles métier disponibles.
+
+Crée ou complète une page livraison Tanger FR/AR et les informations nationales applicables. Distingue produits expédiables et matériaux lourds : zone, frais, minimum, délai, retrait, accès camion, manutention et déchargement selon données confirmées. Ne promets pas livraison gratuite ou 24 h sans règle réelle correspondante.
+
+Relie les fiches et le panier à cette information. Pour les quantités ou zones nécessitant un devis, explique les informations à fournir et réutilise le parcours existant. Affiche uniquement les moyens de paiement opérationnels pour la commande concernée.
+
+Valide un produit léger, un matériau lourd, retrait, zone desservie et zone nécessitant un devis. Vérifie la même promesse du catalogue au récapitulatif de commande. Documente les règles commerciales à confirmer avant publication.
+
+FIN DU PROMPT
+
+============================================================
+22 — FICHE GOOGLE BUSINESS PROFILE À CONTRÔLER
+Priorité : locale. Vérification proposée, audit du compte non réalisé.
+============================================================
+
+DÉBUT DU PROMPT
+
+Vérifie et prépare l'optimisation de la fiche Google Business Profile de Boukir Diamond à Tanger en lien avec https://boukirdiamond.com. Le rapport contient un lien Maps existant, mais n'a pas audité les paramètres ou statistiques du compte. Retrouve la bonne fiche ; ne crée pas de doublon.
+
+Contrôle nom réel d'enseigne, catégorie principale disponible correspondant à l'activité, catégories secondaires utiles, adresse, position Maps, téléphones, horaires, URL du site et photos. Vérifie la graphie CONSTUCTION mentionnée dans l'audit par rapport à la vraie enseigne. Ne surcharge pas le nom de mots-clés.
+
+Prépare une description locale exacte, une sélection de photos nécessaires et des produits/services correspondant à l'offre. Propose un processus de demande d'avis honnêtes sans récompense ni sélection des seuls clients satisfaits. Vérifie les règles Google actuelles.
+
+Si le compte est accessible et que les modifications sont autorisées dans la tâche, applique les changements vérifiés. Sinon, livre les champs exacts à compléter dans un document prêt à utiliser, et identifie seulement les accès/informations manquants. Ne publie pas de messages clients ou de demandes d'avis sans autorisation d'envoi.
+
+FIN DU PROMPT
+
+============================================================
+23 — VOLUMES DE RECHERCHE RÉELS NON MESURÉS
+Priorité : mesure. Dépend de l'accès aux données Google.
+============================================================
+
+DÉBUT DU PROMPT
+
+Mesure et hiérarchise les mots-clés de Boukir Diamond à partir de docs/seo-2026-09-08/mots-cles-candidats.json. Il contient 201 expressions candidates, dont 55 observées dans les suggestions Google ; aucun volume mensuel n'a été mesuré. Ne transforme pas les suggestions en estimation inventée de popularité.
+
+Utilise les données autorisées Google Ads Keyword Planner ou des exports disponibles. Mesure séparément Tanger ville, région Tanger-Tétouan-Al Hoceïma et Maroc sur les 12 derniers mois complets. Conserve la période, le réseau, le ciblage et les paramètres exacts. Distingue français, arabe et variantes proches regroupées.
+
+Produis un tableau avec expression, famille, intention, volume estimé et source, saisonnalité, concurrence publicitaire, URL cible et pertinence catalogue. La concurrence Ads n'est pas une difficulté SEO. Ne double-compte pas les variantes déjà regroupées. Utilise Search Console pour la visibilité de notre site, pas comme mesure de tout le marché.
+
+Classe les opportunités par demande mesurée, adéquation à l'offre, marge et livraison. Si l'accès manque, prépare l'import et le modèle d'export utilisables immédiatement ; conserve les valeurs en « non mesuré » et indique la donnée exacte nécessaire pour terminer.
+
+FIN DU PROMPT
+
+============================================================
+24 — INDEXATION ET CONVERSIONS À MESURER
+Priorité : mesure. L'absence de suivi n'a pas été démontrée.
+============================================================
+
+DÉBUT DU PROMPT
+
+Vérifie les outils de mesure déjà installés sur Boukir Diamond, puis complète seulement les manques. L'audit n'avait pas accès à Search Console, Analytics ou aux statistiques Google Business Profile ; ne suppose pas que ces outils sont absents.
+
+Prépare une mesure Search Console par page, requête, pays, appareil, marque/hors marque et langue FR/AR. Vérifie sitemap et indexation d'un échantillon de catégories/produits. Ne présente pas le nombre de résultats de l'opérateur site: comme le nombre réel de pages indexées et n'invente pas de filtre Search Console par ville.
+
+Pour le site, réutilise l'outil analytics existant pour suivre consultation produit, ajout panier, début checkout, achat réel, demande de devis, clic WhatsApp/téléphone et recherche sans résultat. Évite les événements doublés, les revenus déclenchés avant confirmation et l'envoi de données personnelles dans les événements. Un clic WhatsApp n'est pas une vente.
+
+Valide les événements en mode test et crée un tableau mensuel : clics organiques hors marque FR/AR, indexation, demandes qualifiées, ventes/revenus/marge si disponibles. Documente les accès et rapprochements commerciaux nécessaires sans créer de compte ni modifier la production à l'aveugle.
+
+FIN DU PROMPT
+
+============================================================
+25 — PERFORMANCE MOBILE À MESURER AVANT OPTIMISATION
+Priorité : diagnostic. Aucun score de terrain dans l'audit initial.
+============================================================
+
+DÉBUT DU PROMPT
+
+Mesure les performances mobiles de Boukir Diamond sur accueil, catégorie, boutique et produit, en FR/AR. L'audit initial n'a pas produit de score PageSpeed ni de Core Web Vitals de terrain ; les durées de GET ne sont pas des Core Web Vitals. Commence par un état de référence.
+
+Utilise des mesures de laboratoire reproductibles et des données terrain CrUX/Search Console si disponibles. Distingue métrique d'URL et métrique d'origine, appareil et période. Examine les images principales, scripts, polices, carte Maps, widgets, rendu serveur, stabilité de mise en page et interactions du catalogue.
+
+Corrige les causes mesurées qui ont le plus d'impact, sans casser panier, variantes, authentification ou arabe. Préserve la qualité des images produit et le fonctionnement de l'interface. Ne refonds pas tout le site sans preuve de nécessité.
+
+Compare avant/après dans les mêmes conditions. Vérifie LCP, CLS et réactivité ; ne prétends pas valider l'INP terrain à partir d'un unique chargement sans interactions. Utilise les seuils Google actuels et distingue gains mesurés et hypothèses restant à confirmer.
+
+FIN DU PROMPT
+
+============================================================
+26 — CONTENUS COMMERCIAUX, MAILLAGE ET INTENTIONS
+Priorité : amélioration. Dépendances : structure et données fiables.
+============================================================
+
+DÉBUT DU PROMPT
+
+Développe les contenus et le maillage de Boukir Diamond à partir du rapport SEO et de l'annexe des mots-clés. Vérifie les pages déjà créées pour éviter les doublons. Sépare achat de matériau, achat d'outil et recherche d'un Maalem pour la pose.
+
+Attribue une destination principale FR/AR à chaque besoin commercial : ciment, sable, carrelage réellement vendu, outils de carreleur, bitume/étanchéité et livraison. Relie accueil, catégories, sous-catégories, produits, guides et services réels. Ajoute ou corrige le fil d'Ariane visible et son schéma cohérent.
+
+Prépare 6 à 8 guides utiles sur les unités/prix, choix de produits et préparation de devis à Tanger. Utilise des photos ou cas clients réels et les notices officielles pour les informations techniques. Évite les pages clonées par ville et la répétition excessive de mots-clés. N'invente pas prix, stock, chantier réalisé, qualification ou garantie.
+
+Intègre les contenus suffisamment documentés et conserve les autres en brouillon explicite. Vérifie que chaque page sert une intention distincte, contient des liens utiles, respecte FR/AR et mène vers une offre existante. Livre le mapping mots-clés → pages et les contenus réalisés.
+
+FIN DU PROMPT
+
+============================================================
+27 — FLUX MERCHANT CENTER : OPPORTUNITÉ À ÉVALUER
+Priorité : amélioration. Dépendances : prompts 12 à 17 et 21.
+============================================================
+
+DÉBUT DU PROMPT
+
+Évalue puis prépare l'intégration Merchant Center de Boukir Diamond. Il s'agit d'une proposition du rapport, pas d'une panne confirmée. Vérifie les règles officielles actuelles, l'éligibilité du pays/compte et l'existence d'un flux déjà configuré.
+
+Si adapté, crée un flux issu de la même source fiable que les fiches produits : identifiant stable, titre, description, URL canonique, image, prix, devise, disponibilité, marque/référence et informations requises. Prévois les langues et variantes selon les exigences applicables. Exclue les produits dont prix, commande ou livraison ne permettent pas une offre valide.
+
+Ne fournis pas de faux GTIN et ne publie pas une offre à zéro pour un devis. Prévois actualisation, invalidation après changement de prix/stock, diagnostics et contrôle de cohérence avec la page de destination. Réutilise les politiques de livraison/retour vérifiées.
+
+Teste un petit lot de produits représentatifs avant extension. Livre le flux, la configuration et les diagnostics disponibles. Si le compte ou l'autorisation de publication manque, fournis un livrable prêt à connecter et explique précisément ce qui reste à faire. Ne garantis pas d'affichage gratuit ou de classement.
+
+FIN DU PROMPT
+
+============================================================
+28 — DEVIS ET CALCULATEURS ADAPTÉS AUX CHANTIERS
+Priorité : amélioration produit proposée, pas défaut prouvé.
+============================================================
+
+DÉBUT DU PROMPT
+
+Améliore la préparation d'achat chantier dans Boukir Diamond en réutilisant les fonctions existantes. L'audit propose une liste de chantier, un devis et des calculateurs d'unités pour mieux convertir le trafic matériaux/outillage. Commence par vérifier ce qui existe dans panier, devis et commandes.
+
+Ajoute progressivement une liste de produits avec quantités/unités, un devis récapitulatif et les informations de livraison utiles à Tanger. Pour les carreaux, propose un calcul m² → boîtes seulement si le conditionnement est connu. Pour le sable, calcule un volume à partir des dimensions sans inventer une conversion en tonnes ou en capacité de camion.
+
+Affiche les hypothèses, l'arrondi et les paramètres modifiables. Distingue estimation, devis et commande confirmée. Préserve les prix commerciaux, le minimum d'achat et les règles de livraison. Une action WhatsApp doit ouvrir un brouillon de message pour le client ; n'envoie pas de message automatiquement.
+
+Vérifie FR/AR, décimales, arrondis, unités, champs incomplets, usage mobile et cohérence avec le panier. Livrer une première version fonctionnelle limitée aux cas avec données fiables, puis les besoins de données pour les autres familles.
+
+FIN DU PROMPT
+
+============================================================
+29 — RECETTE SEO FINALE APRÈS CORRECTIONS
+Priorité : contrôle final. Après les lots réellement réalisés.
+============================================================
+
+DÉBUT DU PROMPT
+
+Réalise une recette des corrections SEO de Boukir Diamond en comparant l'état actuel au dossier docs/seo-2026-09-08. Vérifie les corrections réellement présentes ; ne traite pas les recommandations non exécutées comme terminées.
+
+Contrôle domaine www/sans www, HTTPS, accès API, HTML initial, canonical, hreflang réciproques, robots, sitemap produits/catégories, pagination et 404 réelles. Vérifie accueil, boutique, catégorie, marque, produit, pagination, filtre et produit absent en français/arabe. Contrôle aussi une traduction manquante et une panne API de test.
+
+Pour les fiches, compare prix/unité/disponibilité entre API, HTML, DOM, JSON-LD et panier. Vérifie images, liens de confiance, coordonnées locales et synonymes de recherche. Préserve les routes privées et les changements hors périmètre. Effectue les vérifications fonctionnelles sans passer de commande réelle ni envoyer de message.
+
+Si la production est accessible, collecte des preuves datées sans confondre build local et site déployé. Utilise Search Console/test de résultats enrichis si disponibles ; documente sinon les URL à contrôler et les accès manquants.
+
+Livre un bilan problème par problème : corrigé et vérifié, corrigé localement mais non déployé, à confirmer ou restant. Ajoute preuves, fichiers concernés et prochaines actions. Aucun score inventé, aucune promesse de première place et aucun constat historique présenté comme état actuel sans nouvelle vérification.
+
+FIN DU PROMPT
+
+FIN DU FICHIER

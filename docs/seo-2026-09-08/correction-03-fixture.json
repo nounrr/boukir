@@ -1,0 +1,16 @@
+{
+  "checkedAt": "2026-09-09T18:15:15.325Z",
+  "fixture": true,
+  "api": "https://boukirdiamond.com",
+  "origin": "https://boukirdiamond.com",
+  "checks": [],
+  "errors": [],
+  "counts": {
+    "eligibleProducts": 3737,
+    "productUrls": 14948,
+    "services": 1,
+    "maalems": 1,
+    "urls": 14976,
+    "bytes": 7254317
+  }
+}

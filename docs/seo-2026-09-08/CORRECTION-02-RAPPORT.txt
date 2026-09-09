@@ -1,0 +1,113 @@
+BOUKIR DIAMOND — CORRECTION 02 — 9 SEPTEMBRE 2026
+
+STATUT
+Corrections réalisées dans le dépôt. Aucune modification du serveur public.
+La validation du déploiement reste nécessaire. Origine : https://boukirdiamond.com.
+
+CONSTAT PUBLIC REPRODUIT
+- HTTPS apex et www répondent 200 sur les pages FR/AR contrôlées ; www ne redirige pas.
+- OPTIONS /api/categories avec Origin apex, www ou un domaine étranger : 403.
+  Les GET du navigateur sur le même domaine apex fonctionnent malgré ce refus
+  des OPTIONS, car ils ne nécessitent pas de prérequête inter-origine.
+- En-tête Server : nginx/1.24.0 (Ubuntu). Réponse d'erreur compatible avec la
+  politique CORS Express du dépôt. La configuration et la révision effectivement
+  déployées ne sont pas accessibles ici : pas de certitude sur leurs valeurs.
+- www/fr/shop affiche maintenant « Impossible de charger les produits ».
+  L'ancienne exception générale ne se reproduit pas et les preuves disponibles
+  ne contiennent pas sa pile : sa cause précise n'est donc pas identifiée.
+
+CHANGEMENTS DU LOT 02
+backend/utils/corsOrigins.js
+  Autorise explicitement les deux origines HTTPS de la boutique. Préserve les
+  origines supplémentaires CORS_ORIGINS, FRONTEND_URL et PUBLIC_BASE_URL.
+  Refuse les origines malformées, avec chemin, identifiants ou protocole non HTTP.
+  Aucun joker avec credentials. La politique est partagée avec Socket.IO.
+backend/.env.example
+  Documente la liste exacte des origines et la conservation de l'origine admin.
+backend/tests/cors-origins.test.mjs
+  Teste la liste et le middleware cors réel sans lancer l'API ni la base de données.
+ecom/next.config.ts
+  Redirection permanente www vers l'origine canonique du lot 01.
+  Les routes FR/AR et les paramètres sont conservés. Nginx doit aussi rediriger
+  www pour couvrir API, fichiers et requêtes ne passant pas par Next.js.
+ecom/src/components/shop/products-list.tsx
+ecom/app/[locale]/(shop)/shop/shop-page-client.tsx
+  Réessayer relance la requête RTK Query, conserve les filtres et désactive le
+  bouton pendant la requête ; plus de rechargement complet du navigateur.
+ecom/app/[locale]/(shop)/shop/error.tsx
+  Une exception de rendu dans la boutique dispose d'un écran traduit avec reset.
+  Cette protection ne prouve pas la résolution de l'ancienne exception inconnue.
+ecom/tests/canonical-host.test.mjs
+  Utilise le moteur de test Next.js et la configuration réelle, sans serveur HTTP.
+
+COOKIES ET API
+Le code de connexion définit accessToken HttpOnly, Secure en production,
+SameSite=Lax, Path=/, sans Domain : cookie limité à l'hôte. Le cookie public
+NEXT_LOCALE observé est aussi limité à l'hôte, Path=/, SameSite=Lax.
+Ne pas élargir Domain à tous les sous-domaines. Une ancienne session www peut
+nécessiter une nouvelle connexion sur apex ; le panier anonyme localStorage
+est également propre à l'origine. Aucune migration de stockage www n'est faite.
+Le parcours testé est anonyme : aucune session authentifiée n'a été créée.
+L'API cliente utilise Authorization si connecté et les en-têtes Content-Type
+et Platform. Le middleware cors existant est avant l'authentification et répond
+aux OPTIONS ; il reflète les en-têtes demandés et ajoute Vary: Origin.
+Le proxy doit transmettre Origin et les Access-Control-Request-* sans interception.
+
+VALIDATION RÉALISÉE
+- Build final Next.js de production réussi, TypeScript et génération des pages
+  inclus. Avertissements existants : convention middleware dépréciée et données
+  baseline-browser-mapping anciennes. Aucun changement de dépendances.
+- Test CORS : accepté pour apex/www/admin explicitement déclaré ; domaines
+  étrangers, faux suffixes, null, *, localhost en production refusés.
+  Prérequêtes autorisées : Allow-Origin exact, credentials=true,
+  Allow-Headers authorization,content-type,platform et Vary: Origin.
+- Test redirections : /, /fr, /ar/shop avec query, /fr/product/7035, /ar/cart :
+  308 vers apex, chemins et query conservés, aucune redirection retour sur apex.
+- Les 6 tests SEO du lot 01 passent également.
+- Parcours PUBLIC FR puis AR : accueil, menu catégorie MATÉRIAUX DE CONSTRUCTION
+  (category_id=36), produit 7035, ajout d'une unité, ouverture du panier,
+  suppression. Aucune commande ni paiement. Panier final vide.
+- Le relevé navigateur contient les GET catégories, marques, diapositives,
+  listes de produits, catégorie 36 et produit 7035 en 200 sur apex.
+- Ces parcours vérifient la production EXISTANTE, pas l'interface locale modifiée.
+
+À APPLIQUER SUR LE SERVEUR
+1. Déployer le backend avec le changement CORS et redémarrer son service réel.
+   Conserver les origines administratives nécessaires dans CORS_ORIGINS sous
+   forme d'origines complètes sans chemin. Aucun secret n'est requis dans ce rapport.
+2. Construire et démarrer ecom avec :
+   NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com
+   NEXT_PUBLIC_API_URL=https://boukirdiamond.com
+   NODE_ENV=production
+   NEXT_PUBLIC_* est intégré au build : reconstruire, pas seulement redémarrer.
+3. Intégrer correction-02-nginx.conf.example dans les virtual hosts existants.
+   Reprendre les chemins de certificat et upstreams réels. Le certificat TLS doit
+   couvrir www : la négociation TLS précède la redirection. Les requêtes HTTPS
+   ont réussi lors de l'audit sans désactiver la vérification des certificats.
+   Garder les exceptions de renouvellement ACME et les routes API existantes.
+   Tester nginx -t puis recharger Nginx avec le gestionnaire du serveur.
+   Ne pas remplacer toute la configuration par le fragment fourni.
+4. Vérifier HTTP et HTTPS, apex et www, accueil et pages FR/AR, paramètres et
+   slash final ; www doit aboutir à apex sans boucle. Le redirect Nginx conserve
+   exactement $request_uri ; une normalisation de slash par Next peut suivre.
+5. Relancer check-hosts.mjs. Attendre 308 pour www et 204 pour les OPTIONS
+   apex/www ; le domaine étranger doit rester refusé. Contrôler aussi les GET
+   et l'absence de doubles en-têtes CORS dans le navigateur.
+6. Refaire les parcours FR/AR, puis vérifier connexion/déconnexion avec un compte
+   de test autorisé. Aucun test authentifié ni commande réelle effectué ici.
+
+LIMITES
+Le lancement d'un serveur Next local de validation a été refusé au lot 01 par
+le contrôle automatique (« blocked by policy »), y compris sur 127.0.0.1.
+Il n'a pas été contourné. Les tests sans serveur ne valident pas les règles
+Nginx, le HTML HTTP local ni les interactions avec les nouvelles corrections.
+La correction publique et la disparition définitive de l'ancienne exception
+ne sont pas affirmées. Pas d'accès au proxy pour appliquer ou exécuter nginx -t.
+
+PREUVES
+correction-02-http.json ; correction-02-panier-fr.txt ; correction-02-panier-ar.txt ;
+correction-02-reseau-panier-ar.txt ; preuves-reseau.txt et captures de l'audit initial.
+
+RÉFÉRENCES OFFICIELLES
+https://nextjs.org/docs/app/api-reference/config/next-config-js/redirects
+https://nginx.org/en/docs/http/ngx_http_rewrite_module.html#return

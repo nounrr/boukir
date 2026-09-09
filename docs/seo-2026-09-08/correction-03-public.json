@@ -1,0 +1,83 @@
+{
+  "checkedAt": "2026-09-09T19:10:33.581Z",
+  "results": [
+    {
+      "path": "/robots.txt",
+      "status": 200,
+      "body": "User-Agent: *\nAllow: /\nDisallow: /api/\nDisallow: /checkout$\nDisallow: /checkout/\nDisallow: /checkout?\nDisallow: /cart$\nDisallow: /cart/\nDisallow: /cart?\nDisallow: /orders$\nDisallow: /orders/\nDisallow: /orders?\nDisallow: /profile$\nDisallow: /profile/\nDisallow: /profile?\nDisallow: /wishlist$\nDisallow: /wishlist/\nDisallow: /wishlist?\nDisallow: /login$\nDisallow: /login/\nDisallow: /login?\nDisallow: /register$\nDisallow: /register/\nDisallow: /register?\nDisallow: /forgot-password$\nDisallow: /forgot-password/\nDisallow: /forgot-password?\nDisallow: /activate-account$\nDisallow: /activate-account/\nDisallow: /activate-account?\nDisallow: /service-requests$\nDisallow: /service-requests/\nDisallow: /service-requests?\nDisallow: /solde-historique$\nDisallow: /solde-historique/\nDisallow: /solde-historique?\nDisallow: /fr/checkout$\nDisallow: /fr/checkout/\nDisallow: /fr/checkout?\nDisallow: /fr/cart$\nDisallow: /fr/cart/\nDisallow: /fr/cart?\nDisallow: /fr/orders$\nDisallow: /fr/orders/\nDisallow: /fr/orders?\nDisallow: /fr/profile$\nDisallow: /fr/profile/\nDisallow: /fr/profile?\nDisallow: /fr/wishlist$\nDisallow: /fr/wishlist/\nDisallow: /fr/wishlist?\nDisallow: /fr/login$\nDisallow: /fr/login/\nDisallow: /fr/login?\nDisallow: /fr/register$\nDisallow: /fr/register/\nDisallow: /fr/register?\nDisallow: /fr/forgot-password$\nDisallow: /fr/forgot-password/\nDisallow: /fr/forgot-password?\nDisallow: /fr/activate-account$\nDisallow: /fr/activate-account/\nDisallow: /fr/activate-account?\nDisallow: /fr/service-requests$\nDisallow: /fr/service-requests/\nDisallow: /fr/service-requests?\nDisallow: /fr/solde-historique$\nDisallow: /fr/solde-historique/\nDisallow: /fr/solde-historique?\nDisallow: /ar/checkout$\nDisallow: /ar/checkout/\nDisallow: /ar/checkout?\nDisallow: /ar/cart$\nDisallow: /ar/cart/\nDisallow: /ar/cart?\nDisallow: /ar/orders$\nDisallow: /ar/orders/\nDisallow: /ar/orders?\nDisallow: /ar/profile$\nDisallow: /ar/profile/\nDisallow: /ar/profile?\nDisallow: /ar/wishlist$\nDisallow: /ar/wishlist/\nDisallow: /ar/wishlist?\nDisallow: /ar/login$\nDisallow: /ar/login/\nDisallow: /ar/login?\nDisallow: /ar/register$\nDisallow: /ar/register/\nDisallow: /ar/register?\nDisallow: /ar/forgot-password$\nDisallow: /ar/forgot-password/\nDisallow: /ar/forgot-password?\nDisallow: /ar/activate-account$\nDisallow: /ar/activate-account/\nDisallow: /ar/activate-account?\nDisallow: /ar/service-requests$\nDisallow: /ar/service-requests/\nDisallow: /ar/service-requests?\nDisallow: /ar/solde-historique$\nDisallow: /ar/solde-historique/\nDisallow: /ar/solde-historique?\nDisallow: /en/checkout$\nDisallow: /en/checkout/\nDisallow: /en/checkout?\nDisallow: /en/cart$\nDisallow: /en/cart/\nDisallow: /en/cart?\nDisallow: /en/orders$\nDisallow: /en/orders/\nDisallow: /en/orders?\nDisallow: /en/profile$\nDisallow: /en/profile/\nDisallow: /en/profile?\nDisallow: /en/wishlist$\nDisallow: /en/wishlist/\nDisallow: /en/wishlist?\nDisallow: /en/login$\nDisallow: /en/login/\nDisallow: /en/login?\nDisallow: /en/register$\nDisallow: /en/register/\nDisallow: /en/register?\nDisallow: /en/forgot-password$\nDisallow: /en/forgot-password/\nDisallow: /en/forgot-password?\nDisallow: /en/activate-account$\nDisallow: /en/activate-account/\nDisallow: /en/activate-account?\nDisallow: /en/service-requests$\nDisallow: /en/service-requests/\nDisallow: /en/service-requests?\nDisallow: /en/solde-historique$\nDisallow: /en/solde-historique/\nDisallow: /en/solde-historique?\nDisallow: /zh/checkout$\nDisallow: /zh/checkout/\nDisallow: /zh/checkout?\nDisallow: /zh/cart$\nDisallow: /zh/cart/\nDisallow: /zh/cart?\nDisallow: /zh/orders$\nDisallow: /zh/orders/\nDisallow: /zh/orders?\nDisallow: /zh/profile$\nDisallow: /zh/profile/\nDisallow: /zh/profile?\nDisallow: /zh/wishlist$\nDisallow: /zh/wishlist/\nDisallow: /zh/wishlist?\nDisallow: /zh/login$\nDisallow: /zh/login/\nDisallow: /zh/login?\nDisallow: /zh/register$\nDisallow: /zh/register/\nDisallow: /zh/register?\nDisallow: /zh/forgot-password$\nDisallow: /zh/forgot-password/\nDisallow: /zh/forgot-password?\nDisallow: /zh/activate-account$\nDisallow: /zh/activate-account/\nDisallow: /zh/activate-account?\nDisallow: /zh/service-requests$\nDisallow: /zh/service-requests/\nDisallow: /zh/service-requests?\nDisallow: /zh/solde-historique$\nDisallow: /zh/solde-historique/\nDisallow: /zh/solde-historique?\n\nHost: https://boukirdiamond.com\nSitemap: https://boukirdiamond.com/sitemap.xml\n"
+    },
+    {
+      "path": "/sitemap.xml",
+      "status": 500,
+      "urls": [],
+      "products": 0
+    },
+    {
+      "path": "/api/ecommerce/products/sitemap",
+      "status": 500,
+      "keys": [
+        "message"
+      ],
+      "message": "Unknown column 'NaN' in 'where clause'"
+    },
+    {
+      "path": "/api/services/sitemap",
+      "status": 500,
+      "keys": [
+        "message"
+      ],
+      "message": "Unknown column 's.is_published' in 'where clause'"
+    },
+    {
+      "path": "/api/maalems/sitemap",
+      "status": 200,
+      "keys": [
+        "maalems"
+      ]
+    },
+    {
+      "path": "/api/ecommerce/products?per_page=1&page=1",
+      "status": 200,
+      "pagination": {
+        "current_page": 1,
+        "per_page": 1,
+        "total_items": 3676,
+        "total_pages": 3676,
+        "has_previous": false,
+        "has_next": true,
+        "from": 1,
+        "to": 1
+      },
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ]
+    },
+    {
+      "path": "/fr/product/6376",
+      "status": 200,
+      "canonical": "https://boukirdiamond.com/fr/product/6376",
+      "canonicalMatches": true
+    },
+    {
+      "path": "/fr/product/6696",
+      "status": 200,
+      "canonical": "https://boukirdiamond.com/fr/product/6696",
+      "canonicalMatches": true
+    },
+    {
+      "path": "/ar/product/6376",
+      "status": 200,
+      "canonical": "https://boukirdiamond.com/ar/product/6376",
+      "canonicalMatches": true
+    },
+    {
+      "path": "/ar/product/6696",
+      "status": 200,
+      "canonical": "https://boukirdiamond.com/ar/product/6696",
+      "canonicalMatches": true
+    }
+  ]
+}

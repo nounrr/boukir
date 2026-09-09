@@ -1,0 +1,131 @@
+BOUKIR DIAMOND — SITEMAP ET ROBOTS — 9 SEPTEMBRE 2026
+
+STATUT
+Correction locale terminée et build réussi. Aucun déploiement effectué.
+URL à soumettre après publication : https://boukirdiamond.com/sitemap.xml
+
+CONSTAT ACTUEL
+Le sitemap public répond 200 avec 20 URL, toutes sur localhost et aucun produit.
+L'API catalogue annonce aujourd'hui 3 676 produits (3 737 au précédent audit).
+Quatre pages produit contrôlées en FR/AR répondent 200, mais leurs canonical
+publics pointent encore sur localhost. Le déploiement du lot 01 est indispensable.
+Le nouvel endpoint /api/ecommerce/products/sitemap n'est pas encore déployé :
+la version publique interprète « sitemap » comme un identifiant et renvoie 500.
+L'API /api/services/sitemap renvoie 500 : colonne s.is_published absente.
+L'API /api/maalems/sitemap répond 200.
+Preuve : correction-03-public.json, relevé horodaté.
+
+CE QUI A CHANGÉ
+- backend/routes/ecommerce/productSitemap.js : export dédié public, une seule
+  requête SELECT id, updated_at, sans descriptions, images, variantes ni stocks.
+  Aucun LIMIT ni pagination implicite : export complet de cette projection légère.
+  Conditions identiques à la fiche publique : ecom_published = 1 et is_deleted
+  NULL/0. Les produits non publiés et supprimés sont exclus. Le stock nul
+  ne constitue pas un motif d'exclusion : les fiches restent publiques.
+  Aucun filtrage supplémentaire par prix n'a été inventé.
+- backend/routes/ecommerce/products.js : montage avant la route /:id.
+- ecom/src/lib/seo/sitemap-data.ts : chargement strict des trois exports et
+  génération des variantes FR, AR, EN et ZH avec alternates réciproques.
+- ecom/app/sitemap.ts : utilise l'origine centralisée du lot 01 ; ne masque plus
+  les pannes par un résultat réduit aux pages statiques.
+- ecom/app/robots.ts : URL sitemap et host canoniques ; exclusion des parcours
+  privés dans toutes les langues, y compris activation, demandes et historique.
+  Les frontières de chemins empêchent de bloquer par préfixe une future page
+  publique dont le nom commencerait par celui d'une route privée.
+
+PAGES ET DATES
+Sont conservés : accueil, boutique, services, artisans, contact et les fiches
+service/artisan répondant aux critères de visibilité de leurs endpoints existants.
+Ces derniers exigent notamment publication/activité ou profil approuvé et non
+supprimé ; leurs requêtes de visibilité ne sont pas assouplies.
+Aucune route éditoriale catégorie/marque n'est encore créée dans l'application.
+Les liens actuels vers /shop?category_id=... ou les marques filtrées ne sont
+donc pas ajoutés. Le lot 04 devra ajouter uniquement ses véritables nouvelles
+pages canoniques, une fois créées et admissibles, avec leurs dates éditoriales.
+Recherche interne, filtres, panier, comptes et pages privées absents du sitemap.
+Robots.txt ne remplace ni les protections d'accès ni noindex ; les filtres ne sont
+pas globalement bloqués, pour laisser les robots lire leurs futurs signaux du lot 04.
+
+lastModified utilise exclusivement updated_at fourni par la base. Une date
+manquante est omise, jamais remplacée par la date du jour. Une date invalide
+provoque un échec explicite. Les pages statiques n'ont plus de lastModified
+artificiel. Le code ne prétend pas disposer d'une date globale d'édition couvrant
+toutes les tables liées ; les dates sont celles des enregistrements exportés.
+
+STRATÉGIE EN CAS DE PANNE
+Le sitemap est dynamique. Chaque requête lit trois exports légers avec un délai
+maximum de 15 secondes par appel. Il n'y a aucun accès aux descriptions produits.
+Une réponse non 200, un schéma invalide, un identifiant dupliqué, un total produit
+incohérent ou un catalogue produit vide fait échouer la génération : HTTP 500,
+au lieu d'un 200 contenant presque uniquement l'accueil et la boutique.
+Les listes service/artisan vides sont acceptées si l'API répond correctement.
+La reprise est automatique au prochain appel réussi ; aucune écriture de snapshot
+persistant n'est présumée sur l'hébergement. Surveiller les réponses 5xx du sitemap
+et les erreurs « Sitemap: ... » côté serveur. Ne pas intercepter ces erreurs avec
+une page de succès, ni remplacer les exports en panne par [].
+Les anciens helpers tolérants de service-requests.ts ne sont plus utilisés par
+le sitemap. Cette stratégie privilégie un échec visible à une liste incomplète.
+
+DIMENSIONNEMENT ET COMPTAGES
+Un sitemap suffit actuellement. La limite est 50 000 URL ou 50 Mo non compressés.
+Le générateur refuse de dépasser le nombre d'URL et applique une marge de taille.
+Il faut alors ajouter un index et plusieurs fichiers avant de publier le dépassement.
+Test sur données SIMULÉES (pas un export de production) :
+  3 737 produits admissibles -> 14 948 URL produits = 3 737 x 4 langues.
+  Avec 5 pages statiques, 1 service et 1 artisan simulés : 14 976 URL au total.
+  XML : 7 254 317 octets, 59 904 alternates, analysé par un parseur XML .NET.
+  Unicité, origine HTTPS, langues, stabilité des dates et totaux vérifiés.
+Le catalogue public actuel de 3 676 produits ferait 14 704 URL produits à état
+identique. Ce total est une projection : le nouvel export réel n'est pas encore
+accessible. Aucun rapprochement complet en production n'est donc affirmé.
+
+CONTRÔLES EXÉCUTÉS
+- node --test backend/routes/ecommerce/productSitemap.test.js : 2 tests réussis.
+  Projection minimale, export au-delà de la première page, gardes de publication,
+  suppression et propagation des erreurs DB. Base simulée ; aucune écriture DB.
+- node --test ecom/tests/sitemap.test.mjs : 3 tests réussis.
+  Génération complète, dates stables, erreurs réseau/HTTP, listes absentes,
+  troncature, doublons, catalogue vide, dates invalides et limite 50 000.
+- npm run build dans ecom, avec les deux variables publiques sur le domaine
+  canonique : réussi, TypeScript compris. robots.txt généré contient bien
+  Sitemap: https://boukirdiamond.com/sitemap.xml ; sitemap.xml reste dynamique.
+- XML de test produit par le sérialiseur réel de Next.js, puis analysé via .NET.
+- HTTP public : /robots.txt, /sitemap.xml, trois exports, une page catalogue
+  limitée à 1 produit pour son total, produits 6376 et 6696 en FR/AR.
+  Les statuts produit sont 200 ; leurs canonical publics échouent encore au contrôle.
+- Aucun serveur local lancé : le contrôle automatique avait refusé ce lancement
+  au lot 01 (« blocked by policy »). Validation HTTP locale toujours non réalisée.
+
+ORDRE DE DÉPLOIEMENT
+1. Résoudre la migration manquante des services AVANT de publier ce sitemap.
+   Fichier existant : backend/migrations/2026-08-12-zzzz-kan-24-public-services.sql.
+   Il ajoute is_published et un index, et publie aussi certains services existants
+   via un UPDATE. Vérifier les lignes concernées et l'état des migrations avant
+   de l'appliquer ; ne pas le réexécuter aveuglément. Aucun SQL exécuté ici.
+2. Déployer le backend avec /api/ecommerce/products/sitemap et redémarrer son
+   service. Vérifier 200 et un export complet pour les trois endpoints.
+3. Déployer ecom avec les lots 01/02 et ces changements, en reconstruisant avec :
+   NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com
+   NEXT_PUBLIC_API_URL=https://boukirdiamond.com
+   NODE_ENV=production
+4. Depuis ecom, exécuter :
+   node scripts/check-sitemap.mjs --api=https://boukirdiamond.com --output=sitemap-verification
+   Sans --fixture : charge le vrai export, compare son total à N x 4 URL produits,
+   produit un XML et un rapport, teste les produits premier/milieu/dernier FR/AR
+   pour leur statut 200, canonical exact et absence de noindex.
+5. Télécharger aussi le sitemap réellement servi et le comparer au fichier
+   généré à catalogue stable ; vérifier Content-Type XML, encodage UTF-8,
+   unicité et absence de localhost. Vérifier la redirection www et robots.txt.
+6. Soumettre https://boukirdiamond.com/sitemap.xml dans Search Console.
+   Contrôler lecture réussie, nombre d'URL découvertes, exclusions et canonical
+   choisi par Google sur quelques produits FR/AR. Une soumission ne garantit
+   ni l'indexation de toutes les pages ni une position dans les résultats.
+
+FICHIERS DE PREUVE
+correction-03-public.json : état HTTP réel.
+correction-03-api-actuelle.json : échec explicite du chargeur sur l'API réelle.
+correction-03-fixture.xml / .json : DONNÉES SIMULÉES, ne jamais publier ce XML.
+correction-03-xml-validation.json : analyse XML du fichier de test.
+
+SOURCE OFFICIELLE
+https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap

@@ -1,0 +1,1010 @@
+{
+  "capturedAt": "2026-09-08T20:07:43.181Z",
+  "results": [
+    {
+      "url": "https://boukirdiamond.com/api/categories",
+      "status": 200,
+      "keys": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32",
+        "33",
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "39",
+        "40",
+        "41",
+        "42",
+        "43",
+        "44",
+        "45",
+        "46",
+        "47",
+        "48",
+        "49",
+        "50",
+        "51",
+        "52",
+        "53",
+        "54",
+        "55",
+        "56",
+        "57",
+        "58",
+        "59",
+        "60",
+        "61",
+        "62",
+        "63",
+        "64",
+        "65",
+        "66",
+        "67",
+        "68",
+        "69",
+        "70",
+        "71",
+        "72",
+        "73",
+        "74",
+        "75",
+        "76",
+        "77",
+        "78"
+      ],
+      "sample": [
+        {
+          "id": 129,
+          "nom": "OUTILS DE PRÉPARATION & TEXTURATION DES SURFACES",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 128,
+          "nom": "EXTRACTEURS",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 127,
+          "nom": "POMPES À EAU",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 126,
+          "nom": "OUTILS D’ÉTANCHÉITÉ",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 125,
+          "nom": "OUTILS POUR MONOCOUCHE & AUTONIVELANT",
+          "nom_ar": null,
+          "parent_id": 13
+        },
+        {
+          "id": 124,
+          "nom": "ruban",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 123,
+          "nom": "REGARDS & COUVERCLES",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 121,
+          "nom": "Profilés d’angle PVC & inox",
+          "nom_ar": null,
+          "parent_id": 119
+        },
+        {
+          "id": 120,
+          "nom": "Profilés de carrelage",
+          "nom_ar": null,
+          "parent_id": 119
+        },
+        {
+          "id": 119,
+          "nom": "PROFILÉS DE CARRELAGE & PROFILÉS D’ANGLE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 118,
+          "nom": "DRAINAGE & ÉVACUATION DES EAUX",
+          "nom_ar": null,
+          "parent_id": 36
+        },
+        {
+          "id": 117,
+          "nom": "DISQUES POUR BÉTON ARMÉ",
+          "nom_ar": null,
+          "parent_id": 112
+        },
+        {
+          "id": 116,
+          "nom": "DISQUES POUR BÉTON",
+          "nom_ar": null,
+          "parent_id": 112
+        },
+        {
+          "id": 115,
+          "nom": "DISQUES POUR ALUMINIUM",
+          "nom_ar": null,
+          "parent_id": 112
+        },
+        {
+          "id": 114,
+          "nom": "DISQUES POUR ACIER",
+          "nom_ar": null,
+          "parent_id": 112
+        },
+        {
+          "id": 113,
+          "nom": "DISQUES POUR BOIS",
+          "nom_ar": null,
+          "parent_id": 112
+        },
+        {
+          "id": 112,
+          "nom": "DISQUES DIAMANTÉS & ABRASIFS DE DÉCOUPE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 111,
+          "nom": "PROFILÉS LED",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 109,
+          "nom": "Nettoyage et Cristallisation",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 108,
+          "nom": "MATIERE PEINTURE",
+          "nom_ar": null,
+          "parent_id": 72
+        },
+        {
+          "id": 107,
+          "nom": "SILICONE SEALANT",
+          "nom_ar": "سيليكون",
+          "parent_id": null
+        },
+        {
+          "id": 106,
+          "nom": "SÉCURITÉ & PROTECTION",
+          "nom_ar": "الأمن والحماية",
+          "parent_id": 10
+        },
+        {
+          "id": 105,
+          "nom": "MANUTENTION",
+          "nom_ar": "المناولة",
+          "parent_id": 10
+        },
+        {
+          "id": 103,
+          "nom": "ACCESSOIRES DES OUTILS ELECRIQUES",
+          "nom_ar": "إكسسوارات أدوات كهربائية",
+          "parent_id": 10
+        },
+        {
+          "id": 96,
+          "nom": "MACHINES BETON & OUTILLAGE",
+          "nom_ar": "آلات الخرسانة والأدوات",
+          "parent_id": null
+        },
+        {
+          "id": 92,
+          "nom": "DISQUE DE DECOUPE",
+          "nom_ar": "قرص تقطيع",
+          "parent_id": 52
+        },
+        {
+          "id": 91,
+          "nom": "MEULES DIAMANTE",
+          "nom_ar": null,
+          "parent_id": 52
+        },
+        {
+          "id": 90,
+          "nom": "SCIE CLOCHE DIAMANTE",
+          "nom_ar": null,
+          "parent_id": 52
+        },
+        {
+          "id": 89,
+          "nom": "APPAREILS DE MESURE",
+          "nom_ar": null,
+          "parent_id": 10
+        },
+        {
+          "id": 88,
+          "nom": "PERFILS DE CARRELAGE",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 87,
+          "nom": "GROUPE ÉLECTROGÈNE",
+          "nom_ar": null,
+          "parent_id": 12
+        },
+        {
+          "id": 86,
+          "nom": "SERRURES & Cadenas",
+          "nom_ar": null,
+          "parent_id": 80
+        },
+        {
+          "id": 85,
+          "nom": "MATÉRIAUX DE FIXATION",
+          "nom_ar": null,
+          "parent_id": 80
+        },
+        {
+          "id": 84,
+          "nom": "CLIPS DE CARRELAGE",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 83,
+          "nom": "ÉCHELLES",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 82,
+          "nom": "OUTILS DE NETTOYAGE",
+          "nom_ar": null,
+          "parent_id": 10
+        },
+        {
+          "id": 81,
+          "nom": "OUTILS DE PEINTURE",
+          "nom_ar": null,
+          "parent_id": 72
+        },
+        {
+          "id": 80,
+          "nom": "QUINCAILLERIE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 79,
+          "nom": "JARDINAGE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 77,
+          "nom": "MORTIERS & SUPPORTS TECHNIQUES",
+          "nom_ar": null,
+          "parent_id": 36
+        },
+        {
+          "id": 76,
+          "nom": "MASTIQUE ET JOINT",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 75,
+          "nom": "ÉTANCHÉITÉ & IMPERMEABILISATION",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 74,
+          "nom": "MATERIAL DE CONSTRUCTION",
+          "nom_ar": null,
+          "parent_id": 36
+        },
+        {
+          "id": 73,
+          "nom": "MATIERE DE CONSTRUCTION",
+          "nom_ar": null,
+          "parent_id": 36
+        },
+        {
+          "id": 72,
+          "nom": "PEINTURE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 71,
+          "nom": "DISQUE ABRASIF carrelage & marbre",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 70,
+          "nom": "OUTILLAGE À MAIN DE CARRELAGE",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 69,
+          "nom": "OUTILS ELECTRIQUE DE CARRELAGE",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 67,
+          "nom": "SPECIALE EN MENUISERIE",
+          "nom_ar": null,
+          "parent_id": 13
+        },
+        {
+          "id": 65,
+          "nom": "SPECIALE EN ELECTRICITE",
+          "nom_ar": null,
+          "parent_id": 13
+        },
+        {
+          "id": 64,
+          "nom": "SPECIALE EN ELECTRICITE",
+          "nom_ar": null,
+          "parent_id": 12
+        },
+        {
+          "id": 63,
+          "nom": "GENERAL",
+          "nom_ar": null,
+          "parent_id": 13
+        },
+        {
+          "id": 62,
+          "nom": "SPECIALE EN SOUDEUR",
+          "nom_ar": null,
+          "parent_id": 12
+        },
+        {
+          "id": 61,
+          "nom": "SPECIALE EN MENUISERIE",
+          "nom_ar": null,
+          "parent_id": 12
+        },
+        {
+          "id": 60,
+          "nom": "GENERAL",
+          "nom_ar": null,
+          "parent_id": 12
+        },
+        {
+          "id": 59,
+          "nom": "SIPHON",
+          "nom_ar": null,
+          "parent_id": 57
+        },
+        {
+          "id": 58,
+          "nom": "EVIERS",
+          "nom_ar": null,
+          "parent_id": 57
+        },
+        {
+          "id": 57,
+          "nom": "SANITAIRE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 56,
+          "nom": "POLYETHYLENE",
+          "nom_ar": null,
+          "parent_id": 53
+        },
+        {
+          "id": 55,
+          "nom": "PPR",
+          "nom_ar": null,
+          "parent_id": 53
+        },
+        {
+          "id": 54,
+          "nom": "PVC",
+          "nom_ar": null,
+          "parent_id": 53
+        },
+        {
+          "id": 53,
+          "nom": "PLOMBERIE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 52,
+          "nom": "DISQUES DIAMANTES",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 51,
+          "nom": "MACHINES DE DÉCOUPAGE DE CARRELAGES ET DE MARBRES",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 50,
+          "nom": "COLLES DE CARRELAGE & MARBRE",
+          "nom_ar": null,
+          "parent_id": 48
+        },
+        {
+          "id": 48,
+          "nom": "ÉQUIPEMENTS DE CARRELAGES ET DE MARBRES",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 36,
+          "nom": "MATÉRIAUX DE CONSTRUCTION",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 23,
+          "nom": "APPAREILLAGE DE MESURE",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 22,
+          "nom": "ACCESSOIRES ÉLECTRIQUES",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 21,
+          "nom": "DISJONCTEURS & FUSIBLES",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 20,
+          "nom": "ENROULEURS & RALLONGES",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 19,
+          "nom": "CÂBLES",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 18,
+          "nom": "INTERRUPTEURS & PRISES",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 17,
+          "nom": "SPOTS, PANNEAUX ET AMPOULES LED",
+          "nom_ar": null,
+          "parent_id": 16
+        },
+        {
+          "id": 16,
+          "nom": "ÉLECTRICITÉ",
+          "nom_ar": "الكهرباء",
+          "parent_id": null
+        },
+        {
+          "id": 13,
+          "nom": "OUTILLAGE À MAIN",
+          "nom_ar": null,
+          "parent_id": 10
+        },
+        {
+          "id": 12,
+          "nom": "OUTILS ÉLECTRIQUES",
+          "nom_ar": null,
+          "parent_id": 10
+        },
+        {
+          "id": 10,
+          "nom": "OUTILLAGE",
+          "nom_ar": null,
+          "parent_id": null
+        },
+        {
+          "id": 1,
+          "nom": "UNCATEGORIZED",
+          "nom_ar": null,
+          "parent_id": null
+        }
+      ]
+    },
+    {
+      "url": "https://boukirdiamond.com/api/ecommerce/products?page=1&per_page=20",
+      "status": 200,
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ],
+      "pagination": {
+        "current_page": 1,
+        "per_page": 20,
+        "total_items": 3737,
+        "total_pages": 187,
+        "has_previous": false,
+        "has_next": true,
+        "from": 1,
+        "to": 20
+      },
+      "sample": [
+        {
+          "id": 7343,
+          "designation": "Gazon Golf Pro",
+          "designation_ar": "",
+          "price": 375,
+          "promo": null,
+          "category": "JARDINAGE"
+        },
+        {
+          "id": 7342,
+          "designation": "Gazon Absolute 50MM",
+          "designation_ar": null,
+          "price": 350,
+          "promo": null,
+          "category": "JARDINAGE"
+        },
+        {
+          "id": 7341,
+          "designation": "Gazon Synthetique Trevi 40MM",
+          "designation_ar": "",
+          "price": 280,
+          "promo": null,
+          "category": "JARDINAGE"
+        },
+        {
+          "id": 7340,
+          "designation": "Gazon Synthetique Essence 20MM",
+          "designation_ar": "",
+          "price": 120,
+          "promo": null,
+          "category": "JARDINAGE"
+        },
+        {
+          "id": 7339,
+          "designation": "Colle Gazon 12KG",
+          "designation_ar": "",
+          "price": 700,
+          "promo": null,
+          "category": "JARDINAGE"
+        },
+        {
+          "id": 7337,
+          "designation": "Table 14 - LAP",
+          "designation_ar": null,
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7336,
+          "designation": "Bouchon Caniveau D.110 ALCAPLAST",
+          "designation_ar": "",
+          "price": 35,
+          "promo": null,
+          "category": "SIPHON"
+        },
+        {
+          "id": 7335,
+          "designation": "Bouchon + Manchon Caniveau D.110 ALCAPLAST",
+          "designation_ar": "",
+          "price": 80,
+          "promo": null,
+          "category": "SIPHON"
+        },
+        {
+          "id": 7334,
+          "designation": "Fosible 16A",
+          "designation_ar": null,
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7333,
+          "designation": "Disjancteur Garde 380V",
+          "designation_ar": null,
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7332,
+          "designation": "Peki TER",
+          "designation_ar": null,
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7331,
+          "designation": "Porte Fosible 30 Et Fosible",
+          "designation_ar": null,
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7330,
+          "designation": "Coffret 380V",
+          "designation_ar": null,
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7329,
+          "designation": "Prise De Courant 2P + TERRE 088 Serie 24 - SIMON",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "INTERRUPTEURS & PRISES"
+        },
+        {
+          "id": 7328,
+          "designation": "Multicadre 4 Poste Horizontal 188 Serie 24 - SIMON",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "INTERRUPTEURS & PRISES"
+        },
+        {
+          "id": 7327,
+          "designation": "Multicadre 3 Poste Horizontal 188 Serie 24 - SIMON",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "INTERRUPTEURS & PRISES"
+        },
+        {
+          "id": 7326,
+          "designation": "Multicadre 2 Poste Horizontal 188 Serie 24 - SIMON",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "INTERRUPTEURS & PRISES"
+        },
+        {
+          "id": 7325,
+          "designation": "Cadre 1 Poste 188 Serie 24 - SIMON",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "INTERRUPTEURS & PRISES"
+        },
+        {
+          "id": 7324,
+          "designation": "InterPhone",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "SPECIALE EN ELECTRICITE"
+        },
+        {
+          "id": 7323,
+          "designation": "Sortie De Fil 088 Serie 24 - SIMON",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "INTERRUPTEURS & PRISES"
+        }
+      ]
+    },
+    {
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=5&search=ciment",
+      "status": 200,
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ],
+      "pagination": {
+        "current_page": 1,
+        "per_page": 5,
+        "total_items": 7,
+        "total_pages": 2,
+        "has_previous": false,
+        "has_next": true,
+        "from": 1,
+        "to": 5
+      },
+      "sample": [
+        {
+          "id": 6376,
+          "designation": "Ciment CPJ 45 HOLCIME",
+          "designation_ar": "إسمنت CPJ 45 HOLCIME",
+          "price": 84,
+          "promo": null,
+          "category": "MATIERE DE CONSTRUCTION"
+        },
+        {
+          "id": 6272,
+          "designation": "CIMENT 55 HOLCIM AWAM",
+          "designation_ar": "",
+          "price": 105.98,
+          "promo": null,
+          "category": "UNCATEGORIZED"
+        },
+        {
+          "id": 6253,
+          "designation": "Ciment CPJ 35 HOLCIME",
+          "designation_ar": "إسمنت CPJ 35 HOLCIME",
+          "price": 97.2,
+          "promo": null,
+          "category": "MATIERE DE CONSTRUCTION"
+        },
+        {
+          "id": 5943,
+          "designation": "CIMENT Blanc CIMSA PREMIERE 25 kg Ciment",
+          "designation_ar": "إسمنت أبيض جودة عالية CIMSA 25 كغ إسمنت",
+          "price": 79,
+          "promo": null,
+          "category": "MATIERE DE CONSTRUCTION"
+        },
+        {
+          "id": 5942,
+          "designation": "CIMENT BLANC AALBORG 25KG DEUXIEME اسمنت",
+          "designation_ar": "",
+          "price": 87.08,
+          "promo": null,
+          "category": "MATIERE DE CONSTRUCTION"
+        }
+      ]
+    },
+    {
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=5&search=sable",
+      "status": 200,
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ],
+      "pagination": {
+        "current_page": 1,
+        "per_page": 5,
+        "total_items": 21,
+        "total_pages": 5,
+        "has_previous": false,
+        "has_next": true,
+        "from": 1,
+        "to": 5
+      },
+      "sample": [
+        {
+          "id": 7239,
+          "designation": "Filtre A Sable DN 920 Y Compris Charge Filtrante",
+          "designation_ar": "",
+          "price": 0,
+          "promo": null,
+          "category": "UNCATEGORIZED"
+        },
+        {
+          "id": 6548,
+          "designation": "PSC SABLE FINE ASTRAL",
+          "designation_ar": null,
+          "price": 5.4,
+          "promo": null,
+          "category": "UNCATEGORIZED"
+        },
+        {
+          "id": 6547,
+          "designation": "PSC SABLE GRAS",
+          "designation_ar": null,
+          "price": 5.4,
+          "promo": null,
+          "category": "UNCATEGORIZED"
+        },
+        {
+          "id": 6426,
+          "designation": "SABLE de MER",
+          "designation_ar": "رمل البحر",
+          "price": 9.45,
+          "promo": null,
+          "category": "MATIERE DE CONSTRUCTION"
+        },
+        {
+          "id": 5646,
+          "designation": "Sable de mer lavé détail",
+          "designation_ar": "رمل مغسول",
+          "price": 337.5,
+          "promo": null,
+          "category": "MATIERE DE CONSTRUCTION"
+        }
+      ]
+    },
+    {
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=5&search=bitume",
+      "status": 200,
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ],
+      "pagination": {
+        "current_page": 1,
+        "per_page": 5,
+        "total_items": 3,
+        "total_pages": 1,
+        "has_previous": false,
+        "has_next": false,
+        "from": 1,
+        "to": 3
+      },
+      "sample": [
+        {
+          "id": 6696,
+          "designation": "DANOSA 4 mm Vert Rouleau Bitume",
+          "designation_ar": "DANOSA 4 مم أخضر لفة بيتومين",
+          "price": 89.78,
+          "promo": null,
+          "category": "ÉTANCHÉITÉ & IMPERMEABILISATION"
+        },
+        {
+          "id": 6344,
+          "designation": "Bitume DANOSA MAD 4 Protection Antibruit",
+          "designation_ar": "بيتومين DANOSA MAD 4 للحماية من الضوضاء ( زفت )",
+          "price": 599.4,
+          "promo": null,
+          "category": "UNCATEGORIZED"
+        },
+        {
+          "id": 3097,
+          "designation": "SELF-DAN 15 cm 10 m Rouleau Bitume",
+          "designation_ar": "لفة زفت SELF DAN بعرض 15 سم وطول 10 أمتار.",
+          "price": 263.25,
+          "promo": null,
+          "category": "ÉTANCHÉITÉ & IMPERMEABILISATION"
+        }
+      ]
+    },
+    {
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=5&search=carrelage",
+      "status": 200,
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ],
+      "pagination": {
+        "current_page": 1,
+        "per_page": 5,
+        "total_items": 73,
+        "total_pages": 15,
+        "has_previous": false,
+        "has_next": true,
+        "from": 1,
+        "to": 5
+      },
+      "sample": [
+        {
+          "id": 7262,
+          "designation": "Disque Diamant Carrelage 125 Rouge - MPC",
+          "designation_ar": null,
+          "price": 140,
+          "promo": null,
+          "category": "DISQUE DE DECOUPE"
+        },
+        {
+          "id": 7251,
+          "designation": "Scie Cloche Diamant Noir Pour Marbre Et Carrelage 35 - MPC",
+          "designation_ar": null,
+          "price": 150,
+          "promo": null,
+          "category": "SCIE CLOCHE DIAMANTE"
+        },
+        {
+          "id": 7246,
+          "designation": "Mallette SCIE Cloche Diamant Pour Marbre Et Carrelage 9 Pcs - MPC",
+          "designation_ar": null,
+          "price": 1300,
+          "promo": null,
+          "category": "SCIE CLOCHE DIAMANTE"
+        },
+        {
+          "id": 6946,
+          "designation": "Vibreur pour Carrelage 20 V pour Carreaux - 60 kg - 130 mm - INGCO",
+          "designation_ar": "هزاز للبلاط 20 V لـ بلاط - 60 كغ - 130 مم - INGCO",
+          "price": 808.99,
+          "promo": null,
+          "category": "OUTILS ELECTRIQUE DE CARRELAGE"
+        },
+        {
+          "id": 6928,
+          "designation": "Ventouse Vibrante pour Carrelage - SHIJING",
+          "designation_ar": "شفاطة اهتزازية للبلاط - SHIJING",
+          "price": 382.73,
+          "promo": null,
+          "category": "OUTILLAGE À MAIN DE CARRELAGE"
+        }
+      ]
+    },
+    {
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=5&search=soprema",
+      "status": 200,
+      "keys": [
+        "products",
+        "pagination",
+        "brands",
+        "filters"
+      ],
+      "pagination": {
+        "current_page": 1,
+        "per_page": 5,
+        "total_items": 1,
+        "total_pages": 1,
+        "has_previous": false,
+        "has_next": false,
+        "from": 1,
+        "to": 1
+      },
+      "sample": [
+        {
+          "id": 3943,
+          "designation": "FERCHI 4 SOPREMA m2",
+          "designation_ar": "لفافة عزل مائي بيتومينية 4 مم – SOPREMA، بالمتر المربع",
+          "price": 78.5,
+          "promo": null,
+          "category": "ÉTANCHÉITÉ & IMPERMEABILISATION"
+        }
+      ]
+    }
+  ]
+}

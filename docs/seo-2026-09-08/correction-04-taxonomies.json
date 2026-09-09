@@ -1,0 +1,646 @@
+{
+  "checkedAt": "2026-09-09T18:31:59.989Z",
+  "categories": [
+    {
+      "id": 129,
+      "nom": "OUTILS DE PRÉPARATION & TEXTURATION DES SURFACES",
+      "parent_id": null
+    },
+    {
+      "id": 128,
+      "nom": "EXTRACTEURS",
+      "parent_id": 16
+    },
+    {
+      "id": 127,
+      "nom": "POMPES À EAU",
+      "parent_id": null
+    },
+    {
+      "id": 126,
+      "nom": "OUTILS D’ÉTANCHÉITÉ",
+      "parent_id": null
+    },
+    {
+      "id": 125,
+      "nom": "OUTILS POUR MONOCOUCHE & AUTONIVELANT",
+      "parent_id": 13
+    },
+    {
+      "id": 124,
+      "nom": "ruban",
+      "parent_id": null
+    },
+    {
+      "id": 123,
+      "nom": "REGARDS & COUVERCLES",
+      "parent_id": null
+    },
+    {
+      "id": 121,
+      "nom": "Profilés d’angle PVC & inox",
+      "parent_id": 119
+    },
+    {
+      "id": 120,
+      "nom": "Profilés de carrelage",
+      "parent_id": 119
+    },
+    {
+      "id": 119,
+      "nom": "PROFILÉS DE CARRELAGE & PROFILÉS D’ANGLE",
+      "parent_id": null
+    },
+    {
+      "id": 118,
+      "nom": "DRAINAGE & ÉVACUATION DES EAUX",
+      "parent_id": 36
+    },
+    {
+      "id": 117,
+      "nom": "DISQUES POUR BÉTON ARMÉ",
+      "parent_id": 112
+    },
+    {
+      "id": 116,
+      "nom": "DISQUES POUR BÉTON",
+      "parent_id": 112
+    },
+    {
+      "id": 115,
+      "nom": "DISQUES POUR ALUMINIUM",
+      "parent_id": 112
+    },
+    {
+      "id": 114,
+      "nom": "DISQUES POUR ACIER",
+      "parent_id": 112
+    },
+    {
+      "id": 113,
+      "nom": "DISQUES POUR BOIS",
+      "parent_id": 112
+    },
+    {
+      "id": 112,
+      "nom": "DISQUES DIAMANTÉS & ABRASIFS DE DÉCOUPE",
+      "parent_id": null
+    },
+    {
+      "id": 111,
+      "nom": "PROFILÉS LED",
+      "parent_id": 16
+    },
+    {
+      "id": 109,
+      "nom": "Nettoyage et Cristallisation",
+      "parent_id": null
+    },
+    {
+      "id": 108,
+      "nom": "MATIERE PEINTURE",
+      "parent_id": 72
+    },
+    {
+      "id": 107,
+      "nom": "SILICONE SEALANT",
+      "parent_id": null
+    },
+    {
+      "id": 106,
+      "nom": "SÉCURITÉ & PROTECTION",
+      "parent_id": 10
+    },
+    {
+      "id": 105,
+      "nom": "MANUTENTION",
+      "parent_id": 10
+    },
+    {
+      "id": 103,
+      "nom": "ACCESSOIRES DES OUTILS ELECRIQUES",
+      "parent_id": 10
+    },
+    {
+      "id": 96,
+      "nom": "MACHINES BETON & OUTILLAGE",
+      "parent_id": null
+    },
+    {
+      "id": 92,
+      "nom": "DISQUE DE DECOUPE",
+      "parent_id": 52
+    },
+    {
+      "id": 91,
+      "nom": "MEULES DIAMANTE",
+      "parent_id": 52
+    },
+    {
+      "id": 90,
+      "nom": "SCIE CLOCHE DIAMANTE",
+      "parent_id": 52
+    },
+    {
+      "id": 89,
+      "nom": "APPAREILS DE MESURE",
+      "parent_id": 10
+    },
+    {
+      "id": 88,
+      "nom": "PERFILS DE CARRELAGE",
+      "parent_id": 48
+    },
+    {
+      "id": 87,
+      "nom": "GROUPE ÉLECTROGÈNE",
+      "parent_id": 12
+    },
+    {
+      "id": 86,
+      "nom": "SERRURES & Cadenas",
+      "parent_id": 80
+    },
+    {
+      "id": 85,
+      "nom": "MATÉRIAUX DE FIXATION",
+      "parent_id": 80
+    },
+    {
+      "id": 84,
+      "nom": "CLIPS DE CARRELAGE",
+      "parent_id": 48
+    },
+    {
+      "id": 83,
+      "nom": "ÉCHELLES",
+      "parent_id": null
+    },
+    {
+      "id": 82,
+      "nom": "OUTILS DE NETTOYAGE",
+      "parent_id": 10
+    },
+    {
+      "id": 81,
+      "nom": "OUTILS DE PEINTURE",
+      "parent_id": 72
+    },
+    {
+      "id": 80,
+      "nom": "QUINCAILLERIE",
+      "parent_id": null
+    },
+    {
+      "id": 79,
+      "nom": "JARDINAGE",
+      "parent_id": null
+    },
+    {
+      "id": 77,
+      "nom": "MORTIERS & SUPPORTS TECHNIQUES",
+      "parent_id": 36
+    },
+    {
+      "id": 76,
+      "nom": "MASTIQUE ET JOINT",
+      "parent_id": 48
+    },
+    {
+      "id": 75,
+      "nom": "ÉTANCHÉITÉ & IMPERMEABILISATION",
+      "parent_id": null
+    },
+    {
+      "id": 74,
+      "nom": "MATERIAL DE CONSTRUCTION",
+      "parent_id": 36
+    },
+    {
+      "id": 73,
+      "nom": "MATIERE DE CONSTRUCTION",
+      "parent_id": 36
+    },
+    {
+      "id": 72,
+      "nom": "PEINTURE",
+      "parent_id": null
+    },
+    {
+      "id": 71,
+      "nom": "DISQUE ABRASIF carrelage & marbre",
+      "parent_id": 48
+    },
+    {
+      "id": 70,
+      "nom": "OUTILLAGE À MAIN DE CARRELAGE",
+      "parent_id": 48
+    },
+    {
+      "id": 69,
+      "nom": "OUTILS ELECTRIQUE DE CARRELAGE",
+      "parent_id": 48
+    },
+    {
+      "id": 67,
+      "nom": "SPECIALE EN MENUISERIE",
+      "parent_id": 13
+    },
+    {
+      "id": 65,
+      "nom": "SPECIALE EN ELECTRICITE",
+      "parent_id": 13
+    },
+    {
+      "id": 64,
+      "nom": "SPECIALE EN ELECTRICITE",
+      "parent_id": 12
+    },
+    {
+      "id": 63,
+      "nom": "GENERAL",
+      "parent_id": 13
+    },
+    {
+      "id": 62,
+      "nom": "SPECIALE EN SOUDEUR",
+      "parent_id": 12
+    },
+    {
+      "id": 61,
+      "nom": "SPECIALE EN MENUISERIE",
+      "parent_id": 12
+    },
+    {
+      "id": 60,
+      "nom": "GENERAL",
+      "parent_id": 12
+    },
+    {
+      "id": 59,
+      "nom": "SIPHON",
+      "parent_id": 57
+    },
+    {
+      "id": 58,
+      "nom": "EVIERS",
+      "parent_id": 57
+    },
+    {
+      "id": 57,
+      "nom": "SANITAIRE",
+      "parent_id": null
+    },
+    {
+      "id": 56,
+      "nom": "POLYETHYLENE",
+      "parent_id": 53
+    },
+    {
+      "id": 55,
+      "nom": "PPR",
+      "parent_id": 53
+    },
+    {
+      "id": 54,
+      "nom": "PVC",
+      "parent_id": 53
+    },
+    {
+      "id": 53,
+      "nom": "PLOMBERIE",
+      "parent_id": null
+    },
+    {
+      "id": 52,
+      "nom": "DISQUES DIAMANTES",
+      "parent_id": 48
+    },
+    {
+      "id": 51,
+      "nom": "MACHINES DE DÉCOUPAGE DE CARRELAGES ET DE MARBRES",
+      "parent_id": 48
+    },
+    {
+      "id": 50,
+      "nom": "COLLES DE CARRELAGE & MARBRE",
+      "parent_id": 48
+    },
+    {
+      "id": 48,
+      "nom": "ÉQUIPEMENTS DE CARRELAGES ET DE MARBRES",
+      "parent_id": null
+    },
+    {
+      "id": 36,
+      "nom": "MATÉRIAUX DE CONSTRUCTION",
+      "parent_id": null
+    },
+    {
+      "id": 23,
+      "nom": "APPAREILLAGE DE MESURE",
+      "parent_id": 16
+    },
+    {
+      "id": 22,
+      "nom": "ACCESSOIRES ÉLECTRIQUES",
+      "parent_id": 16
+    },
+    {
+      "id": 21,
+      "nom": "DISJONCTEURS & FUSIBLES",
+      "parent_id": 16
+    },
+    {
+      "id": 20,
+      "nom": "ENROULEURS & RALLONGES",
+      "parent_id": 16
+    },
+    {
+      "id": 19,
+      "nom": "CÂBLES",
+      "parent_id": 16
+    },
+    {
+      "id": 18,
+      "nom": "INTERRUPTEURS & PRISES",
+      "parent_id": 16
+    },
+    {
+      "id": 17,
+      "nom": "SPOTS, PANNEAUX ET AMPOULES LED",
+      "parent_id": 16
+    },
+    {
+      "id": 16,
+      "nom": "ÉLECTRICITÉ",
+      "parent_id": null
+    },
+    {
+      "id": 13,
+      "nom": "OUTILLAGE À MAIN",
+      "parent_id": 10
+    },
+    {
+      "id": 12,
+      "nom": "OUTILS ÉLECTRIQUES",
+      "parent_id": 10
+    },
+    {
+      "id": 10,
+      "nom": "OUTILLAGE",
+      "parent_id": null
+    },
+    {
+      "id": 1,
+      "nom": "UNCATEGORIZED",
+      "parent_id": null
+    }
+  ],
+  "brands": [
+    {
+      "id": 61,
+      "nom": "SOPREMA"
+    },
+    {
+      "id": 60,
+      "nom": "MONACO"
+    },
+    {
+      "id": 59,
+      "nom": "KYNKO"
+    },
+    {
+      "id": 58,
+      "nom": "Diamond Clips"
+    },
+    {
+      "id": 57,
+      "nom": "Jafep Amouaj"
+    },
+    {
+      "id": 56,
+      "nom": "Voohette"
+    },
+    {
+      "id": 55,
+      "nom": "Tonal"
+    },
+    {
+      "id": 54,
+      "nom": "Yindon"
+    },
+    {
+      "id": 53,
+      "nom": "RAVENA"
+    },
+    {
+      "id": 52,
+      "nom": "Simon"
+    },
+    {
+      "id": 51,
+      "nom": "Tiler"
+    },
+    {
+      "id": 50,
+      "nom": "Genvana"
+    },
+    {
+      "id": 49,
+      "nom": "Mavoplus"
+    },
+    {
+      "id": 48,
+      "nom": "mbh project"
+    },
+    {
+      "id": 47,
+      "nom": "CECROPS"
+    },
+    {
+      "id": 46,
+      "nom": "CODAFLEX"
+    },
+    {
+      "id": 45,
+      "nom": "CASALINO"
+    },
+    {
+      "id": 44,
+      "nom": "Armano"
+    },
+    {
+      "id": 43,
+      "nom": "DINGQI"
+    },
+    {
+      "id": 42,
+      "nom": "GABKA"
+    },
+    {
+      "id": 41,
+      "nom": "ABC POWER"
+    },
+    {
+      "id": 40,
+      "nom": "INDEX"
+    },
+    {
+      "id": 39,
+      "nom": "FERRI"
+    },
+    {
+      "id": 38,
+      "nom": "AKRO"
+    },
+    {
+      "id": 37,
+      "nom": "DANOSA"
+    },
+    {
+      "id": 36,
+      "nom": "RUBI"
+    },
+    {
+      "id": 35,
+      "nom": "VIDAL"
+    },
+    {
+      "id": 34,
+      "nom": "VELAR"
+    },
+    {
+      "id": 33,
+      "nom": "DAKOTA"
+    },
+    {
+      "id": 32,
+      "nom": "WDLINK"
+    },
+    {
+      "id": 31,
+      "nom": "MPC"
+    },
+    {
+      "id": 30,
+      "nom": "ONE BOND"
+    },
+    {
+      "id": 29,
+      "nom": "basila"
+    },
+    {
+      "id": 28,
+      "nom": "ABLAGO"
+    },
+    {
+      "id": 27,
+      "nom": "INGELEC"
+    },
+    {
+      "id": 26,
+      "nom": "DIAMFLEX"
+    },
+    {
+      "id": 25,
+      "nom": "CAT"
+    },
+    {
+      "id": 24,
+      "nom": "Lasica"
+    },
+    {
+      "id": 23,
+      "nom": "Atlas"
+    },
+    {
+      "id": 22,
+      "nom": "BELLOTA"
+    },
+    {
+      "id": 21,
+      "nom": "JADEVER"
+    },
+    {
+      "id": 20,
+      "nom": "TOP LED"
+    },
+    {
+      "id": 19,
+      "nom": "ANFA LIGHTING"
+    },
+    {
+      "id": 18,
+      "nom": "SWIFT"
+    },
+    {
+      "id": 17,
+      "nom": "Ilim"
+    },
+    {
+      "id": 16,
+      "nom": "HANDIRON"
+    },
+    {
+      "id": 15,
+      "nom": "DEN BRAVEN"
+    },
+    {
+      "id": 14,
+      "nom": "ITA ABRASIVI"
+    },
+    {
+      "id": 13,
+      "nom": "Fratelle Brasive"
+    },
+    {
+      "id": 12,
+      "nom": "LAP"
+    },
+    {
+      "id": 11,
+      "nom": "ASTRAL"
+    },
+    {
+      "id": 10,
+      "nom": "DIMA TUBE"
+    },
+    {
+      "id": 9,
+      "nom": "Total"
+    },
+    {
+      "id": 8,
+      "nom": "INGCO"
+    },
+    {
+      "id": 7,
+      "nom": "Xcort"
+    },
+    {
+      "id": 6,
+      "nom": "Bosch"
+    },
+    {
+      "id": 5,
+      "nom": "Generall"
+    },
+    {
+      "id": 4,
+      "nom": "Mortecol"
+    },
+    {
+      "id": 3,
+      "nom": "Groupo puma"
+    },
+    {
+      "id": 2,
+      "nom": "Sika"
+    },
+    {
+      "id": 1,
+      "nom": "Kerakoll"
+    }
+  ]
+}

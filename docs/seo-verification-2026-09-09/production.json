@@ -1,0 +1,1203 @@
+{
+  "checkedAt": "2026-09-09T19:15:41.803Z",
+  "results": [
+    {
+      "route": "/fr",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr",
+        "ar": "https://boukirdiamond.com/ar",
+        "en": "https://boukirdiamond.com/en",
+        "zh": "https://boukirdiamond.com/zh"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/fr/shop",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/fr/contact",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/contact",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/contact",
+        "ar": "https://boukirdiamond.com/ar/contact",
+        "en": "https://boukirdiamond.com/en/contact",
+        "zh": "https://boukirdiamond.com/zh/contact"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/contact"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "Contact BOUKIR DIAMOND"
+      ],
+      "productLinks": []
+    },
+    {
+      "route": "/fr/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/product/6376",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6376",
+        "ar": "https://boukirdiamond.com/ar/product/6376",
+        "en": "https://boukirdiamond.com/en/product/6376",
+        "zh": "https://boukirdiamond.com/zh/product/6376"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/product/6376"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/fr/product/6696",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/product/6696",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6696",
+        "ar": "https://boukirdiamond.com/ar/product/6696",
+        "en": "https://boukirdiamond.com/en/product/6696",
+        "zh": "https://boukirdiamond.com/zh/product/6696"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/product/6696"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/fr/categories/73-ciment",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/categories/73-ciment",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/categories/73-ciment",
+        "ar": "https://boukirdiamond.com/ar/categories/73-ciment"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/categories/73-ciment"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "Ciment à Tanger"
+      ],
+      "productLinks": [
+        "/fr/product/6376",
+        "/fr/product/6253",
+        "/fr/product/5943",
+        "/fr/product/5942",
+        "/fr/product/5714",
+        "/fr/product/4460"
+      ]
+    },
+    {
+      "route": "/fr/categories/75-etancheite-bitume",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/categories/75-etancheite-bitume",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/categories/75-etancheite-bitume",
+        "ar": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/categories/75-etancheite-bitume"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "Étanchéité et bitume à Tanger"
+      ],
+      "productLinks": [
+        "/fr/product/7286",
+        "/fr/product/7069",
+        "/fr/product/7068",
+        "/fr/product/6984",
+        "/fr/product/6983",
+        "/fr/product/6933",
+        "/fr/product/6896",
+        "/fr/product/6772",
+        "/fr/product/6771",
+        "/fr/product/6699",
+        "/fr/product/6698",
+        "/fr/product/6696",
+        "/fr/product/6669",
+        "/fr/product/6347",
+        "/fr/product/6249",
+        "/fr/product/6208",
+        "/fr/product/6207",
+        "/fr/product/6206",
+        "/fr/product/6165",
+        "/fr/product/6162",
+        "/fr/product/6096",
+        "/fr/product/6094",
+        "/fr/product/6052",
+        "/fr/product/6049"
+      ]
+    },
+    {
+      "route": "/fr/marques/37-danosa",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/marques/37-danosa",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/marques/37-danosa",
+        "ar": "https://boukirdiamond.com/ar/marques/37-danosa"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/marques/37-danosa"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "DANOSA à Tanger"
+      ],
+      "productLinks": [
+        "/fr/product/6696",
+        "/fr/product/5203",
+        "/fr/product/3308"
+      ]
+    },
+    {
+      "route": "/fr/shop?category_id=75&brand_id=37",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/fr/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "noindex, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/fr/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/ar",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr",
+        "ar": "https://boukirdiamond.com/ar",
+        "en": "https://boukirdiamond.com/en",
+        "zh": "https://boukirdiamond.com/zh"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/ar/shop",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/ar/contact",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/contact",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/contact",
+        "ar": "https://boukirdiamond.com/ar/contact",
+        "en": "https://boukirdiamond.com/en/contact",
+        "zh": "https://boukirdiamond.com/zh/contact"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/contact"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "اتصل بنا BOUKIR DIAMOND"
+      ],
+      "productLinks": []
+    },
+    {
+      "route": "/ar/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/product/6376",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6376",
+        "ar": "https://boukirdiamond.com/ar/product/6376",
+        "en": "https://boukirdiamond.com/en/product/6376",
+        "zh": "https://boukirdiamond.com/zh/product/6376"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/product/6376"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/ar/product/6696",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/product/6696",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6696",
+        "ar": "https://boukirdiamond.com/ar/product/6696",
+        "en": "https://boukirdiamond.com/en/product/6696",
+        "zh": "https://boukirdiamond.com/zh/product/6696"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/product/6696"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/ar/categories/73-ciment",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/categories/73-ciment",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/categories/73-ciment",
+        "ar": "https://boukirdiamond.com/ar/categories/73-ciment"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/categories/73-ciment"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "الإسمنت في طنجة"
+      ],
+      "productLinks": [
+        "/ar/product/6376",
+        "/ar/product/6253",
+        "/ar/product/5943",
+        "/ar/product/5942",
+        "/ar/product/5714",
+        "/ar/product/4460"
+      ]
+    },
+    {
+      "route": "/ar/categories/75-etancheite-bitume",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/categories/75-etancheite-bitume",
+        "ar": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "العزل المائي والبيتومين والزفت في طنجة"
+      ],
+      "productLinks": [
+        "/ar/product/7286",
+        "/ar/product/7069",
+        "/ar/product/7068",
+        "/ar/product/6984",
+        "/ar/product/6983",
+        "/ar/product/6933",
+        "/ar/product/6896",
+        "/ar/product/6772",
+        "/ar/product/6771",
+        "/ar/product/6699",
+        "/ar/product/6698",
+        "/ar/product/6696",
+        "/ar/product/6669",
+        "/ar/product/6347",
+        "/ar/product/6249",
+        "/ar/product/6208",
+        "/ar/product/6207",
+        "/ar/product/6206",
+        "/ar/product/6165",
+        "/ar/product/6162",
+        "/ar/product/6096",
+        "/ar/product/6094",
+        "/ar/product/6052",
+        "/ar/product/6049"
+      ]
+    },
+    {
+      "route": "/ar/marques/37-danosa",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/marques/37-danosa",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/marques/37-danosa",
+        "ar": "https://boukirdiamond.com/ar/marques/37-danosa"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/marques/37-danosa"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "DANOSA في طنجة"
+      ],
+      "productLinks": [
+        "/ar/product/6696",
+        "/ar/product/5203",
+        "/ar/product/3308"
+      ]
+    },
+    {
+      "route": "/ar/shop?category_id=75&brand_id=37",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/ar/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "noindex, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/ar/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/en",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr",
+        "ar": "https://boukirdiamond.com/ar",
+        "en": "https://boukirdiamond.com/en",
+        "zh": "https://boukirdiamond.com/zh"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/en"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/shop",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/en/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/en/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/contact",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/en/contact",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/contact",
+        "ar": "https://boukirdiamond.com/ar/contact",
+        "en": "https://boukirdiamond.com/en/contact",
+        "zh": "https://boukirdiamond.com/zh/contact"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/en/contact"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "Contact BOUKIR DIAMOND"
+      ],
+      "productLinks": []
+    },
+    {
+      "route": "/en/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/en/product/6376",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6376",
+        "ar": "https://boukirdiamond.com/ar/product/6376",
+        "en": "https://boukirdiamond.com/en/product/6376",
+        "zh": "https://boukirdiamond.com/zh/product/6376"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/en/product/6376"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/product/6696",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/en/product/6696",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6696",
+        "ar": "https://boukirdiamond.com/ar/product/6696",
+        "en": "https://boukirdiamond.com/en/product/6696",
+        "zh": "https://boukirdiamond.com/zh/product/6696"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/en/product/6696"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/categories/73-ciment",
+      "status": 307,
+      "location": "/en/shop?category_id=73&search=ciment",
+      "alternates": {},
+      "robots": [],
+      "localSignals": [],
+      "social": [],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/categories/75-etancheite-bitume",
+      "status": 307,
+      "location": "/en/shop?category_id=75",
+      "alternates": {},
+      "robots": [],
+      "localSignals": [],
+      "social": [],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/marques/37-danosa",
+      "status": 307,
+      "location": "/en/shop?brand_id=37",
+      "alternates": {},
+      "robots": [],
+      "localSignals": [],
+      "social": [],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/en/shop?category_id=75&brand_id=37",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/en/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "noindex, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/en/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/zh",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr",
+        "ar": "https://boukirdiamond.com/ar",
+        "en": "https://boukirdiamond.com/en",
+        "zh": "https://boukirdiamond.com/zh"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/zh"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/shop",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/zh/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/zh/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/contact",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/zh/contact",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/contact",
+        "ar": "https://boukirdiamond.com/ar/contact",
+        "en": "https://boukirdiamond.com/en/contact",
+        "zh": "https://boukirdiamond.com/zh/contact"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/zh/contact"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [
+        "联系我们 BOUKIR DIAMOND"
+      ],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/product/6376",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/zh/product/6376",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6376",
+        "ar": "https://boukirdiamond.com/ar/product/6376",
+        "en": "https://boukirdiamond.com/en/product/6376",
+        "zh": "https://boukirdiamond.com/zh/product/6376"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/zh/product/6376"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1780777280470-325831895.webp"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/product/6696",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/zh/product/6696",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/product/6696",
+        "ar": "https://boukirdiamond.com/ar/product/6696",
+        "en": "https://boukirdiamond.com/en/product/6696",
+        "zh": "https://boukirdiamond.com/zh/product/6696"
+      },
+      "robots": [
+        "index, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/zh/product/6696"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/uploads/products/1785785671825-866745224.jpg"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/categories/73-ciment",
+      "status": 307,
+      "location": "/zh/shop?category_id=73&search=ciment",
+      "alternates": {},
+      "robots": [],
+      "localSignals": [],
+      "social": [],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/categories/75-etancheite-bitume",
+      "status": 307,
+      "location": "/zh/shop?category_id=75",
+      "alternates": {},
+      "robots": [],
+      "localSignals": [],
+      "social": [],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/marques/37-danosa",
+      "status": 307,
+      "location": "/zh/shop?brand_id=37",
+      "alternates": {},
+      "robots": [],
+      "localSignals": [],
+      "social": [],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/zh/shop?category_id=75&brand_id=37",
+      "status": 200,
+      "location": null,
+      "canonical": "https://boukirdiamond.com/zh/shop",
+      "alternates": {
+        "fr": "https://boukirdiamond.com/fr/shop",
+        "ar": "https://boukirdiamond.com/ar/shop",
+        "en": "https://boukirdiamond.com/en/shop",
+        "zh": "https://boukirdiamond.com/zh/shop"
+      },
+      "robots": [
+        "noindex, follow"
+      ],
+      "localSignals": [],
+      "social": [
+        {
+          "property": "og:url",
+          "content": "https://boukirdiamond.com/zh/shop"
+        },
+        {
+          "property": "og:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        },
+        {
+          "name": "twitter:image",
+          "content": "https://boukirdiamond.com/logo.png"
+        }
+      ],
+      "h1": [],
+      "productLinks": []
+    },
+    {
+      "route": "/fr/categories/unknown-seo-test",
+      "status": 404,
+      "location": null
+    },
+    {
+      "route": "/zh/marques/unknown-seo-test",
+      "status": 404,
+      "location": null
+    },
+    {
+      "route": "/fr/categories/75-etancheite-bitume?page=2",
+      "status": 200,
+      "location": null
+    },
+    {
+      "route": "/robots.txt",
+      "status": 200,
+      "location": null,
+      "body": "User-Agent: *\nAllow: /\nDisallow: /api/\nDisallow: /checkout$\nDisallow: /checkout/\nDisallow: /checkout?\nDisallow: /cart$\nDisallow: /cart/\nDisallow: /cart?\nDisallow: /orders$\nDisallow: /orders/\nDisallow: /orders?\nDisallow: /profile$\nDisallow: /profile/\nDisallow: /profile?\nDisallow: /wishlist$\nDisallow: /wishlist/\nDisallow: /wishlist?\nDisallow: /login$\nDisallow: /login/\nDisallow: /login?\nDisallow: /register$\nDisallow: /register/\nDisallow: /register?\nDisallow: /forgot-password$\nDisallow: /forgot-password/\nDisallow: /forgot-password?\nDisallow: /activate-account$\nDisallow: /activate-account/\nDisallow: /activate-account?\nDisallow: /service-requests$\nDisallow: /service-requests/\nDisallow: /service-requests?\nDisallow: /solde-historique$\nDisallow: /solde-historique/\nDisallow: /solde-historique?\nDisallow: /fr/checkout$\nDisallow: /fr/checkout/\nDisallow: /fr/checkout?\nDisallow: /fr/cart$\nDisallow: /fr/cart/\nDisallow: /fr/cart?\nDisallow: /fr/orders$\nDisallow: /fr/orders/\nDisallow: /fr/orders?\nDisallow: /fr/profile$\nDisallow: /fr/profile/\nDisallow: /fr/profile?\nDisallow: /fr/wishlist$\nDisallow: /fr/wishlist/\nDisallow: /fr/wishlist?\nDisallow: /fr/login$\nDisallow: /fr/login/\nDisallow: /fr/login?\nDisallow: /fr/register$\nDisallow: /fr/register/\nDisallow: /fr/register?\nDisallow: /fr/forgot-password$\nDisallow: /fr/forgot-password/\nDisallow: /fr/forgot-password?\nDisallow: /fr/activate-account$\nDisallow: /fr/activate-account/\nDisallow: /fr/activate-account?\nDisallow: /fr/service-requests$\nDisallow: /fr/service-requests/\nDisallow: /fr/service-requests?\nDisallow: /fr/solde-historique$\nDisallow: /fr/solde-historique/\nDisallow: /fr/solde-historique?\nDisallow: /ar/checkout$\nDisallow: /ar/checkout/\nDisallow: /ar/checkout?\nDisallow: /ar/cart$\nDisallow: /ar/cart/\nDisallow: /ar/cart?\nDisallow: /ar/orders$\nDisallow: /ar/orders/\nDisallow: /ar/orders?\nDisallow: /ar/profile$\nDisallow: /ar/profile/\nDisallow: /ar/profile?\nDisallow: /ar/wishlist$\nDisallow: /ar/wishlist/\nDisallow: /ar/wishlist?\nDisallow: /ar/login$\nDisallow: /ar/login/\nDisallow: /ar/login?\nDisallow: /ar/register$\nDisallow: /ar/register/\nDisallow: /ar/register?\nDisallow: /ar/forgot-password$\nDisallow: /ar/forgot-password/\nDisallow: /ar/forgot-password?\nDisallow: /ar/activate-account$\nDisallow: /ar/activate-account/\nDisallow: /ar/activate-account?\nDisallow: /ar/service-requests$\nDisallow: /ar/service-requests/\nDisallow: /ar/service-requests?\nDisallow: /ar/solde-historique$\nDisallow: /ar/solde-historique/\nDisallow: /ar/solde-historique?\nDisallow: /en/checkout$\nDisallow: /en/checkout/\nDisallow: /en/checkout?\nDisallow: /en/cart$\nDisallow: /en/cart/\nDisallow: /en/cart?\nDisallow: /en/orders$\nDisallow: /en/orders/\nDisallow: /en/orders?\nDisallow: /en/profile$\nDisallow: /en/profile/\nDisallow: /en/profile?\nDisallow: /en/wishlist$\nDisallow: /en/wishlist/\nDisallow: /en/wishlist?\nDisallow: /en/login$\nDisallow: /en/login/\nDisallow: /en/login?\nDisallow: /en/register$\nDisallow: /en/register/\nDisallow: /en/register?\nDisallow: /en/forgot-password$\nDisallow: /en/forgot-password/\nDisallow: /en/forgot-password?\nDisallow: /en/activate-account$\nDisallow: /en/activate-account/\nDisallow: /en/activate-account?\nDisallow: /en/service-requests$\nDisallow: /en/service-requests/\nDisallow: /en/service-requests?\nDisallow: /en/solde-historique$\nDisallow: /en/solde-historique/\nDisallow: /en/solde-historique?\nDisallow: /zh/checkout$\nDisallow: /zh/checkout/\nDisallow: /zh/checkout?\nDisallow: /zh/cart$\nDisallow: /zh/cart/\nDisallow: /zh/cart?\nDisallow: /zh/orders$\nDisallow: /zh/orders/\nDisallow: /zh/orders?\nDisallow: /zh/profile$\nDisallow: /zh/profile/\nDisallow: /zh/profile?\nDisallow: /zh/wishlist$\nDisallow: /zh/wishlist/\nDisallow: /zh/wishlist?\nDisallow: /zh/login$\nDisallow: /zh/login/\nDisallow: /zh/login?\nDisallow: /zh/register$\nDisallow: /zh/register/\nDisallow: /zh/register?\nDisallow: /zh/forgot-password$\nDisallow: /zh/forgot-password/\nDisallow: /zh/forgot-password?\nDisallow: /zh/activate-account$\nDisallow: /zh/activate-account/\nDisallow: /zh/activate-account?\nDisallow: /zh/service-requests$\nDisallow: /zh/service-requests/\nDisallow: /zh/service-requests?\nDisallow: /zh/solde-historique$\nDisallow: /zh/solde-historique/\nDisallow: /zh/solde-historique?\n\nHost: https://boukirdiamond.com\nSitemap: https://boukirdiamond.com/sitemap.xml\n"
+    },
+    {
+      "route": "/sitemap.xml",
+      "status": 500,
+      "location": null,
+      "sitemapUrls": 0
+    },
+    {
+      "route": "/api/ecommerce/products/sitemap",
+      "status": 500,
+      "location": null,
+      "body": "{\"message\":\"Unknown column 'NaN' in 'where clause'\"}"
+    },
+    {
+      "route": "/api/ecommerce/products/catalog-pages",
+      "status": 500,
+      "location": null,
+      "body": "{\"message\":\"Unknown column 'NaN' in 'where clause'\"}"
+    },
+    {
+      "route": "/api/services/sitemap",
+      "status": 500,
+      "location": null,
+      "body": "{\"message\":\"Unknown column 's.is_published' in 'where clause'\"}"
+    },
+    {
+      "route": "/api/maalems/sitemap",
+      "status": 200,
+      "location": null,
+      "body": "{\"maalems\":[]}"
+    },
+    {
+      "url": "http://boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test",
+      "status": 301,
+      "location": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test"
+    },
+    {
+      "url": "http://www.boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test",
+      "status": 301,
+      "location": "https://www.boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test"
+    },
+    {
+      "url": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test",
+      "status": 200,
+      "location": null
+    },
+    {
+      "url": "https://www.boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test",
+      "status": 308,
+      "location": "https://boukirdiamond.com/ar/categories/75-etancheite-bitume?utm_source=seo-test"
+    },
+    {
+      "origin": "https://boukirdiamond.com",
+      "method": "OPTIONS",
+      "status": 403,
+      "allowOrigin": null,
+      "credentials": null
+    },
+    {
+      "origin": "https://www.boukirdiamond.com",
+      "method": "OPTIONS",
+      "status": 403,
+      "allowOrigin": null,
+      "credentials": null
+    },
+    {
+      "origin": "https://untrusted.example",
+      "method": "OPTIONS",
+      "status": 403,
+      "allowOrigin": null,
+      "credentials": null
+    }
+  ]
+}

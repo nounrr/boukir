@@ -1,0 +1,27 @@
+# Fragment to integrate into the EXISTING Nginx virtual hosts; not a replacement
+# for the entire configuration. Keep the current TLS certificate directives.
+# The certificate on port 443 must cover www.boukirdiamond.com before redirecting.
+
+# In the HTTP server for boukirdiamond.com and www.boukirdiamond.com:
+# Preserve any existing ACME challenge location; put this in location / if needed.
+# return 308 https://boukirdiamond.com$request_uri;
+
+# In a dedicated HTTPS server with server_name www.boukirdiamond.com:
+# Keep listen 443 ssl, certificate/key and TLS settings from the current host.
+return 308 https://boukirdiamond.com$request_uri;
+
+# Remove www.boukirdiamond.com from the apex HTTPS server_name.
+# In the existing apex proxy locations for Next.js and Express, retain upstreams
+# and path routing, and forward these headers (one copy of each):
+# proxy_set_header Host $host;
+# proxy_set_header X-Forwarded-Host $host;
+# proxy_set_header X-Forwarded-Proto $scheme;
+# proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+# proxy_set_header Authorization $http_authorization;
+# proxy_set_header Cookie $http_cookie;
+# Do not hide Set-Cookie, Vary or Access-Control-* response headers.
+# Do not intercept OPTIONS: Express cors handles it before authentication.
+# Do not add Access-Control-Allow-Origin * or duplicate CORS response headers.
+# Keep /api/auth/logout and /api/auth/refresh-cookies routed to Next.js, and
+# /api/auth/[...nextauth] if in use. Preserve existing backoffice auth routes.
+# Keep /api/ecommerce/, /api/categories, /api/brands, /api/hero-slides on Express.

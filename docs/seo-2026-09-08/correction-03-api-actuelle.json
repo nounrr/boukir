@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-09-09T18:15:15.661Z",
+  "fixture": false,
+  "api": "https://boukirdiamond.com",
+  "origin": "https://boukirdiamond.com",
+  "checks": [],
+  "errors": [
+    "Sitemap: services API HTTP 500"
+  ]
+}
