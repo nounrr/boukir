@@ -8,7 +8,7 @@ import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
-import { useGetProductsPaginatedQuery, useDeleteProductMutation, useBulkAttachProductsMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
+import { useGetProductsPaginatedQuery, useDeleteProductMutation, useBulkAttachProductsMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation, useChangeProductBaseUnitMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -153,6 +153,7 @@ const StockPage: React.FC = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteProductMutation] = useDeleteProductMutation();
+  const [changeProductBaseUnit, { isLoading: isChangingBaseUnit }] = useChangeProductBaseUnitMutation();
   const [bulkAttachProducts, { isLoading: isBulkAttaching }] = useBulkAttachProductsMutation();
   const [convertProductsToVariants] = useConvertProductsToVariantsMutation();
   const [cloneProductPhotos] = useCloneProductPhotosMutation();
@@ -160,6 +161,9 @@ const StockPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set());
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
+  const [baseUnitProduct, setBaseUnitProduct] = useState<any | null>(null);
+  const [baseUnitChoice, setBaseUnitChoice] = useState('label:u');
+  const [customBaseUnit, setCustomBaseUnit] = useState('');
   const [attachmentTargetType, setAttachmentTargetType] = useState<'category' | 'brand'>('category');
   const [attachmentTargetId, setAttachmentTargetId] = useState('');
   const [attachmentTargetSearch, setAttachmentTargetSearch] = useState('');
@@ -378,7 +382,7 @@ const StockPage: React.FC = () => {
     ];
     if (Array.isArray(prod.units)) {
       prod.units.forEach((u: any) => {
-        if (!u) return;
+        if (!u || u.is_default) return;
         const f = Number(u.conversion_factor) || 1;
         const name = String(u.unit_name || `${f} ${base}`);
         const pv = u.prix_vente === null || u.prix_vente === undefined || u.prix_vente === '' ? null : Number(u.prix_vente);
@@ -424,6 +428,65 @@ const StockPage: React.FC = () => {
       : product;
     setEditingProduct(realProduct || product);
     setIsModalOpen(true);
+  };
+
+  const openBaseUnitDialog = (product: any) => {
+    const realProduct = product.isVariantRow
+      ? products.find((p: any) => Number(p.id) === Number(product.originalId))
+      : product;
+    if (!realProduct) return;
+    const currentBase = String(realProduct.base_unit || 'u');
+    const standardUnits = ['u', 'kg', 'm3', 'l', 'm', 'm2'];
+    setBaseUnitProduct(realProduct);
+    setBaseUnitChoice(standardUnits.includes(currentBase) ? `label:${currentBase}` : 'custom');
+    setCustomBaseUnit(standardUnits.includes(currentBase) ? '' : currentBase);
+  };
+
+  const handleChangeBaseUnit = async () => {
+    if (!baseUnitProduct) return;
+    const sourceUnitId = baseUnitChoice.startsWith('unit:')
+      ? Number(baseUnitChoice.slice('unit:'.length))
+      : undefined;
+    const sourceUnit = sourceUnitId
+      ? (baseUnitProduct.units || []).find((unit: any) => Number(unit.id) === sourceUnitId)
+      : null;
+    const nextBaseUnit = sourceUnit
+      ? String(sourceUnit.unit_name || '').trim()
+      : baseUnitChoice === 'custom'
+        ? customBaseUnit.replace(/\s+/g, ' ').trim()
+        : baseUnitChoice.slice('label:'.length);
+    if (!nextBaseUnit) {
+      showError('Saisissez le nom de la nouvelle unité de base.');
+      return;
+    }
+
+    if (sourceUnit) {
+      const factor = Number(sourceUnit.conversion_factor) || 0;
+      const confirmation = await showConfirmation(
+        `1 ${nextBaseUnit} = ${formatNum(factor)} ${baseUnitProduct.base_unit || 'u'}. Les quantités, les prix, les variantes, les stocks d’achat et les autres facteurs seront convertis automatiquement.`,
+        `Définir « ${nextBaseUnit} » comme unité de base ?`,
+        'Oui, convertir',
+        'Annuler'
+      );
+      if (!confirmation.isConfirmed) return;
+    }
+
+    try {
+      await changeProductBaseUnit({
+        id: Number(baseUnitProduct.id),
+        base_unit: nextBaseUnit,
+        ...(sourceUnitId ? { source_unit_id: sourceUnitId } : {}),
+      }).unwrap();
+      setUnitSelection((previous) => ({ ...previous, [String(baseUnitProduct.id)]: 'base' }));
+      setBaseUnitProduct(null);
+      setBaseUnitChoice('label:u');
+      setCustomBaseUnit('');
+      showSuccess(sourceUnit ? 'Unité de base convertie avec succès' : 'Unité de base mise à jour');
+      refetchProducts?.();
+    } catch (error: any) {
+      console.error("Erreur lors du changement d’unité de base:", error);
+      showError(error?.data?.message || error?.error || "Impossible de changer l’unité de base.");
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -1748,28 +1811,39 @@ const StockPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     {!product.est_service && !product.non_stockable && (() => {
                       const unitOptions = unitOptionsForProduct(product);
-                      if (unitOptions.length <= 1) {
-                        return (
-                          <span className="text-sm text-gray-900">
-                            {unitOptions[0]?.label || product.base_unit || 'u'}
-                          </span>
-                        );
-                      }
-
                       return (
-                      <select
-                        value={getSelectedUnitKey(product)}
-                        onChange={(e) => {
-                          const mapKey = product.isVariantRow ? String(product.originalId) : String(product.id);
-                          setUnitSelection(prev => ({ ...prev, [mapKey]: e.target.value }));
-                        }}
-                        className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                        title="Choisir l'unité d'affichage"
-                      >
-                        {unitOptions.map((opt) => (
-                          <option key={opt.key} value={opt.key}>{opt.label}</option>
-                        ))}
-                      </select>
+                        <div className="flex items-center gap-1.5">
+                          {unitOptions.length <= 1 ? (
+                            <span className="text-sm text-gray-900">
+                              {unitOptions[0]?.label || product.base_unit || 'u'}
+                            </span>
+                          ) : (
+                            <select
+                              value={getSelectedUnitKey(product)}
+                              onChange={(e) => {
+                                const mapKey = product.isVariantRow ? String(product.originalId) : String(product.id);
+                                setUnitSelection(prev => ({ ...prev, [mapKey]: e.target.value }));
+                              }}
+                              className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                              title="Choisir l'unité d'affichage"
+                            >
+                              {unitOptions.map((opt) => (
+                                <option key={opt.key} value={opt.key}>{opt.label}</option>
+                              ))}
+                            </select>
+                          )}
+                          {!product.isVariantRow && (
+                            <button
+                              type="button"
+                              onClick={() => openBaseUnitDialog(product)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700"
+                              title="Changer l’unité de base"
+                              aria-label={`Changer l’unité de base de ${product.designation}`}
+                            >
+                              <Settings size={14} />
+                            </button>
+                          )}
+                        </div>
                       );
                     })()}
                   </td>
@@ -1942,6 +2016,126 @@ const StockPage: React.FC = () => {
           </button>
         </div>
       )}
+
+      <Dialog
+        open={!!baseUnitProduct}
+        onOpenChange={(open) => {
+          if (isChangingBaseUnit) return;
+          if (!open) {
+            setBaseUnitProduct(null);
+            setBaseUnitChoice('label:u');
+            setCustomBaseUnit('');
+          }
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg p-0">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleChangeBaseUnit();
+            }}
+          >
+            <DialogHeader className="border-b border-gray-200 px-6 py-5 text-left">
+              <div className="flex items-center gap-3 pr-7">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-700">
+                  <Settings size={20} />
+                </span>
+                <div>
+                  <DialogTitle>Changer l’unité de base</DialogTitle>
+                  <DialogDescription className="mt-1 text-gray-600">
+                    {baseUnitProduct?.designation} — unité actuelle : {baseUnitProduct?.base_unit || 'u'}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4 px-6 py-5">
+              <div>
+                <label htmlFor="base-unit-choice" className="mb-2 block text-sm font-semibold text-gray-900">
+                  Nouvelle unité de base
+                </label>
+                <select
+                  id="base-unit-choice"
+                  value={baseUnitChoice}
+                  onChange={(event) => setBaseUnitChoice(event.target.value)}
+                  disabled={isChangingBaseUnit}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                >
+                  <optgroup label="Unités standards — sans facteur requis">
+                    <option value="label:u">Unité (u)</option>
+                    <option value="label:kg">Kilogramme (kg)</option>
+                    <option value="label:m3">Mètre cube (m3)</option>
+                    <option value="label:l">Litre (l)</option>
+                    <option value="label:m">Mètre (m)</option>
+                    <option value="label:m2">Mètre carré (m2)</option>
+                    <option value="custom">Autre unité…</option>
+                  </optgroup>
+                  {(baseUnitProduct?.units || []).some((unit: any) => !unit?.is_default) && (
+                    <optgroup label="Unités existantes — convertir les valeurs">
+                      {(baseUnitProduct?.units || [])
+                        .filter((unit: any) => !unit?.is_default)
+                        .map((unit: any) => (
+                          <option key={unit.id} value={`unit:${unit.id}`}>
+                            {unit.unit_name} (1 = {formatNum(Number(unit.conversion_factor) || 1)} {baseUnitProduct?.base_unit || 'u'})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {baseUnitChoice === 'custom' && (
+                <div>
+                  <label htmlFor="custom-base-unit" className="mb-2 block text-sm font-semibold text-gray-900">
+                    Nom de l’unité
+                  </label>
+                  <input
+                    id="custom-base-unit"
+                    type="text"
+                    value={customBaseUnit}
+                    onChange={(event) => setCustomBaseUnit(event.target.value)}
+                    maxLength={50}
+                    required
+                    autoFocus
+                    disabled={isChangingBaseUnit}
+                    placeholder="Ex. palette, boîte, rouleau…"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  />
+                </div>
+              )}
+
+              <div className={`rounded-md border px-4 py-3 text-sm ${
+                baseUnitChoice.startsWith('unit:')
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-blue-200 bg-blue-50 text-blue-900'
+              }`}>
+                {baseUnitChoice.startsWith('unit:')
+                  ? 'Cette unité possède déjà un facteur. Le stock, les prix, les variantes et les achats actifs seront réellement convertis, puis l’ancienne unité de base sera conservée comme unité secondaire.'
+                  : 'Aucune unité supplémentaire ni aucun facteur n’est requis. Cette option remplace directement l’unité de base du produit.'}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setBaseUnitProduct(null)}
+                disabled={isChangingBaseUnit}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                disabled={isChangingBaseUnit || (baseUnitChoice === 'custom' && !customBaseUnit.trim())}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isChangingBaseUnit && <LoaderCircle className="animate-spin" size={17} />}
+                {isChangingBaseUnit ? 'Mise à jour…' : 'Changer l’unité de base'}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isAttachmentDialogOpen}

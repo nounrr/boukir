@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { verifyToken, requireRole, requireRoles, requireSelfOrRoles } from '../middleware/auth.js';
+import { getAbsenceDeductionsByMonth, getEmployeeDeduction } from '../utils/absences.js';
 
 const router = Router();
 
@@ -36,10 +37,22 @@ function toDateOnly(value) {
 // Compute the prorated monthly salary due for an employee for a given month (YYYY-MM).
 // salaire = full monthly salary. Daily rate = salaire / total working days of the month.
 // Due = daily rate * working days actually present in the month (from entry date to exit date).
-function computeMonthlyDue(emp, year, monthIndex) {
+// Les absences marquées viennent en déduction du salaire dû du mois
+// (100 DH par jour d'absence totale, prorata horaire pour une absence partielle).
+function computeMonthlyDue(emp, year, monthIndex, deduction = { total: 0, jours_complets: 0, jours_partiels: 0 }) {
+  const retenue = Math.round((Number(deduction?.total) || 0) * 100) / 100;
+  const absenceInfo = {
+    retenue_absences: retenue,
+    absences_completes: Number(deduction?.jours_complets) || 0,
+    absences_partielles: Number(deduction?.jours_partiels) || 0,
+  };
+
   const salaire = Number(emp.salaire);
   if (!Number.isFinite(salaire) || salaire <= 0) {
-    return { salaire: salaire || 0, totalWorkingDays: 0, workedDays: 0, dailyRate: 0, due: 0, present: false };
+    return {
+      salaire: salaire || 0, totalWorkingDays: 0, workedDays: 0, dailyRate: 0,
+      dueBrut: 0, due: 0, present: false, ...absenceInfo,
+    };
   }
 
   const monthStart = new Date(year, monthIndex, 1);

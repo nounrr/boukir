@@ -1382,9 +1382,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: allProducts = [] } = useGetProductsQuery(undefined, { skip: !heavyDataReady });
   // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
-  // Commande keeps the normal product selector, but still needs snapshots to
-  // prefill the most recent purchase price.
-  const useSnapshotPricing = useSnapshotSelection || currentTab === 'Commande';
+  // Commande and Devis keep the normal product selector, but still need snapshots
+  // to resolve purchase prices and costs from validated purchases.
+  const useSnapshotPricing = useSnapshotSelection || currentTab === 'Commande' || currentTab === 'Devis';
   const { data: allSnapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotPricing || !heavyDataReady });
   const remoteProductSearchEnabled = !heavyDataReady && debouncedProductSearchTerm.length >= 2;
   const { data: searchedProductsResponse, isFetching: isSearchingProducts } = useSearchBonProductsQuery(
@@ -6597,6 +6597,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                   {(() => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
                                     const units = product?.units ?? [];
+                                    const selectableUnits = units.filter((unit: any) => (
+                                      !unit?.is_default || String(unit.id) === String(values.items[index].unit_id || '')
+                                    ));
                                     const baseUnit = product?.base_unit || 'u';
                                     // Resolve snapshot product if available for this row
                                     let snapshotProd: any = null;
@@ -6614,7 +6617,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         </span>
                                       );
                                     }
-                                    if (!product || units.length === 0) {
+                                    if (!product || selectableUnits.length === 0) {
                                       const displayUnit = !product && values.items[index].unite ? values.items[index].unite : baseUnit;
                                       return (
                                         <span className="inline-flex min-h-[36px] w-full items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-base font-semibold text-emerald-700">
@@ -6768,7 +6771,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         }}
                                       >
                                         <option value="">{baseUnit}</option>
-                                        {units.map((u: any) => (
+                                        {selectableUnits.map((u: any) => (
                                           <option key={u.id} value={u.id}>
                                             {u.unit_name}
                                           </option>
@@ -7107,8 +7110,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       0;
 
                                     // Fallback context (PA/CR résolus via snapshot→variant→product→item,
-                                    // facteur d'unité déjà appliqué). Utile pour les types sans snapshot
-                                    // (ex: Devis) où basePA/baseCR restent 0.
+                                    // facteur d'unité déjà appliqué). Utile lorsque les données
+                                    // du catalogue ou des snapshots ne sont pas encore disponibles.
                                     const costCtx = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
 
                                     // Apply factor to base values; fall back to resolved cost context then formik if base is 0

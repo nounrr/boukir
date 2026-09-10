@@ -4064,6 +4064,196 @@ router.patch('/:id/stock', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Change a product's base unit. A plain label change requires no conversion
+// unit. Promoting an existing additional unit rebases stock, prices, snapshots,
+// variants and every remaining conversion factor in one transaction.
+router.patch('/:id/base-unit', async (req, res, next) => {
+  let connection;
+  try {
+    await ensureProductsColumns();
+
+    const id = Number(req.params.id);
+    const baseUnit = String(req.body?.base_unit ?? '').replace(/\s+/g, ' ').trim();
+    const sourceUnitId = req.body?.source_unit_id == null || req.body?.source_unit_id === ''
+      ? null
+      : Number(req.body.source_unit_id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'ID produit invalide.' });
+    }
+    if (!baseUnit || baseUnit.length > 50) {
+      return res.status(400).json({ message: "L’unité de base doit contenir entre 1 et 50 caractères." });
+    }
+    if (sourceUnitId !== null && (!Number.isInteger(sourceUnitId) || sourceUnitId <= 0)) {
+      return res.status(400).json({ message: 'Unité de conversion invalide.' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [products] = await connection.query(
+      `SELECT id, base_unit
+       FROM products
+       WHERE id = ? AND COALESCE(is_deleted, 0) = 0
+       FOR UPDATE`,
+      [id]
+    );
+    if (products.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Produit actif introuvable.' });
+    }
+
+    const oldBaseUnit = String(products[0].base_unit || 'u').trim() || 'u';
+    const now = new Date();
+    const updatedBy = req.user?.id || null;
+
+    // No source unit means the user only changes the base-unit label. This is
+    // intentionally allowed without creating an additional unit or a factor.
+    if (sourceUnitId === null) {
+      await connection.query(
+        'UPDATE products SET base_unit = ?, updated_by = ?, updated_at = ? WHERE id = ?',
+        [baseUnit, updatedBy, now, id]
+      );
+      await connection.query(
+        'UPDATE product_units SET is_default = 0, updated_at = ? WHERE product_id = ?',
+        [now, id]
+      );
+      await connection.commit();
+      return res.json({
+        success: true,
+        mode: 'label',
+        base_unit: baseUnit,
+        conversion_factor: 1,
+      });
+    }
+
+    const [sourceUnits] = await connection.query(
+      `SELECT id, unit_name, conversion_factor
+       FROM product_units
+       WHERE id = ? AND product_id = ?
+       FOR UPDATE`,
+      [sourceUnitId, id]
+    );
+    if (sourceUnits.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Cette unité n’appartient pas au produit.' });
+    }
+
+    const factor = Number(sourceUnits[0].conversion_factor);
+    if (!Number.isFinite(factor) || factor <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Le facteur de cette unité doit être supérieur à zéro.' });
+    }
+
+    const [allUnits] = await connection.query(
+      'SELECT id, conversion_factor FROM product_units WHERE product_id = ? FOR UPDATE',
+      [id]
+    );
+    const rebasedFactors = allUnits.map((unit) => ({
+      id: Number(unit.id),
+      factor: Number(unit.id) === sourceUnitId ? 1 : Number(unit.conversion_factor) / factor,
+    }));
+    if (rebasedFactors.some((unit) => (
+      !Number.isFinite(unit.factor) || unit.factor < 0.0001 || unit.factor > 999999.9999
+    ))) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'La conversion produit un facteur hors limites. Corrigez les facteurs des unités avant de continuer.',
+      });
+    }
+
+    await connection.query(
+      `UPDATE products SET
+         base_unit = ?,
+         quantite = quantite / ?,
+         stock_partage_ecom_qty = stock_partage_ecom_qty / ?,
+         prix_achat = prix_achat * ?,
+         cout_revient = cout_revient * ?,
+         prix_gros = prix_gros * ?,
+         prix_vente = prix_vente * ?,
+         prix_vente_2 = prix_vente_2 * ?,
+         updated_by = ?, updated_at = ?
+       WHERE id = ?`,
+      [baseUnit, factor, factor, factor, factor, factor, factor, factor, updatedBy, now, id]
+    );
+    await connection.query(
+      `UPDATE product_variants SET
+         stock_quantity = stock_quantity / ?,
+         prix_achat = prix_achat * ?,
+         cout_revient = cout_revient * ?,
+         prix_gros = prix_gros * ?,
+         prix_vente = prix_vente * ?,
+         prix_vente_2 = prix_vente_2 * ?,
+         updated_at = ?
+       WHERE product_id = ?`,
+      [factor, factor, factor, factor, factor, factor, now, id]
+    );
+    await connection.query(
+      `UPDATE product_snapshot SET
+         quantite = quantite / ?,
+         prix_achat = prix_achat * ?,
+         cout_revient = cout_revient * ?,
+         prix_gros = prix_gros * ?,
+         prix_vente = prix_vente * ?,
+         prix_vente_2 = prix_vente_2 * ?
+       WHERE product_id = ?`,
+      [factor, factor, factor, factor, factor, factor, id]
+    );
+
+    for (const unit of rebasedFactors) {
+      await connection.query(
+        `UPDATE product_units
+         SET conversion_factor = ?, is_default = ?, updated_at = ?
+         WHERE id = ? AND product_id = ?`,
+        [unit.factor, unit.id === sourceUnitId ? 1 : 0, now, unit.id, id]
+      );
+    }
+
+    // The former base remains selectable after the conversion. The user does
+    // not have to create it manually before changing the base.
+    if (oldBaseUnit.toLocaleLowerCase('fr') !== baseUnit.toLocaleLowerCase('fr')) {
+      const [oldBaseRows] = await connection.query(
+        `SELECT id FROM product_units
+         WHERE product_id = ? AND LOWER(TRIM(unit_name)) = LOWER(?) AND id <> ?
+         LIMIT 1`,
+        [id, oldBaseUnit, sourceUnitId]
+      );
+      const oldBaseFactor = 1 / factor;
+      if (oldBaseRows.length > 0) {
+        await connection.query(
+          `UPDATE product_units
+           SET conversion_factor = ?, prix_vente = NULL, facteur_isNormal = 1,
+               is_default = 0, updated_at = ?
+           WHERE id = ? AND product_id = ?`,
+          [oldBaseFactor, now, oldBaseRows[0].id, id]
+        );
+      } else {
+        await connection.query(
+          `INSERT INTO product_units
+             (product_id, unit_name, conversion_factor, prix_vente, facteur_isNormal, is_default, created_at, updated_at)
+           VALUES (?, ?, ?, NULL, 1, 0, ?, ?)`,
+          [id, oldBaseUnit, oldBaseFactor, now, now]
+        );
+      }
+    }
+
+    await connection.commit();
+    res.json({
+      success: true,
+      mode: 'conversion',
+      base_unit: baseUnit,
+      conversion_factor: factor,
+    });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
 // Drag-and-drop upload from the stock table. The uploaded file is always added
 // to the gallery and can optionally replace the product's main image.
 router.post('/:id/image-main-gallery', upload.single('image'), async (req, res, next) => {

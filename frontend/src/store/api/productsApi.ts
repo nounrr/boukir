@@ -145,6 +145,18 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
     }),
 
+    changeProductBaseUnit: builder.mutation<
+      { success: boolean; mode: 'label' | 'conversion'; base_unit: string; conversion_factor: number },
+      { id: number; base_unit: string; source_unit_id?: number }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/products/${id}/base-unit`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
+    }),
+
     // archived (soft-deleted) products
     getArchivedProducts: builder.query<Partial<Product>[], void>({
       query: () => ({ url: '/products/archived/list' }),
@@ -283,6 +295,7 @@ export const {
   useCloneProductPhotosMutation,
   useUploadProductMainAndGalleryImageMutation,
   useUpdateStockMutation,
+  useChangeProductBaseUnitMutation,
   useGetArchivedProductsQuery,
   useRestoreProductMutation,
   useTranslateProductsMutation,

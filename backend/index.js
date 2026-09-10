@@ -80,6 +80,7 @@ import remisesRouter from './routes/remises.js';
 import talonsRouter from './routes/talons.js';
 import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
+import absencesRouter from './routes/absences.js';
 import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
 import fondCaisseRouter from './routes/fond-caisse.js';
 
@@ -114,6 +115,7 @@ import { ensurePricePrecisionColumns } from './utils/ensurePricePrecisionSchema.
 import { ensureUniteSpecialColumns } from './utils/ensureUniteSpecialSchema.js';
 import { ensureUiSettingsTable } from './utils/uiSettings.js';
 import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
+import { ensureAbsenceSchema } from './utils/absences.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
@@ -136,6 +138,7 @@ async function ensureSchemas() {
   await ensurePricePrecisionColumns();
   await ensureUiSettingsTable();
   await ensureAccessScheduleTables();
+  await ensureAbsenceSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 
@@ -413,6 +416,7 @@ app.use('/api/fond-caisse', fondCaisseRouter);
 
 app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
+app.use('/api/absences', absencesRouter);
 
 app.use('/api/audit', auditRouter);
 app.use('/api/bon-links', bonLinksRouter);
