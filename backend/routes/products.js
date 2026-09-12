@@ -4581,6 +4581,12 @@ router.patch('/snapshots', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// `products` and `product_variants` can carry different utf8mb4 collations, so any expression
+// mixing them (COALESCE, UNION, LIKE) must be pinned to one collation first.
+const SALE_PRICE_COLLATION = 'utf8mb4_unicode_ci';
+const salePriceText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SALE_PRICE_COLLATION}`;
+const SALE_PRICE_NULL_TEXT = `CAST(NULL AS CHAR) COLLATE ${SALE_PRICE_COLLATION}`;
+
 // GET /products/sale-price-corrections
 // One row per sellable entity, paginated before its sale history is aggregated.
 router.get('/sale-price-corrections', async (req, res, next) => {
@@ -4605,16 +4611,20 @@ router.get('/sale-price-corrections', async (req, res, next) => {
       : '';
     const searchParams = q ? [like, like, like, like, like] : [];
     const entitySql = `SELECT * FROM (
-      SELECT p.id AS product_id, NULL AS variant_id, p.reference_2 AS product_reference,
-             p.designation, NULL AS variant_name, NULL AS variant_reference,
-             p.image_url, p.prix_vente AS product_prix_vente, p.prix_vente_2 AS product_prix_vente_2,
+      SELECT p.id AS product_id, NULL AS variant_id, ${salePriceText('p.reference_2')} AS product_reference,
+             ${salePriceText('p.designation')} AS designation,
+             ${SALE_PRICE_NULL_TEXT} AS variant_name, ${SALE_PRICE_NULL_TEXT} AS variant_reference,
+             ${salePriceText('p.image_url')} AS image_url,
+             p.prix_vente AS product_prix_vente, p.prix_vente_2 AS product_prix_vente_2,
              NULL AS variant_prix_vente, NULL AS variant_prix_vente_2, p.sale_price_corrected_at AS corrected_at
       FROM products p
       WHERE COALESCE(p.is_deleted, 0) = 0
         AND NOT EXISTS (SELECT 1 FROM product_variants pv0 WHERE pv0.product_id = p.id AND COALESCE(pv0.is_deleted, 0) = 0)
       UNION ALL
-      SELECT p.id, pv.id, p.reference_2, p.designation, pv.variant_name, pv.reference,
-             COALESCE(pv.image_url, p.image_url), p.prix_vente, p.prix_vente_2,
+      SELECT p.id, pv.id, ${salePriceText('p.reference_2')}, ${salePriceText('p.designation')},
+             ${salePriceText('pv.variant_name')}, ${salePriceText('pv.reference')},
+             COALESCE(${salePriceText('pv.image_url')}, ${salePriceText('p.image_url')}),
+             p.prix_vente, p.prix_vente_2,
              pv.prix_vente, pv.prix_vente_2, pv.sale_price_corrected_at
       FROM products p
       JOIN product_variants pv ON pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
