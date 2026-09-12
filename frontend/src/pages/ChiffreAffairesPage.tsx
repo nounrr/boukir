@@ -95,6 +95,7 @@ const ChiffreAffairesPage: React.FC = () => {
         totalChargesBrut: 0,
         totalAvoirsCharge: 0,
         totalSalaires: 0,
+        totalRetenuesAbsences: 0,
         totalBonsVehicule: 0,
         totalBons: 0,
         dailyData: [] as ChiffreAffairesData[],
@@ -318,6 +319,11 @@ const ChiffreAffairesPage: React.FC = () => {
                   </p>
                   <p className="text-xs text-rose-600 mt-0.5">
                     Dont salaires: {formatAmount(chiffreAffairesData.totalSalaires || 0)} DH
+                    {(chiffreAffairesData.totalRetenuesAbsences || 0) > 0 && (
+                      <span className="text-emerald-700">
+                        {' '}(après {formatAmount(chiffreAffairesData.totalRetenuesAbsences || 0)} DH de retenues d'absences)
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-rose-600 mt-0.5">
                     Dont bons vehicule: {formatAmount(chiffreAffairesData.totalBonsVehicule || 0)} DH

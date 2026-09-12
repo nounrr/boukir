@@ -11,6 +11,7 @@ import {
   HardHat,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/redux';
+import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 
@@ -21,6 +22,7 @@ interface MobileBottomNavProps {
 
 const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false }) => {
   const { user } = useAuth();
+  const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
   const navigate = useNavigate();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const isChefChauffeur = user?.role === 'ChefChauffeur';
@@ -33,6 +35,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'ops', label: 'Opérations', icon: FileText,
       items: [
         { name: 'Bons', to: '/bons', show: true },
+        { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
+        { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
       ],
     },
@@ -60,6 +64,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'bons', label: 'Bons', icon: FileText,
       items: [
         { name: 'Bons', to: '/bons', show: true },
+        { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
+        { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
         { name: 'Remises', to: '/remises', show: true },
       ],

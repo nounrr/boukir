@@ -35,6 +35,11 @@ const averageSnapshotCoutRevientExpr = (itemAlias) => `COALESCE((
     AND ci_avg.quantite IS NOT NULL
     AND ci_avg.quantite <> 0
     AND ps_avg.cout_revient IS NOT NULL
+), (
+  SELECT COALESCE(pv_cost.cout_revient, pv_cost.prix_achat)
+  FROM product_variants pv_cost
+  WHERE pv_cost.id = ${itemAlias}.variant_id
+  LIMIT 1
 ), p.cout_revient, ps.cout_revient, p.prix_achat, ps.prix_achat, 0)`;
 
 const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge, onlyCharge }) => {

@@ -58,6 +58,8 @@ const ArchivedProductsPage = React.lazy(() => import('./pages/ArchivedProductsPa
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const EmployeeSalariesPage = React.lazy(() => import('./pages/EmployeeSalariesPage'));
 const SalairesPage = React.lazy(() => import('./pages/SalairesPage'));
+const AbsencesPage = React.lazy(() => import('./pages/AbsencesPage'));
+const AbsenceStatsPage = React.lazy(() => import('./pages/AbsenceStatsPage'));
 const AuditPage = React.lazy(() => import('./pages/AuditPage'));
 const AccessSchedulePage = React.lazy(() => import('./pages/AccessSchedulePage'));
 const MultiDayAccessSchedulePage = React.lazy(() => import('./pages/MultiDayAccessSchedulePage'));
@@ -76,6 +78,8 @@ const StockPage = React.lazy(() => import('./pages/StockPage'));
 const SlowMovingStockPage = React.lazy(() => import('./pages/SlowMovingStockPage'));
 const ContactsPage = React.lazy(() => import('./pages/ContactsPage'));
 const BonsPage = React.lazy(() => import('./pages/BonsPage'));
+const DeliveryRunsPage = React.lazy(() => import('./pages/DeliveryRunsPage'));
+const DeliveryStatsPage = React.lazy(() => import('./pages/DeliveryRunsPage').then(m => ({ default: m.DeliveryStatsPage })));
 const CaissePage = React.lazy(() => import('./pages/CaissePage'));
 const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
 const InventoryPage = React.lazy(() => import('./pages/InventoryPage'));
@@ -226,6 +230,29 @@ const AppContent: React.FC = () => {
             <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <SalairesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Absences : la page vérifie elle-même les droits accordés par le PDG. */}
+        <Route
+          path="/absences"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <AbsencesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/absences/statistiques"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <AbsenceStatsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
@@ -448,6 +475,9 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
+
+        <Route path="/livraisons" element={<ProtectedRoute><LayoutWithAccessCheck><DeliveryRunsPage /></LayoutWithAccessCheck></ProtectedRoute>} />
+        <Route path="/livraisons/statistiques" element={<ProtectedRoute><LayoutWithAccessCheck><DeliveryStatsPage /></LayoutWithAccessCheck></ProtectedRoute>} />
 
         {/* Page dédiée à la création d'un bon/avoir (sortie du modal pour éviter le lag) */}
         <Route

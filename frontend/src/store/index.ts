@@ -20,6 +20,7 @@ import './api/bonsApi';
 import './api/paymentsApi';
 import './api/talonsApi';
 import './api/accessSchedulesApi';
+import './api/absencesApi';
 import './api/uiSettingsApi';
 import './api/pricePurchaseSolverApi';
 

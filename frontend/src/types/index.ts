@@ -83,6 +83,10 @@ export interface SalairesGlobalRow {
   total_working_days: number;
   worked_days: number;
   daily_rate: number;
+  salaire_brut?: number; // avant retenues d'absences
+  retenue_absences?: number;
+  absences_completes?: number;
+  absences_partielles?: number;
   salaire_du: number;
   paid_this_month: number;
   reste_a_payer: number;
@@ -100,6 +104,10 @@ export interface SalairesGlobalMonthRow {
   total_working_days: number;
   worked_days: number;
   daily_rate: number;
+  salaire_brut?: number;
+  retenue_absences?: number;
+  absences_completes?: number;
+  absences_partielles?: number;
   salaire_du: number;
   paid: number;
   reste_a_payer: number;
@@ -130,6 +138,10 @@ export interface SalairesByMonthEmployeeRow {
   total_working_days: number;
   worked_days: number;
   daily_rate: number;
+  salaire_brut?: number;
+  retenue_absences?: number;
+  absences_completes?: number;
+  absences_partielles?: number;
   salaire_du: number;
   paid: number;
   reste_a_payer: number;
@@ -140,6 +152,7 @@ export interface SalairesByMonthRow {
   employes_count: number;
   total_du: number;
   total_paid: number;
+  total_retenue_absences?: number;
   reste_a_payer: number;
   details: SalairesByMonthEmployeeRow[];
 }

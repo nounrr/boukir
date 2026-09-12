@@ -10,12 +10,14 @@ import {
   AlertTriangle,
   ArrowLeft,
   Bell,
+  CalendarX,
   Phone
 } from 'lucide-react';
 import { useGetChiffreAffairesStatsQuery, useGetDashboardSummaryQuery } from '../store/api/statsApi';
 import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
 import ChiffreAffairesMonthlyCharts from '../components/ChiffreAffairesMonthlyCharts';
 import { useGetMyClientCollaborationPermissionsQuery } from '../store/api/clientCollaborationPermissionsApi';
+import { useGetMyAbsencePermissionsQuery } from '../store/api/absencesApi';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,6 +36,7 @@ const DashboardPage: React.FC = () => {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+  const { data: absencePermissions } = useGetMyAbsencePermissionsQuery();
   const previousReminderPermission = React.useRef<boolean | undefined>(undefined);
 
   React.useEffect(() => {
@@ -75,7 +78,11 @@ const DashboardPage: React.FC = () => {
     pendingOrders: 0,
     talonDueSoon: 0,
     remindersToday: 0,
+    absencesThisMonth: 0,
+    absencesToday: 0,
+    absencesRetenueThisMonth: 0,
   };
+  const canSeeAbsences = absencePermissions?.statistiques === true;
   const recentActivity = dashboardSummary?.recentActivity ?? [];
   const reminderClientsToday = dashboardSummary?.reminderClientsToday ?? [];
   const showTodayReminders = collaborationPermissions?.rappels_clients === true && stats.remindersToday > 0;
@@ -197,7 +204,7 @@ const DashboardPage: React.FC = () => {
           </div>
         </button>}
 
-        <button 
+        <button
           type="button"
           onClick={() => navigate('/bons')}
           className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
@@ -210,6 +217,24 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
         </button>
+
+        {canSeeAbsences && <button
+          type="button"
+          onClick={() => navigate('/absences/statistiques')}
+          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+        >
+          <div className="flex items-center">
+            <CalendarX className="text-rose-500" size={24} />
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-500">Absences (ce mois)</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.absencesThisMonth ?? 0}</p>
+              <p className="text-xs text-rose-600 mt-1">
+                {formatAmount(stats.absencesRetenueThisMonth ?? 0)} DH retenus
+                {(stats.absencesToday ?? 0) > 0 && ` · ${stats.absencesToday} aujourd'hui`}
+              </p>
+            </div>
+          </div>
+        </button>}
       </div>
 
       {showTodayReminders && <section className="mt-6 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm" aria-labelledby="today-reminders-title">

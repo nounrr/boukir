@@ -48,6 +48,7 @@ const EmployeeMonthsDetail: React.FC<{ id: number }> = ({ id }) => {
               <th className="px-4 py-2 text-left font-medium text-gray-600">Mois</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Jours travaillés</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Salaire / jour</th>
+              <th className="px-4 py-2 text-right font-medium text-gray-600">Retenue absences</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Salaire dû</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Payé</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Reste à payer</th>
@@ -61,6 +62,9 @@ const EmployeeMonthsDetail: React.FC<{ id: number }> = ({ id }) => {
                   {m.worked_days} / {m.total_working_days}
                 </td>
                 <td className="px-4 py-2 text-right text-gray-700">{fmtMAD(m.daily_rate)}</td>
+                <td className="px-4 py-2 text-right text-rose-600">
+                  {(m.retenue_absences || 0) > 0 ? `- ${fmtMAD(m.retenue_absences || 0)}` : '—'}
+                </td>
                 <td className="px-4 py-2 text-right font-medium text-gray-900">{fmtMAD(m.salaire_du)}</td>
                 <td className="px-4 py-2 text-right text-emerald-600">{fmtMAD(m.paid)}</td>
                 <td
@@ -97,6 +101,7 @@ const MonthEmployeesDetail: React.FC<{ row: SalairesByMonthRow }> = ({ row }) =>
               <th className="px-4 py-2 text-left font-medium text-gray-600">Employé</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Jours travaillés</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Salaire / jour</th>
+              <th className="px-4 py-2 text-right font-medium text-gray-600">Retenue absences</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Salaire dû</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Payé</th>
               <th className="px-4 py-2 text-right font-medium text-gray-600">Reste à payer</th>
@@ -113,6 +118,11 @@ const MonthEmployeesDetail: React.FC<{ row: SalairesByMonthRow }> = ({ row }) =>
                   {e.worked_days} / {e.total_working_days}
                 </td>
                 <td className="px-4 py-2 text-right text-gray-700">{fmtMAD(e.daily_rate)}</td>
+                <td className="px-4 py-2 text-right text-rose-600">
+                  {(e.retenue_absences || 0) > 0
+                    ? `- ${fmtMAD(e.retenue_absences || 0)} (${(e.absences_completes || 0) + (e.absences_partielles || 0)} j.)`
+                    : '—'}
+                </td>
                 <td className="px-4 py-2 text-right font-medium text-gray-900">{fmtMAD(e.salaire_du)}</td>
                 <td className="px-4 py-2 text-right text-emerald-600">{fmtMAD(e.paid)}</td>
                 <td
@@ -206,6 +216,9 @@ const MonthlyView: React.FC = () => {
                     Employés
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Retenues absences
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total dû
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -232,6 +245,9 @@ const MonthlyView: React.FC = () => {
                           {monthLabel(m.month)}
                         </td>
                         <td className="px-4 py-4 text-right text-sm text-gray-600">{m.employes_count}</td>
+                        <td className="px-4 py-4 text-right text-sm text-rose-600">
+                          {(m.total_retenue_absences || 0) > 0 ? `- ${fmtMAD(m.total_retenue_absences || 0)}` : '—'}
+                        </td>
                         <td className="px-4 py-4 text-right text-sm font-semibold text-gray-900">
                           {fmtMAD(m.total_du)}
                         </td>
@@ -250,7 +266,7 @@ const MonthlyView: React.FC = () => {
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={6} className="p-0">
+                          <td colSpan={7} className="p-0">
                             <MonthEmployeesDetail row={m} />
                           </td>
                         </tr>
@@ -423,6 +439,9 @@ const SalairesPage: React.FC = () => {
                       Jours
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Absences
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Dû ce mois
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -472,6 +491,18 @@ const SalairesPage: React.FC = () => {
                           <td className="px-4 py-4 text-right text-sm text-gray-600">
                             {e.worked_days} / {e.total_working_days}
                           </td>
+                          <td className="px-4 py-4 text-right text-sm text-rose-600">
+                            {(e.retenue_absences || 0) > 0 ? (
+                              <>
+                                <div className="font-semibold">- {fmtMAD(e.retenue_absences || 0)}</div>
+                                <div className="text-xs text-gray-500">
+                                  {(e.absences_completes || 0)} j. · {(e.absences_partielles || 0)} retard(s)
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
                           <td className="px-4 py-4 text-right text-sm font-semibold text-gray-900">
                             {fmtMAD(e.salaire_du)}
                           </td>
@@ -495,7 +526,7 @@ const SalairesPage: React.FC = () => {
                         </tr>
                         {isOpen && (
                           <tr>
-                            <td colSpan={9} className="p-0">
+                            <td colSpan={10} className="p-0">
                               <EmployeeMonthsDetail id={e.id} />
                             </td>
                           </tr>

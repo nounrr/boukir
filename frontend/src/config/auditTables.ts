@@ -25,6 +25,7 @@ export const TABLE_LABELS: Record<string, string> = {
   employe_doc: "Document d'employé",
   employees: 'Employé',
   employe_salaire: 'Salaire employé',
+  employe_absences: 'Absence employé',
   payments: 'Paiement',
   devis: 'Devis',
   devis_items: 'Ligne de devis',
@@ -62,6 +63,6 @@ export const MAIN_GROUPS: { key: string; label: string; tables: string[]; subTab
   { key: 'talons', label: 'Talons', tables: ['talons', 'old_talons_caisse'] },
   { key: 'vehicules', label: 'Véhicules', tables: ['vehicules', 'vehicule_items'] },
   { key: 'documents', label: 'Documents', tables: ['document_types', 'employe_doc'] },
-  { key: 'employes', label: 'Employés', tables: ['employees', 'employe_salaire'] },
+  { key: 'employes', label: 'Employés', tables: ['employees', 'employe_salaire', 'employe_absences'] },
   { key: 'paiements', label: 'Paiements', tables: ['payments'] },
 ];

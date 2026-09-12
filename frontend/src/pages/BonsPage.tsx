@@ -1,4 +1,5 @@
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
+import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw } from 'lucide-react';
@@ -184,6 +185,9 @@ const isContactBlocked = (contact: any) => {
 
 const BonsPage = () => {
   const navigate = useNavigate();
+  const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { pollingInterval: 30000, refetchOnFocus: true });
+  const { data: deliveryQueue = [] } = useDeliveryQueueQuery(undefined, { skip: !deliveryAccess?.allowed, pollingInterval: 30000 });
+  const [addDeliveryQueue, { isLoading: addingDelivery }] = useAddDeliveryQueueMutation();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const restoredListState = (location.state as any)?.restoreListState;
@@ -1415,8 +1419,13 @@ const BonsPage = () => {
   };
 
   // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
-    // et certains endpoints ne renvoyaient pas `type`.
+  // et certains endpoints ne renvoyaient pas `type`.
+  // Garde locale pour que les bons annulés disparaissent aussi immédiatement
+  // de l'onglet non payé, même pendant le rafraîchissement de la requête.
   const sortedBons = useMemo(() => {
+    if (currentTab === 'ComptantNonPaye') {
+      return bons.filter(isBonComptantNonPaye);
+    }
     return bons;
     // First filter - search across all bon attributes and nested item values
     const filtered = bons.filter(bon => {
@@ -1488,7 +1497,7 @@ const BonsPage = () => {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [bons]);
+  }, [bons, currentTab]);
 
   // Pagination
   const totalItems = bonsPagination?.total ?? sortedBons.length;
@@ -3457,6 +3466,21 @@ const BonsPage = () => {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2 items-center relative">
+                          {deliveryAccess?.allowed && (() => {
+                            const type = effectiveCurrentTab;
+                            const queued = deliveryQueue.some(q => q.bon_type === type && Number(q.bon_id) === Number(bon.id));
+                            return <button type="button" disabled={addingDelivery}
+                              className={`rounded p-1 ${queued ? 'text-blue-700 bg-blue-50' : 'text-slate-600 hover:bg-blue-50'} disabled:opacity-50`}
+                              title={queued ? 'Voir dans les livraisons' : 'Ajouter à la livraison'}
+                              aria-label={queued ? 'Voir dans les livraisons' : 'Ajouter à la livraison'}
+                              onClick={async () => {
+                                if (queued) { navigate('/livraisons'); return; }
+                                try {
+                                  await addDeliveryQueue({ bons: [{ bon_type: type, bon_id: Number(bon.id) }] }).unwrap();
+                                  showSuccess('Bon ajouté à la liste des bons à livrer.');
+                                } catch (error: any) { showError(error?.data?.message || 'Impossible d’ajouter ce bon.'); }
+                              }}><Truck size={ACTION_ICON_SIZE} /></button>;
+                          })()}
                           {canMarkLivre && (() => {
                             const isLivre = bon?.livre === true || Number(bon?.livre) === 1;
                             const isUpdatingLivre = updatingLivreKeys.has(getLivreUpdateKey(bon));

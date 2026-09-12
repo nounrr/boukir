@@ -74,15 +74,19 @@ function computeMonthlyDue(emp, year, monthIndex, deduction = { total: 0, jours_
   const present = workedDays > 0 && (!entry || entry <= monthEnd) && (!exit || exit >= monthStart);
 
   const dailyRate = totalWorkingDays > 0 ? salaire / totalWorkingDays : 0;
-  const due = present ? Math.round(dailyRate * workedDays * 100) / 100 : 0;
+  const dueBrut = present ? Math.round(dailyRate * workedDays * 100) / 100 : 0;
+  // Le salaire dû ne peut jamais devenir négatif à cause des retenues.
+  const due = Math.max(0, Math.round((dueBrut - retenue) * 100) / 100);
 
   return {
     salaire,
     totalWorkingDays,
     workedDays: present ? workedDays : 0,
     dailyRate: Math.round(dailyRate * 100) / 100,
+    dueBrut,
     due,
     present,
+    ...absenceInfo,
   };
 }
 
@@ -269,8 +273,10 @@ router.get('/salaires-global', requireRole('PDG'), async (req, res, next) => {
     );
     const paidMonth = new Map(paidMonthRows.map((r) => [Number(r.employe_id), Number(r.total) || 0]));
 
+    const deductions = await getAbsenceDeductionsByMonth([monthKey]);
+
     const rows = employees.map((emp) => {
-      const calc = computeMonthlyDue(emp, year, monthIndex);
+      const calc = computeMonthlyDue(emp, year, monthIndex, getEmployeeDeduction(deductions, monthKey, emp.id));
       const totalPaid = paidAll.get(Number(emp.id)) || 0;
       const paidThisMonth = paidMonth.get(Number(emp.id)) || 0;
       return {
@@ -286,7 +292,11 @@ router.get('/salaires-global', requireRole('PDG'), async (req, res, next) => {
         total_working_days: calc.totalWorkingDays,
         worked_days: calc.workedDays,
         daily_rate: calc.dailyRate,
-        salaire_du: calc.due, // prorated salary owed for the month
+        salaire_brut: calc.dueBrut, // avant retenues d'absences
+        retenue_absences: calc.retenue_absences,
+        absences_completes: calc.absences_completes,
+        absences_partielles: calc.absences_partielles,
+        salaire_du: calc.due, // prorated salary owed for the month, absences deduites
         paid_this_month: Math.round(paidThisMonth * 100) / 100,
         reste_a_payer: Math.round((calc.due - paidThisMonth) * 100) / 100,
         total_paid: Math.round(totalPaid * 100) / 100, // all-time paid
@@ -334,6 +344,16 @@ router.get('/salaires-global/:id/months', requireRole('PDG'), async (req, res, n
     );
     const paidByMonth = new Map(paidRows.map((r) => [r.ym, Number(r.total) || 0]));
 
+    const monthKeys = [];
+    const keyCursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    let keyGuard = 0;
+    while (keyCursor <= end && keyGuard < 600) {
+      monthKeys.push(`${keyCursor.getFullYear()}-${String(keyCursor.getMonth() + 1).padStart(2, '0')}`);
+      keyCursor.setMonth(keyCursor.getMonth() + 1);
+      keyGuard += 1;
+    }
+    const deductions = await getAbsenceDeductionsByMonth(monthKeys);
+
     const months = [];
     const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
     let guard = 0;
@@ -341,7 +361,7 @@ router.get('/salaires-global/:id/months', requireRole('PDG'), async (req, res, n
       const year = cursor.getFullYear();
       const monthIndex = cursor.getMonth();
       const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
-      const calc = computeMonthlyDue(emp, year, monthIndex);
+      const calc = computeMonthlyDue(emp, year, monthIndex, getEmployeeDeduction(deductions, monthKey, emp.id));
       const paid = paidByMonth.get(monthKey) || 0;
       months.push({
         month: monthKey,
@@ -349,6 +369,10 @@ router.get('/salaires-global/:id/months', requireRole('PDG'), async (req, res, n
         total_working_days: calc.totalWorkingDays,
         worked_days: calc.workedDays,
         daily_rate: calc.dailyRate,
+        salaire_brut: calc.dueBrut,
+        retenue_absences: calc.retenue_absences,
+        absences_completes: calc.absences_completes,
+        absences_partielles: calc.absences_partielles,
         salaire_du: calc.due,
         paid: Math.round(paid * 100) / 100,
         reste_a_payer: Math.round((calc.due - paid) * 100) / 100,
@@ -402,6 +426,16 @@ router.get('/salaires-global/by-month', requireRole('PDG'), async (req, res, nex
       paidByMonthEmp.get(ym).set(Number(r.employe_id), Number(r.total) || 0);
     }
 
+    const monthKeys = [];
+    const keyCursor = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+    let keyGuard = 0;
+    while (keyCursor <= rangeEnd && keyGuard < 600) {
+      monthKeys.push(`${keyCursor.getFullYear()}-${String(keyCursor.getMonth() + 1).padStart(2, '0')}`);
+      keyCursor.setMonth(keyCursor.getMonth() + 1);
+      keyGuard += 1;
+    }
+    const deductions = await getAbsenceDeductionsByMonth(monthKeys);
+
     const months = [];
     const cursor = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
     let guard = 0;
@@ -413,14 +447,16 @@ router.get('/salaires-global/by-month', requireRole('PDG'), async (req, res, nex
 
       let totalDu = 0;
       let totalPaid = 0;
+      let totalRetenue = 0;
       const details = [];
       for (const emp of employees) {
-        const calc = computeMonthlyDue(emp, year, monthIndex);
+        const calc = computeMonthlyDue(emp, year, monthIndex, getEmployeeDeduction(deductions, monthKey, emp.id));
         const paid = paidMap.get(Number(emp.id)) || 0;
         // Skip employees not present this month and with no payment recorded.
         if (!calc.present && paid === 0) continue;
         totalDu += calc.due;
         totalPaid += paid;
+        totalRetenue += calc.retenue_absences;
         details.push({
           id: emp.id,
           nom_complet: emp.nom_complet,
@@ -431,6 +467,10 @@ router.get('/salaires-global/by-month', requireRole('PDG'), async (req, res, nex
           total_working_days: calc.totalWorkingDays,
           worked_days: calc.workedDays,
           daily_rate: calc.dailyRate,
+          salaire_brut: calc.dueBrut,
+          retenue_absences: calc.retenue_absences,
+          absences_completes: calc.absences_completes,
+          absences_partielles: calc.absences_partielles,
           salaire_du: calc.due,
           paid: Math.round(paid * 100) / 100,
           reste_a_payer: Math.round((calc.due - paid) * 100) / 100,
@@ -442,6 +482,7 @@ router.get('/salaires-global/by-month', requireRole('PDG'), async (req, res, nex
         employes_count: details.length,
         total_du: Math.round(totalDu * 100) / 100,
         total_paid: Math.round(totalPaid * 100) / 100,
+        total_retenue_absences: Math.round(totalRetenue * 100) / 100,
         reste_a_payer: Math.round((totalDu - totalPaid) * 100) / 100,
         details,
       });

@@ -1,6 +1,8 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
+import { getAbsenceDeductionsByMonth, getEmployeeDeduction } from '../utils/absences.js';
+import { hasAbsencePermission } from '../utils/absencePermissions.js';
 
 const router = express.Router();
 
@@ -248,20 +250,28 @@ function getSalaryMonthsForFilter(filterArgs, employees) {
 async function getMonthlySalaryDueRows(filterArgs) {
   const employees = await fetchEmployeesForSalaryStats();
   const months = getSalaryMonthsForFilter(filterArgs, employees);
+  // Les absences marquées réduisent la masse salariale portée en charges.
+  const deductions = await getAbsenceDeductionsByMonth(months);
   return months
     .map((monthKey) => {
       const parsed = parseMonthKey(monthKey);
       if (!parsed) return null;
-      const total = employees.reduce(
-        (sum, emp) => sum + computeEmployeeMonthlySalaryDue(emp, parsed.year, parsed.monthIndex),
-        0
-      );
+      let total = 0;
+      let retenues = 0;
+      for (const emp of employees) {
+        const brut = computeEmployeeMonthlySalaryDue(emp, parsed.year, parsed.monthIndex);
+        const retenue = getEmployeeDeduction(deductions, monthKey, emp.id).total;
+        const effectiveRetenue = Math.min(brut, retenue);
+        total += brut - effectiveRetenue;
+        retenues += effectiveRetenue;
+      }
       return {
         day: lastDayKeyForMonth(parsed.year, parsed.monthIndex),
         total: Math.round(total * 100) / 100,
+        retenues: Math.round(retenues * 100) / 100,
       };
     })
-    .filter((row) => row && roundSafe(row.total) > 0);
+    .filter((row) => row && (roundSafe(row.total) > 0 || roundSafe(row.retenues) > 0));
 }
 
 function parseBoolQuery(value, defaultValue = true) {
@@ -481,6 +491,30 @@ router.get('/dashboard-summary', async (req, res) => {
 
     activities.sort((a, b) => (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99));
 
+    // Absences du mois en cours : indicateur RH affiché sur le tableau de bord.
+    // Une base non migrée ne doit jamais casser le résumé.
+    let absencesMonth = { total: 0, retenue: 0, today: 0 };
+    if (hasAbsencePermission(req.user, 'statistiques')) {
+      try {
+        const [[absenceRow]] = await pool.query(
+          `SELECT COUNT(*) AS total,
+                  COALESCE(SUM(montant_retenue), 0) AS retenue,
+                  COALESCE(SUM(date_absence = CURDATE()), 0) AS today
+           FROM employe_absences
+           WHERE DATE_FORMAT(date_absence, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')`
+        );
+        absencesMonth = {
+          total: Number(absenceRow?.total || 0),
+          retenue: Math.round((Number(absenceRow?.retenue || 0)) * 100) / 100,
+          today: Number(absenceRow?.today || 0),
+        };
+      } catch (error) {
+        if (error?.code !== 'ER_NO_SUCH_TABLE') {
+          console.error('dashboard absences query:', error?.sqlMessage || error?.message);
+        }
+      }
+    }
+
     res.json({
       stats: {
         employees: Number(employeesRow?.total || 0),
@@ -490,6 +524,9 @@ router.get('/dashboard-summary', async (req, res) => {
         pendingOrders: Number(pendingOrdersRow?.total || 0),
         talonDueSoon: Number(talonDueSoonRow?.total || 0),
         remindersToday: reminderClientsToday.length,
+        absencesThisMonth: absencesMonth.total,
+        absencesToday: absencesMonth.today,
+        absencesRetenueThisMonth: absencesMonth.retenue,
       },
       recentActivity: activities.slice(0, 5),
       reminderClientsToday,
@@ -1457,6 +1494,7 @@ router.get('/chiffre-affaires', async (req, res) => {
           totalChargesBrut: chargesTotal,
           totalAvoirsCharge: avoirsChargeTotal,
           totalSalaires: salaireTotal,
+          totalRetenuesAbsences: roundSafe(salaire.retenues),
           totalBonsVehicule: vehiculeTotal,
         };
       })
@@ -1483,6 +1521,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const totalVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.ca), 0);
     const totalProfitVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.profitNet), 0);
     const totalSalaires = Array.from(salairesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalRetenuesAbsences = Array.from(salairesMap.values()).reduce((s, r) => s + roundSafe(r.retenues), 0);
     const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
     const totalChargesBrut = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0) + totalSalaires + totalBonsVehicule;
     const totalAvoirsCharge = Array.from(avoirsChargeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
@@ -1573,6 +1612,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       totalChargesBrut,
       totalAvoirsCharge,
       totalSalaires,
+      totalRetenuesAbsences,
       totalBonsVehicule,
       totalBons,
       dailyData,

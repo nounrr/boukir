@@ -1,0 +1,12 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { Provider } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { api } from './store/api/apiSlice';
+import DeliveryRunsPage, { DeliveryStatsPage } from './pages/DeliveryRunsPage';
+import AbsencesPage from './pages/AbsencesPage';
+import AbsenceStatsPage from './pages/AbsenceStatsPage';
+import './index.css';
+const store = configureStore({ reducer: { api: api.reducer, auth: () => ({ user: { id: 1, role: 'PDG', nom_complet: 'Aperçu' }, isAuthenticated: true, token: 'local-fixture' }) }, middleware: get => get().concat(api.middleware) });
+createRoot(document.getElementById('root')!).render(<Provider store={store}><BrowserRouter><div style={{ maxWidth: 1440, margin: '0 auto' }}><Routes><Route path="/livraisons" element={<DeliveryRunsPage />} /><Route path="/livraisons/statistiques" element={<DeliveryStatsPage />} /><Route path="/absences" element={<AbsencesPage />} /><Route path="/absences/statistiques" element={<AbsenceStatsPage />} /><Route path="*" element={<Navigate to="/livraisons" />} /></Routes></div></BrowserRouter></Provider>);

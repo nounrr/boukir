@@ -1,8 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
+import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
+import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
 import {
   Users,
   Package,
@@ -21,6 +23,8 @@ import {
   Wallet,
   Archive,
   CalendarClock,
+  CalendarX,
+  PieChart,
   Award,
   Image,
   Settings,
@@ -45,10 +49,14 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const { user } = useAuth();
+  const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
   const isChefChauffeur = user?.role === 'ChefChauffeur';
   const reviewRole = user?.role === 'Manager' || user?.role === 'ManagerPlus';
   const { data: reviewPermissions } = useGetMyMaalemReviewPermissionsQuery(undefined, { skip: !reviewRole });
   const canViewMaalemReviews = user?.role === 'PDG' || reviewPermissions?.view === true;
+  const { data: absencePermissions } = useGetMyAbsencePermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
+  const canManageAbsences = user?.role === 'PDG' || absencePermissions?.gestion === true;
+  const canViewAbsenceStats = user?.role === 'PDG' || absencePermissions?.statistiques === true;
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
@@ -97,6 +105,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Ventes',
       items: [
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
+        { name: 'Livraisons', href: '/livraisons', icon: Truck, show: deliveryAccess?.allowed === true },
+        { name: 'Stats livraisons', href: '/livraisons/statistiques', icon: BarChart3, show: deliveryAccess?.allowed === true },
         { name: 'Remises', href: '/remises', icon: Percent, show: !isChefChauffeur },
         { name: 'Véhicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
       ],
@@ -133,6 +143,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Employés', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
         { name: 'Employés archivés', href: '/employees/archive', icon: Archive, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Salaires', href: '/salaires', icon: Wallet, show: user?.role === 'PDG' },
+        { name: 'Absences', href: '/absences', icon: CalendarX, show: !isChefChauffeur && (canManageAbsences || canViewAbsenceStats) },
+        { name: 'Stats absences', href: '/absences/statistiques', icon: PieChart, show: !isChefChauffeur && canViewAbsenceStats },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', href: '/employees/client-collaboration-permissions', icon: UserCheck, show: user?.role === 'PDG' },
         { name: 'Permissions avis Maalem', href: '/employees/maalem-review-permissions', icon: ShieldCheck, show: user?.role === 'PDG' },

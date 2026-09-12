@@ -34,6 +34,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     const allowed =
       location.pathname === '/bons' ||
       location.pathname === '/vehicules' ||
+      location.pathname === '/livraisons' ||
+      location.pathname === '/livraisons/statistiques' ||
       location.pathname === '/change-password';
 
     if (!allowed) {

@@ -18,6 +18,7 @@ export interface ChiffreAffairesDayRow {
   totalChargesBrut?: number;
   totalAvoirsCharge?: number;
   totalSalaires?: number;
+  totalRetenuesAbsences?: number;
   totalBonsVehicule?: number;
 }
 
@@ -32,6 +33,7 @@ export interface ChiffreAffairesStatsResponse {
   totalChargesBrut?: number;
   totalAvoirsCharge?: number;
   totalSalaires?: number;
+  totalRetenuesAbsences?: number;
   totalBonsVehicule?: number;
   totalBons: number;
   dailyData: ChiffreAffairesDayRow[];
@@ -121,6 +123,9 @@ export interface DashboardSummaryResponse {
     pendingOrders: number;
     talonDueSoon: number;
     remindersToday: number;
+    absencesThisMonth?: number;
+    absencesToday?: number;
+    absencesRetenueThisMonth?: number;
   };
   reminderClientsToday: Array<{
     id: number;
