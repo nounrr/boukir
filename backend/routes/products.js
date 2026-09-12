@@ -12,6 +12,12 @@ import {
   isMissingImageFilterEnabled,
   parseProductImageTarget,
 } from '../utils/productImageTarget.js';
+import {
+  rankHistoricalPrices,
+  resolveCurrentSalePrice,
+  salePriceEntityKey,
+  salePricesMatch,
+} from '../utils/salePriceCorrections.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1302,6 +1308,16 @@ async function ensureSalePriceCorrectionColumns() {
     );
     if (!productColumns.length) {
       await pool.query('ALTER TABLE products ADD COLUMN sale_price_corrected_at DATETIME NULL');
+    }
+
+    const [variantColumns] = await pool.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'product_variants'
+         AND COLUMN_NAME = 'sale_price_corrected_at'`
+    );
+    if (!variantColumns.length) {
+      await pool.query('ALTER TABLE product_variants ADD COLUMN sale_price_corrected_at DATETIME NULL');
     }
 
     if (await hasProductSnapshotTable()) {
@@ -4565,10 +4581,130 @@ router.patch('/snapshots', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /products/sale-price-corrections
+// One row per sellable entity, paginated before its sale history is aggregated.
+router.get('/sale-price-corrections', async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'PDG') {
+      return res.status(403).json({ message: 'Seul le rôle PDG peut consulter les corrections de prix de vente' });
+    }
+    await ensureProductsColumns();
+    await ensureSalePriceCorrectionColumns();
+
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    const status = String(req.query.status || 'pending') === 'processed' ? 'processed' : 'pending';
+    const like = `%${q}%`;
+    const statusSql = status === 'processed' ? 'entity.corrected_at IS NOT NULL' : 'entity.corrected_at IS NULL';
+    const searchSql = q
+      ? `AND (CAST(entity.product_id AS CHAR) LIKE ? OR COALESCE(entity.product_reference, '') LIKE ?
+              OR COALESCE(entity.designation, '') LIKE ? OR COALESCE(entity.variant_name, '') LIKE ?
+              OR COALESCE(entity.variant_reference, '') LIKE ?)`
+      : '';
+    const searchParams = q ? [like, like, like, like, like] : [];
+    const entitySql = `SELECT * FROM (
+      SELECT p.id AS product_id, NULL AS variant_id, p.reference_2 AS product_reference,
+             p.designation, NULL AS variant_name, NULL AS variant_reference,
+             p.image_url, p.prix_vente AS product_prix_vente, p.prix_vente_2 AS product_prix_vente_2,
+             NULL AS variant_prix_vente, NULL AS variant_prix_vente_2, p.sale_price_corrected_at AS corrected_at
+      FROM products p
+      WHERE COALESCE(p.is_deleted, 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM product_variants pv0 WHERE pv0.product_id = p.id AND COALESCE(pv0.is_deleted, 0) = 0)
+      UNION ALL
+      SELECT p.id, pv.id, p.reference_2, p.designation, pv.variant_name, pv.reference,
+             COALESCE(pv.image_url, p.image_url), p.prix_vente, p.prix_vente_2,
+             pv.prix_vente, pv.prix_vente_2, pv.sale_price_corrected_at
+      FROM products p
+      JOIN product_variants pv ON pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
+      WHERE COALESCE(p.is_deleted, 0) = 0
+    ) entity WHERE ${statusSql} ${searchSql}`;
+
+    const [[countRow]] = await pool.query(`SELECT COUNT(*) AS total FROM (${entitySql}) counted`, searchParams);
+    const [entities] = await pool.query(
+      `${entitySql} ORDER BY entity.product_id DESC, entity.variant_id ASC LIMIT ? OFFSET ?`,
+      [...searchParams, limit, offset]
+    );
+    const total = Number(countRow?.total || 0);
+    if (!entities.length) {
+      return res.json({ data: [], meta: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+    }
+
+    const productIds = [...new Set(entities.map((entity) => Number(entity.product_id)))];
+    const placeholders = productIds.map(() => '?').join(', ');
+    const hasEnValidation = await hasProductSnapshotEnValidationColumn();
+    const [snapshots] = await pool.query(
+      `SELECT ps.id AS snapshot_id, ps.product_id, ps.variant_id, ps.quantite,
+              ps.prix_vente, ps.prix_vente_2, ps.created_at AS snapshot_created_at,
+              ${hasEnValidation ? 'ps.en_validation' : '1 AS en_validation'}
+       FROM product_snapshot ps WHERE ps.product_id IN (${placeholders})
+       ORDER BY ps.product_id, ps.variant_id, ps.created_at, ps.id`, productIds
+    );
+    const snapshotsByEntity = new Map();
+    for (const snapshot of snapshots) {
+      const key = salePriceEntityKey(snapshot.product_id, snapshot.variant_id);
+      const list = snapshotsByEntity.get(key) || [];
+      list.push(snapshot);
+      snapshotsByEntity.set(key, list);
+    }
+
+    const [historyRows] = await pool.query(`SELECT history.* FROM (
+      SELECT si.product_id, COALESCE(si.variant_id, ps.variant_id) AS variant_id,
+             si.prix_unitaire, si.quantite, si.is_indisponible, bs.date_creation,
+             pu.conversion_factor, pu.facteur_isNormal
+      FROM sortie_items si
+      JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
+      LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = si.unit_id
+      WHERE si.product_id IN (${placeholders}) AND COALESCE(bs.vendre_au_fournisseur, 0) = 0
+        AND LOWER(COALESCE(bs.statut, '')) NOT LIKE 'annul%' AND LOWER(COALESCE(bs.statut, '')) <> 'avoir'
+        AND COALESCE(si.is_indisponible, 0) = 0 AND si.prix_unitaire > 0
+        AND (si.unit_id IS NULL OR COALESCE(pu.facteur_isNormal, 1) <> 0)
+      UNION ALL
+      SELECT ci.product_id, COALESCE(ci.variant_id, ps.variant_id),
+             ci.prix_unitaire, ci.quantite, ci.is_indisponible, bc.date_creation,
+             pu.conversion_factor, pu.facteur_isNormal
+      FROM comptant_items ci
+      JOIN bons_comptant bc ON bc.id = ci.bon_comptant_id
+      LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = ci.unit_id
+      WHERE ci.product_id IN (${placeholders})
+        AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%' AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+        AND COALESCE(ci.is_indisponible, 0) = 0 AND ci.prix_unitaire > 0
+        AND (ci.unit_id IS NULL OR COALESCE(pu.facteur_isNormal, 1) <> 0)
+    ) history`, [...productIds, ...productIds]);
+    const historyByEntity = new Map();
+    for (const line of historyRows) {
+      const key = salePriceEntityKey(line.product_id, line.variant_id);
+      const list = historyByEntity.get(key) || [];
+      list.push(line);
+      historyByEntity.set(key, list);
+    }
+
+    const data = entities.map((entity) => {
+      const key = salePriceEntityKey(entity.product_id, entity.variant_id);
+      const entitySnapshots = snapshotsByEntity.get(key) || [];
+      const pv1 = resolveCurrentSalePrice({ snapshots: entitySnapshots, field: 'prix_vente', variantPrice: entity.variant_prix_vente, productPrice: entity.product_prix_vente });
+      const pv2 = resolveCurrentSalePrice({ snapshots: entitySnapshots, field: 'prix_vente_2', variantPrice: entity.variant_prix_vente_2, productPrice: entity.product_prix_vente_2 });
+      const history = historyByEntity.get(key) || [];
+      return {
+        product_id: Number(entity.product_id), variant_id: entity.variant_id == null ? null : Number(entity.variant_id),
+        reference: entity.product_reference ?? null, designation: entity.designation,
+        variant_name: entity.variant_name ?? null, variant_reference: entity.variant_reference ?? null,
+        image_url: entity.image_url ?? null,
+        current_prix_vente: pv1.value, current_prix_vente_source: pv1.source,
+        current_prix_vente_2: pv2.value, current_prix_vente_2_source: pv2.source,
+        high_prices: rankHistoricalPrices(history, 'desc', 3), low_prices: rankHistoricalPrices(history, 'asc', 3),
+        is_corrected: Boolean(entity.corrected_at), corrected_at: entity.corrected_at ?? null,
+      };
+    });
+    res.json({ data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  } catch (err) { next(err); }
+});
+
 // PATCH /products/sale-price-corrections
-// PDG-only bulk update used by the dedicated selling-price correction page.
-// A correction targets either the base product (snapshot_ids is empty) or the
-// exact snapshot rows represented by a visible/merged table line.
+// PDG-only transactional decisions for exact sellable entities.
 router.patch('/sale-price-corrections', async (req, res, next) => {
   let connection;
   try {
@@ -4580,116 +4716,130 @@ router.patch('/sale-price-corrections', async (req, res, next) => {
     if (!Array.isArray(corrections) || corrections.length === 0) {
       return res.status(400).json({ message: 'corrections array requis' });
     }
-    if (corrections.length > 500) {
-      return res.status(400).json({ message: 'Maximum 500 corrections par requête' });
+    if (corrections.length > 100) {
+      return res.status(400).json({ message: 'Maximum 100 corrections par requête' });
     }
 
     const normalized = [];
-    const targetedSnapshots = new Set();
-    const targetedBaseProducts = new Set();
+    const targetedEntities = new Set();
 
     for (const correction of corrections) {
       const productId = Number(correction?.product_id);
+      const variantId = correction?.variant_id == null ? null : Number(correction.variant_id);
+      const action = correction?.action === 'confirm' ? 'confirm' : correction?.action === 'apply' ? 'apply' : null;
       const prixVente = Number(correction?.prix_vente);
       const prixVente2 = Number(correction?.prix_vente_2);
-      const snapshotIds = [...new Set(
-        (Array.isArray(correction?.snapshot_ids) ? correction.snapshot_ids : [])
-          .map(Number)
-          .filter((id) => Number.isInteger(id) && id > 0)
-      )];
+      const expectedPrixVente = Number(correction?.expected_prix_vente);
+      const expectedPrixVente2 = Number(correction?.expected_prix_vente_2);
 
       if (
         !Number.isInteger(productId) || productId <= 0 ||
+        (variantId !== null && (!Number.isInteger(variantId) || variantId <= 0)) || !action ||
         !Number.isFinite(prixVente) || prixVente < 0 ||
-        !Number.isFinite(prixVente2) || prixVente2 < 0
+        !Number.isFinite(prixVente2) || prixVente2 < 0 ||
+        !Number.isFinite(expectedPrixVente) || expectedPrixVente < 0 ||
+        !Number.isFinite(expectedPrixVente2) || expectedPrixVente2 < 0
       ) {
         return res.status(400).json({ message: 'Correction de prix de vente invalide' });
       }
-      if (snapshotIds.length > 1000) {
-        return res.status(400).json({ message: `Trop de snapshots pour le produit ${productId}` });
+      const entityKey = salePriceEntityKey(productId, variantId);
+      if (targetedEntities.has(entityKey)) {
+        return res.status(400).json({ message: `L'entité ${entityKey} est présente plusieurs fois` });
       }
-
-      if (snapshotIds.length === 0) {
-        if (targetedBaseProducts.has(productId)) {
-          return res.status(400).json({ message: `Le produit ${productId} est présent plusieurs fois` });
-        }
-        targetedBaseProducts.add(productId);
-      } else {
-        for (const snapshotId of snapshotIds) {
-          if (targetedSnapshots.has(snapshotId)) {
-            return res.status(400).json({ message: `Le snapshot ${snapshotId} est présent plusieurs fois` });
-          }
-          targetedSnapshots.add(snapshotId);
-        }
-      }
-
-      normalized.push({ productId, snapshotIds, prixVente, prixVente2 });
-    }
-
-    if (targetedSnapshots.size > 5000) {
-      return res.status(400).json({ message: 'Maximum 5000 snapshots par requête' });
+      targetedEntities.add(entityKey);
+      normalized.push({ productId, variantId, action, prixVente, prixVente2, expectedPrixVente, expectedPrixVente2 });
     }
 
     await ensureProductsColumns();
     await ensureSalePriceCorrectionColumns();
-    const useSnapshot = targetedSnapshots.size > 0 && await hasProductSnapshotTable();
-    if (targetedSnapshots.size > 0 && !useSnapshot) {
-      return res.status(400).json({ message: 'Table product_snapshot introuvable' });
-    }
+    const hasEnValidation = await hasProductSnapshotEnValidationColumn();
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
     let updatedProducts = 0;
+    let updatedVariants = 0;
     let updatedSnapshots = 0;
 
     for (const correction of normalized) {
-      if (correction.snapshotIds.length === 0) {
-        const [result] = await connection.query(
-          `UPDATE products
-           SET prix_vente = ?, prix_vente_2 = ?, sale_price_corrected_at = NOW(), updated_by = ?, updated_at = NOW()
-           WHERE id = ? AND COALESCE(is_deleted, 0) = 0`,
-          [correction.prixVente, correction.prixVente2, req.user?.id || null, correction.productId]
-        );
-        if (!result.affectedRows) {
-          const [[product]] = await connection.query(
-            'SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted, 0) = 0 LIMIT 1',
-            [correction.productId]
-          );
-          if (!product) {
-            await connection.rollback();
-            return res.status(404).json({ message: `Produit ${correction.productId} introuvable` });
-          }
-        }
-        updatedProducts += result.affectedRows;
-        continue;
-      }
-
-      const placeholders = correction.snapshotIds.map(() => '?').join(', ');
-      const [ownedSnapshots] = await connection.query(
-        `SELECT id FROM product_snapshot
-         WHERE product_id = ? AND id IN (${placeholders})
-         FOR UPDATE`,
-        [correction.productId, ...correction.snapshotIds]
+      const [[product]] = await connection.query(
+        `SELECT id, prix_vente, prix_vente_2 FROM products
+         WHERE id = ? AND COALESCE(is_deleted, 0) = 0 FOR UPDATE`,
+        [correction.productId]
       );
-      if (ownedSnapshots.length !== correction.snapshotIds.length) {
+      if (!product) {
         await connection.rollback();
-        return res.status(400).json({
-          message: `Un ou plusieurs snapshots ne correspondent pas au produit ${correction.productId}`,
-        });
+        return res.status(404).json({ message: `Produit ${correction.productId} introuvable` });
+      }
+      let variant = null;
+      if (correction.variantId !== null) {
+        [[variant]] = await connection.query(
+          `SELECT id, prix_vente, prix_vente_2 FROM product_variants
+           WHERE id = ? AND product_id = ? AND COALESCE(is_deleted, 0) = 0 FOR UPDATE`,
+          [correction.variantId, correction.productId]
+        );
+        if (!variant) {
+          await connection.rollback();
+          return res.status(404).json({ message: `Variante ${correction.variantId} introuvable` });
+        }
+      } else {
+        const [[variantCount]] = await connection.query(
+          'SELECT COUNT(*) AS total FROM product_variants WHERE product_id = ? AND COALESCE(is_deleted, 0) = 0',
+          [correction.productId]
+        );
+        if (Number(variantCount?.total || 0) > 0) {
+          await connection.rollback();
+          return res.status(400).json({ message: `Le produit ${correction.productId} doit être corrigé par variante` });
+        }
       }
 
-      const [result] = await connection.query(
-        `UPDATE product_snapshot
-         SET prix_vente = ?, prix_vente_2 = ?, sale_price_corrected_at = NOW()
-         WHERE product_id = ? AND id IN (${placeholders})`,
-        [correction.prixVente, correction.prixVente2, correction.productId, ...correction.snapshotIds]
+      const [snapshots] = await connection.query(
+        `SELECT id AS snapshot_id, quantite, prix_vente, prix_vente_2, created_at AS snapshot_created_at,
+                ${hasEnValidation ? 'en_validation' : '1 AS en_validation'}
+         FROM product_snapshot WHERE product_id = ? AND variant_id <=> ? ORDER BY created_at, id FOR UPDATE`,
+        [correction.productId, correction.variantId]
       );
-      updatedSnapshots += result.affectedRows;
+      const pv1 = resolveCurrentSalePrice({ snapshots, field: 'prix_vente', variantPrice: variant?.prix_vente, productPrice: product.prix_vente });
+      const pv2 = resolveCurrentSalePrice({ snapshots, field: 'prix_vente_2', variantPrice: variant?.prix_vente_2, productPrice: product.prix_vente_2 });
+      if (!salePricesMatch(pv1.value, correction.expectedPrixVente) || !salePricesMatch(pv2.value, correction.expectedPrixVente2)) {
+        await connection.rollback();
+        return res.status(409).json({ message: `Les prix de ${correction.productId}${correction.variantId ? ` / variante ${correction.variantId}` : ''} ont changé. Actualisez la page.` });
+      }
+
+      if (correction.variantId === null) {
+        const [result] = await connection.query(
+          correction.action === 'apply'
+            ? 'UPDATE products SET prix_vente = ?, prix_vente_2 = ?, sale_price_corrected_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ?'
+            : 'UPDATE products SET sale_price_corrected_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ?',
+          correction.action === 'apply'
+            ? [correction.prixVente, correction.prixVente2, req.user?.id || null, correction.productId]
+            : [req.user?.id || null, correction.productId]
+        );
+        updatedProducts += result.affectedRows;
+      } else {
+        const [result] = await connection.query(
+          correction.action === 'apply'
+            ? 'UPDATE product_variants SET prix_vente = ?, prix_vente_2 = ?, sale_price_corrected_at = NOW(), updated_at = NOW() WHERE id = ? AND product_id = ?'
+            : 'UPDATE product_variants SET sale_price_corrected_at = NOW(), updated_at = NOW() WHERE id = ? AND product_id = ?',
+          correction.action === 'apply'
+            ? [correction.prixVente, correction.prixVente2, correction.variantId, correction.productId]
+            : [correction.variantId, correction.productId]
+        );
+        updatedVariants += result.affectedRows;
+      }
+      const [snapshotResult] = await connection.query(
+        correction.action === 'apply'
+          ? 'UPDATE product_snapshot SET prix_vente = ?, prix_vente_2 = ?, sale_price_corrected_at = NOW() WHERE product_id = ? AND variant_id <=> ?'
+          : 'UPDATE product_snapshot SET sale_price_corrected_at = NOW() WHERE product_id = ? AND variant_id <=> ?',
+        correction.action === 'apply'
+          ? [correction.prixVente, correction.prixVente2, correction.productId, correction.variantId]
+          : [correction.productId, correction.variantId]
+      );
+      updatedSnapshots += snapshotResult.affectedRows;
     }
 
     await connection.commit();
-    res.json({ success: true, updatedProducts, updatedSnapshots });
+    res.json({ success: true, processed: normalized.length, updatedProducts, updatedVariants, updatedSnapshots });
   } catch (err) {
     if (connection) {
       try { await connection.rollback(); } catch { }

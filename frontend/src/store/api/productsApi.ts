@@ -1,6 +1,38 @@
 import { api } from './apiSlice';
 import type { Product, CreateProductData, ProductImageTarget } from '../../types';
 
+export type SalePriceSource = 'snapshot' | 'variant' | 'product';
+
+export interface HistoricalSalePrice {
+  price: number;
+  usage_count: number;
+  quantity_sold: number;
+  last_used_at: string | null;
+}
+
+export interface SalePriceCorrectionRow {
+  product_id: number;
+  variant_id: number | null;
+  reference: string | null;
+  designation: string;
+  variant_name: string | null;
+  variant_reference: string | null;
+  image_url: string | null;
+  current_prix_vente: number;
+  current_prix_vente_source: SalePriceSource;
+  current_prix_vente_2: number;
+  current_prix_vente_2_source: SalePriceSource;
+  high_prices: HistoricalSalePrice[];
+  low_prices: HistoricalSalePrice[];
+  is_corrected: boolean;
+  corrected_at: string | null;
+}
+
+export interface SalePriceCorrectionsResponse {
+  data: SalePriceCorrectionRow[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
 // API réelle vers le backend Express (/api/products)
 const productsApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -247,14 +279,25 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    getSalePriceCorrections: builder.query<
+      SalePriceCorrectionsResponse,
+      { page: number; limit: number; q?: string; status: 'pending' | 'processed' }
+    >({
+      query: (params) => ({ url: '/products/sale-price-corrections', params }),
+      providesTags: ['Product'],
+    }),
+
     updateSalePriceCorrections: builder.mutation<
-      { success: boolean; updatedProducts: number; updatedSnapshots: number },
+      { success: boolean; processed: number; updatedProducts: number; updatedVariants: number; updatedSnapshots: number },
       {
         corrections: Array<{
           product_id: number;
-          snapshot_ids: number[];
+          variant_id: number | null;
+          action: 'apply' | 'confirm';
           prix_vente: number;
           prix_vente_2: number;
+          expected_prix_vente: number;
+          expected_prix_vente_2: number;
         }>;
       }
     >({
@@ -303,6 +346,7 @@ export const {
   useToggleEcomStockMutation,
   useUpdateSnapshotsMutation,
   useCorrectBonProductPricesMutation,
+  useGetSalePriceCorrectionsQuery,
   useUpdateSalePriceCorrectionsMutation,
   useGetProductsWithSnapshotsQuery,
   useSearchProductsWithSnapshotsQuery,
