@@ -309,10 +309,11 @@ function NewDelivery({
   const availableVehicle = resources.data?.vehicles.find(
     (v) => String(v.id) === vehicle && !Number(v.busy),
   );
+  // Le chauffeur est facultatif : seul un chauffeur choisi mais indisponible bloque.
   const ready =
     selected.length > 0 &&
     selected.length <= 100 &&
-    availableDriver &&
+    (!driver || availableDriver) &&
     availableVehicle &&
     !mutation.isLoading &&
     !resources.isError &&
@@ -334,8 +335,8 @@ function NewDelivery({
             Nouvelle livraison
           </DialogTitle>
           <DialogDescription>
-            Regroupez les bons, affectez un chauffeur et un véhicule, puis
-            démarrez la tournée.
+            Regroupez les bons, choisissez un véhicule — et un chauffeur si
+            vous en connaissez déjà un — puis démarrez la tournée.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -346,7 +347,7 @@ function NewDelivery({
             setError(null);
             try {
               await start({
-                chauffeur_id: Number(driver),
+                chauffeur_id: driver ? Number(driver) : null,
                 vehicule_id: Number(vehicle),
                 bons: selected.map(({ bon_id, bon_type }) => ({
                   bon_id,
@@ -472,20 +473,31 @@ function NewDelivery({
             </legend>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1 text-sm">
-                <label htmlFor="delivery-driver">Chauffeur *</label>
+                <label htmlFor="delivery-driver">
+                  Chauffeur{" "}
+                  <span className="text-slate-500">(facultatif)</span>
+                </label>
                 <SearchableSelect
                   id="delivery-driver"
                   minSearchLength={0}
                   disabled={mutation.isLoading || resources.isLoading}
-                  placeholder="Rechercher un chauffeur"
+                  placeholder="Sans chauffeur"
                   value={driver}
                   onChange={setDriver}
-                  options={(resources.data?.drivers || []).map((d) => ({
-                    value: String(d.id),
-                    label: `${d.nom_complet}${Number(d.busy) ? " · En livraison" : ""}`,
-                    disabled: Boolean(Number(d.busy)),
-                  }))}
+                  options={[
+                    { value: "", label: "Sans chauffeur" },
+                    ...(resources.data?.drivers || []).map((d) => ({
+                      value: String(d.id),
+                      label: `${d.nom_complet}${Number(d.busy) ? " · En livraison" : ""}`,
+                      disabled: Boolean(Number(d.busy)),
+                    })),
+                  ]}
                 />
+                {!driver && (
+                  <p className="text-xs text-slate-500">
+                    La tournée démarre sans chauffeur assigné.
+                  </p>
+                )}
               </div>
               <div className="space-y-1 text-sm">
                 <label htmlFor="delivery-vehicle">Véhicule *</label>
@@ -507,14 +519,11 @@ function NewDelivery({
             {resources.isError && (
               <ErrorBox error={resources.error} retry={resources.refetch} />
             )}
-            {resources.data &&
-              (!resources.data.drivers.length ||
-                !resources.data.vehicles.length) && (
-                <p className="text-sm text-amber-800">
-                  Un chauffeur et un véhicule doivent être créés avant de
-                  démarrer une livraison.
-                </p>
-              )}
+            {resources.data && !resources.data.vehicles.length && (
+              <p className="text-sm text-amber-800">
+                Un véhicule doit être créé avant de démarrer une livraison.
+              </p>
+            )}
             <label className="block space-y-1 text-sm">
               <span>Instructions / notes (facultatif)</span>
               <textarea
@@ -581,7 +590,8 @@ function FinishDelivery({
         <DialogHeader>
           <DialogTitle>Terminer la livraison #{run.id}</DialogTitle>
           <DialogDescription>
-            {run.chauffeur_nom} · {run.vehicule_nom}. Confirmez le résultat de
+            {run.chauffeur_nom || "Sans chauffeur"} · {run.vehicule_nom}.
+            Confirmez le résultat de
             chaque bon au retour.
           </DialogDescription>
         </DialogHeader>
@@ -818,7 +828,7 @@ function Management({ pdg }: { pdg: boolean }) {
         <Metric
           label="Tournées actives"
           value={queue.data ? activeTours : "—"}
-          detail="En attente du retour du chauffeur"
+          detail="En attente du retour de la tournée"
           icon={Route}
           tone="teal"
         />
@@ -1072,8 +1082,13 @@ function Management({ pdg }: { pdg: boolean }) {
                         <Badge status={r.status} />
                       </td>
                       <td>
-                        <span className="block whitespace-nowrap font-medium">
-                          {r.chauffeur_nom}
+                        <span
+                          className={
+                            "block whitespace-nowrap font-medium " +
+                            (r.chauffeur_nom ? "" : "italic text-slate-400")
+                          }
+                        >
+                          {r.chauffeur_nom || "Sans chauffeur"}
                         </span>
                         <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
                           <Car size={13} />
@@ -1225,7 +1240,8 @@ export default function DeliveryRunsPage() {
 }
 
 type GroupMetric = {
-  id: number;
+  // null = tournées sans chauffeur assigné
+  id: number | null;
   name: string;
   runs: number;
   bons: number;
@@ -1270,7 +1286,7 @@ function GroupTable({ title, rows }: { title: string; rows: GroupMetric[] }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id ?? "unassigned"}>
                   <th className="text-slate-800">{r.name}</th>
                   <td className="tabular-nums">{Number(r.runs)}</td>
                   <td className="tabular-nums">{Number(r.bons)}</td>

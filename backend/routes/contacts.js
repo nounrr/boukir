@@ -118,12 +118,12 @@ const CONTACT_PHONE_MAP_SUBQUERY = `
   GROUP BY ${phone9Sql('telephone')}
 `;
 
+// Les bons comptant sont payes immediatement : ils sont exclus du solde cumule client.
 const BALANCE_EXPR = `
   CASE
     WHEN c.type = 'Client' THEN
       COALESCE(c.solde, 0)
       - COALESCE(ventes_client.total_ventes, 0)
-      - COALESCE(ventes_comptant.total_ventes, 0)
       - COALESCE(ventes_ecommerce.total_ventes, 0)
       + COALESCE(paiements_client.total_paiements, 0)
       + COALESCE(avoirs_client.total_avoirs, 0)
@@ -140,14 +140,13 @@ const BALANCE_EXPR = `
   END
 `;
 
-// Convention frontend : solde_initial + sorties + comptants - paiements - avoirs
+// Convention frontend : solde_initial + sorties - paiements - avoirs (bons comptant exclus)
 // positif = client doit de l'argent, nÃ©gatif = crÃ©dit en faveur du client
 const TOTAL_CUMULE_EXPR = `
   CASE
     WHEN c.type = 'Client' THEN
       COALESCE(c.solde, 0)
       + COALESCE(ventes_client.total_ventes, 0)
-      + COALESCE(ventes_comptant.total_ventes, 0)
       + COALESCE(ventes_ecommerce.total_ventes, 0)
       - COALESCE(paiements_client.total_paiements, 0)
       - COALESCE(avoirs_client.total_avoirs, 0)
@@ -166,8 +165,6 @@ const TOTAL_CUMULE_EXPR = `
 
 const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0)`;
 const PAYMENT_TOTAL_SQL_P = `COALESCE(p.montant_total, 0)`;
-const COMPTANT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
-const COMPTANT_TOTAL_SQL_BC2 = `COALESCE(bc2.montant_total, 0) + COALESCE(bc2.montant_ignorer, 0)`;
 
 const SUPPLIER_PAYMENT_SUM_EXPR = `
   SUM(
@@ -190,7 +187,6 @@ const SINGLE_CONTACT_QUERY = `
       CASE
         WHEN c.type = 'Client' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(${COMPTANT_TOTAL_SQL}) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
@@ -272,12 +268,6 @@ const SINGLE_CONTACT_QUERY = `
             FROM bons_sortie bs
             WHERE bs.client_id = c.id
               AND LOWER(TRIM(bs.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ), 0)
-          - COALESCE((
-            SELECT SUM(${COMPTANT_TOTAL_SQL_BC2})
-            FROM bons_comptant bc2
-            WHERE bc2.client_id = c.id
-              AND LOWER(TRIM(bc2.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(o.total_amount)
@@ -397,7 +387,6 @@ router.get('/', async (req, res) => {
         ${TOTAL_CUMULE_EXPR} AS total_cumule,
         (
           COALESCE(ventes_client.total_ventes, 0)
-          + COALESCE(ventes_comptant.total_ventes, 0)
           + COALESCE(ventes_ecommerce.total_ventes, 0)
           + COALESCE(charges_client.total_charges, 0)
           - COALESCE(avoirs_charge.total_avoirs_charge, 0)
@@ -425,15 +414,6 @@ router.get('/', async (req, res) => {
           AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
         GROUP BY client_id
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
-
-      -- Ventes client = bons_comptant
-      LEFT JOIN (
-        SELECT client_id, SUM(${COMPTANT_TOTAL_SQL}) AS total_ventes
-        FROM bons_comptant
-        WHERE client_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-        GROUP BY client_id
-      ) ventes_comptant ON ventes_comptant.client_id = c.id AND c.type = 'Client'
 
       -- Ventes e-commerce: uniquement les commandes is_solde = 1 (sauf annulÃ©es/remboursÃ©es)
       LEFT JOIN (
@@ -611,7 +591,6 @@ router.get('/', async (req, res) => {
           WHEN c.type = 'Client' THEN
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
-            + COALESCE((SELECT SUM(${COMPTANT_TOTAL_SQL}) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
@@ -629,7 +608,6 @@ router.get('/', async (req, res) => {
         COALESCE(SUM(CASE 
           WHEN c.type = 'Client' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(${COMPTANT_TOTAL_SQL}) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
@@ -713,14 +691,6 @@ router.get('/summary', async (req, res) => {
           AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
         GROUP BY client_id
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT client_id, SUM(${COMPTANT_TOTAL_SQL}) AS total_ventes
-        FROM bons_comptant
-        WHERE client_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-        GROUP BY client_id
-      ) ventes_comptant ON ventes_comptant.client_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
         SELECT
@@ -825,13 +795,6 @@ router.get('/solde-cumule-card', async (_req, res) => {
             FROM bons_sortie
             WHERE client_id IS NOT NULL
               AND COALESCE(vendre_au_fournisseur, 0) = 0
-              AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-        ),0)
-        +
-        COALESCE((
-            SELECT SUM(${COMPTANT_TOTAL_SQL})
-            FROM bons_comptant
-            WHERE client_id IS NOT NULL
               AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
         ),0)
         +
@@ -1041,21 +1004,17 @@ router.get('/debug-solde', async (req, res) => {
       return res.status(404).json({ error: `Contact not found for id=${userId}` });
     }
 
-    // 1. Backoffice Sales
+    // 1. Backoffice Sales (bons comptant exclus: payes immediatement, hors solde cumule)
     const [ventesBoRows] = await pool.execute(
       `SELECT src, id, montant_total, statut, date_creation
        FROM (
          SELECT 'bons_sortie' AS src, id, montant_total, statut, date_creation
          FROM bons_sortie
          WHERE client_id = ?
-         UNION ALL
-         SELECT 'bons_comptant' AS src, id, montant_total, statut, date_creation
-         FROM bons_comptant
-         WHERE client_id = ?
        ) x
        WHERE LOWER(TRIM(x.statut)) NOT IN (${excludedStatuts.map(() => '?').join(',')})
        ORDER BY date_creation`,
-      [userId, userId, ...excludedStatuts]
+      [userId, ...excludedStatuts]
     );
 
     const ventesBoTotal = ventesBoRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
@@ -1838,9 +1797,13 @@ router.get('/:id/history', async (req, res) => {
       return 0;
     };
 
+    // Les bons comptant sont payes immediatement : ils restent visibles dans l'historique
+    // mais n'entrent pas dans le solde cumule.
+    const isSoldeNeutralRow = (row) => row.bon_type === 'Comptant';
+
     for (const row of historyRows) {
       const amount = Number(row.total || 0) || 0;
-      soldeCumulatif += getHistoryAmountSigned(row, amount);
+      if (!isSoldeNeutralRow(row)) soldeCumulatif += getHistoryAmountSigned(row, amount);
       if (row.type === 'produit') {
         totalVentes += amount;
         totalAmount += amount;

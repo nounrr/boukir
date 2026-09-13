@@ -55,7 +55,6 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   companyType = 'DIAMOND',
   allPayments = [],
   bonsSorties = [],
-  bonsComptants = [],
   bonsCommandes = [],
   bonsAvoirsClient = [],
   bonsAvoirsFournisseur = [],
@@ -169,11 +168,11 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
 
     if (isClient) {
       // Bons de vente (Sortie, Comptant) augmentent le solde Ã  recevoir
-      for (const b of [...bonsSorties, ...bonsComptants]) {
+      // Les bons comptant sont payes immediatement: exclus du solde cumule.
+      for (const b of bonsSorties) {
         if (String(b.client_id) === String(contactId)) {
           const d = parseDateTime(b.date_creation) || parseDateTime(b.created_at) || new Date();
-          const isComptant = bonsComptants.includes(b);
-          const montant = (Number(b.montant_total || 0) || 0) + (isComptant ? (Number(b.montant_ignorer || 0) || 0) : 0);
+          const montant = Number(b.montant_total || 0) || 0;
           txs.push({ kind: 'bon', id: b.id, date: d, montant });
         }
       }

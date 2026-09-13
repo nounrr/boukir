@@ -11,12 +11,12 @@ export const phone9Sql = (expr) => {
   return `CONVERT(${cleaned} USING ascii)`;
 };
 
+// Les bons comptant sont payes a la livraison : ils n'entrent pas dans le solde cumule client.
 const BALANCE_EXPR = `
   CASE
     WHEN c.type = 'Client' THEN
       COALESCE(c.solde, 0)
       - COALESCE(ventes_client.total_ventes, 0)
-      - COALESCE(ventes_comptant.total_ventes, 0)
       - COALESCE(ventes_ecommerce.total_ventes, 0)
       + COALESCE(paiements_client.total_paiements, 0)
       + COALESCE(avoirs_client.total_avoirs, 0)
@@ -32,7 +32,6 @@ const BALANCE_EXPR = `
 `;
 
 const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
-const COMPTANT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
 
 /**
  * Returns a numeric cumulative balance for a contact.
@@ -57,14 +56,6 @@ export async function getContactSoldeCumule(db, contactId) {
         AND statut IN ('En attente','Validé','Livré','Facturé')
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) ventes_client ON c.type = 'Client'
-
-    -- Ventes client = bons_comptant
-    LEFT JOIN (
-      SELECT SUM(${COMPTANT_TOTAL_SQL}) AS total_ventes
-      FROM bons_comptant
-      WHERE client_id = ?
-        AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-    ) ventes_comptant ON c.type = 'Client'
 
     -- Ventes e-commerce: uniquement is_solde = 1 (sauf annulées/remboursées)
     LEFT JOIN (
@@ -152,7 +143,6 @@ export async function getContactSoldeCumule(db, contactId) {
 
   const params = [
     id, // ventes_client
-    id, // ventes_comptant
     id, // ventes_ecommerce
     id, // achats_fournisseur
     id, // sorties_vendre_fournisseur

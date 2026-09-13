@@ -4,6 +4,9 @@ import { displayBonNumero } from './numero';
 /**
  * Convention canonique du solde cumulé (calcul 100% côté front).
  *
+ * Les bons comptant sont payés immédiatement : ils n'entrent jamais dans le
+ * solde cumulé d'un client (ni ici, ni dans les agrégats backend).
+ *
  * - Client     : solde_cumule = solde - SUM(ventes) + SUM(paiements) + SUM(avoirs)
  *                 -> NEGATIF = le client nous doit, POSITIF = nous lui devons.
  * - Fournisseur: solde_cumule = solde + SUM(achats) - SUM(paiements) - SUM(avoirs)
@@ -168,8 +171,9 @@ export function calculateContactSoldeHistory(
       return String(bon.fournisseur_id) === String(contact.id) && 
              (bon.type === 'Commande' || bon.type === 'AvoirFournisseur');
     } else {
+      // Bons comptant exclus: payés immédiatement, ils n'impactent pas le solde.
       return bonMatchesClient(bon) &&
-             (bon.type === 'Sortie' || bon.type === 'Comptant' || bon.type === 'Avoir' || bon.type === 'Ecommerce' || bon.type === 'AvoirEcommerce');
+             (bon.type === 'Sortie' || bon.type === 'Avoir' || bon.type === 'Ecommerce' || bon.type === 'AvoirEcommerce');
     }
   });
 

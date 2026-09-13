@@ -112,17 +112,25 @@ export function createDeliveryRouter(db = pool, authenticate = verifyCurrentUser
 
   router.post('/runs', route(async (req, res) => {
     const bons = parseDeliveryBons(req.body?.bons);
-    const driver = positiveId(req.body?.chauffeur_id);
+    // Le chauffeur est facultatif : une tournée peut démarrer avec le seul véhicule.
+    const rawDriver = req.body?.chauffeur_id;
+    const driver = rawDriver === undefined || rawDriver === null || rawDriver === '' ? null : positiveId(rawDriver);
     const vehicle = positiveId(req.body?.vehicule_id);
     const notes = String(req.body?.notes || '').trim();
     if (notes.length > 2000) throw deliveryError('Notes trop longues (2000 caractères maximum).');
     const catalog = await deliveryCatalog(db);
     const id = await transaction(async connection => {
-      const [[employee]] = await connection.query("SELECT id, nom_complet FROM employees WHERE id = ? AND deleted_at IS NULL AND role IN ('Chauffeur', 'ChefChauffeur') FOR UPDATE", [driver]);
+      let employee = null;
+      if (driver !== null) {
+        [[employee]] = await connection.query("SELECT id, nom_complet FROM employees WHERE id = ? AND deleted_at IS NULL AND role IN ('Chauffeur', 'ChefChauffeur') FOR UPDATE", [driver]);
+        if (!employee) throw deliveryError('Chauffeur indisponible.');
+      }
       const [[car]] = await connection.query('SELECT * FROM vehicules WHERE id = ? FOR UPDATE', [vehicle]);
-      if (!employee || !car || car.deleted_at) throw deliveryError('Chauffeur ou véhicule indisponible.');
-      const [busy] = await connection.query("SELECT id FROM delivery_runs WHERE status = 'in_progress' AND (chauffeur_id = ? OR vehicule_id = ?)", [driver, vehicle]);
-      if (busy.length) throw deliveryError('Le chauffeur ou le véhicule est déjà en livraison.', 409);
+      if (!car || car.deleted_at) throw deliveryError('Véhicule indisponible.');
+      const [busy] = driver === null
+        ? await connection.query("SELECT id FROM delivery_runs WHERE status = 'in_progress' AND vehicule_id = ?", [vehicle])
+        : await connection.query("SELECT id FROM delivery_runs WHERE status = 'in_progress' AND (chauffeur_id = ? OR vehicule_id = ?)", [driver, vehicle]);
+      if (busy.length) throw deliveryError(driver === null ? 'Le véhicule est déjà en livraison.' : 'Le chauffeur ou le véhicule est déjà en livraison.', 409);
       const queueIds = [];
       for (const bon of bons) {
         const source = await lockDeliveryBon(connection, catalog, bon);
@@ -134,7 +142,7 @@ export function createDeliveryRouter(db = pool, authenticate = verifyCurrentUser
       }
       const [run] = await connection.query(`INSERT INTO delivery_runs
         (chauffeur_id, vehicule_id, chauffeur_nom, vehicule_nom, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-      [driver, vehicle, employee.nom_complet, car.nom, notes, req.user.id]);
+      [driver, vehicle, employee?.nom_complet ?? null, car.nom, notes, req.user.id]);
       for (const queueId of queueIds) {
         await connection.query('INSERT INTO delivery_run_items (run_id, queue_id) VALUES (?, ?)', [run.insertId, queueId]);
         await connection.query("UPDATE delivery_queue SET status = 'in_progress', run_id = ? WHERE id = ?", [run.insertId, queueId]);
@@ -199,7 +207,7 @@ export function createDeliveryRouter(db = pool, authenticate = verifyCurrentUser
       SUM(outcome = 'delivered') AS delivered, SUM(outcome = 'failed') AS failed
       FROM delivery_run_items GROUP BY run_id) i ON i.run_id = r.id ${where}`;
     const [[summary]] = await db.query(`SELECT ${aggregate} ${source}`, params);
-    const [drivers] = await db.query(`SELECT r.chauffeur_id AS id, MAX(r.chauffeur_nom) AS name, ${aggregate} ${source} GROUP BY r.chauffeur_id ORDER BY runs DESC`, params);
+    const [drivers] = await db.query(`SELECT r.chauffeur_id AS id, COALESCE(MAX(r.chauffeur_nom), 'Sans chauffeur') AS name, ${aggregate} ${source} GROUP BY r.chauffeur_id ORDER BY runs DESC`, params);
     const [vehicles] = await db.query(`SELECT r.vehicule_id AS id, MAX(r.vehicule_nom) AS name, ${aggregate} ${source} GROUP BY r.vehicule_id ORDER BY runs DESC`, params);
     const [daily] = await db.query(`SELECT DATE_FORMAT(r.started_at, '%Y-%m-%d') AS day, ${aggregate} ${source} GROUP BY day ORDER BY day`, params);
     const [reasons] = await db.query(`SELECT i.failure_reason AS reason, COUNT(*) AS total FROM delivery_run_items i JOIN delivery_runs r ON r.id = i.run_id

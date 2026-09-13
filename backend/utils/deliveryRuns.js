@@ -47,6 +47,13 @@ export async function ensureDeliverySchema(pool) {
     const schemaPromise = (async () => {
       const sql = fs.readFileSync(new URL('../migrations/2026-09-10-delivery-runs.sql', import.meta.url), 'utf8');
       for (const statement of sql.split(';').map(s => s.trim()).filter(Boolean)) await pool.query(statement);
+      // Deployments created before the driver became optional still have NOT NULL columns.
+      const [[driver]] = await pool.query(`SELECT COUNT(*) AS strict FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'delivery_runs'
+          AND COLUMN_NAME IN ('chauffeur_id', 'chauffeur_nom') AND IS_NULLABLE = 'NO'`);
+      if (Number(driver.strict) > 0) {
+        await pool.query('ALTER TABLE delivery_runs MODIFY COLUMN chauffeur_id INT NULL, MODIFY COLUMN chauffeur_nom VARCHAR(255) NULL');
+      }
     })().catch(error => { schemaPromises.delete(pool); throw error; });
     schemaPromises.set(pool, schemaPromise);
   }

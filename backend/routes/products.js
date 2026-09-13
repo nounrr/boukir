@@ -4860,6 +4860,84 @@ router.patch('/sale-price-corrections', async (req, res, next) => {
   }
 });
 
+// POST /products/sale-price-corrections/reset
+// PDG-only: send processed entities back to the pending queue without touching their prices.
+router.post('/sale-price-corrections/reset', async (req, res, next) => {
+  let connection;
+  try {
+    if (req.user?.role !== 'PDG') {
+      return res.status(403).json({ message: 'Seul le rôle PDG peut remettre des prix de vente à corriger' });
+    }
+
+    const entities = req.body?.entities;
+    if (!Array.isArray(entities) || entities.length === 0) {
+      return res.status(400).json({ message: 'entities array requis' });
+    }
+    if (entities.length > 100) {
+      return res.status(400).json({ message: 'Maximum 100 entités par requête' });
+    }
+
+    const normalized = [];
+    const targetedEntities = new Set();
+    for (const entity of entities) {
+      const productId = Number(entity?.product_id);
+      const variantId = entity?.variant_id == null ? null : Number(entity.variant_id);
+      if (
+        !Number.isInteger(productId) || productId <= 0 ||
+        (variantId !== null && (!Number.isInteger(variantId) || variantId <= 0))
+      ) {
+        return res.status(400).json({ message: 'Entité de prix de vente invalide' });
+      }
+      const entityKey = salePriceEntityKey(productId, variantId);
+      if (targetedEntities.has(entityKey)) {
+        return res.status(400).json({ message: `L'entité ${entityKey} est présente plusieurs fois` });
+      }
+      targetedEntities.add(entityKey);
+      normalized.push({ productId, variantId });
+    }
+
+    await ensureSalePriceCorrectionColumns();
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    let resetProducts = 0;
+    let resetVariants = 0;
+    let resetSnapshots = 0;
+
+    for (const entity of normalized) {
+      if (entity.variantId === null) {
+        const [result] = await connection.query(
+          'UPDATE products SET sale_price_corrected_at = NULL, updated_by = ?, updated_at = NOW() WHERE id = ? AND COALESCE(is_deleted, 0) = 0',
+          [req.user?.id || null, entity.productId]
+        );
+        resetProducts += result.affectedRows;
+      } else {
+        const [result] = await connection.query(
+          'UPDATE product_variants SET sale_price_corrected_at = NULL, updated_at = NOW() WHERE id = ? AND product_id = ? AND COALESCE(is_deleted, 0) = 0',
+          [entity.variantId, entity.productId]
+        );
+        resetVariants += result.affectedRows;
+      }
+      const [snapshotResult] = await connection.query(
+        'UPDATE product_snapshot SET sale_price_corrected_at = NULL WHERE product_id = ? AND variant_id <=> ?',
+        [entity.productId, entity.variantId]
+      );
+      resetSnapshots += snapshotResult.affectedRows;
+    }
+
+    await connection.commit();
+    res.json({ success: true, processed: normalized.length, resetProducts, resetVariants, resetSnapshots });
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch { }
+    }
+    next(err);
+  } finally {
+    connection?.release();
+  }
+});
+
 // PATCH /products/bon-price-corrections
 // PDG-only catalogue price correction from Bon create/edit forms.
 // These values are deliberately independent from the bon item's prix_unitaire.

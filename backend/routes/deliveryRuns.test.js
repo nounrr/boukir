@@ -137,6 +137,29 @@ test('MySQL delivery workflow, permissions, race protection and statistics', { s
       const [[count]] = await db.query("SELECT COUNT(*) AS n FROM delivery_queue WHERE bon_type = 'Sortie' AND bon_id = 4 AND status = 'in_progress'");
       assert.equal(Number(count.n), 1);
     });
+    await t.test('a run can start without a driver while the vehicle stays exclusive', async () => {
+      // A dedicated vehicle keeps this case independent from the concurrency test above.
+      await db.query("INSERT INTO vehicules VALUES (3, 'Camion C', NULL)");
+      for (const missing of [null, undefined, '']) {
+        const departure = await request('/runs', 'POST', { bons: [bon(5)], chauffeur_id: missing, vehicule_id: 3, notes: '' }, 2);
+        if (missing === null) {
+          assert.equal(departure.status, 201, JSON.stringify(departure.body));
+          const [[run]] = await db.query('SELECT chauffeur_id, chauffeur_nom, vehicule_nom FROM delivery_runs WHERE id = ?', [departure.body.id]);
+          assert.equal(run.chauffeur_id, null);
+          assert.equal(run.chauffeur_nom, null);
+          assert.equal(run.vehicule_nom, 'Camion C');
+        } else {
+          // The vehicle is now busy, so the driverless path must still enforce exclusivity.
+          assert.equal(departure.status, 409, JSON.stringify(departure.body));
+          assert.equal(departure.body.message, 'Le véhicule est déjà en livraison.');
+        }
+      }
+      const unassigned = (await request('/stats')).body.drivers.find(d => d.id === null);
+      assert.equal(unassigned.name, 'Sans chauffeur');
+      assert.equal(Number(unassigned.runs), 1);
+      // An explicitly provided driver is still validated.
+      assert.equal((await request('/runs', 'POST', { bons: [bon(2, 'Comptant')], chauffeur_id: 5, vehicule_id: 2, notes: '' }, 2)).status, 400);
+    });
   } finally {
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
     if (db) await db.end();

@@ -305,12 +305,14 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 // ─── Solde cumulé client ──────────────────────────────────────────────────────
 // Convention Client (miroir de calculateContactSoldeHistory / soldeCalculator.ts) :
 //   solde initial  → base de départ
-//   sortie/comptant → débit  (+)  le client nous doit plus
+//   sortie          → débit  (+)  le client nous doit plus
 //   avoir           → crédit (-)  on lui restitue
 //   paiement        → crédit (-)  il règle sa dette
 
+// Les bons comptant sont payés immédiatement : ils sont exclus du détail client
+// (onglet Complet) et du solde cumulé, côté frontend comme côté backend.
 type CompletRow =
-  | { kind: 'sortie' | 'comptant' | 'avoir'; date: number; data: any }
+  | { kind: 'sortie' | 'avoir'; date: number; data: any }
   | { kind: 'paiement'; date: number; data: any };
 
 type RemiseSplit = {
@@ -324,9 +326,6 @@ function buildCompletRows(history: any): CompletRow[] {
     ...(history?.sorties ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'sortie' as const, date: new Date(d.date_creation).getTime(), data: d })),
-    ...(history?.comptants ?? [])
-      .filter((b: any) => !isExcludedStatus(b.statut))
-      .map((d: any) => ({ kind: 'comptant' as const, date: new Date(d.date_creation).getTime(), data: d })),
     ...(history?.avoirsClient ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'avoir' as const, date: new Date(d.date_creation).getTime(), data: d })),
@@ -377,10 +376,8 @@ function getBonTableTotal(prefix: string, bon: any): number {
     : safeNum(bon?.montant_total ?? bon?.montant ?? 0);
 }
 
-function getBonTotalForSolde(kind: string, bon: any): number {
-  return kind === 'comptant'
-    ? getBonComptantTotalWithIgnored(bon)
-    : safeNum(bon?.montant_total ?? bon?.montant ?? 0);
+function getBonTotalForSolde(_kind: string, bon: any): number {
+  return safeNum(bon?.montant_total ?? bon?.montant ?? 0);
 }
 
 function isAnnuleStatut(value: any): boolean {
@@ -412,7 +409,7 @@ function getDirectRemiseTotal(item: any): number {
 // Remise Abonné (affichage) = remise directe du bon (sortie_items.remise_montant / remise_pourcentage)
 // MOINS la part déjà tracée dans item_remises (qui s'affiche en col Remise Client).
 function getDisplayRemiseAbonneTotal(kind: CompletRow['kind'], item: any, remises: any[] = [], bonId?: number | string): number {
-  if (kind !== 'sortie' && kind !== 'comptant') return 0;
+  if (kind !== 'sortie') return 0;
   const direct = getDirectRemiseTotal(item);
   if (direct <= 0) return 0;
   if (!Array.isArray(remises) || remises.length === 0) return direct;
@@ -619,7 +616,7 @@ function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string,
     const montant = row.kind === 'paiement'
       ? getPaymentTotalWithIgnored(row.data)
       : getBonTotalForSolde(row.kind, row.data);
-    if (row.kind === 'sortie' || row.kind === 'comptant') {
+    if (row.kind === 'sortie') {
       running += montant;
     } else if (row.kind === 'avoir' || row.kind === 'paiement') {
       running -= montant;
@@ -645,12 +642,11 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
       if (items.length === 0) {
         const montant = getBonTotalForSolde(row.kind, row.data);
-        if (row.kind === 'sortie' || row.kind === 'comptant') running += montant;
+        if (row.kind === 'sortie') running += montant;
         else running -= montant;
         result.set(`${row.kind}-${row.data.id}-item-0`, running);
       } else {
         const bonMontant = getBonTotalForSolde(row.kind, row.data);
-        const ignoredExtra = row.kind === 'comptant' ? safeNum(row.data.montant_ignorer ?? 0) : 0;
         const itemsSum = items.reduce((s: number, i: any) => {
           return s + safeNum(i.total ?? (safeNum(i.quantite) * safeNum(i.prix_unitaire)));
         }, 0);
@@ -658,8 +654,8 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
           const rawTotal = safeNum(item.total ?? (safeNum(item.quantite) * safeNum(item.prix_unitaire)));
           const total = itemsSum === 0
             ? (iIdx === items.length - 1 ? bonMontant : 0)
-            : rawTotal + (iIdx === items.length - 1 ? ignoredExtra : 0);
-          if (row.kind === 'sortie' || row.kind === 'comptant') running += total;
+            : rawTotal;
+          if (row.kind === 'sortie') running += total;
           else running -= total;
           result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, running);
         });
@@ -721,7 +717,6 @@ interface CompletTableProps {
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string; styleKey: string }> = {
   sortie:   { label: 'Sortie',   badgeClass: 'bg-blue-100 text-blue-700',    accentClass: 'text-blue-700',   hoverClass: 'hover:bg-blue-100',   itemBorderClass: 'border-blue-200',   prefix: 'SOR', bgClass: 'colored-row bg-blue-100', styleKey: 'bon_sortie' },
-  comptant: { label: 'Comptant', badgeClass: 'bg-sky-100 text-sky-700',      accentClass: 'text-black',    hoverClass: 'hover:bg-sky-100',    itemBorderClass: 'border-sky-700',    prefix: 'COM', bgClass: 'colored-row bg-sky-100', styleKey: 'bon_comptant' },
   avoir:    { label: 'Avoir',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-black', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-100', styleKey: 'bon_avoir_client' },
 };
 
@@ -1045,18 +1040,15 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
 
           return (
             <React.Fragment key={`${bonKey}-${idx}`}>
-              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx, groups) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? 0);
-                const total = Number(item.total ?? (qte * pu)) + (groupIdx === groups.length - 1 && row.kind === 'comptant' ? safeNum(b.montant_ignorer ?? 0) : 0);
+                const total = Number(item.total ?? (qte * pu));
                 const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
                 const variantLabel = getHistoryVariantLabel(item, products);
                 const unitLabel = getHistoryUnitLabel(item, products);
                 const sourceKeys = sourceIndices.map((sourceIdx) => `${bonKey}-item-${sourceIdx}`);
-                const lastItemSoldeKey =
-                  row.kind === 'comptant' && groupIdx === groups.length - 1
-                    ? `${bonKey}-item-${items.length - 1}`
-                    : sourceKeys[sourceKeys.length - 1];
+                const lastItemSoldeKey = sourceKeys[sourceKeys.length - 1];
                 const itemSelected = sourceKeys.every((key) => selectedItemIds?.has(key));
                 const remiseAbonne = sourceItems.reduce((sum, src) => {
                   return sum + getDisplayRemiseAbonneTotal(row.kind, src, remises, b.id);
@@ -1133,8 +1125,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                           </>
                         );
                       }
-                      const bonType: 'Sortie' | 'Comptant' = row.kind === 'sortie' ? 'Sortie' : 'Comptant';
-                      if (bonType !== 'Sortie' && bonType !== 'Comptant') {
+                      if (row.kind !== 'sortie') {
                         return (
                           <>
                             <td className="px-3 py-2 text-right text-xs bg-orange-50/40 text-gray-300">—</td>
@@ -1214,7 +1205,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
 
 // ─── Client detail page ───────────────────────────────────────────────────────
 
-type PageTab = 'complet' | 'sorties' | 'bons' | 'avoirs' | 'paiements';
+type PageTab = 'complet' | 'sorties' | 'avoirs' | 'paiements';
 
 const ClientDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -1442,12 +1433,6 @@ const ClientDetailPage: React.FC = () => {
       .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
     [history, filterFrom, filterTo]);
 
-  const bons = useMemo(() =>
-    (history?.comptants ?? [])
-      .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
-    [history, filterFrom, filterTo]);
-
   const avoirs = useMemo(() =>
     (history?.avoirsClient ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
@@ -1500,10 +1485,6 @@ const ClientDetailPage: React.FC = () => {
     () => filterHistoryBonsBySearch(sorties, products, normalizedProductSearch),
     [sorties, products, normalizedProductSearch]
   );
-  const filteredBons = useMemo(
-    () => filterHistoryBonsBySearch(bons, products, normalizedProductSearch),
-    [bons, products, normalizedProductSearch]
-  );
   const filteredAvoirs = useMemo(
     () => filterHistoryBonsBySearch(avoirs, products, normalizedProductSearch),
     [avoirs, products, normalizedProductSearch]
@@ -1529,7 +1510,7 @@ const ClientDetailPage: React.FC = () => {
       if (row.kind === 'avoir') continue;
       if (visibleIds && !visibleIds.has(`${row.kind}-${row.data.id}`)) continue;
       const bonId = Number(row.data.id);
-      const bonType: 'Sortie' | 'Comptant' = row.kind === 'sortie' ? 'Sortie' : 'Comptant';
+      const bonType: 'Sortie' = 'Sortie';
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
       const groups = groupDisplayItems(items);
       for (const { item: groupItem, sourceItems } of groups) {
@@ -1557,7 +1538,7 @@ const ClientDetailPage: React.FC = () => {
     enabled: tab === 'complet' && (detail || hasProductSearch),
     visibleItems: remiseVisibleItems,
     sorties: history?.sorties ?? [],
-    comptants: history?.comptants ?? [],
+    comptants: [],
     onSaved: async () => { await refetchHistory(); },
   });
 
@@ -1581,7 +1562,6 @@ const ClientDetailPage: React.FC = () => {
   const tabs: { id: PageTab; label: string; count: number }[] = [
     { id: 'complet', label: 'Complet', count: visibleIds ? visibleIds.size : completRows.length },
     { id: 'sorties', label: 'Bons Sortie', count: filteredSorties.length },
-    { id: 'bons', label: 'Bons Comptant', count: filteredBons.length },
     { id: 'avoirs', label: 'Avoirs Client', count: filteredAvoirs.length },
     { id: 'paiements', label: 'Paiements', count: paiements.length },
   ];
@@ -1657,7 +1637,7 @@ const ClientDetailPage: React.FC = () => {
     rows.forEach((row: CompletRow) => {
       const { kind, data } = row;
       const bonKey = `${kind}-${data.id}`;
-      const typeLabel = kind === 'sortie' ? 'produit' : kind === 'comptant' ? 'produit' : kind === 'avoir' ? 'avoir' : 'paiement';
+      const typeLabel = kind === 'sortie' ? 'produit' : kind === 'avoir' ? 'avoir' : 'paiement';
       const bonNum = data.numero ?? `${kind.substring(0,3).toUpperCase()}${String(data.id).padStart(2,'0')}`;
       const dateIso = data.date_creation ?? data.date_paiement ?? '';
       const adresseLivraison = data.adresse_livraison ?? '';
@@ -1706,7 +1686,7 @@ const ClientDetailPage: React.FC = () => {
         if (selectedItemIds.size > 0 && !selectedItemIds.has(itemKey)) return;
         const qte = Number(item.quantite ?? 0);
         const pu = Number(item.prix_unitaire ?? 0);
-        const total = Number(item.total ?? (qte * pu)) + (kind === 'comptant' && iIdx === items.length - 1 ? safeNum(data.montant_ignorer ?? 0) : 0);
+        const total = Number(item.total ?? (qte * pu));
         result.push({
           id: itemKey,
           bon_numero: bonNum,
@@ -1988,13 +1968,6 @@ const ClientDetailPage: React.FC = () => {
               : <BonTable bons={filteredSorties} detail={detailEnabled} products={products} prefix="SOR" accentClass="text-blue-700" hoverClass="hover:bg-blue-50" />
           )}
 
-          {/* ── Bons Comptant ── */}
-          {tab === 'bons' && (
-            filteredBons.length === 0
-              ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun bon comptant"} />
-              : <BonTable bons={filteredBons} detail={detailEnabled} products={products} prefix="COM" accentClass="text-sky-700" hoverClass="hover:bg-sky-50" />
-          )}
-
           {/* ── Avoirs Client ── */}
           {tab === 'avoirs' && (
             filteredAvoirs.length === 0
@@ -2105,7 +2078,7 @@ const ClientDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
           totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
-          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties + Comptant)' : '(Sorties + Comptant + Solde initial)'}
+          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties)' : '(Sorties + Solde initial)'}
         />
       )}
 

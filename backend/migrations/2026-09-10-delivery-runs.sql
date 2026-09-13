@@ -6,9 +6,9 @@ CREATE TABLE IF NOT EXISTS delivery_access (
 
 CREATE TABLE IF NOT EXISTS delivery_runs (
   id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  chauffeur_id INT NOT NULL,
+  chauffeur_id INT NULL,
   vehicule_id INT NOT NULL,
-  chauffeur_nom VARCHAR(255) NOT NULL,
+  chauffeur_nom VARCHAR(255) NULL,
   vehicule_nom VARCHAR(255) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
   started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, Search, Sparkles, Wand2 } from 'lucide-react';
-import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, useGetSalePriceCorrectionsQuery, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
+import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Sparkles, Wand2 } from 'lucide-react';
+import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, useGetSalePriceCorrectionsQuery, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
 
@@ -21,6 +21,12 @@ const sourceLabels: Record<SalePriceSource, string> = { snapshot: 'Snapshot FIFO
 const resolvePrice = (choice: Choice | undefined, current: number) => (!choice ? null : choice.kind === 'keep' ? current : choice.value);
 const isReady = (decision?: Decision) => Boolean(decision?.pv1 && decision?.pv2);
 const isStarted = (decision?: Decision) => Boolean(decision?.pv1 || decision?.pv2);
+const correctedAt = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const formatCorrectedAt = (value: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : correctedAt.format(date);
+};
 // PV1 = 1·2·3, PV2 = 4·5·6, 0 = garder les deux.
 const PV1_KEYS = ['1', '2', '3'] as const;
 const PV2_KEYS = ['4', '5', '6'] as const;
@@ -85,34 +91,47 @@ const ChoiceColumn: React.FC<{ label: string; tone: Tone; current: number; choic
 
 type CorrectionRowProps = {
   row: SalePriceCorrectionRow;
+  index: number;
   decision?: Decision;
   focused: boolean;
+  checked: boolean;
   readOnly: boolean;
   saving: boolean;
   onSelect: (key: string, side: Side, choice: Choice) => void;
   onKeepBoth: (key: string) => void;
   onClear: (key: string) => void;
   onFocus: (key: string) => void;
+  onToggleCheck: (key: string, index: number, shiftKey: boolean) => void;
   registerRow: (key: string, element: HTMLTableRowElement | null) => void;
 };
 
-const CorrectionRow = React.memo<CorrectionRowProps>(({ row, decision, focused, readOnly, saving, onSelect, onKeepBoth, onClear, onFocus, registerRow }) => {
+const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, focused, checked, readOnly, saving, onSelect, onKeepBoth, onClear, onFocus, onToggleCheck, registerRow }) => {
   const key = rowKey(row);
   const pv1 = resolvePrice(decision?.pv1, row.current_prix_vente);
   const pv2 = resolvePrice(decision?.pv2, row.current_prix_vente_2);
   const ready = pv1 !== null && pv2 !== null;
   const changed = ready && (!samePrice(pv1, row.current_prix_vente) || !samePrice(pv2, row.current_prix_vente_2));
-  const rail = readOnly ? 'bg-emerald-500' : ready ? (changed ? 'bg-indigo-500' : 'bg-emerald-500') : isStarted(decision) ? 'bg-amber-400' : 'bg-stone-200';
+  const rail = readOnly ? (checked ? 'bg-indigo-500' : 'bg-emerald-500') : ready ? (changed ? 'bg-indigo-500' : 'bg-emerald-500') : isStarted(decision) ? 'bg-amber-400' : 'bg-stone-200';
+  const rowTint = readOnly ? (checked ? 'bg-indigo-50' : 'bg-white hover:bg-stone-50') : focused ? 'bg-stone-100' : 'bg-white hover:bg-stone-50';
 
   return (
     <tr
       ref={(element) => registerRow(key, element)}
       onMouseDown={() => onFocus(key)} onFocusCapture={() => onFocus(key)}
-      className={`align-top transition-colors ${focused ? 'bg-stone-100' : 'bg-white hover:bg-stone-50'}`}
+      className={`align-top transition-colors ${rowTint}`}
     >
       <td className="sticky left-0 z-10 border-r border-stone-200 bg-inherit px-4 py-3 shadow-[3px_0_6px_-5px_rgba(0,0,0,0.45)]">
         <span className={`absolute inset-y-0 left-0 w-1 ${rail}`} aria-hidden />
         <div className="flex gap-3">
+          {readOnly ? (
+            <input
+              type="checkbox" checked={checked} disabled={saving}
+              onChange={() => undefined}
+              onClick={(event) => onToggleCheck(key, index, event.shiftKey)}
+              aria-label={`Sélectionner ${row.designation}${row.variant_name ? ` · ${row.variant_name}` : ''}`}
+              className="mt-4 h-4 w-4 shrink-0 cursor-pointer rounded border-stone-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+            />
+          ) : null}
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
             {row.image_url ? <img src={toBackendUrl(row.image_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <ImageOff className="h-5 w-5 text-stone-400" />}
           </div>
@@ -136,7 +155,15 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, decision, focused, 
 
       <td className="border-l border-stone-200 px-3 py-3">
         {readOnly ? (
-          <div className="inline-flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-bold leading-4 text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Traité</div>
+          <div className="space-y-2">
+            <div className="inline-flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-bold leading-4 text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Traité{formatCorrectedAt(row.corrected_at) ? <span className="font-medium text-emerald-600">le {formatCorrectedAt(row.corrected_at)}</span> : null}</div>
+            <button
+              type="button" onClick={() => onToggleCheck(key, index, false)} disabled={saving}
+              className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[11px] font-bold leading-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50 ${checked ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-stone-300 bg-white text-stone-600 hover:border-indigo-400 hover:bg-indigo-50'}`}
+            >
+              <RotateCcw className="h-3.5 w-3.5 shrink-0" /> {checked ? 'Sélectionné' : 'Sélectionner'}
+            </button>
+          </div>
         ) : (
           <div className="space-y-2">
             <button
@@ -177,15 +204,20 @@ const SalePriceCorrectionsPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<RowFilter>('all');
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [checkedKeys, setCheckedKeys] = useState<Record<string, true>>({});
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const rowElements = useRef(new Map<string, HTMLTableRowElement>());
   const focusedIndexRef = useRef(0);
+  const lastCheckedIndex = useRef<number | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const limit = 30;
 
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [search]);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab });
-  const [applyCorrections, { isLoading: isSaving }] = useUpdateSalePriceCorrectionsMutation();
+  const [applyCorrections, { isLoading: isApplying }] = useUpdateSalePriceCorrectionsMutation();
+  const [resetCorrections, { isLoading: isResetting }] = useResetSalePriceCorrectionsMutation();
+  const isSaving = isApplying || isResetting;
   const rows = useMemo(() => data?.data ?? [], [data]);
   const meta = data?.meta;
   const readOnly = activeTab === 'processed';
@@ -209,6 +241,42 @@ const SalePriceCorrectionsPage: React.FC = () => {
     if (readOnly || filter === 'all') return rows;
     return rows.filter((row) => (filter === 'ready' ? isReady(decisions[rowKey(row)]) : !isReady(decisions[rowKey(row)])));
   }, [decisions, filter, readOnly, rows]);
+
+  // Multi-sélection de l'onglet Traités : clic simple, ou Maj+clic pour une plage.
+  const toggleCheck = useCallback((key: string, index: number, shiftKey: boolean) => {
+    setCheckedKeys((previous) => {
+      const turningOn = !previous[key];
+      const anchor = shiftKey && lastCheckedIndex.current !== null ? lastCheckedIndex.current : index;
+      const [start, end] = anchor <= index ? [anchor, index] : [index, anchor];
+      const next = { ...previous };
+      for (let cursor = start; cursor <= end; cursor += 1) {
+        const target = visibleRows[cursor];
+        if (!target) continue;
+        if (turningOn) next[rowKey(target)] = true; else delete next[rowKey(target)];
+      }
+      return next;
+    });
+    lastCheckedIndex.current = index;
+  }, [visibleRows]);
+
+  const checkedRows = useMemo(() => rows.filter((row) => checkedKeys[rowKey(row)]), [checkedKeys, rows]);
+  const allChecked = visibleRows.length > 0 && visibleRows.every((row) => checkedKeys[rowKey(row)]);
+  const toggleCheckAll = useCallback(() => {
+    lastCheckedIndex.current = null;
+    setCheckedKeys((previous) => {
+      const everySelected = visibleRows.length > 0 && visibleRows.every((row) => previous[rowKey(row)]);
+      if (everySelected) return {};
+      const next = { ...previous };
+      for (const row of visibleRows) next[rowKey(row)] = true;
+      return next;
+    });
+  }, [visibleRows]);
+
+  useEffect(() => { setCheckedKeys({}); lastCheckedIndex.current = null; }, [activeTab, page, query]);
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = checkedRows.length > 0 && !allChecked;
+  }, [allChecked, checkedRows.length]);
 
   const readyRows = useMemo(
     () => rows.filter((row) => isReady(decisions[rowKey(row)])),
@@ -295,7 +363,32 @@ const SalePriceCorrectionsPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [clearRow, decisions, focusedKey, isSaving, keepBoth, readOnly, selectChoice, visibleRows]);
 
-  const resetView = (tab: CorrectionTab) => { setActiveTab(tab); setPage(1); setFilter('all'); setDecisions({}); setFocusedKey(null); };
+  const resetView = (tab: CorrectionTab) => { setActiveTab(tab); setPage(1); setFilter('all'); setDecisions({}); setCheckedKeys({}); setFocusedKey(null); };
+
+  const sendBackToPending = async () => {
+    if (!checkedRows.length || isSaving) return;
+    const confirmation = await showConfirmation(`${checkedRows.length} ligne(s) repasseront dans l’onglet « À corriger ». Les prix ne sont pas modifiés.`, 'Remettre à corriger ?');
+    if (!confirmation.isConfirmed) return;
+    try {
+      const processed = checkedRows.length;
+      await resetCorrections({ entities: checkedRows.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
+      setCheckedKeys({}); lastCheckedIndex.current = null;
+      showSuccess(`${processed} ligne(s) remise(s) à corriger`);
+      await refetch();
+    } catch (resetError) {
+      const apiError = resetError as { status?: number; data?: { message?: string } };
+      showError(apiError.data?.message || 'Impossible de remettre ces lignes à corriger.', 'Échec de la remise à corriger');
+    }
+  };
+
+  const sendBackButton = (compact?: boolean) => (
+    <button
+      type="button" onClick={() => void sendBackToPending()} disabled={!checkedRows.length || isSaving}
+      className={`inline-flex items-center gap-2 rounded-lg bg-indigo-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'h-10' : 'h-11'}`}
+    >
+      {isResetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Remettre à corriger {checkedRows.length ? `(${checkedRows.length})` : ''}
+    </button>
+  );
 
   const submit = async () => {
     if (!readyRows.length || isSaving) return;
@@ -341,7 +434,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
               <h1 className="text-2xl font-bold tracking-tight text-stone-950">Assistant de correction des prix</h1>
               <p className="mt-1 max-w-3xl text-sm text-stone-500">Comparez les prix actuels aux ventes réellement pratiquées. Rien n’est présélectionné&nbsp;: chaque ligne n’est envoyée qu’après vos deux choix.</p>
             </div>
-            {!readOnly ? <div className="flex flex-wrap items-center gap-2">{submitButton()}</div> : null}
+            <div className="flex flex-wrap items-center gap-2">{readOnly ? sendBackButton() : submitButton()}</div>
           </div>
 
           <div className="mt-5 flex flex-col gap-3 border-t border-stone-100 pt-4 md:flex-row md:items-center md:justify-between">
@@ -392,6 +485,23 @@ const SalePriceCorrectionsPage: React.FC = () => {
         </div>
       ) : null}
 
+      {readOnly && rows.length > 0 ? (
+        <div className="sticky top-0 z-30 border-b border-stone-200 bg-white/95 shadow-sm backdrop-blur">
+          <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-bold text-stone-700 transition hover:bg-stone-50">
+                <input ref={selectAllRef} type="checkbox" checked={allChecked} onChange={toggleCheckAll} disabled={isSaving} className="h-4 w-4 rounded border-stone-300 text-indigo-600 focus:ring-indigo-500" />
+                Tout sélectionner
+              </label>
+              <span className="whitespace-nowrap text-sm font-bold tabular-nums text-stone-900">{checkedRows.length}/{rows.length} sélectionnée(s)</span>
+              {checkedRows.length ? <button type="button" onClick={() => { setCheckedKeys({}); lastCheckedIndex.current = null; }} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"><Eraser className="h-3.5 w-3.5" /> Désélectionner</button> : null}
+              <span className="hidden text-[11px] text-stone-500 lg:inline"><Kbd>Maj</Kbd> + clic pour sélectionner une plage</span>
+            </div>
+            <div className="hidden xl:block">{sendBackButton(true)}</div>
+          </div>
+        </div>
+      ) : null}
+
       <section className="mx-auto max-w-[1800px] px-4 py-5 sm:px-6">
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center rounded-xl border border-stone-200 bg-white text-sm font-medium text-stone-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-emerald-600" /> Chargement des prix et de l’historique…</div>
@@ -415,7 +525,14 @@ const SalePriceCorrectionsPage: React.FC = () => {
               <table className="w-full min-w-[1240px] table-fixed border-collapse">
                 <thead className="bg-stone-100/80 text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
                   <tr>
-                    <th className="sticky left-0 z-20 w-[300px] border-b border-r border-stone-200 bg-stone-100 px-4 py-3 shadow-[3px_0_6px_-5px_rgba(0,0,0,0.45)]">Produit / variante</th>
+                    <th className="sticky left-0 z-20 w-[300px] border-b border-r border-stone-200 bg-stone-100 px-4 py-3 shadow-[3px_0_6px_-5px_rgba(0,0,0,0.45)]">
+                      {readOnly ? (
+                        <span className="flex items-center gap-2">
+                          <input type="checkbox" checked={allChecked} onChange={toggleCheckAll} disabled={isSaving} aria-label="Tout sélectionner" className="h-4 w-4 cursor-pointer rounded border-stone-300 text-indigo-600 focus:ring-indigo-500" />
+                          Produit / variante
+                        </span>
+                      ) : 'Produit / variante'}
+                    </th>
                     <th className="w-[125px] border-b border-stone-200 px-3 py-3">Prix vente actuel</th>
                     <th className="w-[215px] border-b border-l border-indigo-100 bg-indigo-50/60 px-3 py-3 text-indigo-800">Choix prix vente <span className="font-medium normal-case text-indigo-500">· valeurs hautes</span></th>
                     <th className="w-[125px] border-b border-l border-stone-200 px-3 py-3">Prix vente 2 actuel</th>
@@ -424,12 +541,14 @@ const SalePriceCorrectionsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-200">
-                  {visibleRows.map((row) => {
+                  {visibleRows.map((row, index) => {
                     const key = rowKey(row);
                     return (
                       <CorrectionRow
-                        key={key} row={row} decision={decisions[key]} focused={focusedKey === key} readOnly={readOnly} saving={isSaving}
-                        onSelect={selectChoice} onKeepBoth={keepBoth} onClear={clearRow} onFocus={focusRow} registerRow={registerRow}
+                        key={key} row={row} index={index} decision={decisions[key]} focused={focusedKey === key}
+                        checked={Boolean(checkedKeys[key])} readOnly={readOnly} saving={isSaving}
+                        onSelect={selectChoice} onKeepBoth={keepBoth} onClear={clearRow} onFocus={focusRow}
+                        onToggleCheck={toggleCheck} registerRow={registerRow}
                       />
                     );
                   })}
@@ -457,10 +576,10 @@ const SalePriceCorrectionsPage: React.FC = () => {
         ) : null}
       </section>
 
-      {!readOnly && rows.length > 0 ? (
+      {rows.length > 0 ? (
         <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-xl xl:hidden">
-          <span className="whitespace-nowrap text-xs font-bold tabular-nums text-stone-700">{readyRows.length}/{rows.length} décidée(s)</span>
-          {submitButton(true)}
+          <span className="whitespace-nowrap text-xs font-bold tabular-nums text-stone-700">{readOnly ? `${checkedRows.length}/${rows.length} sélect.` : `${readyRows.length}/${rows.length} décidée(s)`}</span>
+          {readOnly ? sendBackButton(true) : submitButton(true)}
         </div>
       ) : null}
     </main>

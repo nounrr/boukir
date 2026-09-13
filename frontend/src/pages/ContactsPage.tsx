@@ -218,14 +218,16 @@ const ContactsPage: React.FC = () => {
   }, []);
 
   // Solde cumule 2: calcul simple separe, sans solde initial.
-  // Client: Sortie/Comptant => dette client (-), Paiement/Avoir => reduction dette (+abs).
+  // Client: Sortie => dette client (-), Paiement/Avoir => reduction dette (+abs).
+  // Les bons comptant sont payes immediatement: ils n'impactent pas le solde cumule.
   const getHistorySoldeCumule2Delta = React.useCallback((contact: Contact | null | undefined, item: any) => {
     const normalizedType = String(item?.type || '').toLowerCase();
     const bonType = String(item?.bon_type || '').toLowerCase();
     const value = Math.abs(Number(item?.total) || 0);
 
     if (contact?.type === 'Client') {
-      if (normalizedType === 'produit' && (bonType.includes('sortie') || bonType.includes('comptant'))) return -value;
+      if (bonType.includes('comptant')) return 0;
+      if (normalizedType === 'produit' && bonType.includes('sortie')) return -value;
       if (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir')) return value;
       return 0;
     }
@@ -290,7 +292,10 @@ const ContactsPage: React.FC = () => {
         const bonType = String(item?.bon_type || '').toLowerCase();
         const value = Math.abs(montant);
 
-        if (normalizedType === 'produit' && (bonType.includes('sortie') || bonType.includes('comptant') || !bonType)) {
+        // Bons comptant: payes immediatement, neutres pour le solde cumule.
+        if (normalizedType === 'produit' && bonType.includes('comptant')) {
+          // no-op
+        } else if (normalizedType === 'produit' && (bonType.includes('sortie') || !bonType)) {
           soldeCumulatif -= value;
         } else if (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir')) {
           soldeCumulatif += value;
@@ -1190,7 +1195,9 @@ const ContactsPage: React.FC = () => {
       })();
 
       // Ajouter tous les produits des bons (sans filtre)
+      // Bons comptant exclus: payes immediatement, neutres pour le solde cumule.
       for (const b of allBonsForContact) {
+        if (b.type === 'Comptant') continue;
         const bonItems = Array.isArray(b.items) ? b.items : [];
         for (const it of bonItems) {
           const total = Number((it as any).total ?? (it as any).montant_ligne) ||
@@ -1499,7 +1506,10 @@ const ContactsPage: React.FC = () => {
     let soldeCumulatif = initialSolde;
     const withSolde = items.map((item) => {
       const montant = Number(item.total) || 0;
-      soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
+      // Bons comptant: payes immediatement, neutres pour le solde cumule client.
+      if (item.bon_type !== 'Comptant') {
+        soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
+      }
       return { ...item, soldeCumulatif };
     });
     return [initRow, ...withSolde];
