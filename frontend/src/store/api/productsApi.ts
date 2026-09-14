@@ -24,6 +24,9 @@ export interface SalePriceCorrectionRow {
   current_prix_vente_2_source: SalePriceSource;
   high_prices: HistoricalSalePrice[];
   low_prices: HistoricalSalePrice[];
+  /** Dernier prix d'achat connu (snapshot sinon ligne de commande). */
+  last_purchase_price: number | null;
+  last_purchase_at: string | null;
   is_corrected: boolean;
   corrected_at: string | null;
 }
@@ -281,7 +284,7 @@ const productsApi = api.injectEndpoints({
 
     getSalePriceCorrections: builder.query<
       SalePriceCorrectionsResponse,
-      { page: number; limit: number; q?: string; status: 'pending' | 'processed' }
+      { page: number; limit: number; q?: string; status: 'pending' | 'processed'; category_id?: number }
     >({
       query: (params) => ({ url: '/products/sale-price-corrections', params }),
       providesTags: ['Product'],

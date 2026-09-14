@@ -4587,6 +4587,12 @@ const SALE_PRICE_COLLATION = 'utf8mb4_unicode_ci';
 const salePriceText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SALE_PRICE_COLLATION}`;
 const SALE_PRICE_NULL_TEXT = `CAST(NULL AS CHAR) COLLATE ${SALE_PRICE_COLLATION}`;
 
+// Les corrections de prix de vente ne concernent que les articles reellement vendus au
+// catalogue : ni services, ni articles non stockables, ni produits supprimes.
+const SALE_PRICE_SELLABLE_SQL = `COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0`;
+
 // GET /products/sale-price-corrections
 // One row per sellable entity, paginated before its sale history is aggregated.
 router.get('/sale-price-corrections', async (req, res, next) => {
@@ -4602,6 +4608,8 @@ router.get('/sale-price-corrections', async (req, res, next) => {
     const offset = (page - 1) * limit;
     const q = String(req.query.q || '').trim().slice(0, 100);
     const status = String(req.query.status || 'pending') === 'processed' ? 'processed' : 'pending';
+    const categoryId = Number.parseInt(req.query.category_id, 10);
+    const hasCategory = Number.isSafeInteger(categoryId) && categoryId > 0;
     const like = `%${q}%`;
     const statusSql = status === 'processed' ? 'entity.corrected_at IS NOT NULL' : 'entity.corrected_at IS NULL';
     const searchSql = q
@@ -4610,6 +4618,11 @@ router.get('/sale-price-corrections', async (req, res, next) => {
               OR COALESCE(entity.variant_reference, '') LIKE ?)`
       : '';
     const searchParams = q ? [like, like, like, like, like] : [];
+    // Les deux branches de l'UNION portent le meme filtre : les parametres de categorie
+    // sont donc fournis deux fois, avant ceux de la recherche.
+    const categorySql = hasCategory ? 'AND p.categorie_id = ?' : '';
+    const categoryParams = hasCategory ? [categoryId] : [];
+    const entityParams = [...categoryParams, ...categoryParams, ...searchParams];
     const entitySql = `SELECT * FROM (
       SELECT p.id AS product_id, NULL AS variant_id, ${salePriceText('p.reference_2')} AS product_reference,
              ${salePriceText('p.designation')} AS designation,
@@ -4618,8 +4631,9 @@ router.get('/sale-price-corrections', async (req, res, next) => {
              p.prix_vente AS product_prix_vente, p.prix_vente_2 AS product_prix_vente_2,
              NULL AS variant_prix_vente, NULL AS variant_prix_vente_2, p.sale_price_corrected_at AS corrected_at
       FROM products p
-      WHERE COALESCE(p.is_deleted, 0) = 0
+      WHERE ${SALE_PRICE_SELLABLE_SQL}
         AND NOT EXISTS (SELECT 1 FROM product_variants pv0 WHERE pv0.product_id = p.id AND COALESCE(pv0.is_deleted, 0) = 0)
+        ${categorySql}
       UNION ALL
       SELECT p.id, pv.id, ${salePriceText('p.reference_2')}, ${salePriceText('p.designation')},
              ${salePriceText('pv.variant_name')}, ${salePriceText('pv.reference')},
@@ -4628,13 +4642,14 @@ router.get('/sale-price-corrections', async (req, res, next) => {
              pv.prix_vente, pv.prix_vente_2, pv.sale_price_corrected_at
       FROM products p
       JOIN product_variants pv ON pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
-      WHERE COALESCE(p.is_deleted, 0) = 0
+      WHERE ${SALE_PRICE_SELLABLE_SQL}
+        ${categorySql}
     ) entity WHERE ${statusSql} ${searchSql}`;
 
-    const [[countRow]] = await pool.query(`SELECT COUNT(*) AS total FROM (${entitySql}) counted`, searchParams);
+    const [[countRow]] = await pool.query(`SELECT COUNT(*) AS total FROM (${entitySql}) counted`, entityParams);
     const [entities] = await pool.query(
       `${entitySql} ORDER BY entity.product_id DESC, entity.variant_id ASC LIMIT ? OFFSET ?`,
-      [...searchParams, limit, offset]
+      [...entityParams, limit, offset]
     );
     const total = Number(countRow?.total || 0);
     if (!entities.length) {
@@ -4692,12 +4707,35 @@ router.get('/sale-price-corrections', async (req, res, next) => {
       historyByEntity.set(key, list);
     }
 
+    // Dernier prix d'achat connu par entite. Le prix du snapshot prime sur celui de la
+    // ligne de commande : c'est lui qui a ete fige au moment de l'entree en stock.
+    const [purchaseRows] = await pool.query(
+      `SELECT ci.product_id, COALESCE(ci.variant_id, ps.variant_id) AS variant_id,
+              COALESCE(ps.prix_achat, ci.prix_unitaire) AS prix_achat,
+              bc.date_creation, ci.id AS commande_item_id
+       FROM commande_items ci
+       JOIN bons_commande bc ON bc.id = ci.bon_commande_id
+       LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+       WHERE ci.product_id IN (${placeholders})
+         AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+         AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'refus%'
+         AND COALESCE(ps.prix_achat, ci.prix_unitaire) > 0
+       ORDER BY bc.date_creation ASC, ci.id ASC`,
+      productIds
+    );
+    // Parcours ascendant : la derniere ecriture gagne, donc le plus recent reste.
+    const lastPurchaseByEntity = new Map();
+    for (const line of purchaseRows) {
+      lastPurchaseByEntity.set(salePriceEntityKey(line.product_id, line.variant_id), line);
+    }
+
     const data = entities.map((entity) => {
       const key = salePriceEntityKey(entity.product_id, entity.variant_id);
       const entitySnapshots = snapshotsByEntity.get(key) || [];
       const pv1 = resolveCurrentSalePrice({ snapshots: entitySnapshots, field: 'prix_vente', variantPrice: entity.variant_prix_vente, productPrice: entity.product_prix_vente });
       const pv2 = resolveCurrentSalePrice({ snapshots: entitySnapshots, field: 'prix_vente_2', variantPrice: entity.variant_prix_vente_2, productPrice: entity.product_prix_vente_2 });
       const history = historyByEntity.get(key) || [];
+      const lastPurchase = lastPurchaseByEntity.get(key) || null;
       return {
         product_id: Number(entity.product_id), variant_id: entity.variant_id == null ? null : Number(entity.variant_id),
         reference: entity.product_reference ?? null, designation: entity.designation,
@@ -4706,6 +4744,8 @@ router.get('/sale-price-corrections', async (req, res, next) => {
         current_prix_vente: pv1.value, current_prix_vente_source: pv1.source,
         current_prix_vente_2: pv2.value, current_prix_vente_2_source: pv2.source,
         high_prices: rankHistoricalPrices(history, 'desc', 3), low_prices: rankHistoricalPrices(history, 'asc', 3),
+        last_purchase_price: lastPurchase ? Number(lastPurchase.prix_achat) : null,
+        last_purchase_at: lastPurchase?.date_creation ?? null,
         is_corrected: Boolean(entity.corrected_at), corrected_at: entity.corrected_at ?? null,
       };
     });

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Sparkles, Wand2 } from 'lucide-react';
 import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, useGetSalePriceCorrectionsQuery, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
+import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
 
@@ -28,6 +29,7 @@ const formatCorrectedAt = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? null : correctedAt.format(date);
 };
 // PV1 = 1·2·3, PV2 = 4·5·6, 0 = garder les deux.
+const PAGE_SIZES = [10, 20, 30, 50, 100] as const;
 const PV1_KEYS = ['1', '2', '3'] as const;
 const PV2_KEYS = ['4', '5', '6'] as const;
 
@@ -174,6 +176,21 @@ type CorrectionRowProps = {
   registerRow: (key: string, element: HTMLTableRowElement | null) => void;
 };
 
+/** Dernier prix d'achat connu : le repere de marge quand on arbitre un prix de vente. */
+const LastPurchase = React.memo<{ price: number | null; at: string | null }>(({ price, at }) => {
+  if (price === null) {
+    return <p className="text-xs font-medium text-stone-400">Jamais acheté</p>;
+  }
+  const date = formatCorrectedAt(at);
+  return (
+    <div>
+      <p className="whitespace-nowrap text-sm font-bold tabular-nums text-stone-900">{money.format(price)} DH</p>
+      <p className="mt-0.5 text-[10px] text-stone-500">{date ? `le ${date}` : 'dernier achat'}</p>
+    </div>
+  );
+});
+LastPurchase.displayName = 'LastPurchase';
+
 const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, focused, checked, readOnly, saving, onSelect, onKeepBoth, onClear, onFocus, onToggleCheck, registerRow }) => {
   const key = rowKey(row);
   const pv1 = resolvePrice(decision?.pv1, row.current_prix_vente);
@@ -212,7 +229,8 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
         </div>
       </td>
 
-      <td className="px-3 py-3"><CurrentPrice value={row.current_prix_vente} source={row.current_prix_vente_source} /></td>
+      <td className="border-l border-stone-200 px-3 py-3"><LastPurchase price={row.last_purchase_price} at={row.last_purchase_at} /></td>
+      <td className="border-l border-stone-200 px-3 py-3"><CurrentPrice value={row.current_prix_vente} source={row.current_prix_vente_source} /></td>
       <td className="border-l border-indigo-100 bg-indigo-50/20 px-3 py-3">
         <ChoiceColumn label={`Prix vente de ${row.designation}`} tone="indigo" current={row.current_prix_vente} choice={decision?.pv1} candidates={row.high_prices} shortcuts={PV1_KEYS} disabled={readOnly || saving} onSelect={(choice) => onSelect(key, 'pv1', choice)} />
       </td>
@@ -269,6 +287,8 @@ CorrectionRow.displayName = 'CorrectionRow';
 const SalePriceCorrectionsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<CorrectionTab>('pending');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<number>(30);
+  const [categoryId, setCategoryId] = useState<number | ''>('');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<RowFilter>('all');
@@ -279,11 +299,11 @@ const SalePriceCorrectionsPage: React.FC = () => {
   const focusedIndexRef = useRef(0);
   const lastCheckedIndex = useRef<number | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
-  const limit = 30;
 
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [search]);
 
-  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab });
+  const { data: categories = [] } = useGetCategoriesQuery();
+  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab, category_id: categoryId === '' ? undefined : categoryId });
   const [applyCorrections, { isLoading: isApplying }] = useUpdateSalePriceCorrectionsMutation();
   const [resetCorrections, { isLoading: isResetting }] = useResetSalePriceCorrectionsMutation();
   const isSaving = isApplying || isResetting;
@@ -352,7 +372,8 @@ const SalePriceCorrectionsPage: React.FC = () => {
     });
   }, [visibleRows]);
 
-  useEffect(() => { setCheckedKeys({}); lastCheckedIndex.current = null; }, [activeTab, page, query]);
+  useEffect(() => { setPage(1); }, [limit, categoryId]);
+  useEffect(() => { setCheckedKeys({}); lastCheckedIndex.current = null; }, [activeTab, page, query, limit, categoryId]);
   useEffect(() => {
     if (!selectAllRef.current) return;
     selectAllRef.current.indeterminate = checkedRows.length > 0 && !allChecked;
@@ -525,14 +546,43 @@ const SalePriceCorrectionsPage: React.FC = () => {
                 </button>
               ))}
             </nav>
-            <div className="flex items-center gap-2">
-              <label className="relative block w-full md:w-80">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="relative block w-full md:w-72">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                 <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ID, référence, produit, variante…" className="h-10 w-full rounded-lg border-stone-300 bg-stone-50 pl-9 pr-3 text-sm text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-emerald-500" />
+              </label>
+              <select
+                value={categoryId}
+                onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : '')}
+                aria-label="Filtrer par catégorie"
+                className="h-10 max-w-[13rem] rounded-lg border-stone-300 bg-stone-50 px-3 text-sm font-medium text-stone-900 focus:border-emerald-500 focus:ring-emerald-500"
+              >
+                <option value="">Toutes les catégories</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.nom}</option>
+                ))}
+              </select>
+              <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-stone-300 bg-stone-50 px-3 text-sm text-stone-600">
+                <span className="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-stone-500">Par page</span>
+                <select
+                  value={limit}
+                  onChange={(event) => setLimit(Number(event.target.value))}
+                  aria-label="Nombre de lignes par page"
+                  className="border-0 bg-transparent p-0 pr-6 text-sm font-bold tabular-nums text-stone-900 focus:ring-0"
+                >
+                  {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
               </label>
               <button type="button" onClick={() => void refetch()} disabled={isFetching} aria-label="Actualiser" className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /></button>
             </div>
           </div>
+
+          {meta ? (
+            <p className="mt-3 text-xs font-medium text-stone-500" aria-live="polite">
+              <span className="font-bold tabular-nums text-stone-900">{meta.total}</span> entité(s){categoryId !== '' || query ? ' pour ce filtre' : ''}
+              {meta.total > 0 ? <> · affichage {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} · page {meta.page} sur {meta.totalPages}</> : null}
+            </p>
+          ) : null}
         </div>
       </header>
 
@@ -602,7 +652,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
           <>
             <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-stone-500 2xl:hidden"><ChevronRight className="h-3.5 w-3.5" /> Faites glisser le tableau horizontalement pour voir toutes les décisions.</p>
             <div className={`overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm transition-opacity ${isFetching ? 'opacity-70' : ''}`}>
-              <table className="w-full min-w-[1240px] table-fixed border-collapse">
+              <table className="w-full min-w-[1355px] table-fixed border-collapse">
                 <thead className="bg-stone-100/80 text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
                   <tr>
                     <th className="sticky left-0 z-20 w-[300px] border-b border-r border-stone-200 bg-stone-100 px-4 py-3 shadow-[3px_0_6px_-5px_rgba(0,0,0,0.45)]">
@@ -613,7 +663,8 @@ const SalePriceCorrectionsPage: React.FC = () => {
                         </span>
                       ) : 'Produit / variante'}
                     </th>
-                    <th className="w-[125px] border-b border-stone-200 px-3 py-3">Prix vente actuel</th>
+                    <th className="w-[115px] border-b border-l border-stone-200 px-3 py-3">Dernier prix achat</th>
+                    <th className="w-[125px] border-b border-l border-stone-200 px-3 py-3">Prix vente actuel</th>
                     <th className="w-[215px] border-b border-l border-indigo-100 bg-indigo-50/60 px-3 py-3 text-indigo-800">Choix prix vente <span className="font-medium normal-case text-indigo-500">· valeurs hautes</span></th>
                     <th className="w-[125px] border-b border-l border-stone-200 px-3 py-3">Prix vente 2 actuel</th>
                     <th className="w-[215px] border-b border-l border-amber-100 bg-amber-50/60 px-3 py-3 text-amber-800">Choix prix vente 2 <span className="font-medium normal-case text-amber-600">· valeurs basses</span></th>
@@ -645,9 +696,22 @@ const SalePriceCorrectionsPage: React.FC = () => {
           </>
         )}
 
-        {meta && meta.totalPages > 1 ? (
-          <div className="mt-4 flex items-center justify-between text-sm text-stone-500">
-            <span>{meta.total} entité(s) · page {meta.page} sur {meta.totalPages}</span>
+        {meta && meta.total > 0 ? (
+          <div className="mt-4 flex flex-col gap-3 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <span><span className="font-bold tabular-nums text-stone-900">{meta.total}</span> entité(s) · page {meta.page} sur {meta.totalPages}</span>
+              <label className="inline-flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-stone-500">Par page</span>
+                <select
+                  value={limit}
+                  onChange={(event) => setLimit(Number(event.target.value))}
+                  aria-label="Nombre de lignes par page"
+                  className="h-9 rounded-lg border-stone-300 bg-white px-2 text-sm font-bold tabular-nums text-stone-900 focus:border-emerald-500 focus:ring-emerald-500"
+                >
+                  {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </label>
+            </div>
             <div className="flex gap-2">
               <button type="button" disabled={page <= 1 || isFetching} onClick={() => setPage((value) => Math.max(1, value - 1))} className="inline-flex h-9 items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 font-semibold text-stone-700 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Précédent</button>
               <button type="button" disabled={page >= meta.totalPages || isFetching} onClick={() => setPage((value) => value + 1)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 font-semibold text-stone-700 disabled:opacity-40">Suivant <ChevronRight className="h-4 w-4" /></button>
