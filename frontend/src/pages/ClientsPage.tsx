@@ -2134,8 +2134,9 @@ const ClientsListPage: React.FC = () => {
   const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
   const [search, setSearch] = useState(savedState.search ?? '');
   const [debouncedSearch, setDebouncedSearch] = useState(savedState.search ?? '');
-  const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'rappel');
-  const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'asc');
+  // Tri par défaut: plus grand solde (total) cumulé en premier.
+  const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'total_cumule');
+  const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
   const [dateFrom, setDateFrom] = useState(savedState.dateFrom ?? '');
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());

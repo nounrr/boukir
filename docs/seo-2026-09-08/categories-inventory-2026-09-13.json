@@ -1,0 +1,2652 @@
+{
+  "generated_at": "2026-09-13T11:35:30.042Z",
+  "source": "https://boukirdiamond.com/api/categories",
+  "summary": {
+    "total": 79,
+    "roots": 22,
+    "missing_fr": 0,
+    "missing_ar": 0,
+    "missing_en": 0,
+    "missing_zh": 0,
+    "unclassified": 1,
+    "orphan_parents": 0,
+    "duplicate_name_groups": [
+      [
+        60,
+        63
+      ],
+      [
+        61,
+        67
+      ],
+      [
+        64,
+        65
+      ]
+    ]
+  },
+  "categories": [
+    {
+      "id": 1,
+      "nom": "UNCATEGORIZED",
+      "nom_ar": "غير مصنف",
+      "nom_en": "Uncategorized",
+      "nom_zh": "未分类",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 2402,
+      "subcategory_count": 0,
+      "public_product_count": 628,
+      "public_product_samples": [
+        {
+          "id": 7306,
+          "designation": "Reduction 1/2 3/4"
+        },
+        {
+          "id": 7301,
+          "designation": "Filas Plombi"
+        },
+        {
+          "id": 7300,
+          "designation": "Coffret Novinter Facade 1A50+1DT00 50 OGE"
+        },
+        {
+          "id": 7298,
+          "designation": "Fusible Couteau 160A - SASSIN"
+        },
+        {
+          "id": 7289,
+          "designation": "LAMPE SOUCOURT"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "nom": "OUTILLAGE",
+      "nom_ar": "أدوات",
+      "nom_en": "Tools",
+      "nom_zh": "工具",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 7,
+      "public_product_count": 785,
+      "public_product_samples": [
+        {
+          "id": 7337,
+          "designation": "Table 14 - LAP"
+        },
+        {
+          "id": 7334,
+          "designation": "Fosible 16A"
+        },
+        {
+          "id": 7333,
+          "designation": "Disjancteur Garde 380V"
+        },
+        {
+          "id": 7332,
+          "designation": "Peki TER"
+        },
+        {
+          "id": 7331,
+          "designation": "Porte Fosible 30 Et Fosible"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "nom": "OUTILS ÉLECTRIQUES",
+      "nom_ar": "أدوات كهربائية",
+      "nom_en": "Power tools",
+      "nom_zh": "电动工具",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 53,
+      "subcategory_count": 5,
+      "public_product_count": 132,
+      "public_product_samples": [
+        {
+          "id": 7337,
+          "designation": "Table 14 - LAP"
+        },
+        {
+          "id": 7334,
+          "designation": "Fosible 16A"
+        },
+        {
+          "id": 7333,
+          "designation": "Disjancteur Garde 380V"
+        },
+        {
+          "id": 7332,
+          "designation": "Peki TER"
+        },
+        {
+          "id": 7331,
+          "designation": "Porte Fosible 30 Et Fosible"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "nom": "OUTILLAGE À MAIN",
+      "nom_ar": "أدوات يدوية",
+      "nom_en": "Hand tools",
+      "nom_zh": "手工具",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 1,
+      "subcategory_count": 4,
+      "public_product_count": 335,
+      "public_product_samples": [
+        {
+          "id": 7218,
+          "designation": "Brosse Métallique Torsadée 75mm - INGCO"
+        },
+        {
+          "id": 7217,
+          "designation": "Brosse Métallique 75mm - INGCO"
+        },
+        {
+          "id": 7147,
+          "designation": "Pince Multiprise 300mm - INGCO"
+        },
+        {
+          "id": 7146,
+          "designation": "Pince Multiprise 200mm - INGCO"
+        },
+        {
+          "id": 7085,
+          "designation": "Métre 7.5M/16 25MM - BOBOMAO"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "nom": "ÉLECTRICITÉ",
+      "nom_ar": "الكهرباء",
+      "nom_en": "Electrical",
+      "nom_zh": "电气",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 9,
+      "public_product_count": 219,
+      "public_product_samples": [
+        {
+          "id": 7329,
+          "designation": "Prise De Courant 2P + TERRE 088 Serie 24 - SIMON"
+        },
+        {
+          "id": 7328,
+          "designation": "Multicadre 4 Poste Horizontal 188 Serie 24 - SIMON"
+        },
+        {
+          "id": 7327,
+          "designation": "Multicadre 3 Poste Horizontal 188 Serie 24 - SIMON"
+        },
+        {
+          "id": 7326,
+          "designation": "Multicadre 2 Poste Horizontal 188 Serie 24 - SIMON"
+        },
+        {
+          "id": 7325,
+          "designation": "Cadre 1 Poste 188 Serie 24 - SIMON"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "nom": "SPOTS, PANNEAUX ET AMPOULES LED",
+      "nom_ar": "سبوتات LED ولوحات LED ومصابيح LED",
+      "nom_en": "LED spotlights, panels and bulbs",
+      "nom_zh": "LED射灯、LED面板和LED灯泡",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 80,
+      "subcategory_count": 0,
+      "public_product_count": 69,
+      "public_product_samples": [
+        {
+          "id": 7222,
+          "designation": "Multicadre 2 Poste Horizontal Marron Clair OMEGA"
+        },
+        {
+          "id": 7221,
+          "designation": "Multicadre 3 Poste Horizontal Marron Clair OMEGA"
+        },
+        {
+          "id": 7220,
+          "designation": "Cadre 1 Poste Marron Clair OMEGA"
+        },
+        {
+          "id": 7179,
+          "designation": "Douille GU10"
+        },
+        {
+          "id": 7178,
+          "designation": "Ventilateur 15W 4 Pouces V7 WH"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "nom": "INTERRUPTEURS & PRISES",
+      "nom_ar": "المفاتيح والمقابس",
+      "nom_en": "Switches & Sockets",
+      "nom_zh": "开关与插座",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 53,
+      "subcategory_count": 0,
+      "public_product_count": 53,
+      "public_product_samples": [
+        {
+          "id": 7329,
+          "designation": "Prise De Courant 2P + TERRE 088 Serie 24 - SIMON"
+        },
+        {
+          "id": 7328,
+          "designation": "Multicadre 4 Poste Horizontal 188 Serie 24 - SIMON"
+        },
+        {
+          "id": 7327,
+          "designation": "Multicadre 3 Poste Horizontal 188 Serie 24 - SIMON"
+        },
+        {
+          "id": 7326,
+          "designation": "Multicadre 2 Poste Horizontal 188 Serie 24 - SIMON"
+        },
+        {
+          "id": 7325,
+          "designation": "Cadre 1 Poste 188 Serie 24 - SIMON"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "nom": "CÂBLES",
+      "nom_ar": "كابلات",
+      "nom_en": "Cables",
+      "nom_zh": "电缆",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 13,
+      "subcategory_count": 0,
+      "public_product_count": 12,
+      "public_product_samples": [
+        {
+          "id": 7227,
+          "designation": "Câble 4 Rigide U500 V 100 m INGELEC"
+        },
+        {
+          "id": 6987,
+          "designation": "Câble Souple 2 × 1,5 - NORMAL"
+        },
+        {
+          "id": 6263,
+          "designation": "METRE CABLE DE INTERPHONE"
+        },
+        {
+          "id": 6259,
+          "designation": "Câble Souple 4 × 2,5 mm 100 m"
+        },
+        {
+          "id": 5638,
+          "designation": "Câble 6 Rigide U500 V 100 m NEXANS"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "nom": "ENROULEURS & RALLONGES",
+      "nom_ar": "بكرات الأسلاك وكوابل التمديد",
+      "nom_en": "cable reels and extension cords",
+      "nom_zh": "电缆卷线器和延长线",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 12,
+      "subcategory_count": 0,
+      "public_product_count": 11,
+      "public_product_samples": [
+        {
+          "id": 6712,
+          "designation": "Multiprises 3 × 2P + T USB 1,5 m Noir"
+        },
+        {
+          "id": 5487,
+          "designation": "MULTIPRISES & ADAPTATEURS INGELEC"
+        },
+        {
+          "id": 1505,
+          "designation": "BLOC MULTIPRISES 6 POSTES BLANC INGELEC"
+        },
+        {
+          "id": 1525,
+          "designation": "BLOC MULTIPRISES 5 POSTES BLANC INGELEC"
+        },
+        {
+          "id": 1526,
+          "designation": "BLOC MULTIPRISES 4 POSTES BLANC INGELEC"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "nom": "DISJONCTEURS & FUSIBLES",
+      "nom_ar": "قواطع الدائرة والفيوزات",
+      "nom_en": "Circuit breakers & fuses",
+      "nom_zh": "断路器与保险丝",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 18,
+      "subcategory_count": 0,
+      "public_product_count": 17,
+      "public_product_samples": [
+        {
+          "id": 7159,
+          "designation": "Cartouche Fusible Vide Petit"
+        },
+        {
+          "id": 7158,
+          "designation": "Cartouche Fusible Vide Grand"
+        },
+        {
+          "id": 6483,
+          "designation": "PORTE FUSIBLE UNIPOLAIRE 22 × 58 LAP"
+        },
+        {
+          "id": 6354,
+          "designation": "BOITE ETANCHE 15X20 LAP"
+        },
+        {
+          "id": 6349,
+          "designation": "DISJONCTEUR 1 POLE 20A INGELEC"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "nom": "ACCESSOIRES ÉLECTRIQUES",
+      "nom_ar": "إكسسوارات كهربائية",
+      "nom_en": "Electrical accessories",
+      "nom_zh": "电气配件",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 33,
+      "subcategory_count": 0,
+      "public_product_count": 33,
+      "public_product_samples": [
+        {
+          "id": 6846,
+          "designation": "TUBE GORGE ROUGE DIAM 11 Q20 ILIM"
+        },
+        {
+          "id": 6845,
+          "designation": "TUBE GORGE ROUGE DIAM 16 Q25 ILIM"
+        },
+        {
+          "id": 6338,
+          "designation": "Ruban Isolant Électrique 19 mm X 20 m AKRO"
+        },
+        {
+          "id": 6169,
+          "designation": "BARRETTE de CONNEXION 10 mm [2 Pièces]"
+        },
+        {
+          "id": 5634,
+          "designation": "MOTA B22 راس مصباح"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "nom": "APPAREILLAGE DE MESURE",
+      "nom_ar": "معدات القياس",
+      "nom_en": "Measuring instruments",
+      "nom_zh": "测量仪器",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 4,
+      "subcategory_count": 0,
+      "public_product_count": 2,
+      "public_product_samples": [
+        {
+          "id": 3130,
+          "designation": "Détecteur de Tension Alternative - INGCO"
+        },
+        {
+          "id": 3131,
+          "designation": "Multimètre Digital Lcd Cat.iii 600 V Ac / Dc - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "nom": "MATÉRIAUX DE CONSTRUCTION",
+      "nom_ar": "مواد البناء",
+      "nom_en": "construction materials",
+      "nom_zh": "建筑材料",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 4,
+      "public_product_count": 245,
+      "public_product_samples": [
+        {
+          "id": 7315,
+          "designation": "ISOLBOX TYEP 35 (2.4)"
+        },
+        {
+          "id": 7313,
+          "designation": "Foret Inox Blanc 14 - DANI"
+        },
+        {
+          "id": 7312,
+          "designation": "سرجوان حديد 1m"
+        },
+        {
+          "id": 7310,
+          "designation": "Meche Cobalt D 10"
+        },
+        {
+          "id": 7309,
+          "designation": "Meche Metal/Titanium D 8"
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "nom": "ÉQUIPEMENTS DE CARRELAGES ET DE MARBRES",
+      "nom_ar": "معدات البلاط والرخام",
+      "nom_en": "Tile and marble equipment",
+      "nom_zh": "瓷砖和大理石设备",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 9,
+      "public_product_count": 622,
+      "public_product_samples": [
+        {
+          "id": 7316,
+          "designation": "Disque Diamant Petit 30 mm Granit - ABLAGO"
+        },
+        {
+          "id": 7265,
+          "designation": "Disque Diament Granite 350mm 60/50 x 15mm - MPC"
+        },
+        {
+          "id": 7264,
+          "designation": "Disque Diamant Granite 180 - MPC"
+        },
+        {
+          "id": 7263,
+          "designation": "Disque Diamant Granite 125 - MPC"
+        },
+        {
+          "id": 7262,
+          "designation": "Disque Diamant Carrelage 125 Rouge - MPC"
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "nom": "COLLES DE CARRELAGE & MARBRE",
+      "nom_ar": "لاصقات البلاط والرخام",
+      "nom_en": "Tile and marble adhesives",
+      "nom_zh": "瓷砖和大理石粘合剂",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 54,
+      "subcategory_count": 0,
+      "public_product_count": 46,
+      "public_product_samples": [
+        {
+          "id": 6849,
+          "designation": "WEBERCOL Dur Blanc 25 kg"
+        },
+        {
+          "id": 6436,
+          "designation": "ULTRAFLEX EASY S2 Blanc"
+        },
+        {
+          "id": 6342,
+          "designation": "SikaCeram®blanc 100 m"
+        },
+        {
+          "id": 6341,
+          "designation": "SIKA M100 25 kg Gris"
+        },
+        {
+          "id": 6122,
+          "designation": "WEBERCOL Duo Blanc 25 kg"
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "nom": "MACHINES DE DÉCOUPAGE DE CARRELAGES ET DE MARBRES",
+      "nom_ar": "ماكينات قطع البلاط والرخام",
+      "nom_en": "Tile and marble cutting machines",
+      "nom_zh": "瓷砖和大理石切割机",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 29,
+      "subcategory_count": 0,
+      "public_product_count": 28,
+      "public_product_samples": [
+        {
+          "id": 6694,
+          "designation": "Coupe - carreaux 1,2 m GBA Rouge"
+        },
+        {
+          "id": 6664,
+          "designation": "Coupe - carreaux 1,2 m Gris"
+        },
+        {
+          "id": 6663,
+          "designation": "Coupe - carreaux 60 cm Orange Main Bleu"
+        },
+        {
+          "id": 6497,
+          "designation": "Coupe - carreaux SLIM BELLOTA 3,2 m"
+        },
+        {
+          "id": 6424,
+          "designation": "Coupe - carreaux SLIM SHIJING 3,8 m"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "nom": "DISQUES DIAMANTES",
+      "nom_ar": "أقراص ماسية",
+      "nom_en": "Diamond discs",
+      "nom_zh": "金刚石圆盘",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 3,
+      "public_product_count": 241,
+      "public_product_samples": [
+        {
+          "id": 7316,
+          "designation": "Disque Diamant Petit 30 mm Granit - ABLAGO"
+        },
+        {
+          "id": 7265,
+          "designation": "Disque Diament Granite 350mm 60/50 x 15mm - MPC"
+        },
+        {
+          "id": 7264,
+          "designation": "Disque Diamant Granite 180 - MPC"
+        },
+        {
+          "id": 7263,
+          "designation": "Disque Diamant Granite 125 - MPC"
+        },
+        {
+          "id": 7262,
+          "designation": "Disque Diamant Carrelage 125 Rouge - MPC"
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "nom": "PLOMBERIE",
+      "nom_ar": "السباكة",
+      "nom_en": "plumbing",
+      "nom_zh": "水暖",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 3,
+      "public_product_count": 224,
+      "public_product_samples": [
+        {
+          "id": 7305,
+          "designation": "Culotte PPR 50 - FIRAT"
+        },
+        {
+          "id": 7304,
+          "designation": "Coude Ouvert PPR 50 - FIRAT"
+        },
+        {
+          "id": 7303,
+          "designation": "Coude Simple PPR 50 - FIRAT"
+        },
+        {
+          "id": 7302,
+          "designation": "Tube PPR 50 - FIRAT"
+        },
+        {
+          "id": 7272,
+          "designation": "HP TUBE PVC D. 90"
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "nom": "PVC",
+      "nom_ar": "بولي فينيل كلوريد",
+      "nom_en": "PVC",
+      "nom_zh": "聚氯乙烯",
+      "parent_id": 53,
+      "parent_exists": true,
+      "product_count_all": 116,
+      "subcategory_count": 0,
+      "public_product_count": 111,
+      "public_product_samples": [
+        {
+          "id": 7272,
+          "designation": "HP TUBE PVC D. 90"
+        },
+        {
+          "id": 7271,
+          "designation": "HP TUBE PVC D. 75"
+        },
+        {
+          "id": 7270,
+          "designation": "HP TUBE PVC D. 63"
+        },
+        {
+          "id": 7269,
+          "designation": "HP MANCHON PVC D. 90"
+        },
+        {
+          "id": 7268,
+          "designation": "REDUCTION PVC HP 75 / 63"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "nom": "PPR",
+      "nom_ar": "PPR",
+      "nom_en": "PPR",
+      "nom_zh": "PPR",
+      "parent_id": 53,
+      "parent_exists": true,
+      "product_count_all": 81,
+      "subcategory_count": 0,
+      "public_product_count": 81,
+      "public_product_samples": [
+        {
+          "id": 7305,
+          "designation": "Culotte PPR 50 - FIRAT"
+        },
+        {
+          "id": 7304,
+          "designation": "Coude Ouvert PPR 50 - FIRAT"
+        },
+        {
+          "id": 7303,
+          "designation": "Coude Simple PPR 50 - FIRAT"
+        },
+        {
+          "id": 7302,
+          "designation": "Tube PPR 50 - FIRAT"
+        },
+        {
+          "id": 7028,
+          "designation": "Bouchon Male 25 X 1/2 PPR - FIRAT"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "nom": "POLYETHYLENE",
+      "nom_ar": "بولي إيثيلين",
+      "nom_en": "polyethylene",
+      "nom_zh": "聚乙烯",
+      "parent_id": 53,
+      "parent_exists": true,
+      "product_count_all": 32,
+      "subcategory_count": 0,
+      "public_product_count": 32,
+      "public_product_samples": [
+        {
+          "id": 4594,
+          "designation": "Té femelle polyéthylène 20 × 1/2 × 20"
+        },
+        {
+          "id": 4593,
+          "designation": "Té égal polyéthylène 20 × 20 × 20"
+        },
+        {
+          "id": 4592,
+          "designation": "Vanne polyéthylène 20 × 20"
+        },
+        {
+          "id": 4591,
+          "designation": "Raccord femelle polyéthylène 20 × 1/2"
+        },
+        {
+          "id": 4590,
+          "designation": "Raccord mâle polyéthylène 20 × 1/2"
+        }
+      ]
+    },
+    {
+      "id": 57,
+      "nom": "SANITAIRE",
+      "nom_ar": "أدوات صحية",
+      "nom_en": "Sanitary ware",
+      "nom_zh": "卫生洁具",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 2,
+      "public_product_count": 128,
+      "public_product_samples": [
+        {
+          "id": 7336,
+          "designation": "Bouchon Caniveau D.110 ALCAPLAST"
+        },
+        {
+          "id": 7335,
+          "designation": "Bouchon + Manchon Caniveau D.110 ALCAPLAST"
+        },
+        {
+          "id": 7225,
+          "designation": "Caniveau Lavabo 40"
+        },
+        {
+          "id": 7081,
+          "designation": "Caniveau 5 X 60 - RAVENA PRO"
+        },
+        {
+          "id": 7080,
+          "designation": "Caniveau 5 X 50 - RAVENA PRO"
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "nom": "EVIERS",
+      "nom_ar": "أحواض",
+      "nom_en": "Sinks",
+      "nom_zh": "水槽",
+      "parent_id": 57,
+      "parent_exists": true,
+      "product_count_all": 29,
+      "subcategory_count": 0,
+      "public_product_count": 11,
+      "public_product_samples": [
+        {
+          "id": 5322,
+          "designation": "GLOVER 50 × 40 Lavabo Chromé sans TROU GLOVER"
+        },
+        {
+          "id": 5321,
+          "designation": "VEMEX 50 × 40 Lavabo Noir sans TROU GLOVER"
+        },
+        {
+          "id": 5319,
+          "designation": "GLOVER 50 × 40 Lavabo Chromé + TROU GLOVER"
+        },
+        {
+          "id": 1300,
+          "designation": "Lavabo Double SINKON 52 × 97 Noir"
+        },
+        {
+          "id": 2042,
+          "designation": "Inds Double Noir Lavabo"
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "nom": "SIPHON",
+      "nom_ar": "سيفون",
+      "nom_en": "Siphon",
+      "nom_zh": "虹吸",
+      "parent_id": 57,
+      "parent_exists": true,
+      "product_count_all": 130,
+      "subcategory_count": 0,
+      "public_product_count": 117,
+      "public_product_samples": [
+        {
+          "id": 7336,
+          "designation": "Bouchon Caniveau D.110 ALCAPLAST"
+        },
+        {
+          "id": 7335,
+          "designation": "Bouchon + Manchon Caniveau D.110 ALCAPLAST"
+        },
+        {
+          "id": 7225,
+          "designation": "Caniveau Lavabo 40"
+        },
+        {
+          "id": 7081,
+          "designation": "Caniveau 5 X 60 - RAVENA PRO"
+        },
+        {
+          "id": 7080,
+          "designation": "Caniveau 5 X 50 - RAVENA PRO"
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "nom": "GENERAL",
+      "nom_ar": "عام",
+      "nom_en": "General",
+      "nom_zh": "通用",
+      "parent_id": 12,
+      "parent_exists": true,
+      "product_count_all": 48,
+      "subcategory_count": 0,
+      "public_product_count": 48,
+      "public_product_samples": [
+        {
+          "id": 7077,
+          "designation": "Air Compresseur Silencieux 15L 1100W (1.5HP) - INGCO"
+        },
+        {
+          "id": 7072,
+          "designation": "Malette Visseuse 12V 25nm 2 Batterie plates - INGCO"
+        },
+        {
+          "id": 7051,
+          "designation": "Perceuse Visseuse A Percussion 12V 20Nm + 2 Batteries 1.5Ah - INGCO"
+        },
+        {
+          "id": 7050,
+          "designation": "Perseuse Visseuse 12V 20Nm 1 Batterie 1.5Ah Sans Chargeur - JADEVER"
+        },
+        {
+          "id": 6961,
+          "designation": "Décapeur Thermique 20 V 300 - 550°C sans Batterie sans Chargeur - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "nom": "SPECIALE EN MENUISERIE",
+      "nom_ar": "عروض النجارة",
+      "nom_en": "Carpentry specials",
+      "nom_zh": "木工专场",
+      "parent_id": 12,
+      "parent_exists": true,
+      "product_count_all": 8,
+      "subcategory_count": 0,
+      "public_product_count": 8,
+      "public_product_samples": [
+        {
+          "id": 6496,
+          "designation": "SCIE A ONGLET 1400W JADEVER"
+        },
+        {
+          "id": 5880,
+          "designation": "Ponceuse Orbitale Pneumatique Excentrique 6'' - INGCO"
+        },
+        {
+          "id": 5876,
+          "designation": "Scie Sauteuse 55 mm 400 W SS + 1 Lame - INGCO"
+        },
+        {
+          "id": 5865,
+          "designation": "Scie Sauteuse 110 mm 800 W + 5 Lames - INGCO"
+        },
+        {
+          "id": 5864,
+          "designation": "Scie Sauteuse 65 mm 570 W - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "nom": "SPECIALE EN SOUDEUR",
+      "nom_ar": "تخصص اللحام",
+      "nom_en": "Welder specialty",
+      "nom_zh": "焊接专业",
+      "parent_id": 12,
+      "parent_exists": true,
+      "product_count_all": 22,
+      "subcategory_count": 0,
+      "public_product_count": 22,
+      "public_product_samples": [
+        {
+          "id": 7049,
+          "designation": "بكيط سودور 3,15 Tigor (1Pcs)"
+        },
+        {
+          "id": 5884,
+          "designation": "Poste à Soudage 250A Onduleur MMA - INGCO"
+        },
+        {
+          "id": 5883,
+          "designation": "Poste à Soudage Invertir MMA 180A - INGCO"
+        },
+        {
+          "id": 5881,
+          "designation": "Poste à Soudage 160A Onduleur MMA - INGCO"
+        },
+        {
+          "id": 5633,
+          "designation": "كريفي 14/16 bleu"
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "nom": "GENERAL",
+      "nom_ar": "عام",
+      "nom_en": "General",
+      "nom_zh": "通用",
+      "parent_id": 13,
+      "parent_exists": true,
+      "product_count_all": 294,
+      "subcategory_count": 0,
+      "public_product_count": 283,
+      "public_product_samples": [
+        {
+          "id": 7218,
+          "designation": "Brosse Métallique Torsadée 75mm - INGCO"
+        },
+        {
+          "id": 7217,
+          "designation": "Brosse Métallique 75mm - INGCO"
+        },
+        {
+          "id": 7147,
+          "designation": "Pince Multiprise 300mm - INGCO"
+        },
+        {
+          "id": 7146,
+          "designation": "Pince Multiprise 200mm - INGCO"
+        },
+        {
+          "id": 7085,
+          "designation": "Métre 7.5M/16 25MM - BOBOMAO"
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "nom": "SPECIALE EN ELECTRICITE",
+      "nom_ar": "التخصص الكهربائي",
+      "nom_en": "Electrical specialty",
+      "nom_zh": "电气专长",
+      "parent_id": 12,
+      "parent_exists": true,
+      "product_count_all": 16,
+      "subcategory_count": 0,
+      "public_product_count": 11,
+      "public_product_samples": [
+        {
+          "id": 7337,
+          "designation": "Table 14 - LAP"
+        },
+        {
+          "id": 7334,
+          "designation": "Fosible 16A"
+        },
+        {
+          "id": 7333,
+          "designation": "Disjancteur Garde 380V"
+        },
+        {
+          "id": 7332,
+          "designation": "Peki TER"
+        },
+        {
+          "id": 7331,
+          "designation": "Porte Fosible 30 Et Fosible"
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "nom": "SPECIALE EN ELECTRICITE",
+      "nom_ar": "عروض كهربائية خاصة",
+      "nom_en": "Electrical specials",
+      "nom_zh": "电力特卖",
+      "parent_id": 13,
+      "parent_exists": true,
+      "product_count_all": 21,
+      "subcategory_count": 0,
+      "public_product_count": 16,
+      "public_product_samples": [
+        {
+          "id": 4989,
+          "designation": "Pince Coupe Diagonale 160 mm - INGCO"
+        },
+        {
+          "id": 4988,
+          "designation": "Pince Universelle 160 mm - INGCO"
+        },
+        {
+          "id": 4984,
+          "designation": "Jeu de 3 pinces Universelle 200 mm + Diagonale 160 mm + Bec Long 160 mm - INGCO"
+        },
+        {
+          "id": 4982,
+          "designation": "Pince Coupante Diagonale 180 mm à Haute Performance - INGCO"
+        },
+        {
+          "id": 4979,
+          "designation": "Pince Universelle Haute Performance 240 mm - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 67,
+      "nom": "SPECIALE EN MENUISERIE",
+      "nom_ar": "عروض النجارة",
+      "nom_en": "Carpentry specials",
+      "nom_zh": "木工专场",
+      "parent_id": 13,
+      "parent_exists": true,
+      "product_count_all": 5,
+      "subcategory_count": 0,
+      "public_product_count": 4,
+      "public_product_samples": [
+        {
+          "id": 6107,
+          "designation": "sader bois 500g"
+        },
+        {
+          "id": 5827,
+          "designation": "5000 Clous Galvanisés Lisses 25 mm calibre18 - 25 × 1,2 mm - INGCO"
+        },
+        {
+          "id": 5826,
+          "designation": "5000 Clous Galvanisés Lisses calibre18 - 20 × 1,2 mm - INGCO"
+        },
+        {
+          "id": 3412,
+          "designation": "LAME GALVA 60 cm Serre - joint"
+        }
+      ]
+    },
+    {
+      "id": 69,
+      "nom": "OUTILS ELECTRIQUE DE CARRELAGE",
+      "nom_ar": "أدوات كهربائية للبلاط",
+      "nom_en": "Tile power tools",
+      "nom_zh": "瓷砖电动工具",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 43,
+      "subcategory_count": 0,
+      "public_product_count": 42,
+      "public_product_samples": [
+        {
+          "id": 6988,
+          "designation": "Niveau Laser 14 Ligne - SHIJING"
+        },
+        {
+          "id": 6946,
+          "designation": "Vibreur pour Carrelage 20 V pour Carreaux - 60 kg - 130 mm - INGCO"
+        },
+        {
+          "id": 6930,
+          "designation": "Ventouse Vibrante Rectangulaire BL 20 V - VIKTA TOP"
+        },
+        {
+          "id": 6929,
+          "designation": "Ventouse Vibrante Rectangulaire RD 20 V - VIKTA TOP"
+        },
+        {
+          "id": 6912,
+          "designation": "Niveau laser 16 Ligne Bleu"
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "nom": "OUTILLAGE À MAIN DE CARRELAGE",
+      "nom_ar": "أدوات التبليط اليدوية",
+      "nom_en": "Hand tools for tiling",
+      "nom_zh": "瓷砖铺设手工工具",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 84,
+      "subcategory_count": 0,
+      "public_product_count": 81,
+      "public_product_samples": [
+        {
+          "id": 6940,
+          "designation": "Barre à Ventouses Slim 3,8 m - SHIJING"
+        },
+        {
+          "id": 6928,
+          "designation": "Ventouse Vibrante pour Carrelage - SHIJING"
+        },
+        {
+          "id": 6926,
+          "designation": "Ventouse Simple TR 80 kg - RUBI"
+        },
+        {
+          "id": 6769,
+          "designation": "Mètre 8 m X 25 mm INGCO"
+        },
+        {
+          "id": 6768,
+          "designation": "Mètre 5 m X 19 mm INGCO"
+        }
+      ]
+    },
+    {
+      "id": 71,
+      "nom": "DISQUE ABRASIF carrelage & marbre",
+      "nom_ar": "قرص جلخ للسيراميك والرخام",
+      "nom_en": "Abrasive disc for tile and marble",
+      "nom_zh": "瓷砖和大理石用砂盘",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 78,
+      "subcategory_count": 0,
+      "public_product_count": 78,
+      "public_product_samples": [
+        {
+          "id": 7255,
+          "designation": "فنطرو كبير 180 - MPC"
+        },
+        {
+          "id": 7020,
+          "designation": "سيبور ليخة أسود"
+        },
+        {
+          "id": 6895,
+          "designation": "بروس فيي مربع 180"
+        },
+        {
+          "id": 6894,
+          "designation": "بروس فيي مربع 80"
+        },
+        {
+          "id": 6821,
+          "designation": "Plateau porte-segments Cassani - Origine"
+        }
+      ]
+    },
+    {
+      "id": 72,
+      "nom": "PEINTURE",
+      "nom_ar": "طلاء",
+      "nom_en": "Paint",
+      "nom_zh": "涂料",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 2,
+      "public_product_count": 167,
+      "public_product_samples": [
+        {
+          "id": 7283,
+          "designation": "White Spirite 4.5L - KENZI"
+        },
+        {
+          "id": 7161,
+          "designation": "Kerakover Kompact New (1.98)"
+        },
+        {
+          "id": 7040,
+          "designation": "Kerakover acrylex Fondo S059007"
+        },
+        {
+          "id": 7032,
+          "designation": "White 15L - KERAKOLL"
+        },
+        {
+          "id": 7019,
+          "designation": "Enduit Pate 1KG - KENZI"
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "nom": "MATIERE DE CONSTRUCTION",
+      "nom_ar": "مواد البناء",
+      "nom_en": "construction materials",
+      "nom_zh": "建筑材料",
+      "parent_id": 36,
+      "parent_exists": true,
+      "product_count_all": 156,
+      "subcategory_count": 0,
+      "public_product_count": 142,
+      "public_product_samples": [
+        {
+          "id": 7043,
+          "designation": "ISOLBOX TYEP 25 (2.30)"
+        },
+        {
+          "id": 6671,
+          "designation": "POUTRELLE DP 122 - 4 PS"
+        },
+        {
+          "id": 6426,
+          "designation": "SABLE de MER"
+        },
+        {
+          "id": 6376,
+          "designation": "Ciment CPJ 45 HOLCIME"
+        },
+        {
+          "id": 6253,
+          "designation": "Ciment CPJ 35 HOLCIME"
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "nom": "MATERIAL DE CONSTRUCTION",
+      "nom_ar": "مواد البناء",
+      "nom_en": "Construction materials",
+      "nom_zh": "建筑材料",
+      "parent_id": 36,
+      "parent_exists": true,
+      "product_count_all": 98,
+      "subcategory_count": 0,
+      "public_product_count": 67,
+      "public_product_samples": [
+        {
+          "id": 7315,
+          "designation": "ISOLBOX TYEP 35 (2.4)"
+        },
+        {
+          "id": 7313,
+          "designation": "Foret Inox Blanc 14 - DANI"
+        },
+        {
+          "id": 7312,
+          "designation": "سرجوان حديد 1m"
+        },
+        {
+          "id": 7310,
+          "designation": "Meche Cobalt D 10"
+        },
+        {
+          "id": 7309,
+          "designation": "Meche Metal/Titanium D 8"
+        }
+      ]
+    },
+    {
+      "id": 75,
+      "nom": "ÉTANCHÉITÉ & IMPERMEABILISATION",
+      "nom_ar": "العزل المائي",
+      "nom_en": "Waterproofing & Sealants",
+      "nom_zh": "防水与密封",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 73,
+      "subcategory_count": 0,
+      "public_product_count": 62,
+      "public_product_samples": [
+        {
+          "id": 7286,
+          "designation": "Fabric Orange 30M - AQUAPROTEC"
+        },
+        {
+          "id": 7069,
+          "designation": "Join Water Stop DM 250 / 20ML"
+        },
+        {
+          "id": 7068,
+          "designation": "Join Water Stop DM 200 / 20ML"
+        },
+        {
+          "id": 6984,
+          "designation": "BITU FLEX 3MM ARD ROUGE"
+        },
+        {
+          "id": 6983,
+          "designation": "BITU FLEX 4MM ARD ROUGE"
+        }
+      ]
+    },
+    {
+      "id": 76,
+      "nom": "MASTIQUE ET JOINT",
+      "nom_ar": "مانع التسرب والمفاصل",
+      "nom_en": "Sealants and joints",
+      "nom_zh": "密封胶与接缝",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 21,
+      "subcategory_count": 0,
+      "public_product_count": 17,
+      "public_product_samples": [
+        {
+          "id": 7087,
+          "designation": "MORTECOL JUNTA"
+        },
+        {
+          "id": 6898,
+          "designation": "Mortejunta M 1621 5KG"
+        },
+        {
+          "id": 6897,
+          "designation": "Mortejunta M 1621 5KG"
+        },
+        {
+          "id": 6111,
+          "designation": "SAC MORTEJUNTA ANCHA PS 1590 5KG"
+        },
+        {
+          "id": 6109,
+          "designation": "SAC MORTEJUNTA ANCHA PS 1591 5KG"
+        }
+      ]
+    },
+    {
+      "id": 77,
+      "nom": "MORTIERS & SUPPORTS TECHNIQUES",
+      "nom_ar": "الهاونات والدعامات التقنية",
+      "nom_en": "Mortars & Technical Supports",
+      "nom_zh": "迫击炮与技术支架",
+      "parent_id": 36,
+      "parent_exists": true,
+      "product_count_all": 34,
+      "subcategory_count": 0,
+      "public_product_count": 32,
+      "public_product_samples": [
+        {
+          "id": 7035,
+          "designation": "KK KOMPACT ACT FINO NEW -KERAKOLL"
+        },
+        {
+          "id": 7031,
+          "designation": "Biocalce Muroseco Fino 25KG - KERAKOLL"
+        },
+        {
+          "id": 7030,
+          "designation": "Biocalce Muroseco 25KG - KERAKOLL"
+        },
+        {
+          "id": 6968,
+          "designation": "Époxy Transparent + Catalyseur (1,5 kg)"
+        },
+        {
+          "id": 6701,
+          "designation": "ACTIVE PRIME GRIP 5 kg"
+        }
+      ]
+    },
+    {
+      "id": 79,
+      "nom": "JARDINAGE",
+      "nom_ar": "البستنة",
+      "nom_en": "Gardening",
+      "nom_zh": "园艺",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 85,
+      "subcategory_count": 0,
+      "public_product_count": 75,
+      "public_product_samples": [
+        {
+          "id": 7343,
+          "designation": "Gazon Golf Pro"
+        },
+        {
+          "id": 7342,
+          "designation": "Gazon Absolute 50MM"
+        },
+        {
+          "id": 7341,
+          "designation": "Gazon Synthetique Trevi 40MM"
+        },
+        {
+          "id": 7340,
+          "designation": "Gazon Synthetique Essence 20MM"
+        },
+        {
+          "id": 7339,
+          "designation": "Colle Gazon 12KG"
+        }
+      ]
+    },
+    {
+      "id": 80,
+      "nom": "QUINCAILLERIE",
+      "nom_ar": "أدوات",
+      "nom_en": "Hardware",
+      "nom_zh": "五金",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 2,
+      "public_product_count": 240,
+      "public_product_samples": [
+        {
+          "id": 7160,
+          "designation": "CHEVILLE en Plastique Ø14 LAP"
+        },
+        {
+          "id": 7157,
+          "designation": "Tamices Qumico 12 x 80"
+        },
+        {
+          "id": 7001,
+          "designation": "Serrure Intelligente (WD33)"
+        },
+        {
+          "id": 6932,
+          "designation": "Bas de Porte Isolant Brosse Transparent 1 m"
+        },
+        {
+          "id": 6779,
+          "designation": "CHEVILLE Métallique Tige M6 1ER"
+        }
+      ]
+    },
+    {
+      "id": 81,
+      "nom": "OUTILS DE PEINTURE",
+      "nom_ar": "أدوات الدهان",
+      "nom_en": "Painting tools",
+      "nom_zh": "油漆工具",
+      "parent_id": 72,
+      "parent_exists": true,
+      "product_count_all": 79,
+      "subcategory_count": 0,
+      "public_product_count": 67,
+      "public_product_samples": [
+        {
+          "id": 7283,
+          "designation": "White Spirite 4.5L - KENZI"
+        },
+        {
+          "id": 6957,
+          "designation": "Manche pour rouleau 100 mm - INGCO"
+        },
+        {
+          "id": 6888,
+          "designation": "Bande A Fissures 20 m - AKRO"
+        },
+        {
+          "id": 6714,
+          "designation": "Set pistolets à peinture 5 Pièces - INGCO"
+        },
+        {
+          "id": 6674,
+          "designation": "Disque Abrasif 225mm"
+        }
+      ]
+    },
+    {
+      "id": 82,
+      "nom": "OUTILS DE NETTOYAGE",
+      "nom_ar": "أدوات التنظيف",
+      "nom_en": "Cleaning tools",
+      "nom_zh": "清洁工具",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 57,
+      "subcategory_count": 0,
+      "public_product_count": 49,
+      "public_product_samples": [
+        {
+          "id": 7053,
+          "designation": "Pistolet De Lavage Haute Pression - COOL SUIT"
+        },
+        {
+          "id": 7016,
+          "designation": "Aspirateur 20L 1200W - JADEVER"
+        },
+        {
+          "id": 7015,
+          "designation": "Aspirateur 90L 3 Moteur 3X1200W - JADEVER"
+        },
+        {
+          "id": 6793,
+          "designation": "Aspirateur Professionnel 1400 W 30 L - INGCO"
+        },
+        {
+          "id": 6792,
+          "designation": "Aspirateur 12 L 800 W - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 83,
+      "nom": "ÉCHELLES",
+      "nom_ar": "سلالم",
+      "nom_en": "Ladders",
+      "nom_zh": "梯子",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 13,
+      "subcategory_count": 0,
+      "public_product_count": 12,
+      "public_product_samples": [
+        {
+          "id": 5966,
+          "designation": "Échelle télescopique noir et orange en Aluminium double face 7,2 m"
+        },
+        {
+          "id": 5937,
+          "designation": "Échelle Télescopique 4,4 M en Aluminium"
+        },
+        {
+          "id": 5936,
+          "designation": "Échelle télescopique en Aluminium double face 1,9 m"
+        },
+        {
+          "id": 5935,
+          "designation": "ÉCHELLE DOUBLE EN ALUMINIUM CASALINO 12M"
+        },
+        {
+          "id": 5934,
+          "designation": "ÉCHELLE DOUBLE EN ALUMINIUM CASALINO 8M"
+        }
+      ]
+    },
+    {
+      "id": 84,
+      "nom": "CLIPS DE CARRELAGE",
+      "nom_ar": "مشابك البلاط",
+      "nom_en": "Tile clips",
+      "nom_zh": "瓷砖夹",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 55,
+      "subcategory_count": 0,
+      "public_product_count": 47,
+      "public_product_samples": [
+        {
+          "id": 7074,
+          "designation": "CLIPS DE NIVEULEMENT BILT"
+        },
+        {
+          "id": 6825,
+          "designation": "Clips de Nivellement 1,5 mm 100 Pièces - GOLD ABRASIF"
+        },
+        {
+          "id": 6824,
+          "designation": "Clips de Nivellement 1 mm 100 Pièces - GOLD ABRASIF"
+        },
+        {
+          "id": 6822,
+          "designation": "Clips de Nivellement 2 mm 100 Pièces - DAKOTA Vis"
+        },
+        {
+          "id": 6683,
+          "designation": "Clips de Nivellement 3 mm 100 Pièces - GOLD ABRASIF"
+        }
+      ]
+    },
+    {
+      "id": 85,
+      "nom": "MATÉRIAUX DE FIXATION",
+      "nom_ar": "مواد التثبيت",
+      "nom_en": "Fixings",
+      "nom_zh": "紧固材料",
+      "parent_id": 80,
+      "parent_exists": true,
+      "product_count_all": 208,
+      "subcategory_count": 0,
+      "public_product_count": 198,
+      "public_product_samples": [
+        {
+          "id": 7160,
+          "designation": "CHEVILLE en Plastique Ø14 LAP"
+        },
+        {
+          "id": 7157,
+          "designation": "Tamices Qumico 12 x 80"
+        },
+        {
+          "id": 6779,
+          "designation": "CHEVILLE Métallique Tige M6 1ER"
+        },
+        {
+          "id": 6777,
+          "designation": "Chevilles pour Plâtre Plastique LAP"
+        },
+        {
+          "id": 6775,
+          "designation": "Tige Filetée 6"
+        }
+      ]
+    },
+    {
+      "id": 86,
+      "nom": "SERRURES & Cadenas",
+      "nom_ar": "أقفال وسلاسل",
+      "nom_en": "Locks & Padlocks",
+      "nom_zh": "锁具",
+      "parent_id": 80,
+      "parent_exists": true,
+      "product_count_all": 46,
+      "subcategory_count": 0,
+      "public_product_count": 42,
+      "public_product_samples": [
+        {
+          "id": 7001,
+          "designation": "Serrure Intelligente (WD33)"
+        },
+        {
+          "id": 6932,
+          "designation": "Bas de Porte Isolant Brosse Transparent 1 m"
+        },
+        {
+          "id": 6428,
+          "designation": "Serrure Intelligente DW30"
+        },
+        {
+          "id": 6139,
+          "designation": "BRAS de RAPPEL PORTE SILVER"
+        },
+        {
+          "id": 6138,
+          "designation": "BRAS de RAPPEL PORTE Noir"
+        }
+      ]
+    },
+    {
+      "id": 87,
+      "nom": "GROUPE ÉLECTROGÈNE",
+      "nom_ar": "مولد كهرباء",
+      "nom_en": "generator set",
+      "nom_zh": "发电机组",
+      "parent_id": 12,
+      "parent_exists": true,
+      "product_count_all": 5,
+      "subcategory_count": 0,
+      "public_product_count": 5,
+      "public_product_samples": [
+        {
+          "id": 5933,
+          "designation": "GASOLINE WATER INGCO PUMP 80mm 3\" موطور الماء"
+        },
+        {
+          "id": 4833,
+          "designation": "Groupe électrogène 13kv"
+        },
+        {
+          "id": 4518,
+          "designation": "VELAR Groupe Électrogène à Essence 4000I 3,3KW"
+        },
+        {
+          "id": 4517,
+          "designation": "VELAR Groupe Électrogène à Essence 6800I 5,0KW"
+        },
+        {
+          "id": 3607,
+          "designation": "Groupe Électrogène à Essence INGCO 800 W"
+        }
+      ]
+    },
+    {
+      "id": 88,
+      "nom": "PERFILS DE CARRELAGE",
+      "nom_ar": "بروفايلات حواف البلاط",
+      "nom_en": "Tile trim profiles",
+      "nom_zh": "瓷砖边缘型材",
+      "parent_id": 48,
+      "parent_exists": true,
+      "product_count_all": 44,
+      "subcategory_count": 0,
+      "public_product_count": 42,
+      "public_product_samples": [
+        {
+          "id": 5263,
+          "designation": "بكيط زليج مدور دهبي"
+        },
+        {
+          "id": 4762,
+          "designation": "ACC LISTELO Aluminium R12 × 10 mm Noir Mat LACADO LAR12NH EMBEPLAST"
+        },
+        {
+          "id": 4761,
+          "designation": "ACC Profilé Aluminium L12 mm PLATA Mat OAL 12PM EMBEPLAST"
+        },
+        {
+          "id": 4760,
+          "designation": "Acc Profilé Aluminium L12 mm Plata Brillant Oal 12 Pb Embeplast"
+        },
+        {
+          "id": 4759,
+          "designation": "ACC LISTELO Aluminium R12 × 10 mm PLATA LIJA LAR 12 PL EMBEPLAST"
+        }
+      ]
+    },
+    {
+      "id": 89,
+      "nom": "APPAREILS DE MESURE",
+      "nom_ar": "أجهزة القياس",
+      "nom_en": "Measuring devices",
+      "nom_zh": "测量设备",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 10,
+      "subcategory_count": 0,
+      "public_product_count": 9,
+      "public_product_samples": [
+        {
+          "id": 6996,
+          "designation": "Niveau Optique GOL 32 + Jauge de Niveau de Fluide GR 500 + BT 170 HD - BOSCH"
+        },
+        {
+          "id": 6632,
+          "designation": "Mètre Laser BOSCH 25 m"
+        },
+        {
+          "id": 1533,
+          "designation": "Mètre Laser DINQGI 40 m"
+        },
+        {
+          "id": 3732,
+          "designation": "TOTAL 100 m Laser"
+        },
+        {
+          "id": 3733,
+          "designation": "TOTAL 70 m Laser"
+        }
+      ]
+    },
+    {
+      "id": 90,
+      "nom": "SCIE CLOCHE DIAMANTE",
+      "nom_ar": "منشار ثقب ماسي",
+      "nom_en": "diamond hole saw",
+      "nom_zh": "钻石孔锯",
+      "parent_id": 52,
+      "parent_exists": true,
+      "product_count_all": 52,
+      "subcategory_count": 0,
+      "public_product_count": 49,
+      "public_product_samples": [
+        {
+          "id": 7253,
+          "designation": "Trépan Pour Granit 35 Blue - MPC"
+        },
+        {
+          "id": 7251,
+          "designation": "Scie Cloche Diamant Noir Pour Marbre Et Carrelage 35 - MPC"
+        },
+        {
+          "id": 7246,
+          "designation": "Mallette SCIE Cloche Diamant Pour Marbre Et Carrelage 9 Pcs - MPC"
+        },
+        {
+          "id": 6823,
+          "designation": "Scie - cloche diamant pour marbre et carrelage 80 - BASILA"
+        },
+        {
+          "id": 6816,
+          "designation": "Scie - cloche diamant pour marbre et carrelage - ITA ABRASIVE"
+        }
+      ]
+    },
+    {
+      "id": 91,
+      "nom": "MEULES DIAMANTE",
+      "nom_ar": "عجلات الطحن الماسية",
+      "nom_en": "Diamond grinding wheels",
+      "nom_zh": "金刚石砂轮",
+      "parent_id": 52,
+      "parent_exists": true,
+      "product_count_all": 118,
+      "subcategory_count": 0,
+      "public_product_count": 89,
+      "public_product_samples": [
+        {
+          "id": 6948,
+          "designation": "Jeu de Polissage et de Meulage - INGCO"
+        },
+        {
+          "id": 6943,
+          "designation": "Meuleuse D'angle sans Fil 115 mm 42 V 1080 W Avec 2 Batterie et 1 Chargeur - INGCO"
+        },
+        {
+          "id": 6820,
+          "designation": "ROSOL petit modèle d'origine"
+        },
+        {
+          "id": 6069,
+          "designation": "Machine de Polissage MONDIAL MEC PETITE 220 V"
+        },
+        {
+          "id": 6068,
+          "designation": "Machine de Polissage MONDIAL MEC 220 V"
+        }
+      ]
+    },
+    {
+      "id": 92,
+      "nom": "DISQUE DE DECOUPE",
+      "nom_ar": "قرص تقطيع",
+      "nom_en": "cutting disc",
+      "nom_zh": "切割片",
+      "parent_id": 52,
+      "parent_exists": true,
+      "product_count_all": 129,
+      "subcategory_count": 0,
+      "public_product_count": 103,
+      "public_product_samples": [
+        {
+          "id": 7316,
+          "designation": "Disque Diamant Petit 30 mm Granit - ABLAGO"
+        },
+        {
+          "id": 7265,
+          "designation": "Disque Diament Granite 350mm 60/50 x 15mm - MPC"
+        },
+        {
+          "id": 7264,
+          "designation": "Disque Diamant Granite 180 - MPC"
+        },
+        {
+          "id": 7263,
+          "designation": "Disque Diamant Granite 125 - MPC"
+        },
+        {
+          "id": 7262,
+          "designation": "Disque Diamant Carrelage 125 Rouge - MPC"
+        }
+      ]
+    },
+    {
+      "id": 96,
+      "nom": "MACHINES BETON & OUTILLAGE",
+      "nom_ar": "آلات الخرسانة والأدوات",
+      "nom_en": "Concrete machinery and tools",
+      "nom_zh": "混凝土机械与工具",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 27,
+      "subcategory_count": 0,
+      "public_product_count": 18,
+      "public_product_samples": [
+        {
+          "id": 6955,
+          "designation": "Pilonneuse à Essence 79 kg - INGCO"
+        },
+        {
+          "id": 6954,
+          "designation": "Scie à sol thermique -120 Kg INGCO"
+        },
+        {
+          "id": 6938,
+          "designation": "Carotteuse Ø162 mm 2800 W - XCORT"
+        },
+        {
+          "id": 6583,
+          "designation": "Vibreur à Essence"
+        },
+        {
+          "id": 6504,
+          "designation": "Talocheuse mécanique à essence pour béton 5,0 EY20"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "nom": "ACCESSOIRES DES OUTILS ELECRIQUES",
+      "nom_ar": "إكسسوارات أدوات كهربائية",
+      "nom_en": "Accessories for electrical tools",
+      "nom_zh": "电动工具配件",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 181,
+      "subcategory_count": 0,
+      "public_product_count": 169,
+      "public_product_samples": [
+        {
+          "id": 7079,
+          "designation": "Foret 9.0MM HSS 4341 - INGCO"
+        },
+        {
+          "id": 7076,
+          "designation": "Jeu De 7 Forets HSS - JADEVER"
+        },
+        {
+          "id": 6864,
+          "designation": "Chargeur 110 - 220 V - GARKA"
+        },
+        {
+          "id": 6711,
+          "designation": "Foret à Béton 12 × 160 mm, SDS Plus - INGCO"
+        },
+        {
+          "id": 6709,
+          "designation": "Foret à Béton 6 × 160 mm, SDS Plus - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "nom": "MANUTENTION",
+      "nom_ar": "المناولة",
+      "nom_en": "Handling",
+      "nom_zh": "搬运",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 13,
+      "subcategory_count": 0,
+      "public_product_count": 13,
+      "public_product_samples": [
+        {
+          "id": 7056,
+          "designation": "Poulie De Mouflage 2 Tonnes"
+        },
+        {
+          "id": 6649,
+          "designation": "Cric Bouteille 20 Tonnes - INGCO"
+        },
+        {
+          "id": 6648,
+          "designation": "Cric Hydraulique Bouteille 6 Tonnes - INGCO"
+        },
+        {
+          "id": 6647,
+          "designation": "Cric Hydraulique Bouteille 4 Tonnes - INGCO"
+        },
+        {
+          "id": 6311,
+          "designation": "CRIC INGCO 20 TONNS"
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "nom": "SÉCURITÉ & PROTECTION",
+      "nom_ar": "الأمن والحماية",
+      "nom_en": "Security & Protection",
+      "nom_zh": "安全与防护",
+      "parent_id": 10,
+      "parent_exists": true,
+      "product_count_all": 84,
+      "subcategory_count": 0,
+      "public_product_count": 78,
+      "public_product_samples": [
+        {
+          "id": 7099,
+          "designation": "ARMANO Chaussures Moyen"
+        },
+        {
+          "id": 7098,
+          "designation": "Chaussures"
+        },
+        {
+          "id": 7095,
+          "designation": "ARMANO Chaussures Haute Qualité"
+        },
+        {
+          "id": 7092,
+          "designation": "ARMANO Chaussures Standard"
+        },
+        {
+          "id": 7091,
+          "designation": "Chaussures de sécurité ARMANO - pointure"
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "nom": "SILICONE SEALANT",
+      "nom_ar": "سيليكون",
+      "nom_en": "SILICONE",
+      "nom_zh": "硅",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 75,
+      "subcategory_count": 0,
+      "public_product_count": 61,
+      "public_product_samples": [
+        {
+          "id": 7127,
+          "designation": "Silicone Blanc - GP"
+        },
+        {
+          "id": 7122,
+          "designation": "Silicone F.P Box Lasica Aquarium AQ800"
+        },
+        {
+          "id": 7121,
+          "designation": "Silicone F.P Box Lasica Sanitary S301 TRS"
+        },
+        {
+          "id": 7120,
+          "designation": "Silicone F.P Box Lasica Sanitary S301 WHT"
+        },
+        {
+          "id": 7119,
+          "designation": "PU Foam 944 SPOMA"
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "nom": "MATIERE PEINTURE",
+      "nom_ar": "مستلزمات الطلاء",
+      "nom_en": "Paint supplies",
+      "nom_zh": "绘画用品",
+      "parent_id": 72,
+      "parent_exists": true,
+      "product_count_all": 123,
+      "subcategory_count": 0,
+      "public_product_count": 100,
+      "public_product_samples": [
+        {
+          "id": 7161,
+          "designation": "Kerakover Kompact New (1.98)"
+        },
+        {
+          "id": 7040,
+          "designation": "Kerakover acrylex Fondo S059007"
+        },
+        {
+          "id": 7032,
+          "designation": "White 15L - KERAKOLL"
+        },
+        {
+          "id": 7019,
+          "designation": "Enduit Pate 1KG - KENZI"
+        },
+        {
+          "id": 6972,
+          "designation": "Enduit Pate 25KG - KENZI"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "nom": "Nettoyage et Cristallisation",
+      "nom_ar": "التنظيف والتبلور",
+      "nom_en": "Cleaning and Crystallization",
+      "nom_zh": "清洁与结晶",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 63,
+      "subcategory_count": 0,
+      "public_product_count": 57,
+      "public_product_samples": [
+        {
+          "id": 7048,
+          "designation": "Monabros LMA dRoj PT"
+        },
+        {
+          "id": 7047,
+          "designation": "Monabros LMA"
+        },
+        {
+          "id": 7045,
+          "designation": "Monabros LMA Beton"
+        },
+        {
+          "id": 7044,
+          "designation": "Monabros LMA dRoj"
+        },
+        {
+          "id": 6981,
+          "designation": "Monobrosse petite grise - DIAMFLEX"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "nom": "PROFILÉS LED",
+      "nom_ar": "مقاطع LED",
+      "nom_en": "LED profiles",
+      "nom_zh": "LED铝型材",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 16,
+      "subcategory_count": 0,
+      "public_product_count": 16,
+      "public_product_samples": [
+        {
+          "id": 5756,
+          "designation": "PROFIL LED en Saillie SILVER Profilé LED"
+        },
+        {
+          "id": 5563,
+          "designation": "Profilé Aluminium 1714S BK Profilé LED"
+        },
+        {
+          "id": 5562,
+          "designation": "Profilé Aluminium 1714S SL Profilé LED"
+        },
+        {
+          "id": 5561,
+          "designation": "Profilé Aluminium 1712A BK Profilé LED"
+        },
+        {
+          "id": 5560,
+          "designation": "Profilé Aluminium 1712S BK Profilé LED"
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "nom": "DISQUES DIAMANTÉS & ABRASIFS DE DÉCOUPE",
+      "nom_ar": "أقراص ماسية ومواد كاشطة للقطع",
+      "nom_en": "Diamond discs and cutting abrasives",
+      "nom_zh": "金刚石圆盘与切割磨料",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 5,
+      "public_product_count": 28,
+      "public_product_samples": [
+        {
+          "id": 6651,
+          "designation": "Disque de Bois 305 mm 120 Dents - INGCO"
+        },
+        {
+          "id": 6621,
+          "designation": "Disque Acier 115 AB"
+        },
+        {
+          "id": 6517,
+          "designation": "Lame Scie Circulaire Bois 254 mm 60 Dents - INGCO"
+        },
+        {
+          "id": 6516,
+          "designation": "Lame Scie Circulaire Bois 254 mm 60 Dents - INGCO"
+        },
+        {
+          "id": 6407,
+          "designation": "Disque 2tigors"
+        }
+      ]
+    },
+    {
+      "id": 113,
+      "nom": "DISQUES POUR BOIS",
+      "nom_ar": "أقراص للخشب",
+      "nom_en": "Wood discs",
+      "nom_zh": "木工打磨盘",
+      "parent_id": 112,
+      "parent_exists": true,
+      "product_count_all": 15,
+      "subcategory_count": 0,
+      "public_product_count": 14,
+      "public_product_samples": [
+        {
+          "id": 6651,
+          "designation": "Disque de Bois 305 mm 120 Dents - INGCO"
+        },
+        {
+          "id": 6517,
+          "designation": "Lame Scie Circulaire Bois 254 mm 60 Dents - INGCO"
+        },
+        {
+          "id": 6516,
+          "designation": "Lame Scie Circulaire Bois 254 mm 60 Dents - INGCO"
+        },
+        {
+          "id": 5861,
+          "designation": "Disque à Lamelles 115 P40 - JADEVER"
+        },
+        {
+          "id": 5860,
+          "designation": "Disque à Lamelles 115 P60 - JADEVER"
+        }
+      ]
+    },
+    {
+      "id": 114,
+      "nom": "DISQUES POUR ACIER",
+      "nom_ar": "أقراص فولاذية",
+      "nom_en": "Steel discs",
+      "nom_zh": "钢制圆盘",
+      "parent_id": 112,
+      "parent_exists": true,
+      "product_count_all": 9,
+      "subcategory_count": 0,
+      "public_product_count": 7,
+      "public_product_samples": [
+        {
+          "id": 6621,
+          "designation": "Disque Acier 115 AB"
+        },
+        {
+          "id": 6407,
+          "designation": "Disque 2tigors"
+        },
+        {
+          "id": 5465,
+          "designation": "NORTON CLIPPER 500 Béton Disque de Scie Bleu"
+        },
+        {
+          "id": 1554,
+          "designation": "Disque TIGOR 125 mm Coupe Acier"
+        },
+        {
+          "id": 1557,
+          "designation": "Disque ECO PLUS 230 mm Coupe Acier"
+        }
+      ]
+    },
+    {
+      "id": 115,
+      "nom": "DISQUES POUR ALUMINIUM",
+      "nom_ar": "أقراص الألومنيوم",
+      "nom_en": "Aluminum discs",
+      "nom_zh": "铝圆盘",
+      "parent_id": 112,
+      "parent_exists": true,
+      "product_count_all": 2,
+      "subcategory_count": 0,
+      "public_product_count": 2,
+      "public_product_samples": [
+        {
+          "id": 5833,
+          "designation": "Disque Aluminium 185 mm 40 Dents - INGCO"
+        },
+        {
+          "id": 5832,
+          "designation": "Disque Aluminium 185 mm 60 Dents - INGCO"
+        }
+      ]
+    },
+    {
+      "id": 116,
+      "nom": "DISQUES POUR BÉTON",
+      "nom_ar": "أقراص للخرسانة",
+      "nom_en": "Concrete discs",
+      "nom_zh": "混凝土用圆盘",
+      "parent_id": 112,
+      "parent_exists": true,
+      "product_count_all": 2,
+      "subcategory_count": 0,
+      "public_product_count": 2,
+      "public_product_samples": [
+        {
+          "id": 2218,
+          "designation": "Disque Rouge ECO Plus 115 mm"
+        },
+        {
+          "id": 3954,
+          "designation": "NEROX 230 mm Disque Béton"
+        }
+      ]
+    },
+    {
+      "id": 117,
+      "nom": "DISQUES POUR BÉTON ARMÉ",
+      "nom_ar": "أقراص قطع للخرسانة المسلحة",
+      "nom_en": "reinforced concrete cutting discs",
+      "nom_zh": "钢筋混凝土切割片",
+      "parent_id": 112,
+      "parent_exists": true,
+      "product_count_all": 3,
+      "subcategory_count": 0,
+      "public_product_count": 3,
+      "public_product_samples": [
+        {
+          "id": 5463,
+          "designation": "NORTON CLIPPER 400 Béton Disque de Scie"
+        },
+        {
+          "id": 5393,
+          "designation": "NORTON CLIPPER 500 Béton Disque de Scie"
+        },
+        {
+          "id": 5392,
+          "designation": "NORTON CLIPPER 450 Béton Disque de Scie"
+        }
+      ]
+    },
+    {
+      "id": 118,
+      "nom": "DRAINAGE & ÉVACUATION DES EAUX",
+      "nom_ar": "تصريف المياه وإزالتها",
+      "nom_en": "Drainage & Water Removal",
+      "nom_zh": "排水与水排放",
+      "parent_id": 36,
+      "parent_exists": true,
+      "product_count_all": 4,
+      "subcategory_count": 0,
+      "public_product_count": 4,
+      "public_product_samples": [
+        {
+          "id": 4615,
+          "designation": "Cheville de Fixattion de Drainage 1 Pièces"
+        },
+        {
+          "id": 1939,
+          "designation": "Mètre Tube 160 Drainage Semi Perforé (6m)"
+        },
+        {
+          "id": 2197,
+          "designation": "Mètre Tube 200 Drainage Semi Perforé (6m)"
+        },
+        {
+          "id": 3577,
+          "designation": "Mètre Tube 110 Drainage Semi Perforé (50m)"
+        }
+      ]
+    },
+    {
+      "id": 119,
+      "nom": "PROFILÉS DE CARRELAGE & PROFILÉS D’ANGLE",
+      "nom_ar": "ملفات البلاط ومقاطع الزاوية",
+      "nom_en": "Tile profiles and corner profiles",
+      "nom_zh": "瓷砖型材和角型材",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 0,
+      "subcategory_count": 2,
+      "public_product_count": 12,
+      "public_product_samples": [
+        {
+          "id": 6008,
+          "designation": "Baguette Simple de COIN GOLD"
+        },
+        {
+          "id": 6007,
+          "designation": "Baguette Simple de COIN INOX"
+        },
+        {
+          "id": 6006,
+          "designation": "Baguette Simple de COIN Noir"
+        },
+        {
+          "id": 5522,
+          "designation": "7 mm 100 Pièces Profilé Simple"
+        },
+        {
+          "id": 3096,
+          "designation": "Profil d'angle pour enduit monocouche 5 mm - 50 pièces"
+        }
+      ]
+    },
+    {
+      "id": 120,
+      "nom": "Profilés de carrelage",
+      "nom_ar": "مقاطع بلاط",
+      "nom_en": "Tile profiles",
+      "nom_zh": "瓷砖型材",
+      "parent_id": 119,
+      "parent_exists": true,
+      "product_count_all": 2,
+      "subcategory_count": 0,
+      "public_product_count": 2,
+      "public_product_samples": [
+        {
+          "id": 3555,
+          "designation": "ACC JUNTA DILATACION Aluminium 10 × 10 mm Noir AJD10NE EMBEPLAST"
+        },
+        {
+          "id": 3563,
+          "designation": "ACC JUNTA DILATACION Aluminium 10 × 10 mm Gris AJD10 g EMBEPLAST"
+        }
+      ]
+    },
+    {
+      "id": 121,
+      "nom": "Profilés d’angle PVC & inox",
+      "nom_ar": "مقاطع زاويةPVC والفولاذ المقاوم للصدأ",
+      "nom_en": "PVC and stainless steel angle profiles",
+      "nom_zh": "PVC和不锈钢角型材",
+      "parent_id": 119,
+      "parent_exists": true,
+      "product_count_all": 11,
+      "subcategory_count": 0,
+      "public_product_count": 10,
+      "public_product_samples": [
+        {
+          "id": 6008,
+          "designation": "Baguette Simple de COIN GOLD"
+        },
+        {
+          "id": 6007,
+          "designation": "Baguette Simple de COIN INOX"
+        },
+        {
+          "id": 6006,
+          "designation": "Baguette Simple de COIN Noir"
+        },
+        {
+          "id": 5522,
+          "designation": "7 mm 100 Pièces Profilé Simple"
+        },
+        {
+          "id": 1336,
+          "designation": "بكيط جبص بلاستيك"
+        }
+      ]
+    },
+    {
+      "id": 123,
+      "nom": "REGARDS & COUVERCLES",
+      "nom_ar": "REGARDS و أغطية",
+      "nom_en": "REGARDS & COVERS",
+      "nom_zh": "REGARDS 与 盖子",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 10,
+      "subcategory_count": 0,
+      "public_product_count": 10,
+      "public_product_samples": [
+        {
+          "id": 6797,
+          "designation": "Couvercle de Regard First 50 × 50cm_ DIMA Tube"
+        },
+        {
+          "id": 6796,
+          "designation": "Couvercle de Regard First 40 × 40cm_ DIMA Tube"
+        },
+        {
+          "id": 6795,
+          "designation": "Regard de Branchement en PP First 40 × 40 cm _ DIMA Tube"
+        },
+        {
+          "id": 6794,
+          "designation": "Regard de Branchement en PP First 50 × 50 cm _ DIMA Tube"
+        },
+        {
+          "id": 5812,
+          "designation": "Couvercle de regard 30 × 30 DIMATUBE"
+        }
+      ]
+    },
+    {
+      "id": 124,
+      "nom": "ruban",
+      "nom_ar": "شريط",
+      "nom_en": "ribbon",
+      "nom_zh": "丝带",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 17,
+      "subcategory_count": 0,
+      "public_product_count": 15,
+      "public_product_samples": [
+        {
+          "id": 6991,
+          "designation": "Ruban Adhésif Papier Blanc 24 mm - VIBAC"
+        },
+        {
+          "id": 6989,
+          "designation": "Ruban Adhésif Papier Blanc Épais - NESPOLI GROUP"
+        },
+        {
+          "id": 5819,
+          "designation": "SEGASAN – Ruban adhésif nano double face Premium Magic"
+        },
+        {
+          "id": 5499,
+          "designation": "ZORRO FIX 100 mm Ruban Adhésif Emballage"
+        },
+        {
+          "id": 5283,
+          "designation": "TRITONE Ruban Adhésif Blanc"
+        }
+      ]
+    },
+    {
+      "id": 125,
+      "nom": "OUTILS POUR MONOCOUCHE & AUTONIVELANT",
+      "nom_ar": "أدوات لرندر أحادي الطبقة والتسوية الذاتية",
+      "nom_en": "Tools for monocouche and self-leveling",
+      "nom_zh": "单层抹灰与自找平工具",
+      "parent_id": 13,
+      "parent_exists": true,
+      "product_count_all": 32,
+      "subcategory_count": 0,
+      "public_product_count": 32,
+      "public_product_samples": [
+        {
+          "id": 7033,
+          "designation": "بلانة BRICOMED"
+        },
+        {
+          "id": 5132,
+          "designation": "ROLEAU pour Époxy Rouleau"
+        },
+        {
+          "id": 1476,
+          "designation": "Taloche Gravier DINGQI"
+        },
+        {
+          "id": 3677,
+          "designation": "(FD-1) REGLE H GRATOIRE كراطوار"
+        },
+        {
+          "id": 3678,
+          "designation": "(FD-31)REGLE H 1.2M ركلة"
+        }
+      ]
+    },
+    {
+      "id": 126,
+      "nom": "OUTILS D’ÉTANCHÉITÉ",
+      "nom_ar": "أدوات العزل المائي",
+      "nom_en": "Waterproofing tools",
+      "nom_zh": "防水工具",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 12,
+      "subcategory_count": 0,
+      "public_product_count": 12,
+      "public_product_samples": [
+        {
+          "id": 7311,
+          "designation": "KEMPER Chalumeau Bleu Sans Briquet"
+        },
+        {
+          "id": 6901,
+          "designation": "Tuyau de Gaz Transparent 8 mm"
+        },
+        {
+          "id": 6508,
+          "designation": "CHALUMEAU A GAZ Rouge"
+        },
+        {
+          "id": 6507,
+          "designation": "CHALUMEAU A GAZ Noir"
+        },
+        {
+          "id": 5625,
+          "designation": "KEMPER Chalumeau Bleu"
+        }
+      ]
+    },
+    {
+      "id": 127,
+      "nom": "POMPES À EAU",
+      "nom_ar": "مضخات المياه",
+      "nom_en": "Water pumps",
+      "nom_zh": "水泵",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 16,
+      "subcategory_count": 0,
+      "public_product_count": 15,
+      "public_product_samples": [
+        {
+          "id": 7226,
+          "designation": "Prise Control - VESKO"
+        },
+        {
+          "id": 6688,
+          "designation": "MONDIAL MEC Pompe à Eau 60 W"
+        },
+        {
+          "id": 5929,
+          "designation": "TUYAU PLAT D’IRRIGATIO VERT"
+        },
+        {
+          "id": 5912,
+          "designation": "GENOVA 1300W 220-240V/50HZ بومبا الماء"
+        },
+        {
+          "id": 5630,
+          "designation": "GARLAND 1209XE 1200W بومبا الماء"
+        }
+      ]
+    },
+    {
+      "id": 128,
+      "nom": "EXTRACTEURS",
+      "nom_ar": "عصّارات",
+      "nom_en": "juicers",
+      "nom_zh": "榨汁机",
+      "parent_id": 16,
+      "parent_exists": true,
+      "product_count_all": 6,
+      "subcategory_count": 0,
+      "public_product_count": 6,
+      "public_product_samples": [
+        {
+          "id": 6756,
+          "designation": "FERRI EXTRACTEUR SALLE de BAIN Noir ETN - 10"
+        },
+        {
+          "id": 6755,
+          "designation": "FERRI EXTRACTEUR SALLE de BAIN SILVER ETS - 10"
+        },
+        {
+          "id": 6733,
+          "designation": "FERRI Extracteur d'air pour salle de bains ETB-10, blanc"
+        },
+        {
+          "id": 5448,
+          "designation": "V - TAC 80m3 / H Système de Ventilation"
+        },
+        {
+          "id": 2497,
+          "designation": "ARMATURA 100 Système de Ventilation"
+        }
+      ]
+    },
+    {
+      "id": 129,
+      "nom": "OUTILS DE PRÉPARATION & TEXTURATION DES SURFACES",
+      "nom_ar": "أدوات تجهيز وتشطيب الأسطح",
+      "nom_en": "Surface prep and texturing tools",
+      "nom_zh": "表面处理与纹理工具",
+      "parent_id": null,
+      "parent_exists": true,
+      "product_count_all": 7,
+      "subcategory_count": 0,
+      "public_product_count": 6,
+      "public_product_samples": [
+        {
+          "id": 6687,
+          "designation": "CHINA بوشاردي 4 رؤوس"
+        },
+        {
+          "id": 2585,
+          "designation": "Boucharde 4 haute qualité"
+        },
+        {
+          "id": 2586,
+          "designation": "Boucharde 3 haute qualité"
+        },
+        {
+          "id": 2869,
+          "designation": "Tête Boucharde"
+        },
+        {
+          "id": 3605,
+          "designation": "Boucharde 4 Têtes Grand"
+        }
+      ]
+    }
+  ]
+}

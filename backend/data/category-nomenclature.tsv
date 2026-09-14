@@ -1,0 +1,80 @@
+id	current_fr	current_ar	proposed_fr	proposed_ar	current_parent_id	proposed_parent_id	slug	classification	name_status	structure_status	note
+1	UNCATEGORIZED	غير مصنف	Produits non classés	منتجات غير مصنفة			1-produits-non-classes	unclassified	approved	needs_business_review	Réaffecter les produits avant toute suppression ou fusion.
+10	OUTILLAGE	أدوات	Outillage	الأدوات والمعدات			10-outillage	tools	approved	validated	Racine outillage.
+12	OUTILS ÉLECTRIQUES	أدوات كهربائية	Outils électriques	الأدوات الكهربائية	10	10	12-outils-electriques	machines	approved	validated	Sous-famille électrique.
+13	OUTILLAGE À MAIN	أدوات يدوية	Outillage à main	الأدوات اليدوية	10	10	13-outillage-main	tools	approved	validated	Sous-famille manuelle.
+16	ÉLECTRICITÉ	الكهرباء	Électricité	الكهرباء			16-electricite	materials	approved	validated	Fournitures et appareillage installés.
+17	SPOTS, PANNEAUX ET AMPOULES LED	سبوتات LED ولوحات LED ومصابيح LED	Spots, panneaux et ampoules LED	سبوتات ولوحات ومصابيح LED	16	16	17-eclairage-led	materials	approved	needs_product_review	Un extracteur apparaît dans l’échantillon.
+18	INTERRUPTEURS & PRISES	المفاتيح والمقابس	Interrupteurs et prises	المفاتيح والمقابس	16	16	18-interrupteurs-prises	materials	approved	validated	
+19	CÂBLES	كابلات	Câbles électriques	الكابلات الكهربائية	16	16	19-cables-electriques	materials	approved	validated	
+20	ENROULEURS & RALLONGES	بكرات الأسلاك وكوابل التمديد	Enrouleurs et rallonges électriques	بكرات وتمديدات كهربائية	16	16	20-enrouleurs-rallonges	materials	approved	validated	
+21	DISJONCTEURS & FUSIBLES	قواطع الدائرة والفيوزات	Disjoncteurs et fusibles	القواطع الكهربائية والمصهرات	16	16	21-disjoncteurs-fusibles	materials	approved	validated	
+22	ACCESSOIRES ÉLECTRIQUES	إكسسوارات كهربائية	Accessoires électriques	الملحقات الكهربائية	16	16	22-accessoires-electriques	materials	approved	validated	
+23	APPAREILLAGE DE MESURE	معدات القياس	Appareils de mesure électrique	أجهزة القياس الكهربائية	16	16	23-mesure-electrique	tools	approved	needs_business_review	À distinguer de 89, instruments de mesure générale.
+36	MATÉRIAUX DE CONSTRUCTION	مواد البناء	Matériaux de construction	مواد البناء			36-materiaux-construction	materials	approved	validated	Slug conservé du prompt 04.
+48	ÉQUIPEMENTS DE CARRELAGES ET DE MARBRES	معدات البلاط والرخام	Outillage pour carrelage et marbre	أدوات ومعدات البلاط والرخام			48-outillage-carreleur	tools	approved	validated	Slug conservé du prompt 04.
+50	COLLES DE CARRELAGE & MARBRE	لاصقات البلاط والرخام	Colles pour carrelage et marbre	لواصق البلاط والرخام	48	48	50-colles-carrelage-marbre	consumables	approved	validated	Slug conservé du prompt 04.
+51	MACHINES DE DÉCOUPAGE DE CARRELAGES ET DE MARBRES	ماكينات قطع البلاط والرخام	Machines de découpe pour carrelage et marbre	آلات قطع البلاط والرخام	48	48	51-machines-decoupe-carrelage-marbre	machines	approved	validated	
+52	DISQUES DIAMANTES	أقراص ماسية	Disques diamantés pour carrelage et marbre	أقراص ماسية للبلاط والرخام	48	48	52-disques-diamant	consumables	approved	needs_business_review	Chevauchement à arbitrer avec la famille 112.
+53	PLOMBERIE	السباكة	Plomberie	السباكة			53-plomberie	materials	approved	validated	Slug conservé du prompt 04.
+54	PVC	بولي فينيل كلوريد	Tubes et raccords PVC	أنابيب ووصلات PVC	53	53	54-tubes-raccords-pvc	materials	approved	validated	PVC reste une référence technique non traduite.
+55	PPR	PPR	Tubes et raccords PPR	أنابيب ووصلات PPR	53	53	55-tubes-raccords-ppr	materials	approved	validated	PPR reste une référence technique non traduite.
+56	POLYETHYLENE	بولي إيثيلين	Tubes et raccords en polyéthylène	أنابيب ووصلات البولي إيثيلين	53	53	56-tubes-raccords-polyethylene	materials	approved	validated	
+57	SANITAIRE	أدوات صحية	Sanitaire	الأدوات الصحية			57-sanitaire	materials	approved	validated	
+58	EVIERS	أحواض	Éviers et lavabos	أحواض ومغاسل	57	57	58-eviers-lavabos	materials	approved	validated	
+59	SIPHON	سيفون	Siphons et caniveaux	سيفونات وقنوات تصريف	57	57	59-siphons-caniveaux	materials	approved	validated	Le contenu public comprend surtout siphons et caniveaux.
+60	GENERAL	عام	Outils électriques — Général	أدوات كهربائية عامة	12	12	60-outils-electriques-general	machines	approved	validated	Le parent lève l’ambiguïté de GENERAL.
+61	SPECIALE EN MENUISERIE	عروض النجارة	Machines électriques pour menuiserie	آلات كهربائية للنجارة	12	12	61-machines-menuiserie	machines	approved	validated	
+62	SPECIALE EN SOUDEUR	تخصص اللحام	Matériel de soudage	معدات اللحام	12	12	62-materiel-soudage	machines	approved	validated	
+63	GENERAL	عام	Outillage à main — Général	أدوات يدوية عامة	13	13	63-outillage-main-general	tools	approved	validated	Le parent lève l’ambiguïté de GENERAL.
+64	SPECIALE EN ELECTRICITE	التخصص الكهربائي	Outils électriques pour électricien	أدوات كهربائية للكهربائي	12	12	64-outils-electriques-electricien	machines	approved	validated	
+65	SPECIALE EN ELECTRICITE	عروض كهربائية خاصة	Outils à main pour électricien	أدوات يدوية للكهربائي	13	13	65-outils-main-electricien	tools	approved	validated	
+67	SPECIALE EN MENUISERIE	عروض النجارة	Outillage à main pour menuiserie	أدوات يدوية للنجارة	13	13	67-outillage-main-menuiserie	tools	approved	validated	
+69	OUTILS ELECTRIQUE DE CARRELAGE	أدوات كهربائية للبلاط	Outillage électrique pour carrelage	أدوات كهربائية لتركيب البلاط	48	48	69-outillage-electrique-carrelage	machines	approved	validated	
+70	OUTILLAGE À MAIN DE CARRELAGE	أدوات التبليط اليدوية	Outillage à main pour carrelage	أدوات يدوية لتركيب البلاط	48	48	70-outillage-main-carrelage	tools	approved	validated	
+71	DISQUE ABRASIF carrelage & marbre	قرص جلخ للسيراميك والرخام	Abrasifs pour carrelage et marbre	مواد وأقراص جلخ للبلاط والرخام	48	48	71-abrasifs-carrelage-marbre	consumables	approved	validated	
+72	PEINTURE	طلاء	Peinture	الدهانات			72-peinture	consumables	approved	validated	Slug conservé du prompt 04.
+73	MATIERE DE CONSTRUCTION	مواد البناء	Sable, ciment et matériaux de gros œuvre	الرمل والإسمنت ومواد البناء الأساسية	36	36	73-matieres-de-construction	materials	approved	needs_business_review	À distinguer de 74 avant toute fusion; slug principal du prompt 04 conservé.
+74	MATERIAL DE CONSTRUCTION	مواد البناء	Matériaux et accessoires de chantier	مواد وملحقات الورش	36	36	74-materiaux-accessoires-chantier	materials	needs_business_review	needs_business_review	Échantillon mêlant isolant, forets et serre-joint; validation métier requise.
+75	ÉTANCHÉITÉ & IMPERMEABILISATION	العزل المائي	Étanchéité, imperméabilisation et bitume	العزل المائي والبيتومين والزفت			75-etancheite-bitume	consumables	approved	needs_business_review	À coordonner avec mastics 76, silicones 107 et outils 126; slug du prompt 04 conservé.
+76	MASTIQUE ET JOINT	مانع التسرب والمفاصل	Mastics et joints	مواد السد وملء الفواصل	48	48	76-mastics-joints	consumables	approved	needs_business_review	Parent carrelage conservé; relation avec 75/107 à arbitrer.
+77	MORTIERS & SUPPORTS TECHNIQUES	الهاونات والدعامات التقنية	Mortiers et produits techniques pour supports	الملاط والمواد التقنية للأسطح	36	36	77-mortiers-produits-techniques	consumables	approved	validated	
+79	JARDINAGE	البستنة	Jardinage	البستنة			79-jardinage	materials	approved	validated	Gazon, irrigation et outils associés.
+80	QUINCAILLERIE	أدوات	Quincaillerie	الخردوات ومستلزمات التثبيت			80-quincaillerie	consumables	approved	validated	Traduction arabe corrigée.
+81	OUTILS DE PEINTURE	أدوات الدهان	Outils de peinture	أدوات الدهان	72	72	81-outils-peinture	tools	approved	validated	Quelques consommables devront être revus produit par produit.
+82	OUTILS DE NETTOYAGE	أدوات التنظيف	Matériel de nettoyage	معدات التنظيف	10	10	82-materiel-nettoyage	machines	approved	validated	Aspirateurs et nettoyeurs haute pression.
+83	ÉCHELLES	سلالم	Échelles	السلالم			83-echelles	tools	approved	needs_business_review	Rattachement possible à 10, non appliqué automatiquement.
+84	CLIPS DE CARRELAGE	مشابك البلاط	Clips de nivellement pour carrelage	مشابك تسوية البلاط	48	48	84-clips-nivellement-carrelage	consumables	approved	validated	
+85	MATÉRIAUX DE FIXATION	مواد التثبيت	Fixations et chevilles	المثبتات والبراغي	80	80	85-fixations-chevilles	consumables	approved	validated	
+86	SERRURES & Cadenas	أقفال وسلاسل	Serrures et cadenas	الأقفال والأقفال المعلقة	80	80	86-serrures-cadenas	materials	approved	validated	Traduction arabe de cadenas corrigée.
+87	GROUPE ÉLECTROGÈNE	مولد كهرباء	Groupes électrogènes	مولدات الكهرباء	12	12	87-groupes-electrogenes	machines	approved	needs_product_review	Une pompe à eau est rattachée à tort dans l’échantillon.
+88	PERFILS DE CARRELAGE	بروفايلات حواف البلاط	Profilés et baguettes pour carrelage	بروفيلات وحليات البلاط	48	48	88-profiles-baguettes-carrelage	materials	approved	needs_business_review	Chevauchement possible avec 119-121.
+89	APPAREILS DE MESURE	أجهزة القياس	Instruments de mesure	أدوات القياس	10	10	89-instruments-mesure	tools	approved	needs_business_review	À distinguer de 23, mesure électrique.
+90	SCIE CLOCHE DIAMANTE	منشار ثقب ماسي	Trépans diamantés	لقم ثقب ماسية	52	52	90-trepans-diamantes	consumables	approved	validated	Terme technique corrigé selon les produits.
+91	MEULES DIAMANTE	عجلات الطحن الماسية	Meules et outils de meulage diamantés	أقراص وأدوات الجلخ الماسية	52	52	91-meules-diamantees	consumables	approved	needs_product_review	L’échantillon contient aussi des machines de polissage.
+92	DISQUE DE DECOUPE	قرص تقطيع	Disques diamantés de découpe	أقراص قطع ماسية	52	52	92-disques-diamantes-decoupe	consumables	approved	validated	
+96	MACHINES BETON & OUTILLAGE	آلات الخرسانة والأدوات	Machines et outillage pour béton	آلات وأدوات الخرسانة			96-machines-outillage-beton	machines	approved	needs_business_review	Rattachement possible à 10 ou 36, non appliqué.
+103	ACCESSOIRES DES OUTILS ELECRIQUES	إكسسوارات أدوات كهربائية	Accessoires pour outils électriques	ملحقات الأدوات الكهربائية	10	10	103-accessoires-outils-electriques	consumables	approved	validated	
+105	MANUTENTION	المناولة	Manutention et levage	معدات المناولة والرفع	10	10	105-manutention-levage	tools	approved	validated	
+106	SÉCURITÉ & PROTECTION	الأمن والحماية	Équipements de sécurité et protection	معدات السلامة والحماية	10	10	106-securite-protection	materials	approved	validated	
+107	SILICONE SEALANT	سيليكون	Silicones, mastics et mousses	سيليكون ومواد سد ورغوات			107-silicones-mastics-mousses	consumables	approved	needs_business_review	Rattachement à 75 ou 76 à arbitrer.
+108	MATIERE PEINTURE	مستلزمات الطلاء	Peintures et produits de préparation	الدهانات ومواد تحضير الأسطح	72	72	108-peintures-preparation	consumables	approved	validated	
+109	Nettoyage et Cristallisation	التنظيف والتبلور	Machines et produits de nettoyage et cristallisation	آلات ومواد التنظيف والتبلور			109-nettoyage-cristallisation	machines	approved	needs_business_review	Famille mixte machines/consommables assumée; séparation à arbitrer.
+111	PROFILÉS LED	مقاطع LED	Profilés LED	بروفيلات LED	16	16	111-profiles-led	materials	approved	validated	LED reste une référence technique.
+112	DISQUES DIAMANTÉS & ABRASIFS DE DÉCOUPE	أقراص ماسية ومواد كاشطة للقطع	Disques et lames de découpe	أقراص وشفرات القطع			112-disques-lames-decoupe	consumables	approved	needs_business_review	Chevauchement possible avec 52; familles par matériau conservées.
+113	DISQUES POUR BOIS	أقراص للخشب	Lames pour bois	شفرات قطع الخشب	112	112	113-lames-bois	consumables	approved	needs_product_review	Deux disques à lamelles sont à reclasser.
+114	DISQUES POUR ACIER	أقراص فولاذية	Disques pour acier	أقراص قطع الفولاذ	112	112	114-disques-acier	consumables	approved	needs_product_review	Un disque béton apparaît dans l’échantillon.
+115	DISQUES POUR ALUMINIUM	أقراص الألومنيوم	Lames pour aluminium	شفرات قطع الألومنيوم	112	112	115-lames-aluminium	consumables	approved	validated	
+116	DISQUES POUR BÉTON	أقراص للخرسانة	Disques pour béton	أقراص قطع الخرسانة	112	112	116-disques-beton	consumables	approved	validated	
+117	DISQUES POUR BÉTON ARMÉ	أقراص قطع للخرسانة المسلحة	Disques pour béton armé	أقراص قطع الخرسانة المسلحة	112	112	117-disques-beton-arme	consumables	approved	validated	
+118	DRAINAGE & ÉVACUATION DES EAUX	تصريف المياه وإزالتها	Drainage et évacuation des eaux	تصريف وإخلاء المياه	36	36	118-drainage-evacuation-eaux	materials	approved	validated	
+119	PROFILÉS DE CARRELAGE & PROFILÉS D’ANGLE	ملفات البلاط ومقاطع الزاوية	Profilés pour carrelage et profilés d’angle	بروفيلات البلاط والزوايا			119-profiles-carrelage-angle	materials	approved	needs_business_review	Rattachement possible à 48 et chevauchement avec 88.
+120	Profilés de carrelage	مقاطع بلاط	Profilés pour carrelage	بروفيلات البلاط	119	119	120-profiles-carrelage	materials	approved	validated	
+121	Profilés d’angle PVC & inox	مقاطع زاويةPVC والفولاذ المقاوم للصدأ	Profilés d’angle en PVC et inox	بروفيلات زوايا من PVC والفولاذ المقاوم للصدأ	119	119	121-profiles-angle-pvc-inox	materials	approved	validated	PVC et inox restent des références techniques.
+123	REGARDS & COUVERCLES	REGARDS و أغطية	Regards et couvercles	غرف التفتيش والأغطية			123-regards-couvercles	materials	approved	needs_business_review	Rattachement possible à plomberie ou drainage; arabe corrigé.
+124	ruban	شريط	Rubans adhésifs	أشرطة لاصقة			124-rubans-adhesifs	consumables	approved	needs_business_review	Rattachement dépend du type d’usage.
+125	OUTILS POUR MONOCOUCHE & AUTONIVELANT	أدوات لرندر أحادي الطبقة والتسوية الذاتية	Outils pour enduit monocouche et autonivelant	أدوات اللياسة أحادية الطبقة والتسوية الذاتية	13	13	125-outils-monocouche-autonivelant	tools	approved	validated	Arabe technique corrigé.
+126	OUTILS D’ÉTANCHÉITÉ	أدوات العزل المائي	Outils d’étanchéité	أدوات العزل المائي			126-outils-etancheite	tools	approved	needs_business_review	Rattachement possible à 10 ou 75, non appliqué.
+127	POMPES À EAU	مضخات المياه	Pompes à eau	مضخات المياه			127-pompes-eau	machines	approved	needs_business_review	Rattachement possible à plomberie ou jardinage.
+128	EXTRACTEURS	عصّارات	Extracteurs d’air et ventilation	مراوح شفط وتهوية	16	16	128-extracteurs-air-ventilation	machines	approved	validated	Corrige la traduction erronée « presse-agrumes ».
+129	OUTILS DE PRÉPARATION & TEXTURATION DES SURFACES	أدوات تجهيز وتشطيب الأسطح	Outils de préparation et texturation des surfaces	أدوات تحضير وتخشين الأسطح			129-preparation-texturation-surfaces	tools	approved	needs_business_review	Rattachement possible à outillage ou carrelage.

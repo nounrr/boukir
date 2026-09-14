@@ -202,6 +202,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [expandedSnapshots, setExpandedSnapshots] = useState<Set<number>>(new Set());
   const [savingSnapshots, setSavingSnapshots] = useState(false);
   const [bulkSnapshotSalePrice, setBulkSnapshotSalePrice] = useState('');
+  const [bulkSnapshotSalePrice2, setBulkSnapshotSalePrice2] = useState('');
   const [submitErrorMessages, setSubmitErrorMessages] = useState<string[]>([]);
 
   const toggleSnapshotExpanded = (id: number) => {
@@ -331,6 +332,20 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         prix_vente_pourcentage: String(
           purchasePrice > 0 ? Number((((price / purchasePrice) - 1) * 100).toFixed(2)) : 0
         ),
+      };
+    });
+    setSnapshotEdits((previous) => ({ ...previous, ...updates }));
+  };
+
+  const applySalePrice2ToVisibleSnapshots = (rawPrice: string = bulkSnapshotSalePrice2) => {
+    const price = Number(String(rawPrice).replace(',', '.'));
+    if (!Number.isFinite(price) || price < 0 || !Array.isArray(productSnapshotRows)) return;
+
+    const updates: Record<number, any> = {};
+    productSnapshotRows.forEach((snapshot: any) => {
+      updates[snapshot.id] = {
+        ...(snapshotEdits[snapshot.id] || {}),
+        prix_vente_2: String(price),
       };
     });
     setSnapshotEdits((previous) => ({ ...previous, ...updates }));
@@ -975,6 +990,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setVariantDeletedGalleryIdsMap({});
       setSnapshotEdits({});
       setExpandedSnapshots(new Set());
+      setBulkSnapshotSalePrice('');
+      setBulkSnapshotSalePrice2('');
       setFicheFr('');
       setFicheAr('');
       setFicheEn('');
@@ -1031,6 +1048,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setActiveLang('fr');
       setSnapshotEdits({});
       setExpandedSnapshots(new Set());
+      setBulkSnapshotSalePrice('');
+      setBulkSnapshotSalePrice2('');
       const prices = calculatePrices(
         toNum(initialValues.prix_achat),
         toNum(initialValues.cout_revient_pourcentage as any),
@@ -1052,6 +1071,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     setVariantDeleteMainImageMap({});
     setVariantGalleryFilesMap({});
     setVariantDeletedGalleryIdsMap({});
+    setBulkSnapshotSalePrice('');
+    setBulkSnapshotSalePrice2('');
   }, [isOpen, editingProduct?.id]);
 
   const syncStockModeValidation = (nextIsService: boolean, nextNonStockable: boolean) => {
@@ -2083,21 +2104,27 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Bulk prix vente input — visible when multiple visible snapshots */}
                       {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={bulkSnapshotSalePrice}
-                            className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const rawValue = (e.target as HTMLInputElement).value;
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={bulkSnapshotSalePrice}
+                              className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  applySalePriceToVisibleSnapshots();
+                                }
+                              }}
+                              onChange={(e) => {
+                                // Also apply on change (live) for better UX
+                                const rawValue = e.target.value;
+                                setBulkSnapshotSalePrice(rawValue);
                                 const val = parseFloat(String(rawValue).replace(',', '.'));
                                 if (!Number.isFinite(val) || val < 0) return;
-                                // Apply prix_vente to all visible snapshots
                                 const updates: Record<number, any> = {};
                                 productSnapshotRows!.forEach((snap: any) => {
                                   const pa = parseFloat(String(
@@ -2111,37 +2138,47 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   };
                                 });
                                 setSnapshotEdits(prev => ({ ...prev, ...updates }));
-                              }
-                            }}
-                            onChange={(e) => {
-                              // Also apply on change (live) for better UX
-                              const rawValue = e.target.value;
-                              setBulkSnapshotSalePrice(rawValue);
-                              const val = parseFloat(String(rawValue).replace(',', '.'));
-                              if (!Number.isFinite(val) || val < 0) return;
-                              const updates: Record<number, any> = {};
-                              productSnapshotRows!.forEach((snap: any) => {
-                                const pa = parseFloat(String(
-                                  snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
-                                ).replace(',', '.')) || 0;
-                                const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
-                                updates[snap.id] = {
-                                  ...(snapshotEdits[snap.id] || {}),
-                                  prix_vente: String(val),
-                                  prix_vente_pourcentage: String(pctVal),
-                                };
-                              });
-                              setSnapshotEdits(prev => ({ ...prev, ...updates }));
-                            }}
-                          />
-                          <span className="text-xs text-gray-500">DH</span>
-                          <button
-                            type="button"
-                            onClick={applySalePriceToVisibleSnapshots}
-                            className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                          >
-                            Appliquer à tous
-                          </button>
+                              }}
+                            />
+                            <span className="text-xs text-gray-500">DH</span>
+                            <button
+                              type="button"
+                              onClick={applySalePriceToVisibleSnapshots}
+                              className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                            >
+                              Appliquer à tous
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente 2 tous:</label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={bulkSnapshotSalePrice2}
+                              className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  applySalePrice2ToVisibleSnapshots();
+                                }
+                              }}
+                              onChange={(e) => {
+                                const rawValue = e.target.value;
+                                setBulkSnapshotSalePrice2(rawValue);
+                                applySalePrice2ToVisibleSnapshots(rawValue);
+                              }}
+                            />
+                            <span className="text-xs text-gray-500">DH</span>
+                            <button
+                              type="button"
+                              onClick={() => applySalePrice2ToVisibleSnapshots()}
+                              className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+                            >
+                              Appliquer à tous
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>

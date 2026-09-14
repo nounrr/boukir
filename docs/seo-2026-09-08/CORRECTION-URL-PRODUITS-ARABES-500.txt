@@ -1,0 +1,48 @@
+CORRECTION — URL DES PRODUITS AVEC SLUG ARABE
+Date du contrôle : 2026-09-13
+
+Requête examinée : 1m سرجوان حديد
+
+Constat en production avant déploiement :
+
+- /ar/categories/36-materiaux-construction répond 200, est indexable et contient
+  le terme « سرجوان » dans son HTML ;
+- /ar/product/5151 et /ar/product/7312 répondent 500 ;
+- leurs URL canoniques présentes dans sitemap-products-ar.xml répondent aussi 500 ;
+- /ar/shop?search=سرجوان est volontairement noindex avec canonical vers /ar/shop ;
+- les produits 5151 et 7312 semblent décrire le même serre-joint métallique de 1 m,
+  ce doublon doit être vérifié dans le catalogue.
+
+Cause :
+
+Le slug Unicode arabe était envoyé sans encodage dans l’en-tête HTTP Location de la
+redirection permanente. Node/Next refuse les caractères non ASCII bruts dans cet
+en-tête et renvoyait une erreur 500.
+
+Correction :
+
+- encodage unique du segment produit utilisé dans les liens et redirections ;
+- comparaison canonique effectuée sur la valeur décodée pour éviter une boucle ;
+- conservation du slug arabe lisible une fois décodé par le navigateur et Google ;
+- paramètres de variante et de campagne toujours conservés.
+
+Validation locale avec l’API de production :
+
+- /ar/product/5151 : 308 vers
+  /ar/product/5151-1m-%D8%B3%D8%B1%D8%AC%D9%88%D8%A7%D9%86-%D8%AD%D8%AF%D9%8A%D8%AF ;
+- URL canonique 5151 : HTTP 200 ;
+- /ar/product/7312 : 308 vers son slug arabe encodé ;
+- title, canonical, HTML produit et JSON-LD générés sans erreur ;
+- 14 tests SEO/produits réussis ;
+- build Next.js de production réussi.
+
+Après déploiement, vérifier avec curl :
+
+curl -I https://boukirdiamond.com/ar/product/5151
+curl -I 'https://boukirdiamond.com/ar/product/5151-1m-%D8%B3%D8%B1%D8%AC%D9%88%D8%A7%D9%86-%D8%AD%D8%AF%D9%8A%D8%AF'
+curl -I https://boukirdiamond.com/ar/product/7312
+
+Le premier statut attendu est 308 et la destination finale doit répondre 200. Après
+cela, demander l’indexation de la fiche retenue dans Google Search Console. Ne garder
+qu’une seule fiche si 5151 et 7312 sont réellement le même produit ; rediriger l’autre
+vers la fiche conservée au lieu de laisser deux pages concurrentes.

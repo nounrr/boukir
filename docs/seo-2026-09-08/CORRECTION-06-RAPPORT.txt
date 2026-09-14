@@ -1,0 +1,124 @@
+BOUKIR DIAMOND — CORRECTION 06
+CONTENU COMMERCIAL DANS LE HTML INITIAL
+Date de contrôle : 13 septembre 2026
+
+RÉSULTAT
+Le code local rend désormais les données commerciales publiques essentielles avant
+l'exécution du JavaScript : H1, description, prix, unité, disponibilité, image et
+liens vers les produits. Les interactions RTK Query, variantes, panier, filtres,
+recherche et liste de souhaits restent actives après hydratation.
+
+ÉTAT DE LA PRODUCTION AVANT DÉPLOIEMENT
+L'accueil et la boutique FR/AR renvoyaient HTTP 200 mais leur HTML brut avait aussi
+0 balise H1 et 0 lien produit. Les quatre URL produit contrôlées renvoyaient HTTP
+200, mais leur HTML brut avait 0 balise H1 et ne contenait pas le prix 375.00.
+Après JavaScript, la fiche FR et la fiche AR affichaient un H1, le prix, le bouton
+panier et 16 liens produit.
+
+  https://boukirdiamond.com/fr/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/ar/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/en/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/zh/product/7343-gazon-golf-pro
+
+Cette observation est le point de comparaison. Elle ne prouve pas encore que la
+correction locale est publiée.
+
+CORRECTIONS APPLIQUÉES
+1. Accueil
+   - Chargement serveur des nouveautés et promotions publiques.
+   - Repli sur la première page du catalogue si l'endpoint nouveautés échoue ou
+     renvoie une liste vide.
+   - En cas de panne complète de l'API, l'accueil conserve son H1 et son contenu
+     éditorial ; il n'est pas remplacé par une erreur 500.
+   - Les cartes et liens produit sont présents dans le HTML initial.
+
+2. Boutique et catégories
+   - La boutique reçoit déjà ses produits côté serveur grâce à la correction 05.
+   - Ajout d'un H1 et d'une description commerciale localisés à la boutique.
+   - Les catégories exposent image, nom, prix ou libellé de prix, unité,
+     disponibilité et lien produit dans le HTML initial.
+
+3. Fiche produit
+   - Le même produit public alimente la page, les métadonnées et le JSON-LD.
+   - Le composant client reçoit initialProduct : plus de squelette vide au rendu
+     serveur lorsque l'API a répondu.
+   - Initialisation immédiate de l'image principale et de l'unité par défaut.
+   - La requête navigateur peut ensuite actualiser les données et les éléments de
+     session sans provoquer de différence au premier rendu.
+   - Un HTTP 404 produit reste une vraie 404. Une panne API reste une erreur serveur
+     et ne transforme pas temporairement un produit existant en 404.
+
+4. Cache public et session
+   - Les appels serveur n'envoient aucun cookie ni jeton utilisateur.
+   - is_wishlisted est neutralisé avant la mise en cache, y compris dans les
+     suggestions et produits similaires.
+   - La requête RTK Query du navigateur récupère ensuite l'état propre au visiteur.
+
+5. Prix et disponibilité
+   - Un prix négatif ou non numérique est exclu des offres structurées.
+   - Product/Offer annonce InStock ou OutOfStock selon les données publiques.
+   - La fiche et les catégories n'affichent plus systématiquement « en stock ».
+
+VALIDATION LOCALE
+  node --test tests/*.test.cjs
+  Résultat : 17 tests réussis, 0 échec.
+
+  NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com
+  NEXT_PUBLIC_API_URL=https://boukirdiamond.com
+  npm run build
+  Résultat : build Next.js 16 réussi, compilation TypeScript réussie et routes
+  dynamiques générées correctement.
+
+Un test de rendu isolé confirme, en français, arabe, anglais et chinois, que le
+HTML produit contient avant résolution de la requête navigateur : un H1 localisé,
+le prix 375.00 MAD, l'image et aucun squelette de chargement. Un autre test confirme
+que l'accueil contient un lien produit explorable avant la requête client.
+
+Le message baseline-browser-mapping et l'avertissement de migration middleware vers
+proxy restent des avertissements non bloquants. Aucun message d'hydratation React
+n'a été relevé lors du contrôle navigateur FR/AR. Les messages Google One Tap/FedCM
+observés concernent l'authentification Google, pas l'hydratation de la fiche.
+
+PARAMÈTRES DE PRODUCTION REQUIS
+Définir dans l'environnement utilisé par le build ET par PM2 :
+
+  NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com
+  NEXT_PUBLIC_API_URL=https://boukirdiamond.com
+
+Puis reconstruire et redémarrer uniquement le processus frontend de production.
+Ne pas conclure que ce lot est en production avant les contrôles HTTP ci-dessous.
+
+CONTRÔLES APRÈS PUBLICATION
+Pour chaque URL, télécharger la réponse HTML avec curl sans navigateur et vérifier
+une seule balise h1, le nom/prix du produit, une image et des liens /product/ :
+
+  https://boukirdiamond.com/fr
+  https://boukirdiamond.com/ar
+  https://boukirdiamond.com/en
+  https://boukirdiamond.com/zh
+  https://boukirdiamond.com/fr/shop
+  https://boukirdiamond.com/ar/shop
+  https://boukirdiamond.com/fr/shop?page=2
+  https://boukirdiamond.com/fr/categories/73-matieres-de-construction
+  https://boukirdiamond.com/ar/categories/75-etancheite-bitume
+  https://boukirdiamond.com/fr/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/ar/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/en/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/zh/product/7343-gazon-golf-pro
+
+Vérifier ensuite dans un navigateur : aucune erreur d'hydratation, changement de
+variante, sélection d'unité, recherche, filtres et ajout au panier sans passer de
+commande.
+
+ÉCHANTILLON SEARCH CONSOLE
+Utiliser Inspection de l'URL après déploiement pour :
+  https://boukirdiamond.com/fr
+  https://boukirdiamond.com/fr/shop
+  https://boukirdiamond.com/fr/shop?page=2
+  https://boukirdiamond.com/fr/categories/73-matieres-de-construction
+  https://boukirdiamond.com/fr/categories/75-etancheite-bitume
+  https://boukirdiamond.com/fr/product/7343-gazon-golf-pro
+  https://boukirdiamond.com/ar/product/7343-gazon-golf-pro
+
+Dans « Tester l'URL publiée », comparer le HTML/rendu et vérifier le canonical,
+la langue, le H1, le prix, l'image, la disponibilité et les liens explorables.

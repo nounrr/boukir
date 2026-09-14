@@ -1,0 +1,80 @@
+BOUKIR DIAMOND — CORRECTION 05
+PAGINATION EXPLORABLE ET CANONICAL DES FILTRES
+Date de validation locale : 13 septembre 2026
+
+RÉSULTAT
+La boutique charge maintenant côté serveur la page de produits demandée. Les
+produits et les liens de pagination sont donc présents dans le HTML initial.
+La navigation JavaScript est conservée pour l'expérience utilisateur, mais les
+moteurs et les navigateurs peuvent suivre de vrais liens href.
+
+RÈGLES D'URL
+1. Catalogue sans filtre
+   /fr/shop                       index,follow ; canonical /fr/shop
+   /fr/shop?page=2                index,follow ; canonical vers cette page 2
+   /fr/shop?page=183              index,follow ; canonical vers cette dernière page
+   Les hreflang FR/AR/EN/ZH conservent le même numéro de page.
+
+2. Page 1 et valeurs invalides
+   ?page=1 est redirigé définitivement vers l'URL sans page.
+   Les formes 0, négatives, décimales, texte et nombres excessifs sont ramenées
+   par redirection permanente vers la page 1 normalisée.
+   Une page entière valide mais supérieure à la dernière page répond 404.
+   per_page est supprimé : la taille publique reste fixée à 20 afin d'éviter
+   plusieurs URL montrant les mêmes tranches avec des découpages différents.
+
+3. Catégorie ou marque éditoriale seule
+   /fr/shop?category_id=75 redirige définitivement vers
+   /fr/categories/75-etancheite-bitume.
+   La pagination est conservée, par exemple ?page=2. Une marque enregistrée
+   suit la même règle vers /marques/{slug}. Les catégories ou marques sans page
+   éditoriale restent sur la boutique en noindex.
+
+4. Recherche interne, tri et facettes
+   Ces sélections restent noindex,follow. Leur canonical conserve leur contenu
+   réellement différent au lieu de pointer systématiquement vers la page 1 :
+   /fr/shop?search=ciment
+   /fr/shop?sort=price_asc
+   /fr/shop?brand_id=37&colors=vert&page=2
+   La pagination conserve tous les filtres actifs. Les listes sont dédupliquées,
+   triées et limitées à 20 valeurs ; seuls les tris connus sont acceptés.
+   Les paramètres inconnus sont supprimés par redirection, ce qui borne l'espace
+   d'URL généré par l'application.
+
+5. Paramètres marketing et langues
+   utm_*, gclid, fbclid et msclkid peuvent rester dans l'URL visitée mais sont
+   exclus du canonical. Ils n'altèrent donc pas l'identité SEO de la page.
+   Les alternates conservent la même page et les mêmes identifiants lorsque la
+   sélection est équivalente. Ils sont omis pour une recherche textuelle, une
+   couleur, une unité ou un type libre dont la valeur ne représente pas
+   nécessairement le même sens dans les quatre langues.
+
+EXEMPLES RÉELS CONTRÔLÉS AVEC L'API PUBLIQUE
+Au moment du contrôle, le catalogue annonçait 3 641 produits, soit 183 pages de
+20 produits et un produit sur la dernière page.
+- Page 1 : 20 produits, canonical /fr/shop, indexable.
+- Page 2 : 20 produits, canonical /fr/shop?page=2, indexable.
+- Page 183 : un produit, canonical /fr/shop?page=183, indexable.
+- Recherche « ciment » : 7 produits, canonical avec search=ciment, noindex.
+- Tri prix croissant : 3 641 produits, canonical avec sort=price_asc, noindex.
+- Page 184 : hors limites après le changement observé du catalogue ; 404 attendu.
+
+FICHIERS MODIFIÉS
+- ecom/app/[locale]/(shop)/shop/page.tsx
+- ecom/app/[locale]/(shop)/shop/shop-page-client.tsx
+- ecom/src/components/shop/products-list.tsx
+- ecom/src/lib/seo/shop-url.ts
+- ecom/src/lib/catalog/route.tsx
+- ecom/tests/shop-pagination.test.cjs
+
+VALIDATION
+- 7 tests pagination/catalogue réussis : metadata, redirects, dernière page,
+  filtres, URL hors limites, alternates, vrais href et contenu initial.
+- Build Next.js de production réussi avec NEXT_PUBLIC_SITE_URL et
+  NEXT_PUBLIC_API_URL réglés sur https://boukirdiamond.com.
+- Vérification locale effectuée avec les données de l'API publique.
+
+LIMITES
+Le code est validé localement. Il faut le déployer avant d'affirmer que les
+réponses HTTP publiques présentent ces nouveaux canonical et liens. Le nombre
+de pages peut évoluer avec la publication ou le retrait de produits.

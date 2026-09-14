@@ -43,3 +43,6 @@ backend/.env
 backend/db/pool.js
 *.save
 env/
+
+# Etat local des seeders (ids crees, sert au --revert)
+backend/scripts/*.manifest.json

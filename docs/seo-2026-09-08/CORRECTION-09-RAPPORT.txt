@@ -1,0 +1,163 @@
+CORRECTION 09 — NOMENCLATURE ET TRADUCTIONS DES CATÉGORIES
+Date des contrôles : 2026-09-13
+Site contrôlé : https://boukirdiamond.com
+
+1. ÉTAT ACTUEL CONFIRMÉ
+
+L’ancien constat de 72 traductions arabes manquantes sur 79 n’est plus l’état de la
+production. Un nouvel inventaire de l’API publique /api/categories donne :
+
+- 79 catégories ;
+- 22 catégories racines ;
+- 0 nom français manquant ;
+- 0 nom arabe manquant ;
+- 0 parent orphelin ;
+- 1 catégorie non classée (ID 1) ;
+- 3 groupes de noms français dupliqués ;
+- 2 402 produits rattachés directement à la catégorie 1, dont 628 produits publics.
+
+Les preuves complètes, les nombres de produits et les échantillons sont dans :
+docs/seo-2026-09-08/categories-inventory-2026-09-13.json
+
+Le contrôle navigateur de https://boukirdiamond.com/ar/shop confirme que les noms
+arabes sont utilisés dans les filtres et le footer. Il confirme aussi des libellés
+faibles ou erronés visibles, notamment « REGARDS و أغطية », deux catégories nommées
+« أدوات » et « غير مصنف ».
+
+2. MAPPING LIVRÉ
+
+Le fichier backend/data/category-nomenclature.tsv contient les 79 lignes et les
+colonnes suivantes : identifiant, nom FR actuel, nom AR actuel, nom FR proposé,
+nom AR proposé, parent actuel, parent proposé, slug, classement, validation du nom,
+validation de la structure et note.
+
+Répartition proposée :
+
+- matériaux : 27 catégories ;
+- consommables : 23 catégories ;
+- outils : 15 catégories ;
+- machines : 13 catégories ;
+- non classée : 1 catégorie ;
+- services : 0 catégorie dans cette table produit. Les services utilisent leur
+  catalogue séparé et ne doivent pas être mélangés aux catégories de produits.
+
+Les identifiants et les parents restent inchangés dans le mapping. Cela préserve les
+relations produits/catégories, les filtres, le backoffice et les anciennes URL avec
+category_id. Les marques et références techniques telles que PVC, PPR et LED ne sont
+pas traduites arbitrairement.
+
+Les slugs éditoriaux déjà retenus par la correction 04 sont conservés, dont :
+
+- 73-matieres-de-construction ;
+- 75-etancheite-bitume ;
+- 48-outillage-carreleur ;
+- 50-colles-carrelage-marbre ;
+- 52-disques-diamant ;
+- 53-plomberie ;
+- 72-peinture ;
+- 76-mastics-joints.
+
+3. APPLICATION RÉVERSIBLE
+
+Le script backend/scripts/apply-category-nomenclature.mjs fonctionne en simulation
+par défaut. Avec --apply, il :
+
+- verrouille et relit les lignes dans une transaction ;
+- refuse l’application si les données actuelles ne correspondent plus à l’inventaire ;
+- crée une sauvegarde JSON avant toute modification ;
+- applique uniquement les noms marqués approved ;
+- ignore l’ID 74, qui exige une validation métier ;
+- reste idempotent lors des exécutions suivantes ;
+- sait restaurer une sauvegarde avec --rollback sans écraser une modification plus
+  récente faite après l’application.
+
+La simulation contre la base locale a été refusée sans modification : cette base est
+ancienne et diffère de l’inventaire de production sur 72 lignes. Ce refus est voulu et
+prouve que la protection contre la dérive fonctionne. Le script n’a pas modifié la
+base de production.
+
+Procédure sur le serveur de production après déploiement :
+
+1. cd /var/www/boukirEcom
+2. npm run categories:audit -- https://boukirdiamond.com
+3. npm run test:categories
+4. npm run categories:mapping:plan
+5. Lire le plan et vérifier que la source est bien la base de production.
+6. npm run categories:mapping:apply
+7. Redémarrer le backend qui sert /api/categories si nécessaire.
+8. Refaire l’audit et les contrôles FR/AR listés à la section 6.
+
+Exemple de restauration, uniquement avec le chemin affiché par l’application :
+
+node backend/scripts/apply-category-nomenclature.mjs --rollback backend/category-nomenclature-backups/categories-AAAA-MM-JJTHH-MM-SS.json
+
+4. MAINTIEN DANS LE BACKOFFICE
+
+La création et la modification d’une catégorie exigent maintenant un nom arabe dans
+l’API. Les deux formulaires du backoffice affichent ce champ comme obligatoire. La
+liste montre le nom arabe à côté du français, signale une valeur manquante et la
+recherche accepte les deux langues. Cela évite de recréer progressivement le défaut.
+
+5. CAS MÉTIER À ARBITRER
+
+Aucun parent n’est modifié automatiquement. Les décisions restantes sont regroupées
+ci-dessous ; il ne faut pas fusionner les catégories avant d’avoir contrôlé tous leurs
+produits.
+
+1. ID 1 — Produits non classés : réaffecter les 2 402 produits avant suppression.
+2. IDs 73/74 — Matières et matériaux de construction : l’ID 74 mélange isolants,
+   forets et serre-joint. Son nom reste non approuvé.
+3. IDs 52/91/112/113/114 — Disques diamantés, abrasifs et machines de polissage :
+   définir les frontières et reclasser les échantillons incohérents.
+4. IDs 88/119/120/121 — Profilés de carrelage et profilés d’angle : décider si 88
+   doit devenir parent ou rester une famille indépendante.
+5. IDs 75/76/107/126 — Étanchéité, mastics, silicones et outils : fixer les parents
+   selon l’usage métier.
+6. IDs 23/89 — Mesure électrique et instruments de mesure générale : confirmer cette
+   distinction avant éventuel déplacement.
+7. Catégories racines isolées 83, 96, 123, 124, 127 et 129 : choisir leur parent
+   métier ; aucun rattachement supposé n’a été appliqué.
+8. IDs 17, 87, 91, 113 et 114 : les échantillons révèlent quelques produits mal
+   rattachés qui doivent être corrigés produit par produit.
+9. ID 109 — Nettoyage et cristallisation : décider si machines et consommables doivent
+   être séparés.
+
+6. RÉSULTATS ET VALIDATION
+
+Avant application du mapping approuvé en production :
+
+- traductions arabes manquantes : 0/79 ;
+- catégories non classées : 1/79 ;
+- noms approuvés à corriger : 78 ;
+- noms en attente de validation : 1 (ID 74).
+
+Après application prévue :
+
+- traductions arabes manquantes : 0/79 ;
+- catégories non classées : 1/79, conservée tant que ses produits ne sont pas triés ;
+- noms approuvés corrigés : 78/78 ;
+- noms en attente de validation : 1 (ID 74).
+
+Contrôles exécutés localement :
+
+- npm run test:categories : 4 tests réussis ;
+- syntaxe Node des scripts et de la route catégories : valide ;
+- npm run build du backoffice Vite : réussi ;
+- contrôle navigateur de /ar/shop : filtres, produits et footer chargés en arabe ;
+- pages éditoriales FR/AR de « matières de construction » : HTTP 200, canonical
+  et H1 présents dans le HTML initial ;
+- contrôle du code e-commerce : menus, filtres, recherche, fiches produits et footer
+  lisent les noms localisés et conservent les identifiants de catégorie.
+
+Le HTML initial de /fr/shop et /ar/shop ne contient toujours pas de H1 sur la
+production contrôlée. Ce point relève de la correction 06 et montre que cette
+correction n’est pas encore publiée, ou que son déploiement doit être revérifié.
+
+Contrôles obligatoires après application en production :
+
+- comparer les 79 IDs et le nombre de parents orphelins via categories:audit ;
+- ouvrir les menus, filtres, footer et recherche sur /fr/shop et /ar/shop ;
+- vérifier les neuf pages éditoriales de la correction 04 en FR/AR ;
+- tester un produit de chaque famille et son lien de catégorie ;
+- vérifier que le nombre de produits par catégorie reste identique ;
+- purger seulement les caches API/front concernés si les anciens noms persistent.

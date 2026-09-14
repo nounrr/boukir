@@ -1,0 +1,76 @@
+BOUKIR DIAMOND — CORRECTION DES STATUTS HTTP PRODUIT
+Date : 13 septembre 2026
+
+RÉSULTAT
+La résolution d'une fiche produit distingue maintenant quatre états avant rendu :
+
+  invalid : segment d'URL non valide ; aucune requête backend ; réponse 404.
+  missing : l'API publique a confirmé HTTP 404 ; réponse 404.
+  found   : l'API a renvoyé le produit public attendu ; fiche produit normale.
+  erreur backend : timeout, réseau, HTTP 5xx/401/403 ou réponse invalide ; erreur
+                   serveur temporaire, jamais transformée en 404.
+
+CONTRÔLE DE LA PRODUCTION AVANT CE DÉPLOIEMENT
+Les statuts réels relevés sont déjà corrects sur la version actuellement publiée :
+
+  /fr/product/999999999             HTTP 404
+  /fr/product/abc                   HTTP 404
+  /fr/product/7343-gazon-golf-pro   HTTP 200
+  /ar/product/999999999             HTTP 404
+  /en/product/999999999             HTTP 404
+  /zh/product/999999999             HTTP 404
+
+Les erreurs ont noindex et aucune donnée structurée Product/Offer. La production
+ajoute toutefois encore un canonical vers l'URL produit absente et sa page 404
+brute ne contient aucun H1. Le code local retire ce canonical et corrige le HTML
+404. Cela devra être confirmé après publication.
+
+CORRECTIONS
+1. Résolution serveur typée dans src/lib/seo/product.ts.
+   Seul HTTP 404 signifie « produit absent ». Une réponse vide, incohérente ou un
+   autre statut HTTP déclenche ProductBackendUnavailableError.
+
+2. Validation avant envoi du document.
+   page.tsx appelle notFound() côté serveur pour invalid et missing. Le composant
+   client ne décide plus d'une 404 après hydratation.
+
+3. Métadonnées d'erreur.
+   Une vraie 404 reçoit noindex, follow, un titre traduit et aucune canonical ou
+   alternate produit. Le layout n'émet aucun JSON-LD Product/ProductGroup/Offer.
+
+4. Page 404 produit rendue côté serveur.
+   H1 et description traduits en FR, AR, EN et ZH. Liens vers l'accueil, la
+   boutique, matériaux de construction, étanchéité/bitume et outillage carreleur.
+
+5. Produit commercialement indisponible.
+   Un produit public existant avec in_stock=false reste une fiche HTTP 200,
+   indexable, avec Offer/OutOfStock. Il ne devient pas une 404.
+
+VALIDATION
+  node --test tests/*.test.cjs
+  Résultat du lot complet : 19 tests réussis, 0 échec.
+
+Les simulations couvrent : identifiant invalide sans appel API, HTTP 404 backend,
+produit existant, produit hors stock, HTTP 503, métadonnées, canonical, robots,
+absence de JSON-LD de vente et HTML 404 serveur dans les quatre langues.
+
+  NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com
+  NEXT_PUBLIC_API_URL=https://boukirdiamond.com
+  npm run build
+  Résultat : build Next.js et compilation TypeScript réussis.
+
+CONTRÔLES APRÈS DÉPLOIEMENT
+  curl -sS -o /tmp/missing.html -w '%{http_code}\n' \
+    https://boukirdiamond.com/fr/product/999999999
+  curl -sS -o /tmp/invalid.html -w '%{http_code}\n' \
+    https://boukirdiamond.com/fr/product/abc
+  curl -sS -o /tmp/found.html -w '%{http_code}\n' \
+    https://boukirdiamond.com/fr/product/7343-gazon-golf-pro
+
+Attendu : 404, 404, 200. Dans missing.html : un H1 « Produit introuvable »,
+noindex, des liens catalogue, aucune canonical et aucun Product/Offer JSON-LD.
+Répéter l'URL absente sous /ar, /en et /zh pour vérifier langue et statut.
+
+Pour tester une panne sans modifier la production, utiliser le test automatisé
+qui simule HTTP 503. Une vraie coupure volontaire de l'API en production n'est pas
+nécessaire et risquerait d'affecter le catalogue.

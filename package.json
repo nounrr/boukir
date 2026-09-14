@@ -19,7 +19,11 @@
     "test:services": "node --test backend/utils/serviceCatalog.test.js backend/routes/services.test.js backend/routes/services.public.test.js ecom/src/lib/service-catalog.test.ts",
     "test:service-requests": "node --test backend/utils/serviceRequest.test.js backend/utils/serviceRequestBackoffice.test.js backend/utils/serviceRequestAssignment.test.js backend/utils/serviceIntervention.test.js backend/utils/maalemStatistics.test.js backend/utils/maalemReview.test.js backend/utils/maalemReviewPermissions.test.js backend/utils/reviewInvitation.test.js backend/utils/operationalNotification.test.js backend/utils/serviceRequestDashboard.test.js backend/routes/serviceRequests.test.js backend/routes/serviceRequestReviews.test.js backend/routes/adminMaalemReviews.test.js backend/routes/reviewInvitations.test.js backend/routes/publicMaalems.test.js ecom/src/lib/seo/maalem-profile-json-ld.test.ts backend/routes/adminServiceRequestsDashboard.test.js backend/routes/adminServiceRequestAssignments.test.js backend/routes/serviceInterventions.test.js frontend/src/pages/serviceRequestDashboardPresets.test.ts",
     "test:maalem-notifications": "node --test backend/utils/maalemNotification.test.js backend/utils/maalemTeamCreation.test.js backend/utils/maalemProfile.test.js backend/routes/maalemReview.test.js backend/routes/maalemTeamCreation.test.js backend/routes/contactsPassword.test.js",
-    "test:phone-capture": "node --test backend/utils/paymentPhoneCapture.test.js"
+    "test:phone-capture": "node --test backend/utils/paymentPhoneCapture.test.js",
+    "test:categories": "node --test backend/scripts/category-nomenclature.test.js",
+    "categories:audit": "node backend/scripts/audit-category-nomenclature.mjs",
+    "categories:mapping:plan": "node backend/scripts/apply-category-nomenclature.mjs",
+    "categories:mapping:apply": "node backend/scripts/apply-category-nomenclature.mjs --apply"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

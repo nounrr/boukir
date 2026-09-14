@@ -27,6 +27,7 @@ const CategoryManagementPage: React.FC = () => {
 	// Create category state
 	const [showCreate, setShowCreate] = useState<{ parentId: number | null } | null>(null);
 	const [createName, setCreateName] = useState('');
+	const [createNameAr, setCreateNameAr] = useState('');
 	const [createDescription, setCreateDescription] = useState('');
 
 	// Build hierarchy recursively
@@ -44,7 +45,8 @@ const CategoryManagementPage: React.FC = () => {
 		if (!search) return categories;
 		const q = search.toLowerCase();
 		return categories.filter((cat) =>
-			String(cat.nom || '').toLowerCase().includes(q)
+			String(cat.nom || '').toLowerCase().includes(q) ||
+			String(cat.nom_ar || '').toLowerCase().includes(q)
 		);
 	}, [categories, search]);
 
@@ -71,14 +73,20 @@ const CategoryManagementPage: React.FC = () => {
 			showError('Le nom est requis');
 			return;
 		}
+		if (!createNameAr.trim()) {
+			showError('Le nom arabe est requis');
+			return;
+		}
 		try {
 			await createCategory({
 				nom: createName,
+				nom_ar: createNameAr,
 				description: createDescription || undefined,
 				parent_id: showCreate?.parentId || null,
 				created_by: 1,
 			}).unwrap();
 			setCreateName('');
+			setCreateNameAr('');
 			setCreateDescription('');
 			setShowCreate(null);
 			showSuccess('Catégorie créée avec succès');
@@ -293,6 +301,7 @@ const CategoryManagementPage: React.FC = () => {
 					) : (
 						<span className="flex-1 font-medium text-gray-900">
 							{cat.nom}
+							{cat.nom_ar ? <span className="ml-2 text-sm font-normal text-gray-500" dir="rtl">{cat.nom_ar}</span> : <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Arabe manquant</span>}
 							{hasChildren && <span className="ml-2 text-xs text-gray-500">({children.length})</span>}
 						</span>
 					)}
@@ -432,6 +441,17 @@ const CategoryManagementPage: React.FC = () => {
 							/>
 						</div>
 						<div>
+							<label className="block text-sm font-medium text-gray-700 mb-1">Nom arabe *</label>
+							<input
+								type="text"
+								dir="rtl"
+								value={createNameAr}
+								onChange={(e) => setCreateNameAr(e.target.value)}
+								className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+								placeholder="اسم الفئة"
+							/>
+						</div>
+						<div>
 							<label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
 							<textarea
 								value={createDescription}
@@ -452,6 +472,7 @@ const CategoryManagementPage: React.FC = () => {
 								onClick={() => {
 									setShowCreate(null);
 									setCreateName('');
+									setCreateNameAr('');
 									setCreateDescription('');
 								}}
 								className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"

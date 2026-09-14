@@ -13,7 +13,7 @@ import { toBackendUrl } from '../utils/url';
 
 const schema = Yup.object({
 	nom: Yup.string().required('Nom requis'),
-	nom_ar: Yup.string().nullable(),
+	nom_ar: Yup.string().trim().required('Nom arabe requis'),
 	nom_en: Yup.string().nullable(),
 	nom_zh: Yup.string().nullable(),
 	description: Yup.string().nullable(),
@@ -141,7 +141,7 @@ const CategoryFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, on
 
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 								<div>
-									<label htmlFor="nom_ar" className="block text-sm font-medium text-gray-700 mb-1">Nom (AR)</label>
+									<label htmlFor="nom_ar" className="block text-sm font-medium text-gray-700 mb-1">Nom (AR) *</label>
 									<Field
 										id="nom_ar"
 										name="nom_ar"
@@ -150,6 +150,9 @@ const CategoryFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, on
 										className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
 										placeholder="مثال: إسمنت"
 									/>
+									{errors.nom_ar && touched.nom_ar && (
+										<p className="text-red-500 text-xs mt-1">{errors.nom_ar}</p>
+									)}
 								</div>
 								<div>
 									<label htmlFor="nom_en" className="block text-sm font-medium text-gray-700 mb-1">Name (EN)</label>

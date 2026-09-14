@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import MobileBottomNav from './MobileBottomNav';
+import StockQuickSearch from '../StockQuickSearch';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,7 @@ const Layout: React.FC<LayoutProps> = ({ children, manualAccessCheck, tabletComp
           {children}
         </main>
       </div>
+      <StockQuickSearch />
       <MobileBottomNav tabletCompact={tabletCompact} />
     </div>
   );

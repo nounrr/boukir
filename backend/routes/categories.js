@@ -106,6 +106,7 @@ router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
     const nextAr = normalizeNullableText(nom_ar) ?? null;
     const nextEn = normalizeNullableText(nom_en) ?? null;
     const nextZh = normalizeNullableText(nom_zh) ?? null;
+    if (!nextAr) return res.status(400).json({ message: 'Nom arabe requis' });
     
     // Prevent circular references
     if (parentId) {
@@ -188,6 +189,7 @@ router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
     let nextAr = providedAr ? (normalizeNullableText(nom_ar) ?? null) : (normalizeNullableText(cur.nom_ar) ?? null);
     let nextEn = providedEn ? (normalizeNullableText(nom_en) ?? null) : (normalizeNullableText(cur.nom_en) ?? null);
     let nextZh = providedZh ? (normalizeNullableText(nom_zh) ?? null) : (normalizeNullableText(cur.nom_zh) ?? null);
+    if (!nextAr) return res.status(400).json({ message: 'Nom arabe requis' });
 
     const now = new Date();
     const fields = [];
