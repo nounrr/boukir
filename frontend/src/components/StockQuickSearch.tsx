@@ -20,6 +20,16 @@ import {
   type StockSearchOption,
 } from '../utils/stockQuickSearch';
 
+type TriggerPosition = { x: number; y: number };
+
+const TRIGGER_SIZE = 56;
+const TRIGGER_MARGIN = 8;
+const POSITION_STORAGE_KEY = 'stock-quick-search-position';
+const clampTriggerPosition = (position: TriggerPosition, width: number, height: number): TriggerPosition => ({
+  x: Math.min(Math.max(TRIGGER_MARGIN, position.x), Math.max(TRIGGER_MARGIN, width - TRIGGER_SIZE - TRIGGER_MARGIN)),
+  y: Math.min(Math.max(TRIGGER_MARGIN, position.y), Math.max(TRIGGER_MARGIN, height - TRIGGER_SIZE - TRIGGER_MARGIN)),
+});
+
 const StockQuickSearch: React.FC = () => {
   const { user } = useAuth();
   const isPDG = user?.role === 'PDG';
@@ -28,7 +38,13 @@ const StockQuickSearch: React.FC = () => {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerPositionRef = useRef<TriggerPosition | null>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [triggerPosition, setTriggerPosition] = useState<TriggerPosition | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selected, setSelected] = useState<StockSearchOption | null>(null);
@@ -51,6 +67,50 @@ const StockQuickSearch: React.FC = () => {
     () => selected ? resolveStockDisplayPrices(selected, snapshotsQuery.data ?? []) : null,
     [selected, snapshotsQuery.data],
   );
+
+  useEffect(() => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    setViewport({ width, height });
+
+    let savedPosition: TriggerPosition | null = null;
+    try {
+      const stored = window.localStorage.getItem(POSITION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<TriggerPosition>;
+        if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+          savedPosition = { x: Number(parsed.x), y: Number(parsed.y) };
+        }
+      }
+    } catch {
+      // Une préférence illisible ne doit jamais bloquer l'outil de stock.
+    }
+
+    const mobileBottomOffset = width < 768 ? 96 : 24;
+    const initialPosition = clampTriggerPosition(
+      savedPosition ?? { x: width - TRIGGER_SIZE - (width < 768 ? 16 : 24), y: height - TRIGGER_SIZE - mobileBottomOffset },
+      width,
+      height,
+    );
+    triggerPositionRef.current = initialPosition;
+    setTriggerPosition(initialPosition);
+
+    const onResize = () => {
+      const nextViewport = { width: window.innerWidth, height: window.innerHeight };
+      setViewport(nextViewport);
+      if (!triggerPositionRef.current) return;
+      const nextPosition = clampTriggerPosition(triggerPositionRef.current, nextViewport.width, nextViewport.height);
+      triggerPositionRef.current = nextPosition;
+      setTriggerPosition(nextPosition);
+      try {
+        window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(nextPosition));
+      } catch {
+        // Le déplacement reste utilisable même si le stockage local est indisponible.
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query), 250);
@@ -109,20 +169,75 @@ const StockQuickSearch: React.FC = () => {
     }
   };
 
+  const onTriggerPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || !triggerPositionRef.current) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: triggerPositionRef.current.x,
+      originY: triggerPositionRef.current.y,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onTriggerPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+    drag.moved = true;
+    setIsDragging(true);
+    const nextPosition = clampTriggerPosition(
+      { x: drag.originX + deltaX, y: drag.originY + deltaY },
+      window.innerWidth,
+      window.innerHeight,
+    );
+    triggerPositionRef.current = nextPosition;
+    setTriggerPosition(nextPosition);
+  };
+
+  const finishTriggerDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (drag.moved && triggerPositionRef.current) {
+      suppressClickRef.current = true;
+      try {
+        window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(triggerPositionRef.current));
+      } catch {
+        // Le déplacement reste utilisable même si le stockage local est indisponible.
+      }
+      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    }
+    dragRef.current = null;
+    setIsDragging(false);
+  };
+
   const stockTone = selected && selected.stock <= 0
     ? 'border-amber-200 bg-amber-50 text-amber-800'
     : selected && selected.stock <= 5
       ? 'border-amber-200 bg-amber-50 text-amber-800'
       : 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  const alignPanelFromLeft = Boolean(triggerPosition && viewport.width && triggerPosition.x < viewport.width / 2);
+  const openPanelDownward = Boolean(triggerPosition && viewport.height && triggerPosition.y < viewport.height / 2);
 
   return (
-    <div ref={rootRef} className="fixed bottom-24 right-4 z-[60] md:bottom-6 md:right-6">
+    <div
+      ref={rootRef}
+      className={triggerPosition ? 'fixed z-[60]' : 'fixed bottom-24 right-4 z-[60] md:bottom-6 md:right-6'}
+      style={triggerPosition ? { left: triggerPosition.x, top: triggerPosition.y } : undefined}
+    >
       {isOpen && (
         <section
           id={panelId}
           role="dialog"
           aria-label="Recherche rapide du stock"
-          className="fixed bottom-[5.75rem] left-3 right-3 flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 md:absolute md:bottom-[4.25rem] md:left-auto md:right-0 md:w-[420px] md:max-h-[min(680px,calc(100vh-7rem))]"
+          className={`fixed bottom-[5.75rem] left-3 right-3 flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 md:absolute md:w-[420px] md:max-h-[min(680px,calc(100vh-7rem))] ${alignPanelFromLeft ? 'md:left-0 md:right-auto' : 'md:left-auto md:right-0'} ${openPanelDownward ? 'md:bottom-auto md:top-[4.25rem]' : 'md:bottom-[4.25rem] md:top-auto'}`}
         >
           <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
@@ -326,8 +441,15 @@ const StockQuickSearch: React.FC = () => {
         title="Recherche rapide du stock"
         aria-expanded={isOpen}
         aria-controls={panelId}
-        onClick={() => isOpen ? close() : setIsOpen(true)}
-        className={`group grid h-14 w-14 place-items-center rounded-full border-2 border-white bg-blue-600 text-white shadow-lg shadow-blue-900/25 outline-none transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl active:translate-y-0 active:scale-95 focus:ring-4 focus:ring-blue-200 motion-reduce:transform-none motion-reduce:transition-none ${isOpen ? 'rotate-0 bg-slate-800 hover:bg-slate-900' : ''}`}
+        onPointerDown={onTriggerPointerDown}
+        onPointerMove={onTriggerPointerMove}
+        onPointerUp={finishTriggerDrag}
+        onPointerCancel={finishTriggerDrag}
+        onClick={() => {
+          if (suppressClickRef.current) return;
+          if (isOpen) close(); else setIsOpen(true);
+        }}
+        className={`group grid h-14 w-14 touch-none select-none place-items-center rounded-full border-2 border-white bg-blue-600 text-white shadow-lg shadow-blue-900/25 outline-none transition hover:bg-blue-700 hover:shadow-xl focus:ring-4 focus:ring-blue-200 motion-reduce:transform-none motion-reduce:transition-none ${isDragging ? 'cursor-grabbing scale-105 shadow-xl' : 'cursor-grab hover:-translate-y-0.5 active:translate-y-0 active:scale-95'} ${isOpen ? 'rotate-0 bg-slate-800 hover:bg-slate-900' : ''}`}
       >
         {isOpen ? <X className="h-6 w-6" /> : <PackageSearch className="h-6 w-6" />}
       </button>
@@ -336,4 +458,3 @@ const StockQuickSearch: React.FC = () => {
 };
 
 export default StockQuickSearch;
-

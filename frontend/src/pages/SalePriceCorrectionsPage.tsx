@@ -68,6 +68,64 @@ const KeepOption = React.memo<{ selected: boolean; disabled?: boolean; value: nu
 ));
 KeepOption.displayName = 'KeepOption';
 
+const CustomPriceOption = React.memo<{
+  selected: boolean;
+  disabled?: boolean;
+  tone: Tone;
+  value?: number;
+  onSelect: (value: number) => void;
+  onClear: () => void;
+}>(({ selected, disabled, tone, value, onSelect, onClear }) => {
+  const [rawValue, setRawValue] = useState(() => (selected && value !== undefined ? String(value) : ''));
+  const active = tone === 'indigo'
+    ? 'border-indigo-500 bg-indigo-50 text-indigo-950 ring-indigo-200'
+    : 'border-amber-500 bg-amber-50 text-amber-950 ring-amber-200';
+  const dot = tone === 'indigo' ? 'border-indigo-600 bg-indigo-600' : 'border-amber-600 bg-amber-500';
+  const inputFocus = tone === 'indigo'
+    ? 'focus:border-indigo-500 focus:ring-indigo-500'
+    : 'focus:border-amber-500 focus:ring-amber-500';
+
+  useEffect(() => {
+    if (!selected) setRawValue('');
+  }, [selected]);
+
+  const updateValue = (nextRawValue: string) => {
+    if (!/^\d*(?:[.,]\d*)?$/.test(nextRawValue)) return;
+    setRawValue(nextRawValue);
+    if (!nextRawValue.trim()) {
+      onClear();
+      return;
+    }
+    const parsed = Number(nextRawValue.replace(',', '.'));
+    if (Number.isFinite(parsed) && parsed >= 0) onSelect(parsed);
+  };
+
+  return (
+    <div className={`rounded-lg border px-2 py-2 transition ${selected ? `${active} ring-2` : 'border-dashed border-stone-300 bg-white text-stone-700'}`}>
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? dot : 'border-stone-300 bg-white'}`}>
+          {selected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-stone-500">Autre prix</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={rawValue}
+          disabled={disabled}
+          onChange={(event) => updateValue(event.target.value)}
+          placeholder="Saisir votre prix"
+          aria-label="Saisir un autre prix de vente"
+          className={`h-8 min-w-0 flex-1 rounded-md border-stone-300 bg-white px-2 text-sm font-bold tabular-nums text-stone-900 placeholder:text-xs placeholder:font-normal focus:ring-1 disabled:cursor-default disabled:opacity-60 ${inputFocus}`}
+        />
+        <span className="text-xs font-semibold text-stone-500">DH</span>
+      </div>
+    </div>
+  );
+});
+CustomPriceOption.displayName = 'CustomPriceOption';
+
 const CurrentPrice = React.memo<{ value: number; source: SalePriceSource }>(({ value, source }) => (
   <div>
     <span className="block text-base font-bold tabular-nums text-stone-900">{money.format(value)} <span className="text-xs font-medium text-stone-400">DH</span></span>
@@ -76,18 +134,29 @@ const CurrentPrice = React.memo<{ value: number; source: SalePriceSource }>(({ v
 ));
 CurrentPrice.displayName = 'CurrentPrice';
 
-const ChoiceColumn: React.FC<{ label: string; tone: Tone; current: number; choice?: Choice; candidates: HistoricalSalePrice[]; shortcuts: readonly string[]; disabled: boolean; onSelect: (choice: Choice) => void }> = ({ label, tone, current, choice, candidates, shortcuts, disabled, onSelect }) => (
-  <div role="radiogroup" aria-label={label} className="space-y-1.5">
-    <KeepOption value={current} selected={choice?.kind === 'keep'} disabled={disabled} onSelect={() => onSelect(KEEP)} />
-    {candidates.length ? candidates.map((candidate, index) => (
-      <PriceCandidate
-        key={candidate.price} candidate={candidate} tone={tone} shortcut={shortcuts[index] ?? '·'} disabled={disabled}
-        selected={choice?.kind === 'price' && samePrice(choice.value, candidate.price)}
-        onSelect={() => onSelect({ kind: 'price', value: candidate.price })}
+const ChoiceColumn: React.FC<{ label: string; tone: Tone; current: number; choice?: Choice; candidates: HistoricalSalePrice[]; shortcuts: readonly string[]; disabled: boolean; onSelect: (choice?: Choice) => void }> = ({ label, tone, current, choice, candidates, shortcuts, disabled, onSelect }) => {
+  const customSelected = choice?.kind === 'price' && !candidates.some((candidate) => samePrice(choice.value, candidate.price));
+  return (
+    <div role="radiogroup" aria-label={label} className="space-y-1.5">
+      <KeepOption value={current} selected={choice?.kind === 'keep'} disabled={disabled} onSelect={() => onSelect(KEEP)} />
+      {candidates.length ? candidates.map((candidate, index) => (
+        <PriceCandidate
+          key={candidate.price} candidate={candidate} tone={tone} shortcut={shortcuts[index] ?? '·'} disabled={disabled}
+          selected={choice?.kind === 'price' && samePrice(choice.value, candidate.price)}
+          onSelect={() => onSelect({ kind: 'price', value: candidate.price })}
+        />
+      )) : <p className="px-1 text-[11px] leading-4 text-stone-400">Aucune vente exploitable.</p>}
+      <CustomPriceOption
+        tone={tone}
+        selected={customSelected}
+        value={customSelected ? choice.value : undefined}
+        disabled={disabled}
+        onSelect={(value) => onSelect({ kind: 'price', value })}
+        onClear={() => onSelect(undefined)}
       />
-    )) : <p className="px-1 text-[11px] leading-4 text-stone-400">Aucune vente exploitable.</p>}
-  </div>
-);
+    </div>
+  );
+};
 
 type CorrectionRowProps = {
   row: SalePriceCorrectionRow;
@@ -97,7 +166,7 @@ type CorrectionRowProps = {
   checked: boolean;
   readOnly: boolean;
   saving: boolean;
-  onSelect: (key: string, side: Side, choice: Choice) => void;
+  onSelect: (key: string, side: Side, choice?: Choice) => void;
   onKeepBoth: (key: string) => void;
   onClear: (key: string) => void;
   onFocus: (key: string) => void;
@@ -223,8 +292,19 @@ const SalePriceCorrectionsPage: React.FC = () => {
   const readOnly = activeTab === 'processed';
 
   // Aucune décision n'est pré-cochée : tout part de l'action explicite du PDG.
-  const selectChoice = useCallback((key: string, side: Side, choice: Choice) => {
-    setDecisions((previous) => ({ ...previous, [key]: { ...previous[key], [side]: choice } }));
+  const selectChoice = useCallback((key: string, side: Side, choice?: Choice) => {
+    setDecisions((previous) => {
+      if (choice) return { ...previous, [key]: { ...previous[key], [side]: choice } };
+      if (!previous[key]?.[side]) return previous;
+      const nextDecision = { ...previous[key] };
+      delete nextDecision[side];
+      if (!nextDecision.pv1 && !nextDecision.pv2) {
+        const next = { ...previous };
+        delete next[key];
+        return next;
+      }
+      return { ...previous, [key]: nextDecision };
+    });
   }, []);
   const keepBoth = useCallback((key: string) => {
     setDecisions((previous) => ({ ...previous, [key]: { pv1: KEEP, pv2: KEEP } }));
