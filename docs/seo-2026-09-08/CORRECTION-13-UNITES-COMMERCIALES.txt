@@ -1,0 +1,90 @@
+BOUKIR DIAMOND — CORRECTION 13 : UNITÉS COMMERCIALES
+Date : 15 septembre 2026
+
+1. CONSTAT VÉRIFIÉ SUR L'API PUBLIQUE
+
+Produit 6696 : DANOSA 4 mm Vert Rouleau Bitume
+- prix de vente : 89,78 MAD
+- unité de base : m
+- unités alternatives : aucune
+- poids : absent
+
+Le mot « Rouleau » appartient actuellement à la désignation. Il ne prouve pas que 89,78 MAD est le prix du rouleau. Le code conserve donc la donnée confirmée et affiche 89,78 MAD/m. Aucune conversion mètre/rouleau ou mètre/m² n'a été créée.
+
+2. CORRECTIONS APPLIQUÉES
+
+- Les cartes produit affichent prix + unité de prix : MAD/m, MAD/m², MAD/rouleau, MAD/sac, etc.
+- La fiche produit affiche le même tarif unitaire et distingue le total de ligne : quantité × unité, puis total en MAD.
+- Les unités sont lisibles en français, arabe, anglais et chinois.
+- m, m² et m³ restent trois unités différentes.
+- rouleau, sac, boîte, pièce, camion et fiaj restent des conditionnements/unités distincts.
+- Une unité inconnue est affichée telle qu'elle existe dans les données ; le code ne la convertit pas.
+- Le panier complet, le mini-panier, le récapitulatif de commande et l'historique affichent l'unité avec le prix unitaire et la quantité.
+- Le backend du panier renvoie désormais l'unité de base lorsque aucune unité alternative n'est sélectionnée.
+- Le devis serveur et la création de commande utilisent la même unité validée.
+- Toute nouvelle ligne ecommerce_order_items enregistre unit_name, y compris lorsque unit_id est NULL. L'unité d'une commande reste ainsi une valeur historique et ne dépend plus d'une modification ultérieure du produit.
+- Les anciennes commandes sont conservées. Une ancienne ligne sans unit_name continue d'utiliser le fallback existant vers l'unité actuelle du produit, car sa valeur historique ne peut pas être reconstituée sûrement.
+
+3. CALCULS VALIDÉS
+
+- Total = prix de l'unité sélectionnée × quantité commandée.
+- Exemple : 89,78 MAD/m × 3 m = 269,34 MAD.
+- Les facteurs de conversion restent lus depuis product_units.
+- Le serveur recalcule le prix et vérifie que l'unité appartient au produit ; le client ne peut pas imposer son propre prix.
+- Aucun camion/fiaj n'est converti automatiquement en m³ ou en tonnes.
+- Aucun rouleau n'est converti automatiquement en mètres ou en m².
+- Aucune surface nominale de membrane n'est présentée comme surface utile.
+
+4. DONNÉES À CONFIRMER PAR LE MAGASIN
+
+Produit 6696 DANOSA 4 mm Vert Rouleau Bitume :
+- le produit est-il vendu au mètre, au m² ou au rouleau ?
+- longueur et largeur exactes du rouleau ;
+- surface nominale du rouleau ;
+- surface utile après recouvrements, seulement si le fabricant la documente ;
+- facteur et prix exacts si la vente au rouleau doit être ajoutée.
+
+Produits bitume :
+- 3097 SELF-DAN 15 cm 10 m Rouleau Bitume est encore en unité générique u ; confirmer pièce, rouleau ou mètre ;
+- 6344 Bitume DANOSA MAD 4 Protection Antibruit est en u ; confirmer le conditionnement et les dimensions.
+
+Ciments :
+- 6376 CPJ 45 et 6272 Ciment 55 sont en u sans poids de sac ;
+- 6253 CPJ 35 possède une unité KG avec facteur 0,02, mais le poids du sac n'est pas renseigné : ne pas conclure automatiquement à 50 kg ;
+- 5943 Ciment blanc CIMSA possède sac 25 kg et kilogramme : contrôler que les prix et le facteur correspondent au conditionnement réel ;
+- pour chaque ciment, confirmer le poids net du sac, l'unité vendue par défaut et la vente éventuelle au kg.
+
+Sables :
+- 6548, 6547, 6426 et 5646 sont en unité générique u ;
+- confirmer si le prix porte sur m³, tonne, sac, camion ou fiaj ;
+- si camion/fiaj est utilisé, renseigner la quantité réellement facturée pour chaque offre au lieu d'une conversion universelle.
+
+Carrelage :
+- distinguer les carreaux des outils pour carreleur dans l'inventaire ;
+- pour chaque carreau, confirmer prix au m² ou à la boîte, nombre de pièces par boîte et m² par boîte ;
+- ne calculer une conversion boîte/m² qu'à partir des données fabricant.
+
+5. FICHIERS PRINCIPAUX MODIFIÉS
+
+- ecom/src/lib/commercial-unit.ts
+- ecom/src/components/shop/product-card.tsx
+- ecom/app/[locale]/(shop)/product/[id]/product-page-client.tsx
+- ecom/app/[locale]/(shop)/cart/page.tsx
+- ecom/src/components/layout/cart-popover.tsx
+- ecom/src/components/shop/checkout/order-cart-summary.tsx
+- ecom/src/components/shop/order-card.tsx
+- ecom/src/types/api/products.ts
+- backend/routes/ecommerce/cart.js
+- backend/routes/ecommerce/orders.js
+- ecom/tests/commercial-units.test.cjs
+- ecom/tests/product-initial-html.test.cjs
+
+6. VALIDATION
+
+- 43 tests e-commerce réussis, 0 échec.
+- Syntaxe Node validée pour cart.js et orders.js.
+- Build Next.js de production réussi avec TypeScript.
+- HTML compilé du produit 6696 contrôlé en FR : 89.78 MAD/m et 1 × m.
+- HTML compilé du produit 6696 contrôlé en AR : 89.78 درهم/م et 1 × م.
+
+La valeur de production de l'unité du produit 6696 n'a pas été modifiée. Le magasin doit confirmer les caractéristiques ci-dessus avant d'ajouter une unité rouleau ou une conversion.

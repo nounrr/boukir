@@ -43,6 +43,7 @@ interface SearchableSelectProps {
   onChange: (value: string) => void;
   placeholder: string;
   valueLabelFallback?: string;
+  preferValueLabelFallback?: boolean;
   className?: string;
   disabled?: boolean;
   maxDisplayItems?: number;
@@ -110,6 +111,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   onChange,
   placeholder,
   valueLabelFallback,
+  preferValueLabelFallback = false,
   className = '',
   disabled = false,
   maxDisplayItems = 100,
@@ -145,7 +147,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const hasMoreItems = allMatches.length > displayCount;
 
   const selectedOption = options.find((opt) => opt.value === value);
-  const displayLabel = selectedOption?.label || valueLabelFallback || placeholder;
+  const displayLabel = (preferValueLabelFallback ? valueLabelFallback : selectedOption?.label)
+    || selectedOption?.label
+    || valueLabelFallback
+    || placeholder;
   const canCreate = Boolean(
     allowCreate &&
       typeof onCreate === 'function' &&
@@ -4746,7 +4751,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         </div>
       );
     })()}
-    <div className="bg-white rounded-lg w-[90vw] max-h-[96vh] flex flex-col shadow-lg">
+    <div className="flex max-h-[96vh] w-full max-w-none flex-col rounded-lg bg-white shadow-lg">
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate">
@@ -6021,7 +6026,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : String(p.id),
                                             label: p.snapshot_id
                                               ? `${priorityTag} ${displayReference} - ${nom}${variant}${qte}${parentRefSuffix} | ${bonInfo}`.trim()
-                                              : `${displayReference} - ${nom}${variant}${parentRefSuffix}`.trim(),
+                                              : `${displayReference} - ${nom}${variant}${qte}${parentRefSuffix}`.trim(),
                                             data: p,
                                           };
                                         });
@@ -6082,12 +6087,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       return String(prodId || '');
                                     })()}
                                     valueLabelFallback={(() => {
-                                      const prodId = values.items[index].product_id;
+                                      const selectedRow = values.items[index];
+                                      const prodId = selectedRow.product_id;
                                       if (!prodId) return '';
 
-                                      const ref = String(values.items[index].product_reference ?? prodId).trim();
-                                      const fromRow = String(values.items[index].designation ?? '').trim();
-                                      const variantId = values.items[index].variant_id;
+                                      const ref = String(selectedRow.product_reference ?? prodId).trim();
+                                      const fromRow = String(selectedRow.designation ?? '').trim();
+                                      const variantId = selectedRow.variant_id;
                                       let variantSuffix = '';
                                       if (variantId) {
                                         const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
@@ -6096,7 +6102,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           (s: any) => String(s.id) === String(prodId) && String(s.variant_id || '') === String(variantId)
                                         );
                                         const variantName = String(
-                                          values.items[index].variant_name ?? fromSnapshot?.variant_name ?? v?.variant_name ?? ''
+                                          selectedRow.variant_name ?? fromSnapshot?.variant_name ?? v?.variant_name ?? ''
                                         ).trim();
                                         if (variantName) variantSuffix = ` - ${variantName}`;
                                       }
@@ -6123,6 +6129,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       const des = String(fromCatalog?.designation ?? '').trim();
                                       return des ? `${prefix}${ref} - ${des}${variantSuffix}`.trim() : `${prefix}${ref}`;
                                     })()}
+                                    preferValueLabelFallback
                                     onChange={(selectedValue) => {
                                       if (isQtyOnlyEdit) return;
                                       let product: any = null;

@@ -1,0 +1,88 @@
+BOUKIR DIAMOND — CORRECTION SEO MULTILINGUE NEXT-INTL
+Date de contrôle et d'implémentation : 15 septembre 2026
+Domaine canonique : https://boukirdiamond.com
+Langues gérées : français (fr), arabe (ar), anglais (en), chinois (zh)
+
+1. RÉSULTAT
+
+- Les quatre codes sont des codes de langue valides : fr, ar, en et zh.
+- Aucun code inventé n'est créé pour la darija. Les synonymes marocains restent du contenu arabe sous le code ar.
+- Chaque page contrôlée conserve un canonical vers sa propre URL publique HTTPS.
+- Les pages éditoriales réellement traduites (accueil, catégories et catalogue paginé simple) gardent des hreflang réciproques fr/ar/en/zh.
+- Une fiche produit n'annonce désormais que les langues pour lesquelles elle possède un vrai nom localisé.
+- Une fiche produit EN ou ZH sans traduction reste accessible, avec canonical propre, mais reçoit noindex,follow et aucun hreflang. Elle rejoindra automatiquement le sitemap et le groupe hreflang lorsque sa traduction sera renseignée.
+- Aucun x-default n'est ajouté : toutes les URL publiques ont un préfixe explicite et / redirige déjà vers /fr. Une destination neutre n'existe donc pas actuellement.
+- Une URL explicite /fr, /ar, /en ou /zh n'est plus remplacée au chargement par une ancienne préférence localStorage.
+- L'arabe produit dir="rtl" ; le français, l'anglais et le chinois utilisent dir="ltr".
+- Les catalogues next-intl possèdent maintenant les mêmes 1 496 clés dans les quatre langues.
+- Les 23 clés abonnement/compte manquantes ont été ajoutées en anglais et chinois. Les deux clés services/artisans manquantes ont été ajoutées en français et arabe.
+- Les titles des quatre accueils décrivent désormais les matériaux de construction et l'outillage à Tanger.
+
+2. RÈGLE DES TRADUCTIONS PRODUIT
+
+FR : admis si la désignation principale existe.
+AR : admis si designation_ar contient de l'arabe, ou si la désignation principale contient déjà de l'arabe.
+EN : admis seulement si designation_en est renseigné.
+ZH : admis seulement si designation_zh contient des caractères chinois.
+
+Cette correction ne traduit et n'invente aucun produit. Elle empêche Google de recevoir de faux équivalents anglais/chinois contenant en réalité le nom français. La traduction métier des produits reste une opération de données séparée à réaliser plus tard dans les quatre langues.
+
+3. CONTRÔLES DU HTML COMPILÉ
+
+Serveur Next de production local, connecté à l'API publique :
+
+- /fr, /ar, /en, /zh : HTTP 200, lang correct, RTL arabe, canonical propre, alternates fr/ar/en/zh.
+- /[langue]/categories/36-materiaux-construction : HTTP 200 dans les quatre langues, titles localisés, canonical propre et alternates réciproques.
+- /[langue]/shop?page=2 : HTTP 200, canonical conservant page=2 et alternates conservant la même page.
+- Produit 5714 en FR et AR : HTTP 200 après redirection 308 vers le slug localisé, index,follow, groupe réciproque fr/ar.
+- Produit 5714 en EN et ZH : HTTP 200, URL locale et canonical propres, noindex,follow, aucun faux hreflang.
+- Les URL explicites ont été demandées avec une préférence Accept-Language opposée ; elles ont conservé la langue écrite dans l'URL.
+
+4. CONTRÔLE DU SITEMAP GÉNÉRÉ
+
+- Index local : HTTP 200, cache fresh, aucune URL localhost.
+- sitemap-products-fr.xml : 3 640 URL produit.
+- sitemap-products-ar.xml : 2 852 URL produit possédant du contenu arabe détectable.
+- Aucun fichier produit EN/ZH n'est publié tant que l'export public ne fournit aucun nom produit EN/ZH réel.
+- sitemap-categories.xml : 52 URL, soit 13 pages éditoriales dans 4 langues, avec 208 alternates.
+- sitemap-pages.xml : 20 URL, soit 5 pages dans 4 langues, avec 80 alternates.
+- Le produit 5714 apparaît en FR/AR avec exactement les mêmes deux alternates réciproques.
+
+Les nombres reflètent l'API publique au moment du contrôle et peuvent évoluer avec le catalogue.
+
+5. FICHIERS MODIFIÉS POUR CE PROMPT
+
+- ecom/src/lib/seo/product-languages.ts
+- ecom/app/[locale]/(shop)/product/[id]/layout.tsx
+- ecom/src/lib/seo/sitemap-data.ts
+- ecom/src/components/i18n/locale-preference-initializer.tsx
+- ecom/app/[locale]/layout.tsx
+- ecom/messages/fr.json
+- ecom/messages/ar.json
+- ecom/messages/en.json
+- ecom/messages/zh.json
+- ecom/tests/i18n-seo.test.cjs
+- ecom/tests/product-routes.test.cjs
+- ecom/tests/sitemap.test.mjs
+- ecom/tests/sitemap-publication.test.cjs
+
+6. VALIDATION EXÉCUTÉE
+
+Commande : node --test tests/*.cjs tests/*.mjs
+Résultat : 40 tests réussis, 0 échec.
+
+Commande : NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com NEXT_PUBLIC_API_URL=https://boukirdiamond.com npm run build
+Résultat : build Next.js 16 réussi, TypeScript réussi, 8 pages statiques générées.
+
+L'avertissement baseline-browser-mapping n'est pas une erreur de build. L'avertissement de migration middleware vers proxy est également non bloquant avec Next.js 16.
+
+7. APRÈS DÉPLOIEMENT
+
+1. Déployer ce code avec NEXT_PUBLIC_SITE_URL=https://boukirdiamond.com et NEXT_PUBLIC_API_URL=https://boukirdiamond.com.
+2. Redémarrer uniquement le processus PM2 de production utilisé par boukirdiamond.com.
+3. Vider ou régénérer le cache de sitemap si le déploiement conserve le dossier .cache/sitemaps d'une version précédente.
+4. Vérifier les mêmes URL publiques avec curl -I et dans le HTML brut.
+5. Soumettre https://boukirdiamond.com/sitemap.xml dans Google Search Console.
+6. Demander une inspection de l'accueil, d'une catégorie, du produit 5714 et de /shop?page=2 dans chaque langue pertinente.
+
+Le site public n'est pas déclaré corrigé tant que cette version n'est pas déployée et contrôlée sur le domaine.
