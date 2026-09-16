@@ -72,7 +72,7 @@ router.get('/', async (req, res, next) => {
         p.designation,
         p.prix_vente as base_price,
         (
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
             AND COALESCE(ps.en_validation, 0) <> 0
@@ -95,7 +95,7 @@ router.get('/', async (req, res, next) => {
         pv.variant_name,
         pv.prix_vente as variant_price,
         (
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.variant_id = pv.id
             AND COALESCE(ps.en_validation, 0) <> 0
@@ -112,7 +112,7 @@ router.get('/', async (req, res, next) => {
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
         pv.remise_artisan as variant_remise_artisan,
-        pu.unit_name,
+        COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
         pu.conversion_factor
       FROM cart_items ci
       INNER JOIN products p ON ci.product_id = p.id
@@ -147,7 +147,7 @@ router.get('/', async (req, res, next) => {
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
         pv.remise_artisan as variant_remise_artisan,
-        pu.unit_name,
+        COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
         pu.conversion_factor
       FROM cart_items ci
       INNER JOIN products p ON ci.product_id = p.id
@@ -227,10 +227,10 @@ router.get('/', async (req, res, next) => {
           name: item.variant_name,
           image_url: item.variant_image_url
         } : null,
-        unit: item.unit_id ? {
-          id: item.unit_id,
+        unit: item.unit_name ? {
+          id: item.unit_id || null,
           name: item.unit_name,
-          conversion_factor: toSafeNumber(item.conversion_factor)
+          conversion_factor: toSafeNumber(item.conversion_factor, 1)
         } : null,
         pricing: {
           base_price: snapshotEnabled
@@ -716,7 +716,7 @@ router.get('/suggestions', async (req, res, next) => {
     const snapshotEnabled = await hasProductSnapshotTable(pool);
     const priceExpr = snapshotEnabled
       ? `COALESCE((
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
             AND COALESCE(ps.en_validation, 0) <> 0

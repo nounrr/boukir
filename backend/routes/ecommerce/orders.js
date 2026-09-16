@@ -387,7 +387,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           p.designation_ar,
           p.prix_vente as base_price,
           (
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.product_id = p.id AND ps.variant_id IS NULL
               AND COALESCE(ps.en_validation, 0) <> 0
@@ -413,7 +413,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           pv.variant_type,
           pv.prix_vente as variant_price,
           (
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.variant_id = pv.id
               AND COALESCE(ps.en_validation, 0) <> 0
@@ -430,7 +430,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           pv.cout_revient as variant_cout_revient,
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
-          pu.unit_name,
+          COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
           pu.conversion_factor
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
@@ -464,7 +464,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           pv.cout_revient as variant_cout_revient,
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
-          pu.unit_name,
+          COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
           pu.conversion_factor
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
@@ -493,7 +493,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             p.designation_ar,
             p.prix_vente as base_price,
             (
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.product_id = p.id AND ps.variant_id IS NULL
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -519,7 +519,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             pv.variant_type,
             pv.prix_vente as variant_price,
             (
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.variant_id = pv.id
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -536,7 +536,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             pv.cout_revient as variant_cout_revient,
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
-            pu.unit_name,
+            COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
             pu.conversion_factor
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
@@ -565,7 +565,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             pv.cout_revient as variant_cout_revient,
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
-            pu.unit_name,
+            COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
             pu.conversion_factor
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
@@ -1080,7 +1080,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           p.designation_ar,
           p.prix_vente as base_price,
           (
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.product_id = p.id AND ps.variant_id IS NULL
               AND COALESCE(ps.en_validation, 0) <> 0
@@ -1106,7 +1106,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           pv.variant_type,
           pv.prix_vente as variant_price,
           (
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.variant_id = pv.id
               AND COALESCE(ps.en_validation, 0) <> 0
@@ -1123,7 +1123,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           pv.cout_revient as variant_cout_revient,
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
-          pu.unit_name,
+          COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
           pu.conversion_factor
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
@@ -1157,7 +1157,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           pv.cout_revient as variant_cout_revient,
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
-          pu.unit_name,
+          COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
           pu.conversion_factor
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
@@ -1192,7 +1192,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             p.designation_ar,
             p.prix_vente as base_price,
             (
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.product_id = p.id AND ps.variant_id IS NULL
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -1218,7 +1218,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             pv.variant_type,
             pv.prix_vente as variant_price,
             (
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.variant_id = pv.id
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -1235,7 +1235,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             pv.cout_revient as variant_cout_revient,
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
-            pu.unit_name,
+            COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
             pu.conversion_factor
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
@@ -1264,7 +1264,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             pv.cout_revient as variant_cout_revient,
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
-            pu.unit_name,
+            COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
             pu.conversion_factor
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id

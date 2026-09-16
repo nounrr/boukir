@@ -76,7 +76,7 @@ router.get('/suggestions', async (req, res, next) => {
     const limitBrands = Math.min(50, Math.max(0, Number(req.query.limit_brands || 6)));
     const inStockOnly = String(req.query.in_stock_only ?? 'true') === 'true';
     const snapshotPriceExpr = `COALESCE((
-      SELECT ps.prix_vente FROM product_snapshot ps
+      SELECT NULLIF(ps.prix_vente, 0) FROM product_snapshot ps
       WHERE ps.product_id = p.id AND ps.variant_id IS NULL
         AND COALESCE(ps.en_validation, 0) <> 0
       ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC

@@ -25,7 +25,7 @@ router.get('/', async (req, res, next) => {
         p.designation_zh,
         p.prix_vente as base_price,
         COALESCE((
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
             AND COALESCE(ps.en_validation, 0) <> 0
@@ -49,7 +49,7 @@ router.get('/', async (req, res, next) => {
         pv.variant_type,
         pv.prix_vente as variant_price,
         COALESCE((
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.variant_id = pv.id
             AND COALESCE(ps.en_validation, 0) <> 0
@@ -225,7 +225,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_en,
           p.designation_zh,
           COALESCE((
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.product_id = p.id AND ps.variant_id IS NULL
               AND COALESCE(ps.en_validation, 0) <> 0
@@ -335,7 +335,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_en,
           p.designation_zh,
           COALESCE((
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.product_id = p.id AND ps.variant_id IS NULL
               AND COALESCE(ps.en_validation, 0) <> 0

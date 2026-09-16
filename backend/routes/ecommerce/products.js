@@ -68,7 +68,7 @@ router.get('/', async (req, res, next) => {
     const isBackoffice = role.length > 0;
     const priceExpr = snapshotEnabled
       ? `COALESCE((
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
             AND COALESCE(ps.en_validation, 0) <> 0
@@ -397,7 +397,7 @@ router.get('/', async (req, res, next) => {
               pv.color_name,
               pv.variant_type,
               COALESCE((
-                SELECT ps.prix_vente
+                SELECT NULLIF(ps.prix_vente, 0)
                 FROM product_snapshot ps
                 WHERE ps.variant_id = pv.id
                   AND COALESCE(ps.en_validation, 0) <> 0
@@ -680,7 +680,7 @@ router.get('/', async (req, res, next) => {
       SELECT 
         MIN(${snapshotEnabled
         ? `COALESCE((
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.product_id = products.id AND ps.variant_id IS NULL
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -690,7 +690,7 @@ router.get('/', async (req, res, next) => {
         : 'prix_vente'}) as min_price,
         MAX(${snapshotEnabled
         ? `COALESCE((
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.product_id = products.id AND ps.variant_id IS NULL
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -779,7 +779,7 @@ router.get('/:id', async (req, res, next) => {
       const [snapRows] = await pool.query(
         `SELECT
           (
-            SELECT ps.prix_vente
+            SELECT NULLIF(ps.prix_vente, 0)
             FROM product_snapshot ps
             WHERE ps.product_id = ? AND ps.variant_id IS NULL
               AND COALESCE(ps.en_validation, 0) <> 0
@@ -840,7 +840,7 @@ router.get('/:id', async (req, res, next) => {
             pv.variant_type,
             pv.reference,
             COALESCE((
-              SELECT ps.prix_vente
+              SELECT NULLIF(ps.prix_vente, 0)
               FROM product_snapshot ps
               WHERE ps.variant_id = pv.id
                 AND COALESCE(ps.en_validation, 0) <> 0
@@ -957,7 +957,7 @@ router.get('/:id', async (req, res, next) => {
           p.designation_zh,
           ${snapshotEnabled
           ? `COALESCE((
-                SELECT ps.prix_vente
+                SELECT NULLIF(ps.prix_vente, 0)
                 FROM product_snapshot ps
                 WHERE ps.product_id = p.id AND ps.variant_id IS NULL
                   AND COALESCE(ps.en_validation, 0) <> 0
@@ -1190,7 +1190,7 @@ router.get('/featured/promo', async (req, res, next) => {
     const snapshotEnabled = await hasProductSnapshotTable(pool);
     const priceExpr = snapshotEnabled
       ? `COALESCE((
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
             AND COALESCE(ps.en_validation, 0) <> 0
@@ -1306,7 +1306,7 @@ router.get('/featured/new', async (req, res, next) => {
     const snapshotEnabled = await hasProductSnapshotTable(pool);
     const priceExpr = snapshotEnabled
       ? `COALESCE((
-          SELECT ps.prix_vente
+          SELECT NULLIF(ps.prix_vente, 0)
           FROM product_snapshot ps
           WHERE ps.product_id = p.id AND ps.variant_id IS NULL
             AND COALESCE(ps.en_validation, 0) <> 0

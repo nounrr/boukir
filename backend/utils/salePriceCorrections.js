@@ -17,15 +17,20 @@ export function buildSellableEntities(products = [], variants = []) {
 
   return products.flatMap((product) => {
     const productVariants = activeVariants.get(Number(product.id)) || [];
-    if (productVariants.length) {
-      return productVariants.map((variant) => ({
-        product_id: Number(product.id),
-        variant_id: Number(variant.id),
-        product,
-        variant,
-      }));
-    }
-    return [{ product_id: Number(product.id), variant_id: null, product, variant: null }];
+    const variantRows = productVariants.map((variant) => ({
+      product_id: Number(product.id),
+      variant_id: Number(variant.id),
+      product,
+      variant,
+    }));
+
+    // Le produit de base reste vendable tant que la variante n'est pas imposee.
+    // Variante obligatoire : il n'est jamais vendu tel quel, donc pas de ligne pour lui.
+    const variantRequired = Number(product?.is_obligatoire_variant || 0) !== 0;
+    if (variantRows.length && variantRequired) return variantRows;
+
+    const baseRow = { product_id: Number(product.id), variant_id: null, product, variant: null };
+    return [baseRow, ...variantRows];
   });
 }
 

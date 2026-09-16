@@ -223,7 +223,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
           </div>
           <div className="min-w-0">
             <p className="font-bold leading-5 text-stone-900">{row.designation}</p>
-            {row.variant_name ? <p className="mt-0.5 text-sm font-semibold text-indigo-700">{row.variant_name}</p> : <p className="mt-0.5 text-xs text-stone-400">Produit sans variante</p>}
+            {row.variant_name ? <p className="mt-0.5 text-sm font-semibold text-indigo-700">{row.variant_name}</p> : <p className="mt-0.5 text-xs text-stone-400">Produit de base</p>}
             <p className="mt-1 text-[11px] tabular-nums text-stone-500">ID {row.product_id}{row.reference ? ` · Réf. ${row.reference}` : ''}{row.variant_reference ? ` · Var. ${row.variant_reference}` : ''}</p>
           </div>
         </div>

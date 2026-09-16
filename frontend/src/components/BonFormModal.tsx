@@ -1950,6 +1950,14 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           _rowId: makeRowId(),
           product_id: String(productId),
           variant_id: String(it?.variant_id ?? it?.variantId ?? it?.variant?.id ?? ''),
+          _product_image_url:
+            it?.variant_image_url ??
+            it?.variant?.image_url ??
+            it?.image_url ??
+            it?.produit?.image_url ??
+            it?.product?.image_url ??
+            productFromCatalog?.image_url ??
+            '',
           unit_id: String(it?.unit_id ?? it?.unitId ?? it?.unit?.id ?? ''),
           product_reference,
           designation,
@@ -2008,6 +2016,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   const createEmptyItem = () => ({
     _rowId: makeRowId(),
+    _product_image_url: '',
     line_mode: 'normal',
     product_id: '',
     product_reference: '',
@@ -2522,6 +2531,18 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         return {
           _rowId: it._rowId || makeRowId(), // id stable
           ...it,
+          _product_image_url:
+            it._product_image_url ??
+            it.variant_image_url ??
+            it.variant?.image_url ??
+            variantFound?.image_url ??
+            it.image_url ??
+            it.product?.image_url ??
+            it.produit?.image_url ??
+            productFound?.image_url ??
+            snapshotFound?.variant_image_url ??
+            snapshotFound?.image_url ??
+            '',
           line_mode: isFreeChargeLine ? 'detail' : (it.line_mode || 'normal'),
           product_id: normalizedProductId,
           variant_id,
@@ -2650,6 +2671,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       items: [
         {
           _rowId: makeRowId(), // id stable
+          _product_image_url: '',
           product_id: '',
           product_reference: '',
           designation: '',
@@ -4668,6 +4690,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   }
 
   setFieldValue(`items.${rowIndex}.product_id`, product.id);
+  setFieldValue(
+    `items.${rowIndex}._product_image_url`,
+    product.variant_image_url || product.image_url || ''
+  );
   setFieldValue(`items.${rowIndex}.product_reference`, String(product.reference ?? product.id));
   setFieldValue(`items.${rowIndex}.designation`, product.designation || '');
   setFieldValue(`items.${rowIndex}.prix_achat`, values.type === 'Commande' ? preferredPrice : pa);
@@ -5892,7 +5918,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                   && String(product.variant_id || '') === String(row?.variant_id || '')
                               );
                               const productImageUrl = toBackendUrl(
-                                catalogVariant?.image_url
+                                row?._product_image_url
+                                || catalogVariant?.image_url
                                 || snapshotProduct?.variant_image_url
                                 || snapshotProduct?.image_url
                                 || catalogProduct?.image_url
@@ -6239,6 +6266,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               ) || null
                                             : null
                                         );
+                                        setFieldValue(
+                                          `items.${index}._product_image_url`,
+                                          selectedVariant?.image_url
+                                            || product.variant_image_url
+                                            || catalogVariant?.image_url
+                                            || product.image_url
+                                            || catalogProduct?.image_url
+                                            || ''
+                                        );
                                         const catalogPriceSource = product || catalogProduct;
                                         const catalogPrixVente1 = product?._isMerged
                                           ? Number(product.prix_vente ?? 0)
@@ -6377,6 +6413,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           if (vId) {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
+                                              setFieldValue(
+                                                `items.${index}._product_image_url`,
+                                                variant.image_url || product.image_url || ''
+                                              );
                                               snapshotProd = useSnapshotSelection && snapshotProducts.length > 0
                                                 ? findSnapshotForProductVariant(
                                                     snapshotProducts as any[],
@@ -6485,6 +6525,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           }
 
                                           // Variant cleared => revert to base snapshot/product price (respect unit selection)
+                                          setFieldValue(`items.${index}._product_image_url`, product.image_url || '');
                                           const snapIdForRow2 = values.items[index].product_snapshot_id;
                                           let snapshotProd2: any = null;
                                           if (useSnapshotSelection && snapshotProducts.length > 0) {

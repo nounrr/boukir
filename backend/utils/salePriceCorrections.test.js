@@ -8,12 +8,20 @@ import {
   snapshotMatchesEntity,
 } from './salePriceCorrections.js';
 
-test('creates one row per active variant and no duplicate product row', () => {
-  const rows = buildSellableEntities(
-    [{ id: 1 }, { id: 2 }],
-    [{ id: 11, product_id: 1 }, { id: 12, product_id: 1 }, { id: 13, product_id: 1, is_deleted: 1 }],
-  );
-  assert.deepEqual(rows.map((row) => [row.product_id, row.variant_id]), [[1, 11], [1, 12], [2, null]]);
+test('keeps the base row when the variant is optional, drops it when mandatory', () => {
+  const variants = [{ id: 11, product_id: 1 }, { id: 12, product_id: 1 }, { id: 13, product_id: 1, is_deleted: 1 }];
+
+  // Variante facultative : le produit de base se vend encore, il garde sa ligne.
+  const optional = buildSellableEntities([{ id: 1, is_obligatoire_variant: 0 }, { id: 2 }], variants);
+  assert.deepEqual(optional.map((row) => [row.product_id, row.variant_id]), [[1, null], [1, 11], [1, 12], [2, null]]);
+
+  // Variante obligatoire : seules les variantes actives sont vendables.
+  const mandatory = buildSellableEntities([{ id: 1, is_obligatoire_variant: 1 }, { id: 2 }], variants);
+  assert.deepEqual(mandatory.map((row) => [row.product_id, row.variant_id]), [[1, 11], [1, 12], [2, null]]);
+
+  // Variante obligatoire mais aucune variante active : le produit reste listable.
+  const mandatoryWithoutVariant = buildSellableEntities([{ id: 3, is_obligatoire_variant: 1 }], []);
+  assert.deepEqual(mandatoryWithoutVariant.map((row) => [row.product_id, row.variant_id]), [[3, null]]);
 });
 
 test('current prices follow stocked FIFO snapshot then variant/product fallbacks', () => {

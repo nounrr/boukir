@@ -18,8 +18,31 @@ import {
   salePriceEntityKey,
   salePricesMatch,
 } from '../utils/salePriceCorrections.js';
+import { revalidateEcommerceProduct } from '../utils/ecommerceProductRevalidation.js';
 
 const router = Router();
+
+function revalidateProductIds(productIds) {
+  for (const productId of new Set(productIds.map(Number).filter(id => Number.isInteger(id) && id > 0))) {
+    void revalidateEcommerceProduct(productId);
+  }
+}
+
+// Every successful mutation of one existing product expires only that product's
+// public Next.js cache. The database update remains successful if the frontend
+// is temporarily unreachable; its five-minute TTL is the fallback.
+router.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const match = req.path.match(/^\/(\d+)(?:\/|$)/);
+  if (!match) return next();
+  const productId = Number(match[1]);
+  res.once('finish', () => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      void revalidateEcommerceProduct(productId);
+    }
+  });
+  next();
+});
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const productUploadsDir = path.resolve(__dirname, '..', 'uploads', 'products');
 
@@ -4540,6 +4563,13 @@ router.patch('/snapshots', async (req, res, next) => {
       return res.status(400).json({ message: 'Table product_snapshot introuvable' });
     }
 
+    const snapshotIds = snapshots.map(snapshot => Number(snapshot?.id)).filter(Number.isInteger);
+    const [snapshotProducts] = snapshotIds.length
+      ? await pool.query(
+        'SELECT DISTINCT product_id FROM product_snapshot WHERE id IN (?)',
+        [snapshotIds]
+      )
+      : [[]];
     let updated = 0;
     for (const s of snapshots) {
       const id = Number(s.id);
@@ -4577,6 +4607,7 @@ router.patch('/snapshots', async (req, res, next) => {
       updated++;
     }
 
+    revalidateProductIds(snapshotProducts.map(row => row.product_id));
     res.json({ success: true, updated });
   } catch (err) { next(err); }
 });
@@ -4592,6 +4623,17 @@ const SALE_PRICE_NULL_TEXT = `CAST(NULL AS CHAR) COLLATE ${SALE_PRICE_COLLATION}
 const SALE_PRICE_SELLABLE_SQL = `COALESCE(p.is_deleted, 0) = 0
         AND COALESCE(p.est_service, 0) = 0
         AND COALESCE(p.non_stockable, 0) = 0`;
+
+// Ligne "produit sans variante" : on la garde tant que la variante n'est pas imposee.
+// Variante obligatoire cochee -> le produit de base n'est jamais vendu tel quel, donc
+// corriger son prix n'aurait aucun effet ; il sort de la liste.
+const SALE_PRICE_BASE_ROW_SQL = `(
+          COALESCE(p.is_obligatoire_variant, 0) = 0
+          OR NOT EXISTS (
+            SELECT 1 FROM product_variants pv0
+            WHERE pv0.product_id = p.id AND COALESCE(pv0.is_deleted, 0) = 0
+          )
+        )`;
 
 // GET /products/sale-price-corrections
 // One row per sellable entity, paginated before its sale history is aggregated.
@@ -4632,7 +4674,7 @@ router.get('/sale-price-corrections', async (req, res, next) => {
              NULL AS variant_prix_vente, NULL AS variant_prix_vente_2, p.sale_price_corrected_at AS corrected_at
       FROM products p
       WHERE ${SALE_PRICE_SELLABLE_SQL}
-        AND NOT EXISTS (SELECT 1 FROM product_variants pv0 WHERE pv0.product_id = p.id AND COALESCE(pv0.is_deleted, 0) = 0)
+        AND ${SALE_PRICE_BASE_ROW_SQL}
         ${categorySql}
       UNION ALL
       SELECT p.id, pv.id, ${salePriceText('p.reference_2')}, ${salePriceText('p.designation')},
@@ -4889,6 +4931,7 @@ router.patch('/sale-price-corrections', async (req, res, next) => {
     }
 
     await connection.commit();
+    revalidateProductIds(normalized.map(correction => correction.productId));
     res.json({ success: true, processed: normalized.length, updatedProducts, updatedVariants, updatedSnapshots });
   } catch (err) {
     if (connection) {
@@ -5130,7 +5173,7 @@ router.patch('/bon-price-corrections', async (req, res, next) => {
       if (Number.isInteger(correction.variantId) && correction.variantId > 0) {
         const [variantResult] = await connection.query(
           `UPDATE product_variants
-           SET prix_vente = ?, prix_vente_2 = ?, updated_at = NOW()
+           SET prix_vente = ?, prix_vente_2 = ?, sale_price_corrected_at = NOW(), updated_at = NOW()
            WHERE id = ? AND product_id = ? AND COALESCE(is_deleted, 0) = 0`,
           [correction.prixVente, correction.prixVente2, correction.variantId, correction.productId]
         );
@@ -5154,6 +5197,7 @@ router.patch('/bon-price-corrections', async (req, res, next) => {
     }
 
     await connection.commit();
+    revalidateProductIds(preparedCorrections.map(correction => correction.productId));
     res.json({ success: true, updatedProducts, updatedVariants, updatedSnapshots });
   } catch (err) {
     if (connection) {
