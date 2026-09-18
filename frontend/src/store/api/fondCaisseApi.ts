@@ -27,6 +27,24 @@ type FondCaisseMouvementsResponse = {
   data: FondCaisseMouvement[];
 };
 
+/**
+ * Droits sur le fond de caisse :
+ *  - ouverture : saisir uniquement le fond initial de la caisse (sans voir les données)
+ *  - gestion   : accès complet (PDG uniquement)
+ */
+export interface FondCaissePermissions {
+  ouverture: boolean;
+  gestion: boolean;
+}
+
+export interface FondCaissePermissionEmployee extends FondCaissePermissions {
+  id: number;
+  nom_complet: string | null;
+  cin: string | null;
+  role: string | null;
+  verrouille: boolean;
+}
+
 export const fondCaisseApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getFondCaisseMouvements: builder.query<
@@ -36,7 +54,31 @@ export const fondCaisseApi = api.injectEndpoints({
       query: (params) => ({ url: '/fond-caisse/mouvements', params }),
       providesTags: ['FondCaisse'],
     }),
+    getMyFondCaissePermissions: builder.query<FondCaissePermissions, void>({
+      query: () => '/fond-caisse/permissions/me',
+      providesTags: ['FondCaissePermissions'],
+    }),
+    getFondCaissePermissions: builder.query<FondCaissePermissionEmployee[], void>({
+      query: () => '/fond-caisse/permissions',
+      providesTags: ['FondCaissePermissions'],
+    }),
+    updateFondCaissePermissions: builder.mutation<
+      FondCaissePermissionEmployee,
+      { id: number; permissions: Pick<FondCaissePermissions, 'ouverture'> }
+    >({
+      query: ({ id, permissions }) => ({
+        url: `/fond-caisse/permissions/${id}`,
+        method: 'PUT',
+        body: permissions,
+      }),
+      invalidatesTags: ['FondCaissePermissions'],
+    }),
   }),
 });
 
-export const { useGetFondCaisseMouvementsQuery } = fondCaisseApi;
+export const {
+  useGetFondCaisseMouvementsQuery,
+  useGetMyFondCaissePermissionsQuery,
+  useGetFondCaissePermissionsQuery,
+  useUpdateFondCaissePermissionsMutation,
+} = fondCaisseApi;

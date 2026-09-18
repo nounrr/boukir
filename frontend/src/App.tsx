@@ -662,7 +662,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/fond-caisse"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <FondCaissePage />
               </LayoutWithAccessCheck>

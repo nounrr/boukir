@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import PagePasswordGate, { isPageUnlocked } from '../components/auth/PagePasswordGate';
 import BonFormModal from '../components/BonFormModal';
 import ChargeEditFormModal from '../components/ChargeEditFormModal';
 
@@ -132,6 +133,8 @@ const FondCaisseDetailPage = () => {
   const date = params.date || '';
   const auth = useAuth() as any;
   const token: string | undefined = auth?.token;
+  // Même verrou par mot de passe que la page Fond de caisse (clé partagée).
+  const [unlocked, setUnlocked] = useState(() => isPageUnlocked('fond-caisse'));
 
   const [actions, setActions] = useState<Action[]>([]);
   const [summary, setSummary] = useState<Summary>(emptySummary);
@@ -147,7 +150,7 @@ const FondCaisseDetailPage = () => {
   const [isEditBonOpen, setIsEditBonOpen] = useState(false);
 
   useEffect(() => {
-    if (!token || !date) return;
+    if (!token || !date || !unlocked) return;
     let cancelled = false;
     setIsLoading(true);
     setErrorMsg('');
@@ -179,7 +182,7 @@ const FondCaisseDetailPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [token, date, tick]);
+  }, [token, date, tick, unlocked]);
 
   const handleDeleteAction = async (action: Action) => {
     if (!token || !canDeleteAction(action)) return;
@@ -301,6 +304,18 @@ const FondCaisseDetailPage = () => {
       color: 'bg-blue-100 text-blue-700',
     },
   ];
+
+  if (!unlocked) {
+    return (
+      <PagePasswordGate
+        gateKey="fond-caisse"
+        title="Fond de caisse"
+        icon={Calculator}
+        backTo="/fond-caisse"
+        onUnlock={() => setUnlocked(true)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

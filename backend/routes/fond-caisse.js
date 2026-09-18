@@ -1,8 +1,98 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { ensurePaymentRemiseColumns, getDirectContactRemiseInfo, getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
+import { requireRole, verifyToken } from '../middleware/auth.js';
+import {
+  ensureFondCaissePermissionSchema,
+  normalizeFondCaissePermissions,
+  parseStrictFondCaissePermissions,
+} from '../utils/fondCaissePermissions.js';
 
 const router = express.Router();
+
+router.use(verifyToken);
+router.use(async (_req, _res, next) => {
+  try {
+    await ensureFondCaissePermissionSchema();
+    next();
+  } catch (error) { next(error); }
+});
+
+// ==================== PERMISSIONS ====================
+// Accessible à tout employé connecté : sert au front pour afficher soit la
+// page complète (PDG), soit le formulaire d'ouverture seul, soit rien.
+router.get('/permissions/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(normalizeFondCaissePermissions(req.user));
+});
+
+router.get('/permissions', requireRole('PDG'), async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, nom_complet, cin, role, acces_ouverture_fond_caisse
+       FROM employees
+       WHERE deleted_at IS NULL
+       ORDER BY FIELD(role, 'PDG', 'ManagerPlus', 'Manager'), nom_complet ASC, id ASC`
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json(rows.map((employee) => ({
+      id: Number(employee.id),
+      nom_complet: employee.nom_complet,
+      cin: employee.cin,
+      role: employee.role,
+      ...normalizeFondCaissePermissions(employee),
+      verrouille: employee.role === 'PDG',
+    })));
+  } catch (err) { next(err); }
+});
+
+router.put('/permissions/:id(\\d+)', requireRole('PDG'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const parsed = parseStrictFondCaissePermissions(req.body);
+    if (!parsed.valid) return res.status(400).json({ message: parsed.error });
+
+    const [rows] = await pool.query(
+      'SELECT id, nom_complet, cin, role FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [id]
+    );
+    const employee = rows[0];
+    if (!employee) return res.status(404).json({ message: 'Employé introuvable' });
+    if (employee.role === 'PDG') {
+      return res.status(400).json({ message: 'Le PDG est toujours autorisé.' });
+    }
+
+    const { ouverture } = parsed.permissions;
+    await pool.query(
+      `UPDATE employees
+       SET acces_ouverture_fond_caisse = ?, updated_by = ?, updated_at = NOW()
+       WHERE id = ? AND deleted_at IS NULL`,
+      [ouverture ? 1 : 0, req.user.id, id]
+    );
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...employee, ouverture, gestion: false, verrouille: false });
+  } catch (err) { next(err); }
+});
+
+// ==================== GARDE GLOBALE ====================
+// Le PDG (gestion) accède à tout. Un employé autorisé "ouverture" ne peut
+// que créer le fond initial de la caisse : aucune lecture des entrées,
+// mouvements, détails ni coffre.
+router.use((req, res, next) => {
+  const permissions = normalizeFondCaissePermissions(req.user);
+  if (permissions.gestion) return next();
+  const isOpeningOnly =
+    req.method === 'POST'
+    && req.path === '/entries'
+    && String(req.body?.entryType || 'caisse_initial').trim() === 'caisse_initial';
+  if (permissions.ouverture && isOpeningOnly) return next();
+  return res.status(403).json({
+    message: permissions.ouverture
+      ? 'Vous êtes autorisé uniquement à saisir le fond initial de la caisse.'
+      : 'Accès au fond de caisse réservé au PDG.',
+  });
+});
 
 const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 
@@ -523,6 +613,22 @@ router.post('/entries', async (req, res) => {
     const jour = openedAt.slice(0, 10);
     const createdBy = req.user?.id ?? null;
     const createdByName = await getEmployeeName(createdBy) || req.user?.cin || 'Caissier';
+
+    // Un employé "ouverture seule" ne peut saisir qu'un seul fond initial par
+    // jour : il ne voit pas les données, on évite donc les doublons à sa place.
+    if (!normalizeFondCaissePermissions(req.user).gestion) {
+      const [existing] = await pool.query(
+        `SELECT id FROM fond_caisse_entries
+          WHERE jour = ? AND entry_type = 'caisse_initial'
+          LIMIT 1`,
+        [jour]
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({
+          message: `Le fond initial de la caisse du ${jour} est déjà enregistré. Contactez le PDG pour toute modification.`,
+        });
+      }
+    }
 
     if (entryType === 'coffre_initial' || entryType === 'coffre_transfer_to_poche') {
       const [result] = await pool.query(

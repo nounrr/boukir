@@ -14,6 +14,7 @@ import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
+import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 
 // Bottom navigation bar (mobile). Groups pages: one icon per group; tap shows group's pages.
 interface MobileBottomNavProps {
@@ -29,6 +30,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
   const reviewRole = user?.role === 'Manager' || user?.role === 'ManagerPlus';
   const { data: reviewPermissions } = useGetMyMaalemReviewPermissionsQuery(undefined, { skip: !reviewRole });
   const canViewMaalemReviews = user?.role === 'PDG' || reviewPermissions?.view === true;
+  const { data: fondCaissePermissions } = useGetMyFondCaissePermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
+  const canOpenFondCaisse = user?.role === 'PDG' || fondCaissePermissions?.ouverture === true;
 
   const groups = isChefChauffeur ? [
     {
@@ -74,7 +77,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'caisse', label: 'Caisse', icon: DollarSign,
       items: [
         { name: 'Caisse', to: '/caisse', show: true },
-        { name: 'Fond de caisse', to: '/fond-caisse', show: user?.role === 'PDG' },
+        { name: 'Fond de caisse', to: '/fond-caisse', show: canOpenFondCaisse },
   { name: 'Talons', to: '/talons', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
   { name: 'Talon Caisse', to: '/talon-caisse', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
       ],

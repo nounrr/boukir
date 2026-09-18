@@ -5,6 +5,7 @@ import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
+import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import {
   Users,
   Package,
@@ -57,6 +58,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const { data: absencePermissions } = useGetMyAbsencePermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
   const canManageAbsences = user?.role === 'PDG' || absencePermissions?.gestion === true;
   const canViewAbsenceStats = user?.role === 'PDG' || absencePermissions?.statistiques === true;
+  const { data: fondCaissePermissions } = useGetMyFondCaissePermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
+  const canOpenFondCaisse = user?.role === 'PDG' || fondCaissePermissions?.ouverture === true;
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
@@ -115,7 +118,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Trésorerie',
       items: [
         { name: 'Caisse', href: '/caisse', icon: CreditCard, show: !isChefChauffeur },
-        { name: 'Fond de caisse', href: '/fond-caisse', icon: Wallet, show: user?.role === 'PDG' },
+        { name: 'Fond de caisse', href: '/fond-caisse', icon: Wallet, show: canOpenFondCaisse },
         { name: 'Talons', href: '/talons', icon: ClipboardList, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
         { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
       ],

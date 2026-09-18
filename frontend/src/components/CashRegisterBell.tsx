@@ -92,7 +92,7 @@ const CashRegisterBell = () => {
   }, []);
 
   const loadToday = useCallback(async (notifyAboutNewRows = false, silent = false) => {
-    if (!token || !user) return;
+    if (!token || !user || user.role !== 'PDG') return;
     if (loadInProgressRef.current) return;
 
     loadInProgressRef.current = true;
@@ -184,7 +184,9 @@ const CashRegisterBell = () => {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [showDropdown]);
 
-  if (!user) return null;
+  // Les mouvements et totaux du fond de caisse sont réservés au PDG
+  // (l'API /fond-caisse refuse désormais les autres rôles).
+  if (!user || user.role !== 'PDG') return null;
 
   const currentTotal = actions.length ? actions[0].cumulative : 0;
 

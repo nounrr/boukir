@@ -4,6 +4,7 @@ import { checkUserAccess } from './accessSchedule.js';
 import { normalizeClientCollaborationPermissions } from '../utils/clientCollaborationPermissions.js';
 import { normalizeMaalemReviewPermissions } from '../utils/maalemReviewPermissions.js';
 import { normalizeAbsencePermissions } from '../utils/absencePermissions.js';
+import { normalizeFondCaissePermissions } from '../utils/fondCaissePermissions.js';
 
 export function getJwtSecret() {
   const secret = String(process.env.JWT_SECRET || '').trim();
@@ -57,7 +58,8 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
           `SELECT id, cin, role, acces_commentaires_clients, acces_rappels_clients,
                   acces_avis_maalem, moderation_avis_maalem,
                   restauration_avis_maalem, details_prives_avis_maalem,
-                  acces_gestion_absences, acces_statistiques_absences
+                  acces_gestion_absences, acces_statistiques_absences,
+                  acces_ouverture_fond_caisse
            FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
           [userId]
         );
@@ -80,6 +82,8 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
           acces_gestion_absences: employee.acces_gestion_absences,
           acces_statistiques_absences: employee.acces_statistiques_absences,
           absence_permissions: normalizeAbsencePermissions(employee),
+          acces_ouverture_fond_caisse: employee.acces_ouverture_fond_caisse,
+          fond_caisse_permissions: normalizeFondCaissePermissions(employee),
           _currentUserValidated: true,
         };
 

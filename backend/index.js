@@ -117,6 +117,7 @@ import { ensureUniteSpecialColumns } from './utils/ensureUniteSpecialSchema.js';
 import { ensureUiSettingsTable } from './utils/uiSettings.js';
 import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
 import { ensureAbsenceSchema } from './utils/absences.js';
+import { ensureFondCaissePermissionSchema } from './utils/fondCaissePermissions.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
@@ -140,6 +141,7 @@ async function ensureSchemas() {
   await ensureUiSettingsTable();
   await ensureAccessScheduleTables();
   await ensureAbsenceSchema();
+  await ensureFondCaissePermissionSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 

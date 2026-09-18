@@ -8,10 +8,15 @@ import {
   DollarSign,
   Eye,
   PlusCircle,
+  ShieldCheck,
   Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
+import FondCaisseAccessPanel from '../components/fond-caisse/FondCaisseAccessPanel';
+import FondCaisseOuvertureOnly from '../components/fond-caisse/FondCaisseOuvertureOnly';
+import PagePasswordGate, { isPageUnlocked } from '../components/auth/PagePasswordGate';
+import { useGetMyFondCaissePermissionsQuery } from '../store/api/fondCaisseApi';
 import { showError, showSuccess } from '../utils/notifications';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -176,6 +181,20 @@ const FondCaissePage = () => {
   const auth = useAuth() as any;
   const token: string | undefined = auth?.token;
 
+  // Droits : le PDG (gestion) voit tout ; un employé "ouverture" ne voit que
+  // le formulaire du fond initial ; sinon accès refusé.
+  const {
+    data: permissions,
+    isLoading: permissionsLoading,
+    isError: permissionsError,
+    refetch: refetchPermissions,
+  } = useGetMyFondCaissePermissionsQuery();
+  const canManage = permissions?.gestion === true;
+  const [showAccessPanel, setShowAccessPanel] = useState(false);
+  // Re-saisie du mot de passe avant d'entrer (comme la page Employés),
+  // mémorisée pour l'onglet courant et partagée avec la page de détail.
+  const [unlocked, setUnlocked] = useState(() => isPageUnlocked('fond-caisse'));
+
   // Filtre date: vide = toutes les dates (par defaut)
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
@@ -202,7 +221,7 @@ const FondCaissePage = () => {
   const isAllDates = !dateFrom && !dateTo;
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !canManage || !unlocked) return;
     let cancelled = false;
 
     const loadRemiseOptions = async () => {
@@ -275,10 +294,10 @@ const FondCaissePage = () => {
     return () => {
       cancelled = true;
     };
-  }, [token, tick]);
+  }, [token, tick, canManage, unlocked]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !canManage || !unlocked) return;
     let cancelled = false;
     const effFrom = ALL_DATES_FROM;
     const effTo = dateTo || todayISO();
@@ -320,7 +339,7 @@ const FondCaissePage = () => {
     return () => {
       cancelled = true;
     };
-  }, [token, dateFrom, dateTo, tick]);
+  }, [token, dateFrom, dateTo, tick, canManage, unlocked]);
 
   const rows = useMemo<Row[]>(() => {
     try {
@@ -555,6 +574,58 @@ const FondCaissePage = () => {
   const activeConfig = activeModal ? modalConfig[activeModal] : null;
   const selectedRemise = remiseOptions.find((option) => option.value === selectedRemiseValue);
 
+  if (permissionsLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 text-sm text-gray-500">
+        Vérification de vos accès…
+      </div>
+    );
+  }
+
+  if (permissionsError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-gray-50 text-sm text-gray-600">
+        <p>Impossible de vérifier vos accès au fond de caisse.</p>
+        <button
+          type="button"
+          onClick={() => refetchPermissions()}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  if ((canManage || permissions?.ouverture) && !unlocked) {
+    return (
+      <PagePasswordGate
+        gateKey="fond-caisse"
+        title="Fond de caisse"
+        icon={Wallet}
+        backTo="/dashboard"
+        onUnlock={() => setUnlocked(true)}
+      />
+    );
+  }
+
+  if (!canManage) {
+    if (permissions?.ouverture) return <FondCaisseOuvertureOnly />;
+    return (
+      <div className="flex min-h-screen flex-col justify-center bg-gray-50 py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="card text-center">
+            <h2 className="mb-4 text-2xl font-bold text-red-600">Accès refusé</h2>
+            <p className="text-gray-600">Le fond de caisse est réservé au PDG.</p>
+            <p className="mt-2 text-sm text-gray-500">
+              Le PDG peut vous autoriser à saisir uniquement le fond initial de la caisse.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mb-4">
@@ -579,6 +650,20 @@ const FondCaissePage = () => {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setShowAccessPanel((v) => !v)}
+            aria-pressed={showAccessPanel}
+            className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+              showAccessPanel
+                ? 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+            }`}
+            title="Autoriser un employé à saisir uniquement le fond initial"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Autorisations
+          </button>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <CalendarDays className="h-4 w-4 text-gray-400" />
@@ -616,6 +701,8 @@ const FondCaissePage = () => {
           )}
         </div>
       </div>
+
+      {showAccessPanel && <FondCaisseAccessPanel />}
 
       {errorMsg && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
