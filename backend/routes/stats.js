@@ -48,7 +48,7 @@ router.get('/details/permissions', withStatsDetailsSchema, requireRole('PDG'), a
   } catch (err) { next(err); }
 });
 
-router.put('/details/permissions/:id(\d+)', withStatsDetailsSchema, requireRole('PDG'), async (req, res, next) => {
+router.put('/details/permissions/:id(\\d+)', withStatsDetailsSchema, requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const parsed = parseStrictStatsDetailsPermissions(req.body);
