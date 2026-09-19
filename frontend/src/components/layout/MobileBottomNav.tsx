@@ -15,6 +15,7 @@ import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
+import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
 
 // Bottom navigation bar (mobile). Groups pages: one icon per group; tap shows group's pages.
 interface MobileBottomNavProps {
@@ -32,6 +33,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
   const canViewMaalemReviews = user?.role === 'PDG' || reviewPermissions?.view === true;
   const { data: fondCaissePermissions } = useGetMyFondCaissePermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
   const canOpenFondCaisse = user?.role === 'PDG' || fondCaissePermissions?.ouverture === true;
+  const { data: statsDetailsPermissions } = useGetMyStatsDetailsPermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
+  const canViewStatsDetails = user?.role === 'PDG' || statsDetailsPermissions?.consultation === true;
 
   const groups = isChefChauffeur ? [
     {
@@ -86,7 +89,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'rapports', label: 'Rapports', icon: BarChart3,
       items: [
         { name: 'Rapports', to: '/reports', show: user?.role === 'PDG' },
-        { name: 'Stats détaillées', to: '/reports/details', show: user?.role === 'PDG' },
+        { name: 'Stats détaillées', to: '/reports/details', show: user?.role === 'PDG' || canViewStatsDetails },
       ],
     },
     {

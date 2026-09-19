@@ -83,6 +83,24 @@ export interface ChiffreDetailSection {
   calculs: ChiffreDetailCalcul[];
 }
 
+/**
+ * Droits sur la page Statistiques detaillees (/reports/details) :
+ *  - consultation : ouvrir la page et lire les matrices produits / clients
+ *  - gestion      : accorder l'acces aux employes (PDG uniquement)
+ */
+export interface StatsDetailsPermissions {
+  consultation: boolean;
+  gestion: boolean;
+}
+
+export interface StatsDetailsPermissionEmployee extends StatsDetailsPermissions {
+  id: number;
+  nom_complet: string | null;
+  cin: string | null;
+  role: string | null;
+  verrouille: boolean;
+}
+
 export interface StatsDetailsQuery {
   mode: 'produits' | 'clients';
   page: number;
@@ -189,6 +207,26 @@ export const statsApi = apiSlice.injectEndpoints({
       },
       providesTags: ['Bon', 'Product', 'Contact'],
     }),
+
+    getMyStatsDetailsPermissions: builder.query<StatsDetailsPermissions, void>({
+      query: () => '/stats/details/permissions/me',
+      providesTags: ['StatsDetailsPermissions'],
+    }),
+    getStatsDetailsPermissions: builder.query<StatsDetailsPermissionEmployee[], void>({
+      query: () => '/stats/details/permissions',
+      providesTags: ['StatsDetailsPermissions'],
+    }),
+    updateStatsDetailsPermissions: builder.mutation<
+      StatsDetailsPermissionEmployee,
+      { id: number; permissions: Pick<StatsDetailsPermissions, 'consultation'> }
+    >({
+      query: ({ id, permissions }) => ({
+        url: `/stats/details/permissions/${id}`,
+        method: 'PUT',
+        body: permissions,
+      }),
+      invalidatesTags: ['StatsDetailsPermissions'],
+    }),
   }),
 });
 
@@ -197,4 +235,7 @@ export const {
   useGetChiffreAffairesStatsQuery,
   useGetChiffreAffairesDetailQuery,
   useGetStatsDetailsQuery,
+  useGetMyStatsDetailsPermissionsQuery,
+  useGetStatsDetailsPermissionsQuery,
+  useUpdateStatsDetailsPermissionsMutation,
 } = statsApi;

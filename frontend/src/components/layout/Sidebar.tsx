@@ -6,6 +6,7 @@ import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
+import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
 import {
   Users,
   Package,
@@ -60,6 +61,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const canViewAbsenceStats = user?.role === 'PDG' || absencePermissions?.statistiques === true;
   const { data: fondCaissePermissions } = useGetMyFondCaissePermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
   const canOpenFondCaisse = user?.role === 'PDG' || fondCaissePermissions?.ouverture === true;
+  const { data: statsDetailsPermissions } = useGetMyStatsDetailsPermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
+  const canViewStatsDetails = user?.role === 'PDG' || statsDetailsPermissions?.consultation === true;
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
@@ -157,7 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Rapports',
       items: [
         { name: 'Rapports', href: '/reports', icon: BarChart3, show: !isChefChauffeur && user?.role === 'PDG' },
-        { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: !isChefChauffeur && (user?.role === 'PDG' || canViewStatsDetails) },
         { name: "Chiffre d'affaires", href: '/chiffre-affaires', icon: BarChart3, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Audit', href: '/audit', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
       ],

@@ -779,7 +779,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/reports/details"
           element={
-            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <StatsDetailPage />
               </LayoutWithAccessCheck>

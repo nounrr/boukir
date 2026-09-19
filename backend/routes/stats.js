@@ -3,8 +3,79 @@ import pool from '../db/pool.js';
 import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
 import { getAbsenceDeductionsByMonth, getEmployeeDeduction } from '../utils/absences.js';
 import { hasAbsencePermission } from '../utils/absencePermissions.js';
+import { requireRole } from '../middleware/auth.js';
+import {
+  ensureStatsDetailsPermissionSchema,
+  normalizeStatsDetailsPermissions,
+  parseStrictStatsDetailsPermissions,
+  requireStatsDetailsPermission,
+} from '../utils/statsDetailsPermissions.js';
 
 const router = express.Router();
+
+// ==================== PERMISSIONS STATS DETAILLEES ====================
+// Le PDG accorde a des employes choisis l'acces a la page /reports/details.
+const withStatsDetailsSchema = async (_req, _res, next) => {
+  try {
+    await ensureStatsDetailsPermissionSchema();
+    next();
+  } catch (error) { next(error); }
+};
+
+// Accessible a tout employe connecte : le front affiche la page ou un refus.
+router.get('/details/permissions/me', withStatsDetailsSchema, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(normalizeStatsDetailsPermissions(req.user));
+});
+
+router.get('/details/permissions', withStatsDetailsSchema, requireRole('PDG'), async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, nom_complet, cin, role, acces_statistiques_details
+       FROM employees
+       WHERE deleted_at IS NULL
+       ORDER BY FIELD(role, 'PDG', 'ManagerPlus', 'Manager'), nom_complet ASC, id ASC`
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json(rows.map((employee) => ({
+      id: Number(employee.id),
+      nom_complet: employee.nom_complet,
+      cin: employee.cin,
+      role: employee.role,
+      ...normalizeStatsDetailsPermissions(employee),
+      verrouille: employee.role === 'PDG',
+    })));
+  } catch (err) { next(err); }
+});
+
+router.put('/details/permissions/:id(\d+)', withStatsDetailsSchema, requireRole('PDG'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const parsed = parseStrictStatsDetailsPermissions(req.body);
+    if (!parsed.valid) return res.status(400).json({ message: parsed.error });
+
+    const [rows] = await pool.query(
+      'SELECT id, nom_complet, cin, role FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [id]
+    );
+    const employee = rows[0];
+    if (!employee) return res.status(404).json({ message: 'Employe introuvable' });
+    if (employee.role === 'PDG') {
+      return res.status(400).json({ message: 'Le PDG est toujours autorise.' });
+    }
+
+    const { consultation } = parsed.permissions;
+    await pool.query(
+      `UPDATE employees
+       SET acces_statistiques_details = ?, updated_by = ?, updated_at = NOW()
+       WHERE id = ? AND deleted_at IS NULL`,
+      [consultation ? 1 : 0, req.user.id, id]
+    );
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...employee, consultation, gestion: false, verrouille: false });
+  } catch (err) { next(err); }
+});
 
 // Some DBs contain variants like 'Valide' or 'pending' (or extra spaces).
 // Also, many workflows move documents to statuses like 'Livré' / 'Payé' / 'Facturé' / 'Appliqué'.
@@ -937,7 +1008,7 @@ async function tryQuery(sql, params) {
   }
 }
 
-router.get('/details', async (req, res) => {
+router.get('/details', withStatsDetailsSchema, requireStatsDetailsPermission('consultation'), async (req, res) => {
   try {
     const mode = String(req.query?.mode || 'produits') === 'clients' ? 'clients' : 'produits';
     const page = clampInt(req.query?.page, 1, 1, 100000);

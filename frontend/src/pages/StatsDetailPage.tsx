@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { Activity, ArrowLeft, Filter, Users } from 'lucide-react';
+import { Activity, ArrowLeft, Filter, Loader2, ShieldAlert, Users } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
-import { useGetStatsDetailsQuery } from '../store/api/statsApi';
+import StatsDetailsAccessPanel from '../components/stats/StatsDetailsAccessPanel';
+import { useGetMyStatsDetailsPermissionsQuery, useGetStatsDetailsQuery } from '../store/api/statsApi';
 import type { RootState } from '../store';
 
 const toNumber = (value: any): number => {
@@ -42,6 +43,12 @@ const stickySubHeaderClass = 'sticky top-0 z-20 bg-gray-100 shadow-sm';
 const StatsDetailPage: React.FC = () => {
   const { user } = useSelector((state: RootState) => state.auth);
   const navigate = useNavigate();
+  const {
+    data: myPermissions,
+    isLoading: isLoadingPermissions,
+  } = useGetMyStatsDetailsPermissionsQuery();
+  const canManageAccess = Boolean(myPermissions?.gestion);
+  const canViewPage = Boolean(myPermissions?.consultation || myPermissions?.gestion);
   const [isPasswordVerified, setIsPasswordVerified] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [showPasswordError, setShowPasswordError] = useState(false);
@@ -86,7 +93,7 @@ const StatsDetailPage: React.FC = () => {
       selectedProductId,
       selectedClientId,
     },
-    { skip: !isPasswordVerified }
+    { skip: !isPasswordVerified || !canViewPage }
   );
 
   const handlePasswordVerification = async (e: React.FormEvent) => {
@@ -121,6 +128,37 @@ const StatsDetailPage: React.FC = () => {
     if (!next && [includeVentes, includeCommandes, includeAvoirs, includeCharges].filter(Boolean).length <= 1) return;
     setter(next);
   };
+
+  if (isLoadingPermissions) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-gray-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Vérification de vos accès…
+      </div>
+    );
+  }
+
+  if (!canViewPage) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <div className="max-w-md rounded-lg border border-amber-200 bg-white p-8 text-center shadow-sm">
+          <ShieldAlert className="mx-auto h-12 w-12 text-amber-500" />
+          <h2 className="mt-4 text-xl font-bold text-gray-900">Accès non autorisé</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            La page « Statistiques détaillées » est réservée au PDG et aux employés qu'il autorise.
+            Demandez au PDG de vous accorder cet accès.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="mt-6 inline-flex items-center justify-center gap-2 rounded-md bg-gray-100 px-4 py-2 font-medium text-gray-700 hover:bg-gray-200"
+          >
+            <ArrowLeft size={18} />
+            Retour
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isPasswordVerified) {
     return (
@@ -173,6 +211,8 @@ const StatsDetailPage: React.FC = () => {
           <p className="text-gray-600 mt-1">Calculs faits côté backend, affichage côté frontend</p>
         </div>
       </div>
+
+      {canManageAccess && <StatsDetailsAccessPanel />}
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
         <span className="text-gray-600 font-medium mr-1">Clés de couleur :</span>
