@@ -12,9 +12,11 @@ const authApi = api.injectEndpoints({
     }),
     me: builder.query<MeResponse, void>({
       query: () => ({ url: '/auth/me', method: 'GET' }),
+      providesTags: ['Auth'],
     }),
     changePassword: builder.mutation<{ ok: boolean; message?: string }, ChangePasswordBody>({
       query: (body) => ({ url: '/auth/change-password', method: 'POST', body }),
+      invalidatesTags: ['Auth'],
     }),
     checkAccess: builder.query<{ hasAccess: boolean; reason: string }, void>({
       query: () => ({ url: '/auth/check-access', method: 'GET' }),

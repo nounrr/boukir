@@ -20,6 +20,7 @@ import { AccessWarningPopup } from './components/AccessWarningPopup';
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const EmployeePage = React.lazy(() => import('./pages/EmployeePage'));
 const ClientCollaborationPermissionsPage = React.lazy(() => import('./pages/ClientCollaborationPermissionsPage'));
+const PagePermissionsPage = React.lazy(() => import('./pages/PagePermissionsPage'));
 const MaalemReviewPermissionsPage = React.lazy(() => import('./pages/MaalemReviewPermissionsPage'));
 const EmployeeSelfPage = React.lazy(() => import('./pages/EmployeeSelfPage'));
 const EmployeeArchivePage = React.lazy(() => import('./pages/EmployeeArchivePage'));
@@ -119,7 +120,10 @@ const AppContent: React.FC = () => {
   }, [dispatch]);
 
   // Validate token with backend when authenticated; if invalid, logout
-  const { data: meData, isError: tokenInvalid } = useValidateTokenQuery(undefined, { skip: !isAuthenticated });
+  const { data: meData, isError: tokenInvalid } = useValidateTokenQuery(undefined, {
+    skip: !isAuthenticated,
+    refetchOnMountOrArgChange: true,
+  });
   useEffect(() => {
     if (tokenInvalid) {
       dispatch(logout());
@@ -286,6 +290,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <StockPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/employees/page-permissions"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <PagePermissionsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

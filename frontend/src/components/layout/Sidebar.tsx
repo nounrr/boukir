@@ -152,6 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Absences', href: '/absences', icon: CalendarX, show: !isChefChauffeur && (canManageAbsences || canViewAbsenceStats) },
         { name: 'Stats absences', href: '/absences/statistiques', icon: PieChart, show: !isChefChauffeur && canViewAbsenceStats },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Autorisations par page', href: '/employees/page-permissions', icon: ShieldCheck, show: user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', href: '/employees/client-collaboration-permissions', icon: UserCheck, show: user?.role === 'PDG' },
         { name: 'Permissions avis Maalem', href: '/employees/maalem-review-permissions', icon: ShieldCheck, show: user?.role === 'PDG' },
       ],

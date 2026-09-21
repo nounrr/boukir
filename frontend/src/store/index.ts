@@ -1,7 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
 import { api } from './api/apiSlice';
-import authReducer from './slices/authSlice';
+import authReducer, { loginSuccess, logout } from './slices/authSlice';
 import { persistStore, persistReducer } from 'redux-persist';
 import storage from 'redux-persist/lib/storage'; // localStorage
 import { combineReducers } from 'redux';
@@ -37,7 +37,7 @@ const persistConfig = {
   whitelist: ['auth', 'products', 'categories', 'contacts', 'bons', 'payments'], // On persiste l'auth et nos données
 };
 
-const rootReducer = combineReducers({
+const combinedReducer = combineReducers({
   api: api.reducer,
   auth: authReducer,
   products: productsReducer,
@@ -47,6 +47,15 @@ const rootReducer = combineReducers({
   payments: paymentsReducer,
   notifications: notificationsReducer,
 });
+
+// RTK Query keys /auth/me without the token. Never reuse a previous session's
+// cached password policy (or other user-specific data) after logout/login.
+const rootReducer: typeof combinedReducer = (state, action) => {
+  if (logout.match(action) || loginSuccess.match(action)) {
+    return combinedReducer(state ? { ...state, api: undefined } : state, action);
+  }
+  return combinedReducer(state, action);
+};
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
