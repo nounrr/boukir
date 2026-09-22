@@ -33,6 +33,18 @@ async function ensureRemiseContactItemsTable() {
 ensureRemiseContactItemsTable().catch(e => console.error('ensureRemiseContactItemsTable:', e));
 
 async function ensureRemisesTables() {
+  const [maalemFlagColumns] = await pool.execute(`
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contacts' AND COLUMN_NAME = 'is_remise_pour_maalem'
+    LIMIT 1
+  `);
+  if (!maalemFlagColumns.length) {
+    try {
+      await pool.execute('ALTER TABLE contacts ADD COLUMN is_remise_pour_maalem TINYINT(1) NOT NULL DEFAULT 0');
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
   // client_remises : toujours
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS client_remises (
@@ -157,12 +169,20 @@ router.get('/clients', async (_req, res) => {
     const [rows] = await pool.execute(`
       SELECT 
         cr.*,
+        COALESCE(c.is_remise_pour_maalem, (
+          SELECT MAX(c2.is_remise_pour_maalem)
+          FROM contacts c2
+          WHERE cr.contact_id IS NULL AND cr.type = 'client_abonne'
+            AND (LOWER(TRIM(c2.nom_complet)) = LOWER(TRIM(cr.nom))
+              OR LOWER(TRIM(c2.societe)) = LOWER(TRIM(cr.nom)))
+        ), 0) AS is_remise_pour_maalem,
         (
           SELECT COALESCE(SUM(ir.qte * ir.prix_remise), 0)
           FROM item_remises ir
           WHERE ir.client_remise_id = cr.id AND ir.statut <> 'Annulé'
         ) AS total_remise
       FROM client_remises cr
+      LEFT JOIN contacts c ON c.id = cr.contact_id
       ORDER BY cr.id DESC
     `);
 
@@ -213,7 +233,16 @@ router.get('/payment-accounts', verifyToken, async (req, res) => {
       types: types.length ? types : undefined,
     });
 
-    res.json(balances);
+    const [hiddenContacts] = await pool.execute(
+      'SELECT id, nom_complet, societe FROM contacts WHERE is_remise_pour_maalem = 1'
+    );
+    const hiddenContactIds = new Set(hiddenContacts.map((row) => Number(row.id)));
+    const hiddenLegacyNames = new Set(hiddenContacts.flatMap((row) => [row.nom_complet, row.societe])
+      .map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
+    res.json(balances.filter((account) =>
+      !hiddenContactIds.has(Number(account.contact_id))
+      && !(account.contact_id == null && account.type === 'client_abonne'
+        && hiddenLegacyNames.has(String(account.nom || '').trim().toLowerCase()))));
   } catch (e) {
     console.error('remises payment-accounts error', e);
     res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
@@ -223,6 +252,7 @@ router.get('/payment-accounts', verifyToken, async (req, res) => {
 // Vérifier ou récupérer un client_abonné existant par contact_id
 router.get('/anciens-abonnes', async (_req, res) => {
   try {
+    await ensureRemisesTables();
     if (!(await tableExists('ancien_remises_abonne'))) {
       return res.json([]);
     }
@@ -233,6 +263,7 @@ router.get('/anciens-abonnes', async (_req, res) => {
         MAX(c.nom_complet) AS nom_complet,
         MAX(c.societe) AS societe,
         MAX(c.telephone) AS telephone,
+        MAX(COALESCE(c.is_remise_pour_maalem, 0)) AS is_remise_pour_maalem,
         COUNT(*) AS lignes_count,
         COALESCE(SUM(ara.qte * ara.prix_remise), 0) AS total_remise
       FROM ancien_remises_abonne ara

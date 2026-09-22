@@ -144,7 +144,7 @@ const CaissePage = () => {
   const { token } = useAuth();
   const remiseAccounts = useMemo<RemisePaymentAccount[]>(() => {
     if (!Array.isArray(clientRemisesRaw)) return [];
-    return clientRemisesRaw.map((row: any) => ({
+    return clientRemisesRaw.filter((row: any) => !Number(row.is_remise_pour_maalem)).map((row: any) => ({
       id: Number(row.id),
       nom: String(row.nom || row.contact_nom || `Remise #${row.id}`),
       type: row.type === 'client_abonne' ? 'client_abonne' : 'client-remise',
@@ -178,10 +178,14 @@ const CaissePage = () => {
   const directClientAbonneAccounts = useMemo<RemisePaymentAccount[]>(() => {
     const result: RemisePaymentAccount[] = [];
     const seenContactIds = new Set<number>();
+    const hiddenContactIds = new Set(clients
+      .filter((contact: any) => Number(contact.is_remise_pour_maalem))
+      .map((contact: any) => Number(contact.id)));
 
     // 1. Contacts WITH a linked client_abonne account (use account ID + available)
     for (const contact of clients) {
       const cId = Number((contact as any).id);
+      if (hiddenContactIds.has(cId)) continue;
       if (!Number.isFinite(cId) || cId <= 0) continue;
       const acc = clientAbonneAccountByContactId.get(cId);
       if (!acc) continue;
@@ -198,6 +202,7 @@ const CaissePage = () => {
     // 2. Contacts WITHOUT linked account but WITH bons remise (direct-client flow)
     for (const balance of directContactBalances) {
       const cId = Number(balance.contact_id);
+      if (hiddenContactIds.has(cId)) continue;
       if (seenContactIds.has(cId)) continue;
       if (Number(balance.available_total || 0) <= 0) continue;
       result.push({

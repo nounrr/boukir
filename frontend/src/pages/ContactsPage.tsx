@@ -130,6 +130,7 @@ const ContactsPage: React.FC = () => {
   
   const [createContact] = useCreateContactMutation();
   const [updateContactMutation] = useUpdateContactMutation();
+  const [isSavingMaalemRemise, setIsSavingMaalemRemise] = useState(false);
   const [deleteContactMutation] = useDeleteContactMutation();
   const [updateBonMutation] = useUpdateBonMutation();
   const [reorderPayments] = useReorderPaymentsMutation();
@@ -461,7 +462,7 @@ const ContactsPage: React.FC = () => {
   const [showRemiseMode, setShowRemiseMode] = useState(false);
   const [remiseMode, setRemiseMode] = useState<'create' | 'edit'>('create');
   const [selectedItemsForRemise, setSelectedItemsForRemise] = useState<Set<string>>(new Set());
-  const [remisePrices, setRemisePrices] = useState<Record<string, number>>({});
+  const [remisePrices, setRemisePrices] = useState<Record<string, string>>({});
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 30000;
 
@@ -2571,11 +2572,11 @@ const ContactsPage: React.FC = () => {
     });
 
     setRemisePrices((prev) => {
-      const next: Record<string, number> = Object.fromEntries(
+      const next: Record<string, string> = Object.fromEntries(
         Object.entries(prev).filter(([id]) => eligibleIds.has(String(id)))
       );
       for (const [id, price] of existingPriceById.entries()) {
-        if (next[id] == null) next[id] = price;
+        if (next[id] == null) next[id] = String(price);
       }
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
@@ -2709,7 +2710,7 @@ const ContactsPage: React.FC = () => {
         .map((itemId) => {
           const normalizedId = String(itemId);
           const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
-          const prixRemise = Number(remisePrices[normalizedId] ?? 0);
+          const prixRemise = Number((remisePrices[normalizedId] ?? '0').replace(',', '.'));
           const existingItemRemise = getExistingRemiseItemForProduct(item);
           const hasExistingDirectRemise = getBonDirectRemiseTotal(item) > 0;
 
@@ -2782,7 +2783,7 @@ const ContactsPage: React.FC = () => {
         .map((itemId) => {
           const normalizedId = String(itemId);
           const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
-          const prixRemise = Number(remisePrices[normalizedId] ?? 0);
+          const prixRemise = Number((remisePrices[normalizedId] ?? '0').replace(',', '.'));
           const existingItemRemise = getExistingRemiseItemForProduct(item);
           const hasExistingDirectRemise = getBonDirectRemiseTotal(item) > 0;
 
@@ -2924,7 +2925,7 @@ const ContactsPage: React.FC = () => {
     }
 
     setRemiseMode('edit');
-    setRemisePrices(item ? { [String(item.id)]: targetPrice } : {});
+    setRemisePrices(item ? { [String(item.id)]: String(targetPrice) } : {});
     setSelectedItemsForRemise(item ? new Set([String(item.id)]) : new Set());
     setShowRemiseMode(true);
   }, [editableRemiseItems.length, getEditableRemiseUnitPrice]);
@@ -5390,6 +5391,36 @@ const ContactsPage: React.FC = () => {
                     </div>
                   </div>
 
+                  {selectedContact.type === 'Client' && (
+                    <label className="mt-4 flex items-center gap-2 border-t pt-4 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(Number(selectedContact.is_remise_pour_maalem ?? detailedContact?.is_remise_pour_maalem))}
+                        disabled={isSavingMaalemRemise}
+                        onChange={async (event) => {
+                          const checked = event.target.checked;
+                          setIsSavingMaalemRemise(true);
+                          try {
+                            await updateContactMutation({
+                              id: selectedContact.id,
+                              is_remise_pour_maalem: checked,
+                              updated_by: currentUser?.id,
+                            }).unwrap();
+                            setSelectedContact((contact) => contact && contact.id === selectedContact.id
+                              ? { ...contact, is_remise_pour_maalem: checked }
+                              : contact);
+                          } catch (error: any) {
+                            showError(error?.data?.error || error?.data?.message || 'Impossible de modifier le paramètre de remise maalem.');
+                          } finally {
+                            setIsSavingMaalemRemise(false);
+                          }
+                        }}
+                        className="h-4 w-4 accent-orange-600"
+                      />
+                      Remises pour un maalem — ne pas proposer les remises de ce client dans les bons et les paiements
+                    </label>
+                  )}
+
                   {/* Section Soldes */}
                   <div className="border-t pt-4">
                     <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -5838,7 +5869,7 @@ const ContactsPage: React.FC = () => {
                               .filter(([id]) => selectedItemsForRemise.has(id))
                               .reduce((sum, [id, price]) => {
                                 const item = eligibleDisplayedRemiseItems.find((i: any) => String(i.id) === String(id));
-                                return sum + (price * (item?.quantite || 0));
+                                return sum + (Number(price.replace(',', '.')) * (item?.quantite || 0));
                               }, 0)
                               .toFixed(3)} DH
                           </p>
@@ -6172,18 +6203,19 @@ const ContactsPage: React.FC = () => {
                                         <span className="text-gray-400">-</span>
                                       ) : (
                                         <input
-                                          type="number"
-                                          step="0.001"
-                                          min="0"
+                                          type="text"
+                                          inputMode="decimal"
                                           placeholder="0.000"
                                           value={remisePrices[String(item.id)] ?? ''}
                                           onChange={(e) => {
                                             const itemId = String(item.id);
-                                            const value = parseFloat(e.target.value) || 0;
+                                            const rawValue = e.target.value;
+                                            if (!/^\d*(?:[.,]\d{0,3})?$/.test(rawValue)) return;
+                                            const value = Number(rawValue.replace(',', '.')) || 0;
                                             const hadExistingRemise = getEditableRemiseUnitPrice(item) > 0;
                                             setRemisePrices(prev => ({
                                               ...prev,
-                                              [itemId]: value
+                                              [itemId]: rawValue
                                             }));
                                             if (value > 0 || hadExistingRemise) {
                                               setSelectedItemsForRemise(prev => new Set(prev).add(itemId));
@@ -6206,7 +6238,7 @@ const ContactsPage: React.FC = () => {
                                       ) : (
                                         <span className="font-medium text-green-600">
                                           {remisePrices[String(item.id)] ?
-                                            `${(remisePrices[String(item.id)] * item.quantite).toFixed(3)} DH` :
+                                            `${(Number(remisePrices[String(item.id)].replace(',', '.')) * item.quantite).toFixed(3)} DH` :
                                             '0.000 DH'
                                           }
                                         </span>

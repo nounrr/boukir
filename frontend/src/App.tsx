@@ -70,6 +70,7 @@ const WhatsAppTestPage = React.lazy(() => import('./pages/WhatsAppTestPage'));
 const ChangePasswordPage = React.lazy(() => import('./pages/ChangePasswordPage'));
 const ProductNameCorrectionsPage = React.lazy(() => import('./pages/ProductNameCorrectionsPage'));
 const UiSettingsPage = React.lazy(() => import('./pages/UiSettingsPage'));
+const PdgBoardPage = React.lazy(() => import('./pages/PdgBoardPage'));
 const SolverPrixAchatPage = React.lazy(() => import('./pages/SolverPrixAchatPage'));
 const SolverCategoriePage = React.lazy(() => import('./pages/SolverCategoriePage'));
 const SalePriceCorrectionsPage = React.lazy(() => import('./pages/SalePriceCorrectionsPage'));
@@ -670,6 +671,15 @@ const AppContent: React.FC = () => {
               <LayoutWithAccessCheck>
                 <UiSettingsPage />
               </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/pdg-board"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck><PdgBoardPage /></LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />

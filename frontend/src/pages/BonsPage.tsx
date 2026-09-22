@@ -618,6 +618,10 @@ const BonsPage = () => {
 
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
+    if (statut === 'Validé' && (bon?.type === 'Charge' || effectiveCurrentTab === 'Charge') && currentUser?.role !== 'PDG') {
+      showError('Seul le PDG peut valider un bon charge.');
+      return;
+    }
     const statusUpdateKey = getStatusUpdateKey(bon);
     if (statusUpdateInProgressRef.current.has(statusUpdateKey)) {
       return;
@@ -3630,6 +3634,7 @@ const BonsPage = () => {
                               (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'));
                             
                             if (!canValidate) return null;
+                            if ((effectiveCurrentTab === 'Charge' || bon?.type === 'Charge') && currentUser?.role !== 'PDG') return null;
                             
                             // Show validation for different tab types
                             const showForCommande = (effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'Charge' || effectiveCurrentTab === 'AvoirCharge'));
@@ -4749,15 +4754,17 @@ const BonsPage = () => {
                     </button>
                     {selectedBon.statut === 'Brouillon' && (
                       <>
-                        <button
-                          onClick={() => {
-                            showSuccess('Bon validé');
-                            setIsViewModalOpen(false);
-                          }}
-                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md"
-                        >
-                          Valider
-                        </button>
+                        {!(selectedBon.type === 'Charge' && currentUser?.role !== 'PDG') && (
+                          <button
+                            onClick={() => {
+                              showSuccess('Bon validé');
+                              setIsViewModalOpen(false);
+                            }}
+                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md"
+                          >
+                            Valider
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             showSuccess('Bon annulé');

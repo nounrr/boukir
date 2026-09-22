@@ -444,6 +444,11 @@ router.post('/', async (req, res) => {
     const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
     let items = parseItems(req.body?.items);
 
+    if (operationType === 'charge' && statut === 'Validé' && req.user?.role !== 'PDG') {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Seul le PDG peut valider un bon charge' });
+    }
+
     if (operationType === 'charge') {
       items = await priceChargeProductItemsAtCost(connection, items);
     }
@@ -573,6 +578,10 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Bon charge non trouvé' });
     }
     const oldStatut = existingRows[0].statut;
+    if (operationType === 'charge' && statut === 'Validé' && oldStatut !== 'Validé' && req.user?.role !== 'PDG') {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Seul le PDG peut valider un bon charge' });
+    }
     // Conserver le flag existant si la requête ne le fournit pas (édition d'avoirs sans le champ)
     const inclusEnCaisse = req.body?.inclus_en_caisse != null
       ? (req.body.inclus_en_caisse ? 1 : 0)
@@ -726,6 +735,10 @@ router.patch('/:id/statut', async (req, res) => {
       return res.status(404).json({ message: 'Bon charge non trouvé' });
     }
     const oldStatut = oldRows[0].statut;
+    if (operationType === 'charge' && statut === 'Validé' && oldStatut !== 'Validé' && req.user?.role !== 'PDG') {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Seul le PDG peut valider un bon charge' });
+    }
     const [itemsStock] = await connection.execute(
       `SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ?`,
       [id]

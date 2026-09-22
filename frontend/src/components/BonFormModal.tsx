@@ -1236,17 +1236,20 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     return Array.from(byId.values());
   }, [localCreatedRemiseClients, remiseClients]);
   const clientRemiseOptions = useMemo(
-    () => (mergedRemiseClients || []).filter((c: any) => String(c?.type || 'client-remise') === 'client-remise'),
+    () => (mergedRemiseClients || []).filter((c: any) =>
+      String(c?.type || 'client-remise') === 'client-remise' && !Number(c?.is_remise_pour_maalem)),
     [mergedRemiseClients]
   );
   const clientAbonneContactIds = useMemo(() => {
     const ids = new Set<number>();
     for (const c of (remiseClients || []) as any[]) {
       if (String(c?.type) !== 'client_abonne') continue;
+      if (Number(c?.is_remise_pour_maalem)) continue;
       const contactId = Number(c?.contact_id);
       if (Number.isFinite(contactId) && contactId > 0) ids.add(contactId);
     }
     for (const row of (anciensAbonnes || []) as any[]) {
+      if (Number(row?.is_remise_pour_maalem)) continue;
       const contactId = Number(row?.contact_id);
       if (Number.isFinite(contactId) && contactId > 0) ids.add(contactId);
     }
@@ -2327,6 +2330,96 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       item?.unit_id ?? '',
       rowId,
     ].join('|');
+  };
+
+  const getRowSalePrices = (item: any): { pv1: number; pv2: number } | null => {
+    if (!item?.product_id) return null;
+    const product = (products as any[]).find((entry: any) => String(entry.id) === String(item.product_id));
+    if (!product) return null;
+    const variantId = item.variant_id;
+    const variant = (product.variants || []).find((entry: any) => String(entry.id) === String(variantId));
+    const unit = (product.units || []).find((entry: any) => String(entry.id) === String(item.unit_id));
+    const factor = Number(unit?.conversion_factor) > 0 ? Number(unit.conversion_factor) : 1;
+    const basePv1 = Number(item.catalog_prix_vente_1) || getCatalogPrixVente(product, variantId, snapshotProducts as any[]);
+    const basePv2 = Number(item.catalog_prix_vente_2) || getCatalogPrixVente2(product, variantId, snapshotProducts as any[]);
+    if (!Number.isFinite(basePv2) || basePv2 <= 0) return null;
+    const unitPv = Number(unit?.prix_vente);
+    const pv1 = !variant && Number.isFinite(unitPv) && unitPv > 0
+      ? unitPv
+      : scaleDecimal(basePv1, factor);
+    const pv2 = scaleDecimal(basePv2, basePv1 > 0 ? pv1 / basePv1 : factor);
+    return Number.isFinite(pv2) && pv2 > 0 ? { pv1, pv2 } : null;
+  };
+
+  const getPv2ContextKey = (item: any, index: number): string => [
+    item?._rowId ?? index,
+    item?.product_id ?? '',
+    item?.variant_id ?? '',
+    item?.unit_id ?? '',
+    item?.product_snapshot_id ?? '',
+    item?.catalog_prix_vente_1 ?? '',
+    item?.catalog_prix_vente_2 ?? '',
+  ].join('|');
+
+  const isRowPv2Applied = (item: any, index: number): boolean => {
+    const prices = getRowSalePrices(item);
+    if (!prices || !item?._use_pv2 || item._pv2_context_key !== getPv2ContextKey(item, index)) return false;
+    const raw = unitPriceRaw[index] ?? String(item.prix_unitaire ?? '');
+    return Math.abs((parseFloat(normalizeDecimal(raw)) || 0) - prices.pv2) < 0.000001;
+  };
+
+  const suppressFocusedPriceBlur = () => {
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused?.dataset?.col === 'unit') {
+      suppressPriceBlurRef.current = { row: Number(focused.dataset.row), ts: Date.now() };
+    }
+  };
+
+  const applyPv2ToRows = async (indices: number[], checked: boolean) => {
+    const formik = formikRef.current;
+    if (!formik || isQtyOnlyEdit) return;
+    const values = formik.values;
+    const updatedRaw: Record<number, string> = {};
+    const changedIndices: number[] = [];
+    const nextItems = values.items.map((item: any, index: number) => {
+      if (!indices.includes(index)) return item;
+      const prices = getRowSalePrices(item);
+      if (!prices) return item;
+      const contextKey = getPv2ContextKey(item, index);
+      const currentRaw = unitPriceRaw[index] ?? String(item.prix_unitaire ?? 0);
+      const wasApplied = isRowPv2Applied(item, index);
+      const previousRaw = item._pv2_context_key === contextKey && item._pv2_previous_raw != null
+        ? String(item._pv2_previous_raw)
+        : String(prices.pv1);
+      const nextRaw = checked ? String(prices.pv2) : previousRaw;
+      const nextPrice = parseFloat(normalizeDecimal(nextRaw)) || 0;
+      updatedRaw[index] = nextRaw;
+      changedIndices.push(index);
+      const quantity = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(item.quantite ?? ''))) || 0;
+      return {
+        ...item,
+        prix_unitaire: nextPrice,
+        total: quantity * nextPrice,
+        _use_pv2: checked,
+        _pv2_context_key: checked ? contextKey : null,
+        _pv2_previous_raw: checked ? (wasApplied ? previousRaw : currentRaw) : null,
+      };
+    });
+    if (!changedIndices.length) return;
+    const nextValues = { ...values, items: nextItems };
+    if (!(await checkClientCreditLimitRealTime(nextValues))) return;
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused?.dataset?.col === 'unit') {
+      const focusedRow = Number(focused.dataset.row);
+      if (changedIndices.includes(focusedRow)) {
+        suppressPriceBlurRef.current = { row: focusedRow, ts: Date.now() };
+      }
+    }
+    await formik.setValues(nextValues, false);
+    setUnitPriceRaw((prev) => ({ ...prev, ...updatedRaw }));
+    for (const index of changedIndices) {
+      manuallyEditedPriceKeysRef.current.add(getPricePrefillKey(nextValues, nextItems[index], index));
+    }
   };
 
   useEffect(() => {
@@ -5815,6 +5908,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode !== 'detail')
                     : values.items.map((row: any, index: number) => ({ row, index })));
                   const showSnapshotBarreColumn = values.type !== 'Commande' && visibleEntries.some(({ row }: any) => !!row?.unite_special);
+                  const showPv2Toggle = !isEditMode && showBonPrices
+                    && !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(values.type);
+                  const pv2EligibleEntries = showPv2Toggle
+                    ? visibleEntries.filter(({ row }: any) => getRowSalePrices(row) !== null)
+                    : [];
+                  const allPv2Applied = pv2EligibleEntries.length > 0
+                    && pv2EligibleEntries.every(({ row, index }: any) => isRowPv2Applied(row, index));
                   const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
                     : [];
@@ -5872,8 +5972,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               SERIE
                             </th>
-                            {showBonPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
-                              {values.type === 'Commande' ? 'Prix d\'achat' : 'P. Unit.'}
+                            {showBonPrices && (<th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">
+                              <div className="flex items-center gap-1.5">
+                                {showPv2Toggle && (
+                                  <label className="flex items-center gap-1 text-blue-600" title="Appliquer le prix vente 2 à toutes les lignes">
+                                    <input
+                                      type="checkbox"
+                                      checked={allPv2Applied}
+                                      disabled={isQtyOnlyEdit || pv2EligibleEntries.length === 0}
+                                      onPointerDown={suppressFocusedPriceBlur}
+                                      onChange={(event) => void applyPv2ToRows(pv2EligibleEntries.map(({ index }: any) => index), event.target.checked)}
+                                      aria-label="Appliquer le prix vente 2 à toutes les lignes"
+                                      className="h-4 w-4 shrink-0 accent-blue-600"
+                                    />
+                                    PV2
+                                  </label>
+                                )}
+                                <span>{values.type === 'Commande' ? 'Prix d\'achat' : 'P. Unit.'}</span>
+                              </div>
                             </th>)}
                             {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
@@ -7203,13 +7319,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 </td>
 
                                 {/* Prix unitaire / Prix d'achat selon le type */}
-{showBonPrices && (<td className="px-1 py-2 w-[90px]">
+{showBonPrices && (<td className="px-1 py-2 w-[110px]">
+  <div className="flex items-center gap-1.5">
+  {showPv2Toggle && (
+    <input
+      type="checkbox"
+      checked={isRowPv2Applied(values.items[index], index)}
+      disabled={isQtyOnlyEdit || getRowSalePrices(values.items[index]) === null}
+      onPointerDown={suppressFocusedPriceBlur}
+      onChange={(event) => void applyPv2ToRows([index], event.target.checked)}
+      aria-label={`Appliquer le prix vente 2 à la ligne ${index + 1}`}
+      title="Utiliser le prix vente 2"
+      className="h-4 w-4 shrink-0 accent-blue-600"
+    />
+  )}
   <input
     type="text"
     inputMode="decimal"
     pattern="[0-9]*[.,]?[0-9]*"
     name={values.type === 'Commande' ? `items.${index}.prix_achat` : `items.${index}.prix_unitaire`}
-    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+    className="min-w-0 flex-1 px-2 py-1 border border-gray-300 rounded-md text-sm"
     disabled={isQtyOnlyEdit || (values.type === 'Charge' && !!values.items[index]?.product_id)}
     value={values.type === 'Charge' && values.items[index]?.product_id
       ? String(resolveItemCostContext(values.items[index], products as any[], snapshotProducts as any[]).cout_revient || 0)
@@ -7221,6 +7350,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       manuallyEditedPriceKeysRef.current.add(
         getPricePrefillKey(values, values.items[index], index)
       );
+      if (values.items[index]._use_pv2) {
+        setFieldValue(`items.${index}._use_pv2`, false);
+      }
       setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
 
       const unit = parseFloat(normalizeDecimal(raw)) || 0;
@@ -7281,6 +7413,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   data-col="unit"
   onKeyDown={onCellKeyDown(index, 'unit')}
   />
+  </div>
   {values.client_id && values.items[index].product_id && (() => {
     const last = values.type === 'Avoir' && !values.vendre_au_fournisseur
       ? getLastSortieUnitPriceForClientProduct(

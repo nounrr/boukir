@@ -120,7 +120,11 @@ const contactsApi = api.injectEndpoints({
         method: 'PUT',
         body: patch,
       }),
-      invalidatesTags: (_result, _error, { id }) => [{ type: 'Contact', id }, 'Contact'],
+      invalidatesTags: (_result, _error, { id, is_remise_pour_maalem }) => [
+        { type: 'Contact', id },
+        'Contact',
+        ...(is_remise_pour_maalem !== undefined ? [{ type: 'Remise' as const, id: 'LIST' }, { type: 'Remise' as const, id: 'ANCIENS-ABONNES' }] : []),
+      ],
     }),
 
     updateContactReminder: builder.mutation<

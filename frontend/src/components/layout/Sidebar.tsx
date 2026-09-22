@@ -42,6 +42,7 @@ import {
   Wrench,
   Download,
   MessageSquareText,
+  ListTodo,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -70,6 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Général',
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
+        { name: 'Notes & tâches PDG', href: '/pdg-board', icon: ListTodo, show: user?.role === 'PDG' },
         { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
       ],
     },

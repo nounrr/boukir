@@ -2167,6 +2167,7 @@ router.put('/:id', async (req, res) => {
       group_id,
       updated_by,
       is_charge,
+      is_remise_pour_maalem,
       bloque
     } = req.body;
 
@@ -2291,6 +2292,17 @@ router.put('/:id', async (req, res) => {
     if (is_charge !== undefined) {
       updates.push('is_charge = ?');
       params.push(is_charge ? 1 : 0);
+    }
+    if (is_remise_pour_maalem !== undefined) {
+      if (!(await columnExists('contacts', 'is_remise_pour_maalem'))) {
+        try {
+          await pool.execute('ALTER TABLE contacts ADD COLUMN is_remise_pour_maalem TINYINT(1) NOT NULL DEFAULT 0');
+        } catch (error) {
+          if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+        }
+      }
+      updates.push('is_remise_pour_maalem = ?');
+      params.push(is_remise_pour_maalem ? 1 : 0);
     }
     if (bloque !== undefined) {
       updates.push('bloque = ?');

@@ -463,6 +463,7 @@ export interface Contact {
   group_name?: string | null;
   isSolde?: boolean; // Indique si le client peut commander en solde (crédit)
   is_charge?: boolean;
+  is_remise_pour_maalem?: boolean | number;
   bloque?: boolean | number;
   rappel_date?: string | null;
   rappel_jours_initial?: number | null;
@@ -511,6 +512,7 @@ export interface CreateContactData {
   source?: 'backoffice' | 'ecommerce';
   group_id?: number | null;
   is_charge?: boolean;
+  is_remise_pour_maalem?: boolean | number;
   bloque?: boolean | number;
 }
 
