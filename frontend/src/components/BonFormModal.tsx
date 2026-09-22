@@ -1285,6 +1285,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // édition/préremplissage car les items existants en ont besoin pour s'afficher.
   const [heavyDataReady, setHeavyDataReady] = useState<boolean>(() => loadImmediately);
   const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [selectedProductCache, setSelectedProductCache] = useState<Record<string, any>>({});
   const debouncedProductSearchTerm = useDebouncedValue(productSearchTerm.trim(), 250);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
@@ -1296,6 +1297,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   useEffect(() => {
     // Quand on rouvre le formulaire, repartir de l'état initial.
     setHeavyDataReady(loadImmediately);
+    if (!isOpen) setSelectedProductCache({});
   }, [isOpen, loadImmediately]);
   // N'attacher les déclencheurs d'interaction que tant qu'au moins une liste reste à charger.
 
@@ -1405,7 +1407,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   );
   const products = heavyDataReady
     ? allProducts
-    : mergeProductsById(initialLineProducts, searchedProductsResponse?.data || []);
+    : mergeProductsById(
+        mergeProductsById(initialLineProducts, Object.values(selectedProductCache)),
+        searchedProductsResponse?.data || []
+      );
   const snapshotProducts = heavyDataReady ? allSnapshotProducts : searchedSnapshotProducts;
   const productSelectLoading = !heavyDataReady && remoteProductSearchEnabled && (
     useSnapshotSelection ? isSearchingSnapshotProducts : isSearchingProducts
@@ -2335,13 +2340,20 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   const getRowSalePrices = (item: any): { pv1: number; pv2: number } | null => {
     if (!item?.product_id) return null;
     const product = (products as any[]).find((entry: any) => String(entry.id) === String(item.product_id));
-    if (!product) return null;
+    const selectedSnapshot = (snapshotProducts as any[]).find(
+      (entry: any) => String(entry.snapshot_id) === String(item.product_snapshot_id)
+    );
+    const priceSource = product || selectedSnapshot;
     const variantId = item.variant_id;
-    const variant = (product.variants || []).find((entry: any) => String(entry.id) === String(variantId));
-    const unit = (product.units || []).find((entry: any) => String(entry.id) === String(item.unit_id));
-    const factor = Number(unit?.conversion_factor) > 0 ? Number(unit.conversion_factor) : 1;
-    const basePv1 = Number(item.catalog_prix_vente_1) || getCatalogPrixVente(product, variantId, snapshotProducts as any[]);
-    const basePv2 = Number(item.catalog_prix_vente_2) || getCatalogPrixVente2(product, variantId, snapshotProducts as any[]);
+    const variant = (product?.variants || []).find((entry: any) => String(entry.id) === String(variantId));
+    const unit = (product?.units || []).find((entry: any) => String(entry.id) === String(item.unit_id));
+    const factor = Number(unit?.conversion_factor) > 0
+      ? Number(unit.conversion_factor)
+      : Number(item.conversion_factor) > 0 ? Number(item.conversion_factor) : 1;
+    const basePv1 = Number(item.catalog_prix_vente_1)
+      || (priceSource ? getCatalogPrixVente(priceSource, variantId, snapshotProducts as any[]) : 0);
+    const basePv2 = Number(item.catalog_prix_vente_2)
+      || (priceSource ? getCatalogPrixVente2(priceSource, variantId, snapshotProducts as any[]) : 0);
     if (!Number.isFinite(basePv2) || basePv2 <= 0) return null;
     const unitPv = Number(unit?.prix_vente);
     const pv1 = !variant && Number.isFinite(unitPv) && unitPv > 0
@@ -6315,6 +6327,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       }
 
                                         if (product) {
+                                          // Garder les produits des lignes déjà choisies lorsque la recherche
+                                          // distante affiche ensuite les résultats d'une autre ligne.
+                                          const selectedCatalogProduct = (products as any[]).find(
+                                            (entry: any) => String(entry.id) === String(product.id)
+                                          ) || product;
+                                          setSelectedProductCache((previous) => ({
+                                            ...previous,
+                                            [String(product.id)]: selectedCatalogProduct,
+                                          }));
                                           // 🔍 DEBUG: Product selection
                                           console.log('🟢 [PRODUCT SELECT]', {
                                             row: index,

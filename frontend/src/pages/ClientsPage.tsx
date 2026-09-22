@@ -1225,6 +1225,9 @@ const ClientDetailPage: React.FC = () => {
   const canUseComments = collaborationPermissions?.commentaires_clients === true;
   const canUseReminders = collaborationPermissions?.rappels_clients === true;
   const { data: contact, isLoading: loadingContact, refetch: refetchContact } = useGetContactQuery(clientId);
+  const [updateContact, { isLoading: isSavingMaalemRemise }] = useUpdateContactMutation();
+  const currentUser = useSelector((state: RootState) => state.auth.user);
+  const [maalemRemiseOverride, setMaalemRemiseOverride] = useState<boolean | null>(null);
   const { data: history, isLoading: loadingHistory, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
   const { data: products = [] } = useGetProductsQuery();
   const isLoading = loadingContact || loadingHistory;
@@ -1840,6 +1843,39 @@ const ClientDetailPage: React.FC = () => {
           >✕</button>
         )}
       </div>
+
+      {contact?.type === 'Client' && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+          <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              checked={maalemRemiseOverride ?? Boolean(Number(contact.is_remise_pour_maalem))}
+              disabled={isSavingMaalemRemise}
+              onChange={async (event) => {
+                const checked = event.target.checked;
+                setMaalemRemiseOverride(checked);
+                try {
+                  await updateContact({
+                    id: contact.id,
+                    is_remise_pour_maalem: checked,
+                    updated_by: currentUser?.id,
+                  }).unwrap();
+                  await refetchContact();
+                } catch (error: any) {
+                  showError(error?.data?.error || error?.data?.message || 'Impossible de modifier les remises pour un maalem.');
+                } finally {
+                  setMaalemRemiseOverride(null);
+                }
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-orange-600"
+            />
+            <span>
+              <span className="block font-semibold">Remises pour un maalem</span>
+              <span className="block text-xs text-gray-600">Ne pas proposer les remises de ce client dans les bons et les paiements.</span>
+            </span>
+          </label>
+        </div>
+      )}
 
       {canUseReminders && contact && <ReminderEditor contact={contact} />}
 
