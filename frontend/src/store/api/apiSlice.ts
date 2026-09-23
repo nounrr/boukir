@@ -38,7 +38,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Auth', 'Employee', 'ClientCollaborationPermissions', 'MaalemReviewPermissions', 'MaalemReview', 'Product', 'Contact', 'ContactGroup', 'ContactComment', 'Dashboard', 'Bon', 'Payment', 'Category', 'MaalemCategory', 'MaalemProfile', 'Service', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'ComptantPayment', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce', 'Ecommerce', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'FondCaisse', 'FondCaissePermissions', 'StatsDetailsPermissions', 'PagePermissions', 'AccessSchedule', 'UiSettings', 'PricePurchaseSolver', 'DepotStock', 'PhotoShoot', 'ProductNameCorrection', 'SlowMovingStock', 'Absence', 'AbsencePermissions', 'Delivery', 'DeliveryAccess', 'PdgBoard'],
+  tagTypes: ['Auth', 'Employee', 'ClientCollaborationPermissions', 'MaalemReviewPermissions', 'MaalemReview', 'Product', 'Contact', 'ContactGroup', 'ContactComment', 'Dashboard', 'Bon', 'Payment', 'Category', 'MaalemCategory', 'MaalemProfile', 'Service', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'ComptantPayment', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce', 'Ecommerce', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'FondCaisse', 'FondCaissePermissions', 'StatsDetailsPermissions', 'PagePermissions', 'SalePriceCorrectionAccess', 'AccessSchedule', 'UiSettings', 'PricePurchaseSolver', 'DepotStock', 'PhotoShoot', 'ProductNameCorrection', 'SlowMovingStock', 'Absence', 'AbsencePermissions', 'Delivery', 'DeliveryAccess', 'PdgBoard'],
   endpoints: () => ({}),
 });
 

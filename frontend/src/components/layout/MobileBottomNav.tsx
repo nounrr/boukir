@@ -16,6 +16,7 @@ import { canManageEmployees } from '../../utils/permissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
+import { useGetSalePriceCorrectionAccessQuery } from '../../store/api/productsApi';
 
 // Bottom navigation bar (mobile). Groups pages: one icon per group; tap shows group's pages.
 interface MobileBottomNavProps {
@@ -35,6 +36,11 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
   const canOpenFondCaisse = user?.role === 'PDG' || fondCaissePermissions?.ouverture === true;
   const { data: statsDetailsPermissions } = useGetMyStatsDetailsPermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
   const canViewStatsDetails = user?.role === 'PDG' || statsDetailsPermissions?.consultation === true;
+  const { data: salePriceCorrectionAccess } = useGetSalePriceCorrectionAccessQuery(undefined, {
+    skip: !user?.role || isChefChauffeur,
+    refetchOnFocus: true,
+  });
+  const canViewSalePriceCorrections = user?.role === 'PDG' || salePriceCorrectionAccess?.allowed === true;
 
   const groups = isChefChauffeur ? [
     {
@@ -64,7 +70,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Catégories', to: '/categories', show: true },
         { name: 'Produits archivés', to: '/products/archived', show: user?.role === 'PDG' },
         { name: 'Solver prix achat', to: '/solver-prix-achat', show: user?.role === 'PDG' },
-        { name: 'Correction prix ventes', to: '/products/sale-price-corrections', show: user?.role === 'PDG' },
+        { name: 'Correction prix ventes', to: '/products/sale-price-corrections', show: canViewSalePriceCorrections },
       ],
     },
     {
@@ -97,6 +103,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'gestion', label: 'Gestion', icon: Users,
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
+        { name: 'Autorisations par page', to: '/employees/page-permissions', show: user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', to: '/employees/client-collaboration-permissions', show: user?.role === 'PDG' },
         { name: 'Permissions avis Maalem', to: '/employees/maalem-review-permissions', show: user?.role === 'PDG' },
         { name: 'Contacts', to: '/contacts', show: user?.role !== 'Employé' },

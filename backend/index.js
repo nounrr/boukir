@@ -121,6 +121,7 @@ import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
 import { ensureAbsenceSchema } from './utils/absences.js';
 import { ensureFondCaissePermissionSchema } from './utils/fondCaissePermissions.js';
 import { ensureStatsDetailsPermissionSchema } from './utils/statsDetailsPermissions.js';
+import { ensureSalePriceCorrectionPermissionSchema } from './utils/salePriceCorrectionPermissions.js';
 import { ensurePdgBoardSchema } from './db/ensurePdgBoardSchema.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
@@ -147,6 +148,7 @@ async function ensureSchemas() {
   await ensureAbsenceSchema();
   await ensureFondCaissePermissionSchema();
   await ensureStatsDetailsPermissionSchema();
+  await ensureSalePriceCorrectionPermissionSchema();
   await ensurePdgBoardSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }

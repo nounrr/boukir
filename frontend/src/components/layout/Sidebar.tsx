@@ -7,6 +7,7 @@ import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemRevi
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
+import { useGetSalePriceCorrectionAccessQuery } from '../../store/api/productsApi';
 import {
   Users,
   Package,
@@ -64,6 +65,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const canOpenFondCaisse = user?.role === 'PDG' || fondCaissePermissions?.ouverture === true;
   const { data: statsDetailsPermissions } = useGetMyStatsDetailsPermissionsQuery(undefined, { skip: !user?.role || isChefChauffeur });
   const canViewStatsDetails = user?.role === 'PDG' || statsDetailsPermissions?.consultation === true;
+  const { data: salePriceCorrectionAccess } = useGetSalePriceCorrectionAccessQuery(undefined, {
+    skip: !user?.role || isChefChauffeur,
+    refetchOnFocus: true,
+  });
+  const canViewSalePriceCorrections = user?.role === 'PDG' || salePriceCorrectionAccess?.allowed === true;
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
@@ -104,7 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Photos Produits', href: '/product-photos', icon: Camera, show: !isChefChauffeur },
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Correction noms', href: '/products/name-corrections', icon: FileCheck2, show: !isChefChauffeur },
-        { name: 'Correction prix ventes', href: '/products/sale-price-corrections', icon: CircleDollarSign, show: user?.role === 'PDG' },
+        { name: 'Correction prix ventes', href: '/products/sale-price-corrections', icon: CircleDollarSign, show: canViewSalePriceCorrections },
         { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: user?.role !== 'Chauffeur' && user?.role !== 'Employé' },
         { name: 'Solver catégorie', href: '/solver-categorie', icon: FolderTree, show: !isChefChauffeur },
       ],

@@ -60,7 +60,8 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
                   acces_avis_maalem, moderation_avis_maalem,
                   restauration_avis_maalem, details_prives_avis_maalem,
                   acces_gestion_absences, acces_statistiques_absences,
-                  acces_ouverture_fond_caisse, acces_statistiques_details
+                  acces_ouverture_fond_caisse, acces_statistiques_details,
+                  acces_correction_prix_vente
            FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
           [userId]
         );
@@ -86,6 +87,7 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
           acces_ouverture_fond_caisse: employee.acces_ouverture_fond_caisse,
           fond_caisse_permissions: normalizeFondCaissePermissions(employee),
           acces_statistiques_details: employee.acces_statistiques_details,
+          acces_correction_prix_vente: employee.acces_correction_prix_vente,
           stats_details_permissions: normalizeStatsDetailsPermissions(employee),
           _currentUserValidated: true,
         };

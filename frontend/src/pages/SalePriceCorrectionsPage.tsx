@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Sparkles, Wand2 } from 'lucide-react';
-import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, useGetSalePriceCorrectionsQuery, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
+import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionsQuery, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
@@ -284,7 +284,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
 });
 CorrectionRow.displayName = 'CorrectionRow';
 
-const SalePriceCorrectionsPage: React.FC = () => {
+const SalePriceCorrectionsContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<CorrectionTab>('pending');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState<number>(30);
@@ -728,6 +728,24 @@ const SalePriceCorrectionsPage: React.FC = () => {
       ) : null}
     </main>
   );
+};
+
+const SalePriceCorrectionsPage: React.FC = () => {
+  const { data, isLoading, isError, refetch } = useGetSalePriceCorrectionAccessQuery(undefined, {
+    refetchOnFocus: true,
+    pollingInterval: 30000,
+  });
+
+  if (isLoading) {
+    return <div className="flex min-h-[50vh] items-center justify-center gap-2 text-sm text-stone-600"><Loader2 className="h-4 w-4 animate-spin" /> Vérification de votre accès…</div>;
+  }
+  if (isError) {
+    return <div role="alert" className="mx-auto mt-12 max-w-md rounded-lg border border-red-200 bg-white p-6 text-center text-sm text-red-800">Impossible de vérifier votre accès.<button type="button" onClick={() => refetch()} className="mt-4 block w-full rounded-lg bg-stone-900 px-4 py-2 font-semibold text-white">Réessayer</button></div>;
+  }
+  if (!data?.allowed) {
+    return <div role="alert" className="mx-auto mt-12 max-w-md rounded-lg border border-amber-200 bg-white p-6 text-center text-sm text-stone-700"><h1 className="text-lg font-bold text-stone-900">Accès non autorisé</h1><p className="mt-2">Demandez au PDG l’autorisation « Correction prix ventes » dans « Autorisations par page ».</p></div>;
+  }
+  return <SalePriceCorrectionsContent />;
 };
 
 export default SalePriceCorrectionsPage;

@@ -19,6 +19,10 @@ import {
   salePricesMatch,
 } from '../utils/salePriceCorrections.js';
 import { revalidateEcommerceProduct } from '../utils/ecommerceProductRevalidation.js';
+import {
+  canAccessSalePriceCorrections,
+  requireSalePriceCorrectionAccess,
+} from '../utils/salePriceCorrectionPermissions.js';
 
 const router = Router();
 
@@ -4635,13 +4639,16 @@ const SALE_PRICE_BASE_ROW_SQL = `(
           )
         )`;
 
+// Le menu et la page vérifient ce droit ; les opérations restent protégées ici.
+router.get('/sale-price-corrections/access', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ allowed: canAccessSalePriceCorrections(req.user) });
+});
+
 // GET /products/sale-price-corrections
 // One row per sellable entity, paginated before its sale history is aggregated.
-router.get('/sale-price-corrections', async (req, res, next) => {
+router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (req, res, next) => {
   try {
-    if (req.user?.role !== 'PDG') {
-      return res.status(403).json({ message: 'Seul le rôle PDG peut consulter les corrections de prix de vente' });
-    }
     await ensureProductsColumns();
     await ensureSalePriceCorrectionColumns();
 
@@ -4796,14 +4803,10 @@ router.get('/sale-price-corrections', async (req, res, next) => {
 });
 
 // PATCH /products/sale-price-corrections
-// PDG-only transactional decisions for exact sellable entities.
-router.patch('/sale-price-corrections', async (req, res, next) => {
+// Transactional decisions for PDG or staff authorized for this page.
+router.patch('/sale-price-corrections', requireSalePriceCorrectionAccess, async (req, res, next) => {
   let connection;
   try {
-    if (req.user?.role !== 'PDG') {
-      return res.status(403).json({ message: 'Seul le rôle PDG peut corriger les prix de vente' });
-    }
-
     const corrections = req.body?.corrections;
     if (!Array.isArray(corrections) || corrections.length === 0) {
       return res.status(400).json({ message: 'corrections array requis' });
@@ -4944,14 +4947,10 @@ router.patch('/sale-price-corrections', async (req, res, next) => {
 });
 
 // POST /products/sale-price-corrections/reset
-// PDG-only: send processed entities back to the pending queue without touching their prices.
-router.post('/sale-price-corrections/reset', async (req, res, next) => {
+// PDG or authorized staff: return processed entities to the pending queue without changing prices.
+router.post('/sale-price-corrections/reset', requireSalePriceCorrectionAccess, async (req, res, next) => {
   let connection;
   try {
-    if (req.user?.role !== 'PDG') {
-      return res.status(403).json({ message: 'Seul le rôle PDG peut remettre des prix de vente à corriger' });
-    }
-
     const entities = req.body?.entities;
     if (!Array.isArray(entities) || entities.length === 0) {
       return res.status(400).json({ message: 'entities array requis' });

@@ -881,7 +881,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/products/sale-price-corrections"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <SalePriceCorrectionsPage />
               </LayoutWithAccessCheck>

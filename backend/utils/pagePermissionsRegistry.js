@@ -2,6 +2,7 @@ import pool from '../db/pool.js';
 import { normalizePermissionFlag } from './clientCollaborationPermissions.js';
 import { ensureFondCaissePermissionSchema } from './fondCaissePermissions.js';
 import { ensureStatsDetailsPermissionSchema } from './statsDetailsPermissions.js';
+import { ensureSalePriceCorrectionPermissionSchema } from './salePriceCorrectionPermissions.js';
 
 /**
  * Registre unique des autorisations par page.
@@ -116,6 +117,22 @@ export const PAGE_PERMISSION_GROUPS = Object.freeze([
         column: 'acces_ouverture_fond_caisse',
         label: 'Ouvrir le fond initial',
         description: 'Saisir le montant, le mode et la date du fond initial de la caisse.',
+      },
+    ],
+  },
+  {
+    key: 'sale_price_corrections',
+    label: 'Correction prix ventes',
+    page: 'Correction prix ventes',
+    href: '/products/sale-price-corrections',
+    description: 'Consulter et corriger les prix de vente 1 et 2 des produits.',
+    allowedRoles: ['ManagerPlus', 'Manager', 'Employé', 'Chauffeur'],
+    permissions: [
+      {
+        key: 'access',
+        column: 'acces_correction_prix_vente',
+        label: 'Accéder et corriger',
+        description: 'Ouvrir la page, appliquer des corrections et remettre une ligne à corriger.',
       },
     ],
   },
@@ -261,4 +278,5 @@ export function parsePagePermissionUpdate(body, employee) {
 export async function ensurePagePermissionSchema(db = pool) {
   await ensureFondCaissePermissionSchema(db);
   await ensureStatsDetailsPermissionSchema(db);
+  await ensureSalePriceCorrectionPermissionSchema(db);
 }

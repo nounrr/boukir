@@ -62,6 +62,7 @@ export const pagePermissionsApi = api.injectEndpoints({
         'AbsencePermissions',
         'FondCaissePermissions',
         'StatsDetailsPermissions',
+        'SalePriceCorrectionAccess',
       ],
     }),
   }),

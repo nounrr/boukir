@@ -282,6 +282,11 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    getSalePriceCorrectionAccess: builder.query<{ allowed: boolean }, void>({
+      query: () => '/products/sale-price-corrections/access',
+      providesTags: ['SalePriceCorrectionAccess'],
+    }),
+
     getSalePriceCorrections: builder.query<
       SalePriceCorrectionsResponse,
       { page: number; limit: number; q?: string; status: 'pending' | 'processed'; category_id?: number }
@@ -361,6 +366,7 @@ export const {
   useToggleEcomStockMutation,
   useUpdateSnapshotsMutation,
   useCorrectBonProductPricesMutation,
+  useGetSalePriceCorrectionAccessQuery,
   useGetSalePriceCorrectionsQuery,
   useUpdateSalePriceCorrectionsMutation,
   useResetSalePriceCorrectionsMutation,
