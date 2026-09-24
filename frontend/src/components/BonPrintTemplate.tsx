@@ -15,6 +15,7 @@ import mpcCachet from './mpc_cachet.webp';
 
 interface BonPrintTemplateProps {
   bon: any;
+  internalPricesVisible?: boolean;
   client?: Contact;
   fournisseur?: Contact;
   products?: any[];
@@ -102,9 +103,11 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   paymentHistory = [],
   designationLang,
   onDesignationLangChange,
-  showDesignationLangSelect = true
+  showDesignationLangSelect = true,
+  internalPricesVisible,
 }) => {
-  const showInternalPrices = useCanViewInternalPrices();
+  const canViewInternalPrices = useCanViewInternalPrices();
+  const showInternalPrices = internalPricesVisible ?? canViewInternalPrices;
   const allowPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(bon.type);
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
   const [internalLang, setInternalLang] = useState<DesignationLang>('fr');
@@ -662,6 +665,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         <div className={`flex justify-end ${spacing.margin} totals-section`}>
           <div className={isA5 ? 'w-60' : 'w-80'}>
             <div className={`${spacing.padding} rounded`}>
+              {bon?.type === 'Comptant' && (
+                <div className={`flex justify-between items-center ${textSizes.normal}`}>
+                  <span>Mode de paiement :</span>
+                  <span>{bon?.mode_paiement || 'Espèces'}</span>
+                </div>
+              )}
               {isUnpaidComptant ? (
                 <>
                   <div className={`flex justify-between items-center ${textSizes.subheader} font-bold`}>

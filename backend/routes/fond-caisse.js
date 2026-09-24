@@ -286,6 +286,15 @@ async function ensureMontantIgnorerColumns(db = pool) {
     }
   }
 
+  const [comptantModeCols] = await db.query("SHOW COLUMNS FROM bons_comptant LIKE 'mode_paiement'");
+  if (!Array.isArray(comptantModeCols) || comptantModeCols.length === 0) {
+    try {
+      await db.query("ALTER TABLE bons_comptant ADD COLUMN mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espèces' AFTER montant_ignorer");
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
+
   try {
     const [resteCols] = await db.query("SHOW COLUMNS FROM bons_comptant LIKE 'reste'");
     if (!Array.isArray(resteCols) || resteCols.length === 0) {
@@ -817,6 +826,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
          WHERE DATE(bc.created_at) BETWEEN ? AND ?
            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+           AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
            AND COALESCE(bc.non_paye, 0) = 0
            AND NOT EXISTS (
              SELECT 1
@@ -840,6 +850,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+           AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
            ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
            AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
          GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})
@@ -1168,11 +1179,13 @@ router.get('/days/:date', async (req, res) => {
             CONCAT('COM', ${paddedReferenceIdSql('bc.id')}) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
             bc.statut,
+            bc.mode_paiement,
             'Bon comptant regle en caisse' AS description
           FROM bons_comptant bc
           WHERE DATE(bc.created_at) = ?
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+            AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
             AND COALESCE(bc.non_paye, 0) = 0
             AND NOT EXISTS (
               SELECT 1
@@ -1197,6 +1210,7 @@ router.get('/days/:date', async (req, res) => {
             CONCAT('COM', ${paddedReferenceIdSql('COALESCE(p.bon_comptant_id, p.id)')}) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
             p.statut AS statut,
+            bc.mode_paiement,
             COALESCE(p.note, 'Paiement d un bon comptant non paye') AS description
           FROM paiement_boncomptant_nonpaye p
           LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
@@ -1204,6 +1218,7 @@ router.get('/days/:date', async (req, res) => {
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+            AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
             ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
             AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
         `,
@@ -1517,6 +1532,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.created_at) BETWEEN ? AND ?
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+             AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
              AND COALESCE(bc.non_paye, 0) = 0
              AND NOT EXISTS (
                SELECT 1
@@ -1540,6 +1556,7 @@ router.get('/mouvements', async (req, res) => {
              AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+             AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
              ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
              AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
            GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})

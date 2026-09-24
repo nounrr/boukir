@@ -1,4 +1,3 @@
-import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
@@ -1201,7 +1200,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const paymentHistoryModeInitializedForBonId = useRef<number | null>(null);
   const isEditMode = Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
-  const showInternalPrices = useCanViewInternalPrices();
+  const showInternalPrices = isPDG;
   const showBonPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
   const formatPrixAchatOption = (value: any) => showInternalPrices ? formatPurchasePrice(value) : '';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
@@ -2261,6 +2260,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       const pdfElement = (
         <BonPrintTemplate
           bon={bonForTemplate}
+          internalPricesVisible={isPDG}
           client={clientContact as Contact | undefined}
           fournisseur={fournisseurContact as Contact | undefined}
           products={products as any}
@@ -2730,6 +2730,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         montant_ht: initialValues.montant_ht || 0,
         montant_total: initialValues.montant_total || 0,
         montant_ignorer: Number((initialValues as any).montant_ignorer || 0),
+        mode_paiement: (initialValues as any).mode_paiement || 'Espèces',
         client_nom: initialValues.client_nom || '',
         client_adresse: initialValues.client_adresse || '',
         client_societe: initialValues.client_societe || initialValues.societe || '',
@@ -2774,6 +2775,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       montant_ht: 0,
       montant_total: 0,
       montant_ignorer: 0,
+      mode_paiement: 'Espèces',
       isNotCalculated: false,
       payer_partiellement: isRequiredUnpaidComptant,
       reste: 0,
@@ -3545,6 +3547,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   client_id: (requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || ((requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
   montant_ignorer: requestType === 'Comptant' ? (Number(values.montant_ignorer || 0) || 0) : undefined,
+  mode_paiement: requestType === 'Comptant' ? (values.mode_paiement || 'Espèces') : undefined,
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
   non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
@@ -3837,6 +3840,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         lieu_chargement: locked?.lieu_chargement ?? cleanBonData.lieu_chargement,
         adresse_livraison: locked?.adresse_livraison ?? cleanBonData.adresse_livraison,
         phone: locked?.phone ?? cleanBonData.phone,
+        mode_paiement: locked?.mode_paiement ?? cleanBonData.mode_paiement,
         isNotCalculated: locked?.isNotCalculated ?? cleanBonData.isNotCalculated,
         statut: locked?.statut ?? cleanBonData.statut,
         client_id: locked?.client_id ?? cleanBonData.client_id,
@@ -5418,6 +5422,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               {values.type === 'Comptant' && (
                 <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
                   <div className="mb-3 max-w-xs">
+                    <label htmlFor="comptant_mode_paiement" className="block text-sm font-medium text-gray-700 mb-1">
+                      Mode de paiement
+                    </label>
+                    <Field
+                      as="select"
+                      id="comptant_mode_paiement"
+                      name="mode_paiement"
+                      disabled={isQtyOnlyEdit}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
+                    >
+                      <option value="Espèces">Espèces</option>
+                      <option value="Virement">Virement</option>
+                    </Field>
+                    {values.mode_paiement === 'Virement' && (
+                      <div className="mt-1 text-xs text-gray-600">Le virement n’est pas inclus dans le fond de caisse.</div>
+                    )}
+                  </div>
+                  <div className="mb-3 max-w-xs">
                     <label htmlFor="montant_ignorer" className="block text-sm font-medium text-gray-700 mb-1">
                       Montant ignoré fond caisse (DH)
                     </label>
@@ -5430,7 +5452,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
                     />
                     <div className="mt-1 text-xs text-gray-500">
-                      Fond caisse prendra: total - montant ignoré.
+                      {values.mode_paiement === 'Virement'
+                        ? 'Ce montant reste hors caisse pour un virement.'
+                        : 'Fond caisse prendra: total - montant ignoré.'}
                     </div>
                   </div>
                   {comptantPartialPaymentMode === 'hidden' && (

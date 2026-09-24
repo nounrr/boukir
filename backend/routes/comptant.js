@@ -79,10 +79,24 @@ async function ensureBonsComptantMontantIgnorerColumn() {
 // Initialisé une seule fois au démarrage. Les anciens appels exécutaient
 // CREATE TABLE + SHOW COLUMNS sur chaque requête, ce qui est particulièrement
 // coûteux lorsque MySQL est distant en production.
-const comptantSchemaReady = Promise.all([
-  ensureComptantPaymentsTable(),
-  ensureBonsComptantMontantIgnorerColumn(),
-]);
+async function ensureBonsComptantModePaiementColumn() {
+  const [rows] = await pool.query("SHOW COLUMNS FROM bons_comptant LIKE 'mode_paiement'");
+  if (!Array.isArray(rows) || rows.length === 0) {
+    try {
+      await pool.query("ALTER TABLE bons_comptant ADD COLUMN mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espèces' AFTER montant_ignorer");
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
+}
+
+const comptantSchemaReady = (async () => {
+  await Promise.all([
+    ensureComptantPaymentsTable(),
+    ensureBonsComptantMontantIgnorerColumn(),
+  ]);
+  await ensureBonsComptantModePaiementColumn();
+})();
 comptantSchemaReady.catch((error) => {
   console.error('Initialisation schéma comptant:', error);
 });
@@ -105,6 +119,12 @@ const parseBooleanFlag = (value) => (
   value === '1' ||
   (typeof value === 'string' && value.toLowerCase() === 'true')
 );
+
+const normalizeComptantModePaiement = (value) => {
+  if (value == null || value === '') return 'Espèces';
+  if (value === 'Espèces' || value === 'Virement') return value;
+  throw Object.assign(new Error('Mode de paiement invalide'), { statusCode: 400 });
+};
 
 function computeComptantRemiseTotal(items) {
   const total = (Array.isArray(items) ? items : []).reduce((sum, item) => {
@@ -761,6 +781,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       adresse_livraison,
       montant_total,
       montant_ignorer = 0,
+      mode_paiement,
       statut = 'Brouillon',
     items = [],
     created_by,
@@ -803,6 +824,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
     const montantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
+    const modePaiement = normalizeComptantModePaiement(mode_paiement);
 
     const usesAutomaticComptantRemiseClient = wantsDirectComptantRemise && !cId;
     let automaticRemiseClient = null;
@@ -834,9 +856,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
         date_creation, client_id, client_nom, phone, vehicule_id,
-        lieu_chargement, adresse_livraison, montant_total, montant_ignorer, reste, non_paye, statut, created_by, isNotCalculated,
+        lieu_chargement, adresse_livraison, montant_total, montant_ignorer, mode_paiement, reste, non_paye, statut, created_by, isNotCalculated,
         remise_is_client, remise_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       normalizedDateCreation,
       cId,
@@ -847,6 +869,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       adresse_livraison ?? null,
       montant_total,
       montantIgnorer,
+      modePaiement,
       nonPayeRequested ? (req.body.reste || 0) : 0,
       nonPayeRequested ? 1 : 0,
       st,
@@ -1028,6 +1051,7 @@ router.put('/:id', async (req, res) => {
       adresse_livraison,
       montant_total,
       montant_ignorer = 0,
+      mode_paiement,
       statut,
     items = [],
     livraisons,
@@ -1040,7 +1064,7 @@ router.put('/:id', async (req, res) => {
     const remise_id = req.body?.remise_id;
     const remise_client_nom = req.body?.remise_client_nom;
 
-    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, montant_ignorer, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, montant_ignorer, mode_paiement, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon comptant non trouvé' });
@@ -1097,6 +1121,7 @@ router.put('/:id', async (req, res) => {
       items = sanitizedItems;
       montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
       montant_ignorer = oldBon.montant_ignorer;
+      mode_paiement = oldBon.mode_paiement;
       date_creation = oldBon.date_creation;
       client_id = oldBon.client_id;
       client_nom = oldBon.client_nom;
@@ -1141,6 +1166,7 @@ router.put('/:id', async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
     const montantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
+    const modePaiement = normalizeComptantModePaiement(mode_paiement ?? oldBon.mode_paiement);
     const nonPayeRequested = parseBooleanFlag(req.body?.non_paye);
 
     // Validation minimale (détaillée)
@@ -1192,7 +1218,7 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_comptant SET
         date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
-        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, montant_ignorer = ?, reste = ?, non_paye = ?, statut = ?, isNotCalculated = ?,
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, montant_ignorer = ?, mode_paiement = ?, reste = ?, non_paye = ?, statut = ?, isNotCalculated = ?,
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
@@ -1205,6 +1231,7 @@ router.put('/:id', async (req, res) => {
       adresse_livraison ?? null,
       montantTotalForPayments,
       montantIgnorer,
+      modePaiement,
       nonPayeRequested ? (req.body.reste || 0) : 0,
       nonPayeRequested ? 1 : 0,
       st,
