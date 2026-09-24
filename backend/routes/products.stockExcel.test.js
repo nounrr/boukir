@@ -11,12 +11,16 @@ test('stock Excel uses every snapshot total and falls back only when none exist'
       brand: { id: 7, nom: 'Makita' },
       designation: 'Avec snapshots à zéro',
       quantite: 99,
+      prix_vente: 149.5,
+      prix_vente_2: 129,
       snapshot_quantite_total: 0,
       variants: [{
         id: 10,
         variant_name: 'Variante snapshot',
         reference: 'V10',
         stock_quantity: 2,
+        prix_vente: 175,
+        prix_vente_2: 155.25,
         snapshot_quantite_total: 7,
       }],
     },
@@ -48,6 +52,8 @@ test('stock Excel uses every snapshot total and falls back only when none exist'
     'Ref variant',
     'Image',
     'Stock',
+    'Prix vente',
+    'Prix vente 2',
     'Est dans un snapshot',
   ]);
   assert.equal(rows[0].Categorie, 'Outillage');
@@ -58,8 +64,12 @@ test('stock Excel uses every snapshot total and falls back only when none exist'
   assert.equal(rows[2].Marque, '');
 
   assert.equal(rows[0].Stock, 0);
+  assert.equal(rows[0]['Prix vente'], 149.5);
+  assert.equal(rows[0]['Prix vente 2'], 129);
   assert.equal(rows[0]['Est dans un snapshot'], 'Oui');
   assert.equal(rows[1].Stock, 7);
+  assert.equal(rows[1]['Prix vente'], 175);
+  assert.equal(rows[1]['Prix vente 2'], 155.25);
   assert.equal(rows[1]['Est dans un snapshot'], 'Oui');
   assert.equal(rows[2].Stock, 12);
   assert.equal(rows[2]['Est dans un snapshot'], 'Non');

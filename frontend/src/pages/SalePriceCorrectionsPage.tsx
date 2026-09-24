@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Sparkles, Wand2 } from 'lucide-react';
-import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionsQuery, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
+import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, type WebPriceGroup, type WebSalePriceResult, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionsQuery, useResearchSalePricesMutation, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
@@ -168,6 +168,7 @@ type CorrectionRowProps = {
   checked: boolean;
   readOnly: boolean;
   saving: boolean;
+  webResult?: WebSalePriceResult;
   onSelect: (key: string, side: Side, choice?: Choice) => void;
   onKeepBoth: (key: string) => void;
   onClear: (key: string) => void;
@@ -191,7 +192,17 @@ const LastPurchase = React.memo<{ price: number | null; at: string | null }>(({ 
 });
 LastPurchase.displayName = 'LastPurchase';
 
-const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, focused, checked, readOnly, saving, onSelect, onKeepBoth, onClear, onFocus, onToggleCheck, registerRow }) => {
+const WebPrices: React.FC<{ groups?: WebPriceGroup[]; error?: string }> = ({ groups, error }) => {
+  if (error) return <span className="text-xs text-red-700" title={error}>Recherche échouée</span>;
+  if (!groups) return <span className="text-xs text-stone-400">Non recherché</span>;
+  if (!groups.length) return <span className="text-xs text-stone-400">Aucun prix vérifié</span>;
+  return <div className="space-y-2">{groups.map((group) => <div key={group.price} className="rounded-lg border border-stone-200 bg-white p-2">
+    <p className="font-bold tabular-nums text-stone-900">{money.format(group.price)} DH <span className="text-xs font-medium text-stone-500">· {group.count} occurrence{group.count > 1 ? 's' : ''}</span></p>
+    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1">{group.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" title={source.title} className="max-w-[170px] truncate text-[11px] text-indigo-700 underline">{source.site}</a>)}</div>
+  </div>)}</div>;
+};
+
+const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, focused, checked, readOnly, saving, webResult, onSelect, onKeepBoth, onClear, onFocus, onToggleCheck, registerRow }) => {
   const key = rowKey(row);
   const pv1 = resolvePrice(decision?.pv1, row.current_prix_vente);
   const pv2 = resolvePrice(decision?.pv2, row.current_prix_vente_2);
@@ -209,7 +220,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
       <td className="sticky left-0 z-10 border-r border-stone-200 bg-inherit px-4 py-3 shadow-[3px_0_6px_-5px_rgba(0,0,0,0.45)]">
         <span className={`absolute inset-y-0 left-0 w-1 ${rail}`} aria-hidden />
         <div className="flex gap-3">
-          {readOnly ? (
+          {(
             <input
               type="checkbox" checked={checked} disabled={saving}
               onChange={() => undefined}
@@ -217,7 +228,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
               aria-label={`Sélectionner ${row.designation}${row.variant_name ? ` · ${row.variant_name}` : ''}`}
               className="mt-4 h-4 w-4 shrink-0 cursor-pointer rounded border-stone-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
             />
-          ) : null}
+          )}
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
             {row.image_url ? <img src={toBackendUrl(row.image_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <ImageOff className="h-5 w-5 text-stone-400" />}
           </div>
@@ -229,7 +240,11 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
         </div>
       </td>
 
-      <td className="border-l border-stone-200 px-3 py-3"><LastPurchase price={row.last_purchase_price} at={row.last_purchase_at} /></td>
+      <td className="border-l border-stone-200 px-3 py-3">
+        <p className="text-sm font-bold tabular-nums text-stone-900">{row.cost_price == null ? '—' : `${money.format(row.cost_price)} DH`}</p>
+        <p className="mt-1 text-[10px] text-stone-500">Achat catalogue : {row.purchase_price == null ? '—' : `${money.format(row.purchase_price)} DH`}</p>
+        <div className="mt-2"><LastPurchase price={row.last_purchase_price} at={row.last_purchase_at} /></div>
+      </td>
       <td className="border-l border-stone-200 px-3 py-3"><CurrentPrice value={row.current_prix_vente} source={row.current_prix_vente_source} /></td>
       <td className="border-l border-indigo-100 bg-indigo-50/20 px-3 py-3">
         <ChoiceColumn label={`Prix vente de ${row.designation}`} tone="indigo" current={row.current_prix_vente} choice={decision?.pv1} candidates={row.high_prices} shortcuts={PV1_KEYS} disabled={readOnly || saving} onSelect={(choice) => onSelect(key, 'pv1', choice)} />
@@ -239,6 +254,9 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
       <td className="border-l border-amber-100 bg-amber-50/20 px-3 py-3">
         <ChoiceColumn label={`Prix vente 2 de ${row.designation}`} tone="amber" current={row.current_prix_vente_2} choice={decision?.pv2} candidates={row.low_prices} shortcuts={PV2_KEYS} disabled={readOnly || saving} onSelect={(choice) => onSelect(key, 'pv2', choice)} />
       </td>
+
+      <td className="border-l border-stone-200 px-3 py-3"><WebPrices groups={webResult?.market} error={webResult?.error} /></td>
+      <td className="border-l border-stone-200 px-3 py-3"><WebPrices groups={webResult?.ingco} error={webResult?.error} /></td>
 
       <td className="border-l border-stone-200 px-3 py-3">
         {readOnly ? (
@@ -294,6 +312,8 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [filter, setFilter] = useState<RowFilter>('all');
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [checkedKeys, setCheckedKeys] = useState<Record<string, true>>({});
+  const [webModel, setWebModel] = useState('gpt-5-mini');
+  const [webResults, setWebResults] = useState<Record<string, WebSalePriceResult>>({});
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const rowElements = useRef(new Map<string, HTMLTableRowElement>());
   const focusedIndexRef = useRef(0);
@@ -306,6 +326,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab, category_id: categoryId === '' ? undefined : categoryId });
   const [applyCorrections, { isLoading: isApplying }] = useUpdateSalePriceCorrectionsMutation();
   const [resetCorrections, { isLoading: isResetting }] = useResetSalePriceCorrectionsMutation();
+  const [researchSalePrices, { isLoading: isResearching }] = useResearchSalePricesMutation();
   const isSaving = isApplying || isResetting;
   const rows = useMemo(() => data?.data ?? [], [data]);
   const meta = data?.meta;
@@ -360,6 +381,16 @@ const SalePriceCorrectionsContent: React.FC = () => {
   }, [visibleRows]);
 
   const checkedRows = useMemo(() => rows.filter((row) => checkedKeys[rowKey(row)]), [checkedKeys, rows]);
+  const searchWeb = async () => {
+    if (!checkedRows.length || checkedRows.length > 10 || isResearching) return;
+    try {
+      const response = await researchSalePrices({ model: webModel, entities: checkedRows.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
+      setWebResults((previous) => ({ ...previous, ...Object.fromEntries(response.results.map((result) => [rowKey(result), result])) }));
+    } catch (researchError) {
+      const apiError = researchError as { data?: { message?: string } };
+      showError(apiError.data?.message || 'Recherche web impossible.', 'Échec de la recherche');
+    }
+  };
   const allChecked = visibleRows.length > 0 && visibleRows.every((row) => checkedKeys[rowKey(row)]);
   const toggleCheckAll = useCallback(() => {
     lastCheckedIndex.current = null;
@@ -602,6 +633,15 @@ const SalePriceCorrectionsContent: React.FC = () => {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-700">Modèle IA
+                <select value={webModel} onChange={(event) => setWebModel(event.target.value)} className="h-9 rounded-lg border-stone-300 bg-white text-xs">
+                  <option value="gpt-5-mini">GPT-5 mini</option><option value="gpt-5">GPT-5</option><option value="gpt-5.2">GPT-5.2</option>
+                </select>
+              </label>
+              <button type="button" onClick={() => void searchWeb()} disabled={!checkedRows.length || checkedRows.length > 10 || isResearching || isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-40">
+                {isResearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Chercher sur Internet ({checkedRows.length})
+              </button>
+              <span className="text-[11px] text-stone-500">Sélectionnez jusqu’à 10 produits · résultats indicatifs</span>
               <button type="button" onClick={() => fillMissing('suggest')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-800 transition hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"><Wand2 className="h-3.5 w-3.5" /> Suggestions</button>
               <button type="button" onClick={() => fillMissing('keep')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Garder tout</button>
               <button type="button" onClick={clearPage} disabled={isSaving || !startedCount} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-600 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-40"><Eraser className="h-3.5 w-3.5" /> Effacer</button>
@@ -652,22 +692,24 @@ const SalePriceCorrectionsContent: React.FC = () => {
           <>
             <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-stone-500 2xl:hidden"><ChevronRight className="h-3.5 w-3.5" /> Faites glisser le tableau horizontalement pour voir toutes les décisions.</p>
             <div className={`overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm transition-opacity ${isFetching ? 'opacity-70' : ''}`}>
-              <table className="w-full min-w-[1355px] table-fixed border-collapse">
+              <table className="w-full min-w-[1800px] table-fixed border-collapse">
                 <thead className="bg-stone-100/80 text-left text-[11px] font-bold uppercase tracking-wide text-stone-500">
                   <tr>
                     <th className="sticky left-0 z-20 w-[300px] border-b border-r border-stone-200 bg-stone-100 px-4 py-3 shadow-[3px_0_6px_-5px_rgba(0,0,0,0.45)]">
-                      {readOnly ? (
+                      {(
                         <span className="flex items-center gap-2">
                           <input type="checkbox" checked={allChecked} onChange={toggleCheckAll} disabled={isSaving} aria-label="Tout sélectionner" className="h-4 w-4 cursor-pointer rounded border-stone-300 text-indigo-600 focus:ring-indigo-500" />
                           Produit / variante
                         </span>
-                      ) : 'Produit / variante'}
+                      )}
                     </th>
-                    <th className="w-[115px] border-b border-l border-stone-200 px-3 py-3">Dernier prix achat</th>
+                    <th className="w-[145px] border-b border-l border-stone-200 px-3 py-3">Coût / prix achat</th>
                     <th className="w-[125px] border-b border-l border-stone-200 px-3 py-3">Prix vente actuel</th>
                     <th className="w-[215px] border-b border-l border-indigo-100 bg-indigo-50/60 px-3 py-3 text-indigo-800">Choix prix vente <span className="font-medium normal-case text-indigo-500">· valeurs hautes</span></th>
                     <th className="w-[125px] border-b border-l border-stone-200 px-3 py-3">Prix vente 2 actuel</th>
                     <th className="w-[215px] border-b border-l border-amber-100 bg-amber-50/60 px-3 py-3 text-amber-800">Choix prix vente 2 <span className="font-medium normal-case text-amber-600">· valeurs basses</span></th>
+                    <th className="w-[220px] border-b border-l border-stone-200 px-3 py-3">Prix Internet · occurrences</th>
+                    <th className="w-[220px] border-b border-l border-stone-200 px-3 py-3">Prix INGCO</th>
                     <th className="w-[190px] border-b border-l border-stone-200 px-3 py-3">Décision</th>
                   </tr>
                 </thead>
@@ -677,7 +719,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
                     return (
                       <CorrectionRow
                         key={key} row={row} index={index} decision={decisions[key]} focused={focusedKey === key}
-                        checked={Boolean(checkedKeys[key])} readOnly={readOnly} saving={isSaving}
+                        checked={Boolean(checkedKeys[key])} readOnly={readOnly} saving={isSaving} webResult={webResults[key]}
                         onSelect={selectChoice} onKeepBoth={keepBoth} onClear={clearRow} onFocus={focusRow}
                         onToggleCheck={toggleCheck} registerRow={registerRow}
                       />

@@ -3,6 +3,7 @@ import pool from '../db/pool.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import OpenAI from 'openai';
 import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
 import { createStockPdfStream } from '../utils/stockPdf.js';
@@ -24,6 +25,7 @@ import {
   canAccessSalePriceCorrections,
   requireSalePriceCorrectionAccess,
 } from '../utils/salePriceCorrectionPermissions.js';
+import { WEB_PRICE_MODELS, summarizeWebPrices } from '../utils/webSalePriceResearch.js';
 
 const router = Router();
 
@@ -1323,6 +1325,12 @@ function stockExportValues(snapshotQuantity, originalQuantity) {
   };
 }
 
+function stockExportPrice(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const price = Number(value);
+  return Number.isFinite(price) ? price : '';
+}
+
 let ensureSalePriceCorrectionColumnsPromise = null;
 async function ensureSalePriceCorrectionColumns() {
   if (ensureSalePriceCorrectionColumnsPromise) return ensureSalePriceCorrectionColumnsPromise;
@@ -1380,6 +1388,8 @@ export function appendStockDesignationRows(rows, product) {
     'Ref variant': '',
     'Image': product?.image_url ? 'Oui' : 'Non',
     'Stock': productStock.stock,
+    'Prix vente': stockExportPrice(product?.prix_vente),
+    'Prix vente 2': stockExportPrice(product?.prix_vente_2),
     'Est dans un snapshot': productStock.hasSnapshots,
   });
 
@@ -1396,6 +1406,8 @@ export function appendStockDesignationRows(rows, product) {
       'Ref variant': String(variant?.reference ?? '').trim(),
       'Image': variant?.image_url ? 'Oui' : 'Non',
       'Stock': variantStock.stock,
+      'Prix vente': stockExportPrice(variant?.prix_vente),
+      'Prix vente 2': stockExportPrice(variant?.prix_vente_2),
       'Est dans un snapshot': variantStock.hasSnapshots,
     });
   }
@@ -1412,6 +1424,8 @@ export function createStockExcelBuffer(products) {
     'Ref variant',
     'Image',
     'Stock',
+    'Prix vente',
+    'Prix vente 2',
     'Est dans un snapshot',
   ];
   const rows = [];
@@ -1430,6 +1444,8 @@ export function createStockExcelBuffer(products) {
     { wch: 24 },
     { wch: 10 },
     { wch: 14 },
+    { wch: 16 },
+    { wch: 16 },
     { wch: 22 },
   ];
 
@@ -4646,6 +4662,66 @@ router.get('/sale-price-corrections/access', (req, res) => {
   res.json({ allowed: canAccessSalePriceCorrections(req.user) });
 });
 
+// Research only: no catalogue price is written by this endpoint.
+router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAccess, async (req, res, next) => {
+  try {
+    const entities = req.body?.entities;
+    const model = String(req.body?.model || 'gpt-5-mini');
+    if (!Array.isArray(entities) || entities.length < 1 || entities.length > 10 || !WEB_PRICE_MODELS.includes(model)) {
+      return res.status(400).json({ message: 'Sélectionnez de 1 à 10 produits et un modèle valide.' });
+    }
+    if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ message: 'OPENAI_API_KEY non configurée côté serveur.' });
+    const targets = [];
+    const seen = new Set();
+    for (const entity of entities) {
+      const productId = Number(entity?.product_id);
+      const variantId = entity?.variant_id == null ? null : Number(entity.variant_id);
+      if (!Number.isSafeInteger(productId) || productId <= 0 || (variantId !== null && (!Number.isSafeInteger(variantId) || variantId <= 0))) {
+        return res.status(400).json({ message: 'Identifiant produit invalide.' });
+      }
+      const key = salePriceEntityKey(productId, variantId);
+      if (seen.has(key)) return res.status(400).json({ message: 'Produit sélectionné en double.' });
+      seen.add(key);
+      const [[product]] = await pool.query(
+        `SELECT p.id AS product_id, p.designation, p.reference_2 AS reference, p.is_obligatoire_variant,
+                pv.id AS variant_id, pv.variant_name, pv.reference AS variant_reference
+         FROM products p LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
+         WHERE p.id = ? AND ${SALE_PRICE_SELLABLE_SQL} AND ${variantId === null ? SALE_PRICE_BASE_ROW_SQL : '1 = 1'}`, [variantId, productId]
+      );
+      if (!product || (variantId !== null && Number(product.variant_id) !== variantId)) {
+        return res.status(404).json({ message: `Produit ${productId} introuvable ou non vendable.` });
+      }
+      targets.push(product);
+    }
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim(), maxRetries: 1, timeout: 90000 });
+    const results = [];
+    for (const product of targets) {
+      const key = salePriceEntityKey(product.product_id, product.variant_id);
+      try {
+        const response = await client.responses.create({
+          model,
+          tools: [{ type: 'web_search', search_context_size: 'high', user_location: { type: 'approximate', country: 'MA' } }],
+          tool_choice: 'required',
+          include: ['web_search_call.action.sources'],
+          store: false,
+          input: `Cherche les prix de vente actuels au Maroc (MAD) pour ce produit exact : ${JSON.stringify({ designation: product.designation, reference: product.reference, variante: product.variant_name, reference_variante: product.variant_reference })}. Compare plusieurs sites marchands et cherche séparément le site officiel INGCO. N'inclus que les offres dont la référence, la variante et l'unité correspondent. Ne convertis pas une autre devise et n'invente aucun prix. Réponds uniquement en JSON : {"offers":[{"price":123.45,"currency":"MAD","url":"https://page-produit-exacte","title":"nom exact"}]}. Chaque URL doit être la page produit consultée, pas une page de recherche. Si aucune offre vérifiable, renvoie {"offers":[]}.`,
+        });
+        const sourceUrls = response.output.flatMap((entry) => {
+          if (entry.type === 'web_search_call') return (entry.action?.sources || []).map((source) => source.url);
+          if (entry.type === 'message') return (entry.content || []).flatMap((content) => (content.annotations || []).map((annotation) => annotation.url));
+          return [];
+        });
+        const rawText = String(response.output_text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+        const parsed = JSON.parse(rawText);
+        results.push({ product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), ...summarizeWebPrices(parsed, sourceUrls) });
+      } catch (error) {
+        results.push({ product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), market: [], ingco: [], offersCount: 0, error: error?.message || 'Recherche impossible.' });
+      }
+    }
+    res.json({ model, searched_at: new Date().toISOString(), results });
+  } catch (error) { next(error); }
+});
+
 // GET /products/sale-price-corrections
 // One row per sellable entity, paginated before its sale history is aggregated.
 router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (req, res, next) => {
@@ -4679,6 +4755,8 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
              ${SALE_PRICE_NULL_TEXT} AS variant_name, ${SALE_PRICE_NULL_TEXT} AS variant_reference,
              ${salePriceText('p.image_url')} AS image_url,
              p.prix_vente AS product_prix_vente, p.prix_vente_2 AS product_prix_vente_2,
+             p.prix_achat AS product_prix_achat, p.cout_revient AS product_cout_revient,
+             NULL AS variant_prix_achat, NULL AS variant_cout_revient,
              NULL AS variant_prix_vente, NULL AS variant_prix_vente_2, p.sale_price_corrected_at AS corrected_at
       FROM products p
       WHERE ${SALE_PRICE_SELLABLE_SQL}
@@ -4688,7 +4766,8 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
       SELECT p.id, pv.id, ${salePriceText('p.reference_2')}, ${salePriceText('p.designation')},
              ${salePriceText('pv.variant_name')}, ${salePriceText('pv.reference')},
              COALESCE(${salePriceText('pv.image_url')}, ${salePriceText('p.image_url')}),
-             p.prix_vente, p.prix_vente_2,
+             p.prix_vente, p.prix_vente_2, p.prix_achat, p.cout_revient,
+             pv.prix_achat, pv.cout_revient,
              pv.prix_vente, pv.prix_vente_2, pv.sale_price_corrected_at
       FROM products p
       JOIN product_variants pv ON pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
@@ -4795,6 +4874,8 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
         current_prix_vente_2: pv2.value, current_prix_vente_2_source: pv2.source,
         high_prices: rankHistoricalPrices(history, 'desc', 3), low_prices: rankHistoricalPrices(history, 'asc', 3),
         last_purchase_price: lastPurchase ? Number(lastPurchase.prix_achat) : null,
+        cost_price: (entity.variant_id == null ? entity.product_cout_revient : entity.variant_cout_revient) == null ? null : Number(entity.variant_id == null ? entity.product_cout_revient : entity.variant_cout_revient),
+        purchase_price: (entity.variant_id == null ? entity.product_prix_achat : entity.variant_prix_achat) == null ? null : Number(entity.variant_id == null ? entity.product_prix_achat : entity.variant_prix_achat),
         last_purchase_at: lastPurchase?.date_creation ?? null,
         is_corrected: Boolean(entity.corrected_at), corrected_at: entity.corrected_at ?? null,
       };

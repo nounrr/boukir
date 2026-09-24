@@ -84,6 +84,7 @@ import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
 import absencesRouter from './routes/absences.js';
 import pdgBoardRouter from './routes/pdgBoard.js';
+import projetsRouter from './routes/projets.js';
 import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
 import fondCaisseRouter from './routes/fond-caisse.js';
 
@@ -125,6 +126,7 @@ import { ensureFondCaissePermissionSchema } from './utils/fondCaissePermissions.
 import { ensureStatsDetailsPermissionSchema } from './utils/statsDetailsPermissions.js';
 import { ensureSalePriceCorrectionPermissionSchema } from './utils/salePriceCorrectionPermissions.js';
 import { ensurePdgBoardSchema } from './db/ensurePdgBoardSchema.js';
+import { ensureProjetsSchema } from './db/ensureProjetsSchema.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
@@ -152,6 +154,7 @@ async function ensureSchemas() {
   await ensureStatsDetailsPermissionSchema();
   await ensureSalePriceCorrectionPermissionSchema();
   await ensurePdgBoardSchema();
+  await ensureProjetsSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 
@@ -435,6 +438,7 @@ app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
 app.use('/api/absences', absencesRouter);
 app.use('/api/pdg-board', pdgBoardRouter);
+app.use('/api/projets', projetsRouter);
 
 app.use('/api/audit', auditRouter);
 app.use('/api/bon-links', bonLinksRouter);

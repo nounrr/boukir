@@ -58,6 +58,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       items: [
         { name: 'Accueil', to: '/dashboard', show: true },
         { name: 'Notes & tâches PDG', to: '/pdg-board', show: user?.role === 'PDG' },
+        { name: 'Projets', to: '/projets', show: user?.role === 'PDG' },
       ],
     },
     {

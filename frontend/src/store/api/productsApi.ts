@@ -26,10 +26,15 @@ export interface SalePriceCorrectionRow {
   low_prices: HistoricalSalePrice[];
   /** Dernier prix d'achat connu (snapshot sinon ligne de commande). */
   last_purchase_price: number | null;
+  cost_price: number | null;
+  purchase_price: number | null;
   last_purchase_at: string | null;
   is_corrected: boolean;
   corrected_at: string | null;
 }
+
+export interface WebPriceGroup { price: number; count: number; sources: Array<{ site: string; url: string; title: string }> }
+export interface WebSalePriceResult { product_id: number; variant_id: number | null; market: WebPriceGroup[]; ingco: WebPriceGroup[]; offersCount: number; error?: string }
 
 export interface SalePriceCorrectionsResponse {
   data: SalePriceCorrectionRow[];
@@ -295,6 +300,13 @@ const productsApi = api.injectEndpoints({
       providesTags: ['Product'],
     }),
 
+    researchSalePrices: builder.mutation<
+      { model: string; searched_at: string; results: WebSalePriceResult[] },
+      { model: string; entities: Array<{ product_id: number; variant_id: number | null }> }
+    >({
+      query: (body) => ({ url: '/products/sale-price-corrections/web-research', method: 'POST', body }),
+    }),
+
     updateSalePriceCorrections: builder.mutation<
       { success: boolean; processed: number; updatedProducts: number; updatedVariants: number; updatedSnapshots: number },
       {
@@ -368,6 +380,7 @@ export const {
   useCorrectBonProductPricesMutation,
   useGetSalePriceCorrectionAccessQuery,
   useGetSalePriceCorrectionsQuery,
+  useResearchSalePricesMutation,
   useUpdateSalePriceCorrectionsMutation,
   useResetSalePriceCorrectionsMutation,
   useGetProductsWithSnapshotsQuery,

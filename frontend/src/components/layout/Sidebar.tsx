@@ -45,6 +45,7 @@ import {
   Download,
   MessageSquareText,
   ListTodo,
+  FolderKanban,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -79,6 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
         { name: 'Notes & tâches PDG', href: '/pdg-board', icon: ListTodo, show: user?.role === 'PDG' },
+        { name: 'Projets', href: '/projets', icon: FolderKanban, show: user?.role === 'PDG' },
         { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
       ],
     },
