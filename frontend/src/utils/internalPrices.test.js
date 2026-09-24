@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import * as XLSX from 'xlsx';
 import { canViewInternalPrices, filterInternalPriceFields } from './internalPrices.ts';
 
-test('internal prices are hidden for employees and unavailable sessions only', () => {
-  for (const role of ['Employé', undefined, null, '']) {
-    assert.equal(canViewInternalPrices(role), false);
-  }
-  for (const role of ['PDG', 'Manager', 'ManagerPlus', 'ChefChauffeur', 'Chauffeur']) {
-    assert.equal(canViewInternalPrices(role), true);
+test('internal prices follow the individual employee permission', () => {
+  assert.equal(canViewInternalPrices(null), false);
+  assert.equal(canViewInternalPrices({ role: 'PDG' }), true);
+  for (const role of ['Employé', 'Manager', 'ManagerPlus', 'ChefChauffeur', 'Chauffeur']) {
+    assert.equal(canViewInternalPrices({ role, acces_prix_internes: 0 }), false);
+    assert.equal(canViewInternalPrices({ role, acces_prix_internes: 1 }), true);
   }
 });
 

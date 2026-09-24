@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
+import { canViewInternalPrices } from '../../utils/internalPrices';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
@@ -111,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Correction noms', href: '/products/name-corrections', icon: FileCheck2, show: !isChefChauffeur },
         { name: 'Correction prix ventes', href: '/products/sale-price-corrections', icon: CircleDollarSign, show: canViewSalePriceCorrections },
-        { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: user?.role !== 'Chauffeur' && user?.role !== 'Employé' },
+        { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: user?.role !== 'Chauffeur' && canViewInternalPrices(user) },
         { name: 'Solver catégorie', href: '/solver-categorie', icon: FolderTree, show: !isChefChauffeur },
       ],
     },
@@ -161,6 +162,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Stats absences', href: '/absences/statistiques', icon: PieChart, show: !isChefChauffeur && canViewAbsenceStats },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Autorisations par page', href: '/employees/page-permissions', icon: ShieldCheck, show: user?.role === 'PDG' },
+        { name: 'Accès aux prix internes', href: '/employees/internal-price-permissions', icon: BadgeDollarSign, show: user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', href: '/employees/client-collaboration-permissions', icon: UserCheck, show: user?.role === 'PDG' },
         { name: 'Permissions avis Maalem', href: '/employees/maalem-review-permissions', icon: ShieldCheck, show: user?.role === 'PDG' },
       ],

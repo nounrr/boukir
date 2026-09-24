@@ -4,6 +4,7 @@ import { signToken, verifyToken } from '../middleware/auth.js';
 import { checkUserAccess } from '../middleware/accessSchedule.js';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
+import { ensureInternalPricePermissionSchema } from '../utils/internalPricePermissions.js';
 
 const router = Router();
 
@@ -76,6 +77,7 @@ async function getEmployeePasswordChangeRequired(employeeId) {
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
+    await ensureInternalPricePermissionSchema();
     const { cin, password } = req.body;
     if (!cin || !password) return res.status(400).json({ message: 'CIN et mot de passe requis' });
     const attemptKey = loginAttemptKey(req, cin);
@@ -87,7 +89,7 @@ router.post('/login', async (req, res, next) => {
     }
     
     const [rows] = await pool.query(
-      'SELECT id, nom_complet, cin, date_embauche, role, password, password_changed_at, password_change_required_week_start FROM employees WHERE cin = ? AND deleted_at IS NULL',
+      'SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, password, password_changed_at, password_change_required_week_start FROM employees WHERE cin = ? AND deleted_at IS NULL',
       [cin]
     );
     const row = rows[0];
@@ -127,7 +129,7 @@ router.post('/login', async (req, res, next) => {
       );
     }
     
-    const user = { id: row.id, nom_complet: row.nom_complet, cin: row.cin, date_embauche: row.date_embauche, role: row.role };
+    const user = { id: row.id, nom_complet: row.nom_complet, cin: row.cin, date_embauche: row.date_embauche, role: row.role, acces_prix_internes: row.acces_prix_internes };
     const token = signToken({ id: user.id, role: user.role, cin: user.cin });
     
     res.json({ 
@@ -145,15 +147,16 @@ router.post('/login', async (req, res, next) => {
 // GET /api/auth/me (requires Bearer token)
 router.get('/me', verifyToken, async (req, res, next) => {
   try {
+    await ensureInternalPricePermissionSchema();
     const { id } = req.user || {};
     if (!id) return res.status(401).json({ message: 'Non autorisé' });
     const [rows] = await pool.query(
-      'SELECT id, nom_complet, cin, date_embauche, role, password_changed_at, password_change_required_week_start FROM employees WHERE id = ? AND deleted_at IS NULL',
+      'SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, password_changed_at, password_change_required_week_start FROM employees WHERE id = ? AND deleted_at IS NULL',
       [id]
     );
     const row = rows[0];
     const user = row
-      ? { id: row.id, nom_complet: row.nom_complet, cin: row.cin, date_embauche: row.date_embauche, role: row.role }
+      ? { id: row.id, nom_complet: row.nom_complet, cin: row.cin, date_embauche: row.date_embauche, role: row.role, acces_prix_internes: row.acces_prix_internes }
       : null;
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 

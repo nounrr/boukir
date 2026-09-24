@@ -1,7 +1,11 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { canViewInternalPrices } from '../utils/internalPricePermissions.js';
 
 const router = express.Router();
+router.use((req, res, next) => (
+  canViewInternalPrices(req.user) ? next() : res.status(403).json({ message: 'Accès aux prix internes non autorisé.' })
+));
 
 const clampNumber = (value, fallback, min, max) => {
   const n = Number(value);

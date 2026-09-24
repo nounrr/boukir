@@ -55,6 +55,11 @@ const authSlice = createSlice({
       state.passwordChangeRequired = Boolean(action.payload);
       localStorage.setItem('password_change_required', String(Boolean(action.payload)));
     },
+    refreshUser: (state, action: PayloadAction<User>) => {
+      if (!state.user || state.user.id !== action.payload.id) return;
+      state.user = { ...state.user, ...action.payload };
+      localStorage.setItem('user', JSON.stringify(state.user));
+    },
     clearError: (state) => {
       state.error = null;
     },
@@ -89,6 +94,7 @@ export const {
   clearError,
   initializeAuth,
   setPasswordChangeRequired,
+  refreshUser,
 } = authSlice.actions;
 
 export default authSlice.reducer;

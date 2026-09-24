@@ -1,4 +1,5 @@
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
+import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
@@ -1200,7 +1201,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const paymentHistoryModeInitializedForBonId = useRef<number | null>(null);
   const isEditMode = Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
-  const showInternalPrices = isPDG;
+  const showInternalPrices = useCanViewInternalPrices();
   const showBonPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
   const formatPrixAchatOption = (value: any) => showInternalPrices ? formatPurchasePrice(value) : '';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
@@ -2260,7 +2261,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       const pdfElement = (
         <BonPrintTemplate
           bon={bonForTemplate}
-          internalPricesVisible={isPDG}
+          internalPricesVisible={showInternalPrices}
           client={clientContact as Contact | undefined}
           fournisseur={fournisseurContact as Contact | undefined}
           products={products as any}

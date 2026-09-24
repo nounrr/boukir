@@ -6,6 +6,7 @@ export interface User {
   cin: string;
   date_embauche?: string | null;
   role?: Role | null;
+  acces_prix_internes?: boolean | number | null;
   created_at?: string;
   updated_at?: string;
 }

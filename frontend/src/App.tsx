@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { initializeAuth, logout } from './store/slices/authSlice';
+import { initializeAuth, logout, refreshUser } from './store/slices/authSlice';
 import { setPasswordChangeRequired } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
 import { useValidateTokenQuery } from './store/api/authApi';
 import { useAccessScheduleMonitor } from './hooks/useAccessScheduleMonitor';
 import { useSocketConnection } from './hooks/useSocketConnection';
+import { canViewInternalPrices } from './utils/internalPrices';
 
 // Composants
 import LoginPage from './components/auth/LoginPage';
@@ -21,6 +22,7 @@ const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const EmployeePage = React.lazy(() => import('./pages/EmployeePage'));
 const ClientCollaborationPermissionsPage = React.lazy(() => import('./pages/ClientCollaborationPermissionsPage'));
 const PagePermissionsPage = React.lazy(() => import('./pages/PagePermissionsPage'));
+const InternalPricePermissionsPage = React.lazy(() => import('./pages/InternalPricePermissionsPage'));
 const MaalemReviewPermissionsPage = React.lazy(() => import('./pages/MaalemReviewPermissionsPage'));
 const EmployeeSelfPage = React.lazy(() => import('./pages/EmployeeSelfPage'));
 const EmployeeArchivePage = React.lazy(() => import('./pages/EmployeeArchivePage'));
@@ -124,7 +126,11 @@ const AppContent: React.FC = () => {
   const { data: meData, isError: tokenInvalid } = useValidateTokenQuery(undefined, {
     skip: !isAuthenticated,
     refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
   });
+  useEffect(() => {
+    if (meData) dispatch(refreshUser(meData));
+  }, [meData, dispatch]);
   useEffect(() => {
     if (tokenInvalid) {
       dispatch(logout());
@@ -676,6 +682,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/employees/internal-price-permissions"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <InternalPricePermissionsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/pdg-board"
           element={
             <ProtectedRoute requiredRoles={['PDG']}>
@@ -861,7 +878,7 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur']}>
               <LayoutWithAccessCheck>
-                <SolverPrixAchatPage />
+                {canViewInternalPrices(user) ? <SolverPrixAchatPage /> : <Navigate to="/" replace />}
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

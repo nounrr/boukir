@@ -3,6 +3,7 @@ import { normalizePermissionFlag } from './clientCollaborationPermissions.js';
 import { ensureFondCaissePermissionSchema } from './fondCaissePermissions.js';
 import { ensureStatsDetailsPermissionSchema } from './statsDetailsPermissions.js';
 import { ensureSalePriceCorrectionPermissionSchema } from './salePriceCorrectionPermissions.js';
+import { ensureInternalPricePermissionSchema } from './internalPricePermissions.js';
 
 /**
  * Registre unique des autorisations par page.
@@ -19,6 +20,19 @@ import { ensureSalePriceCorrectionPermissionSchema } from './salePriceCorrection
  *  3. rien d'autre : l'API et l'ecran PDG s'adaptent automatiquement.
  */
 export const PAGE_PERMISSION_GROUPS = Object.freeze([
+  {
+    key: 'internal_prices',
+    label: 'Prix d’achat et coût de revient',
+    page: 'Tous les écrans, bons et PDF',
+    href: '/employees/internal-price-permissions',
+    description: 'Autorise l’affichage des prix internes et des marges calculées à partir de ces prix.',
+    permissions: [{
+      key: 'view',
+      column: 'acces_prix_internes',
+      label: 'Voir les prix internes',
+      description: 'Prix d’achat, coût de revient et calculs dérivés dans toute l’application.',
+    }],
+  },
   {
     key: 'clients',
     label: 'Clients · commentaires & rappels',
@@ -276,6 +290,7 @@ export function parsePagePermissionUpdate(body, employee) {
 
 /** Garantit que toutes les colonnes du registre existent avant lecture. */
 export async function ensurePagePermissionSchema(db = pool) {
+  await ensureInternalPricePermissionSchema(db);
   await ensureFondCaissePermissionSchema(db);
   await ensureStatsDetailsPermissionSchema(db);
   await ensureSalePriceCorrectionPermissionSchema(db);

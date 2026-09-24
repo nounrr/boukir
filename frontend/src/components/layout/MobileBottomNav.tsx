@@ -104,6 +104,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
         { name: 'Autorisations par page', to: '/employees/page-permissions', show: user?.role === 'PDG' },
+        { name: 'Accès aux prix internes', to: '/employees/internal-price-permissions', show: user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', to: '/employees/client-collaboration-permissions', show: user?.role === 'PDG' },
         { name: 'Permissions avis Maalem', to: '/employees/maalem-review-permissions', show: user?.role === 'PDG' },
         { name: 'Contacts', to: '/contacts', show: user?.role !== 'Employé' },

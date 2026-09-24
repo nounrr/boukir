@@ -13,6 +13,8 @@ import { initializeSocketServer } from './socket/socketServer.js';
 
 import pool, { requestContext } from './db/pool.js';
 import { getJwtSecret, requireRole, verifyCurrentUserWithSchedule, verifyToken } from './middleware/auth.js';
+import { hideInternalPricesInApiResponses } from './middleware/internalPriceVisibility.js';
+import { canViewInternalPrices } from './utils/internalPricePermissions.js';
 import { enforceWeeklyPasswordChange } from './middleware/passwordPolicy.js';
 import { notifyCashRegisterChanges } from './middleware/cashRegisterRealtime.js';
 import jwt from 'jsonwebtoken';
@@ -300,6 +302,7 @@ app.use((req, res, next) => {
 });
 
 // Block access until password is changed (weekly Monday policy)
+app.use(hideInternalPricesInApiResponses);
 app.use(enforceWeeklyPasswordChange);
 
 app.use(morgan('dev', {
@@ -316,6 +319,9 @@ app.use(notifyCashRegisterChanges);
 // bon PDFs remain publicly served by the generic static mount below.
 app.use('/uploads/employee_docs', verifyCurrentUserWithSchedule, requireRole('PDG'), express.static(path.join(__dirname, 'uploads', 'employee_docs'), { fallthrough: false }));
 app.use('/uploads/payments', verifyCurrentUserWithSchedule, express.static(path.join(__dirname, 'uploads', 'payments'), { fallthrough: false }));
+app.use('/uploads/inventory', verifyCurrentUserWithSchedule, (req, res, next) => (
+  canViewInternalPrices(req.user) ? next() : res.status(403).json({ message: 'Accès aux prix internes non autorisé.' })
+));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Healthcheck

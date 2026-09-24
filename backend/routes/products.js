@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
 import { createStockPdfStream } from '../utils/stockPdf.js';
+import { canViewInternalPrices } from '../utils/internalPricePermissions.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import {
   PRODUCT_IMAGE_TARGETS,
@@ -1490,7 +1491,7 @@ router.get('/stock-pdf', async (req, res, next) => {
     const pdfStream = createStockPdfStream(allProducts, {
       tabLabel,
       filtersText: filterParts.join(' | '),
-      showInternalPrices: Boolean(req.user?.role) && req.user.role !== 'Employé',
+      showInternalPrices: canViewInternalPrices(req.user),
     });
 
     const fileSuffix = type === 'service'

@@ -6,6 +6,7 @@ import { normalizeMaalemReviewPermissions } from '../utils/maalemReviewPermissio
 import { normalizeAbsencePermissions } from '../utils/absencePermissions.js';
 import { normalizeFondCaissePermissions } from '../utils/fondCaissePermissions.js';
 import { normalizeStatsDetailsPermissions } from '../utils/statsDetailsPermissions.js';
+import { ensureInternalPricePermissionSchema } from '../utils/internalPricePermissions.js';
 
 export function getJwtSecret() {
   const secret = String(process.env.JWT_SECRET || '').trim();
@@ -55,13 +56,14 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
       }
 
       if (isEmployeePayload(req.user)) {
+        await ensureInternalPricePermissionSchema();
         const [rows] = await pool.query(
           `SELECT id, cin, role, acces_commentaires_clients, acces_rappels_clients,
                   acces_avis_maalem, moderation_avis_maalem,
                   restauration_avis_maalem, details_prives_avis_maalem,
                   acces_gestion_absences, acces_statistiques_absences,
                   acces_ouverture_fond_caisse, acces_statistiques_details,
-                  acces_correction_prix_vente
+                  acces_correction_prix_vente, acces_prix_internes
            FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
           [userId]
         );
@@ -88,6 +90,7 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
           fond_caisse_permissions: normalizeFondCaissePermissions(employee),
           acces_statistiques_details: employee.acces_statistiques_details,
           acces_correction_prix_vente: employee.acces_correction_prix_vente,
+          acces_prix_internes: employee.acces_prix_internes,
           stats_details_permissions: normalizeStatsDetailsPermissions(employee),
           _currentUserValidated: true,
         };

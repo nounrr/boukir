@@ -5,8 +5,8 @@ const internalPriceFields = new Set([
   'totalachat', 'totalachatrecalcule',
 ]);
 
-export const canViewInternalPrices = (role?: string | null): boolean =>
-  Boolean(role) && role !== 'Employé';
+export const canViewInternalPrices = (user?: { role?: string | null; acces_prix_internes?: boolean | number | null } | null): boolean =>
+  user?.role === 'PDG' || (Boolean(user?.role) && (user?.acces_prix_internes === true || user?.acces_prix_internes === 1));
 
 export const isInternalPriceField = (field: string): boolean =>
   internalPriceFields.has(field.replace(/_/g, '').toLowerCase());
