@@ -7,6 +7,7 @@ import { toBackendUrl } from '../utils/url';
 
 type CorrectionTab = 'pending' | 'processed';
 type RowFilter = 'all' | 'todo' | 'ready';
+type WebFilter = 'all' | 'no_info' | 'found' | 'near_10';
 type Side = 'pv1' | 'pv2';
 type Tone = 'indigo' | 'amber';
 // `keep` est un choix explicite, distinct d'un prix qui vaudrait la même chose que l'actuel.
@@ -18,6 +19,10 @@ const money = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximum
 const quantity = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const rowKey = (row: Pick<SalePriceCorrectionRow, 'product_id' | 'variant_id'>) => `${row.product_id}:${row.variant_id ?? 'base'}`;
 const samePrice = (a: number, b: number) => Math.abs(Number(a) - Number(b)) < 0.005;
+const webPriceGroups = (result?: WebSalePriceResult) => [...(result?.market ?? []), ...(result?.ingco ?? [])];
+const hasWebPrice = (result?: WebSalePriceResult) => webPriceGroups(result).length > 0;
+const hasNearbyWebPrice = (row: SalePriceCorrectionRow, result?: WebSalePriceResult) =>
+  webPriceGroups(result).some((group) => Math.abs(row.current_prix_vente - group.price) <= 10);
 const sourceLabels: Record<SalePriceSource, string> = { snapshot: 'Snapshot FIFO', variant: 'Catalogue variante', product: 'Catalogue produit' };
 const resolvePrice = (choice: Choice | undefined, current: number) => (!choice ? null : choice.kind === 'keep' ? current : choice.value);
 const isReady = (decision?: Decision) => Boolean(decision?.pv1 && decision?.pv2);
@@ -89,7 +94,8 @@ const CustomPriceOption = React.memo<{
 
   useEffect(() => {
     if (!selected) setRawValue('');
-  }, [selected]);
+    else if (value !== undefined) setRawValue((current) => Number(current.replace(',', '.')) === value ? current : String(value));
+  }, [selected, value]);
 
   const updateValue = (nextRawValue: string) => {
     if (!/^\d*(?:[.,]\d*)?$/.test(nextRawValue)) return;
@@ -236,6 +242,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
             <p className="font-bold leading-5 text-stone-900">{row.designation}</p>
             {row.variant_name ? <p className="mt-0.5 text-sm font-semibold text-indigo-700">{row.variant_name}</p> : <p className="mt-0.5 text-xs text-stone-400">Produit de base</p>}
             <p className="mt-1 text-[11px] tabular-nums text-stone-500">ID {row.product_id}{row.reference ? ` · Réf. ${row.reference}` : ''}{row.variant_reference ? ` · Var. ${row.variant_reference}` : ''}</p>
+            {webResult && !hasWebPrice(webResult) ? <span title={webResult.error || 'Aucun prix vérifié trouvé sur Internet'} className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">Sans infos</span> : null}
           </div>
         </div>
       </td>
@@ -310,9 +317,11 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<RowFilter>('all');
+  const [webFilter, setWebFilter] = useState<WebFilter>('all');
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [checkedKeys, setCheckedKeys] = useState<Record<string, true>>({});
   const [webModel, setWebModel] = useState('gpt-5-mini');
+  const [pv2DiscountRaw, setPv2DiscountRaw] = useState('10');
   const [webResults, setWebResults] = useState<Record<string, WebSalePriceResult>>({});
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const rowElements = useRef(new Map<string, HTMLTableRowElement>());
@@ -326,7 +335,9 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab, category_id: categoryId === '' ? undefined : categoryId });
   const [applyCorrections, { isLoading: isApplying }] = useUpdateSalePriceCorrectionsMutation();
   const [resetCorrections, { isLoading: isResetting }] = useResetSalePriceCorrectionsMutation();
-  const [researchSalePrices, { isLoading: isResearching }] = useResearchSalePricesMutation();
+  const [researchSalePrices] = useResearchSalePricesMutation();
+  const [isResearching, setIsResearching] = useState(false);
+  const [webProgress, setWebProgress] = useState<{ done: number; total: number } | null>(null);
   const isSaving = isApplying || isResetting;
   const rows = useMemo(() => data?.data ?? [], [data]);
   const meta = data?.meta;
@@ -359,9 +370,16 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const focusRow = useCallback((key: string) => setFocusedKey((current) => (current === key ? current : key)), []);
 
   const visibleRows = useMemo(() => {
-    if (readOnly || filter === 'all') return rows;
-    return rows.filter((row) => (filter === 'ready' ? isReady(decisions[rowKey(row)]) : !isReady(decisions[rowKey(row)])));
-  }, [decisions, filter, readOnly, rows]);
+    if (readOnly) return rows;
+    return rows.filter((row) => {
+      if (filter !== 'all' && (filter === 'ready' ? !isReady(decisions[rowKey(row)]) : isReady(decisions[rowKey(row)]))) return false;
+      const result = webResults[rowKey(row)];
+      if (webFilter === 'no_info') return Boolean(result) && !hasWebPrice(result);
+      if (webFilter === 'found') return hasWebPrice(result);
+      if (webFilter === 'near_10') return hasNearbyWebPrice(row, result);
+      return true;
+    });
+  }, [decisions, filter, readOnly, rows, webFilter, webResults]);
 
   // Multi-sélection de l'onglet Traités : clic simple, ou Maj+clic pour une plage.
   const toggleCheck = useCallback((key: string, index: number, shiftKey: boolean) => {
@@ -380,15 +398,87 @@ const SalePriceCorrectionsContent: React.FC = () => {
     lastCheckedIndex.current = index;
   }, [visibleRows]);
 
-  const checkedRows = useMemo(() => rows.filter((row) => checkedKeys[rowKey(row)]), [checkedKeys, rows]);
+  const checkedRows = useMemo(() => visibleRows.filter((row) => checkedKeys[rowKey(row)]), [checkedKeys, visibleRows]);
+  const pv2Discount = Number(pv2DiscountRaw.replace(',', '.'));
+  const validPv2Discount = pv2DiscountRaw.trim() !== '' && Number.isFinite(pv2Discount) && pv2Discount > 0 && pv2Discount <= 100;
+  const eligibleDiscountRows = checkedRows.filter((row) => (resolvePrice(decisions[rowKey(row)]?.pv1, row.current_prix_vente) ?? row.current_prix_vente) > 0);
+  const preparePv2Discount = () => {
+    if (!validPv2Discount || !eligibleDiscountRows.length || isSaving || isResearching) return;
+    setDecisions((previous) => {
+      const next = { ...previous };
+      for (const row of eligibleDiscountRows) {
+        const key = rowKey(row);
+        const pv1 = resolvePrice(previous[key]?.pv1, row.current_prix_vente) ?? row.current_prix_vente;
+        const pv2 = Math.round(pv1 * (1 - pv2Discount / 100) * 100) / 100;
+        next[key] = { ...previous[key], pv1: previous[key]?.pv1 ?? KEEP, pv2: { kind: 'price', value: pv2 } };
+      }
+      return next;
+    });
+    showSuccess(`PV2 préparé pour ${eligibleDiscountRows.length} produit(s) avec une réduction de ${pv2Discount}% sur PV1. Vérifiez puis validez.`);
+  };
+  const webCounts = useMemo(() => rows.reduce((counts, row) => {
+    const result = webResults[rowKey(row)];
+    if (result && !hasWebPrice(result)) counts.no_info += 1;
+    if (hasWebPrice(result)) counts.found += 1;
+    if (hasNearbyWebPrice(row, result)) counts.near_10 += 1;
+    return counts;
+  }, { no_info: 0, found: 0, near_10: 0 }), [rows, webResults]);
+  const eligibleWebRows = (source: 'ingco' | 'market') => checkedRows.filter((row) => Boolean(webResults[rowKey(row)]?.[source]?.length));
+  const prepareWebPrices = (source: 'ingco' | 'market') => {
+    const eligible = eligibleWebRows(source);
+    if (!eligible.length || isSaving || isResearching) return;
+    setDecisions((previous) => {
+      const next = { ...previous };
+      for (const row of eligible) {
+        const key = rowKey(row);
+        const price = webResults[key][source][0].price;
+        next[key] = { ...next[key], pv1: { kind: 'price', value: price }, pv2: next[key]?.pv2 ?? KEEP };
+      }
+      return next;
+    });
+    showSuccess(`${eligible.length} prix vente préparé(s) depuis ${source === 'ingco' ? 'INGCO' : 'Internet'}. Vérifiez puis validez les corrections.`);
+  };
   const searchWeb = async () => {
-    if (!checkedRows.length || checkedRows.length > 10 || isResearching) return;
+    if (!checkedRows.length || checkedRows.length > 100 || isResearching) return;
+    const selected = [...checkedRows];
+    // Une requête par produit évite les délais d'expiration HTTP ; trois recherches avancent en parallèle.
+    const batches = selected.map((row) => [row]);
+    let cursor = 0;
+    let failed = 0;
+    let firstError = '';
+    let stop = false;
+    setIsResearching(true);
+    setWebProgress({ done: 0, total: selected.length });
+    setWebResults((previous) => {
+      const next = { ...previous };
+      selected.forEach((row) => { delete next[rowKey(row)]; });
+      return next;
+    });
     try {
-      const response = await researchSalePrices({ model: webModel, entities: checkedRows.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
-      setWebResults((previous) => ({ ...previous, ...Object.fromEntries(response.results.map((result) => [rowKey(result), result])) }));
-    } catch (researchError) {
-      const apiError = researchError as { data?: { message?: string } };
-      showError(apiError.data?.message || 'Recherche web impossible.', 'Échec de la recherche');
+      const worker = async () => {
+        while (!stop && cursor < batches.length) {
+          const batch = batches[cursor++];
+          try {
+            const response = await researchSalePrices({ model: webModel, entities: batch.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
+            setWebResults((previous) => ({ ...previous, ...Object.fromEntries(response.results.map((result) => [rowKey(result), result])) }));
+          } catch (researchError) {
+            const apiError = researchError as { status?: number; data?: { message?: string } };
+            firstError ||= apiError.data?.message || 'Recherche web impossible.';
+            failed += batch.length;
+            setWebResults((previous) => ({ ...previous, ...Object.fromEntries(batch.map((row) => [rowKey(row), {
+              product_id: row.product_id, variant_id: row.variant_id, market: [], ingco: [], offersCount: 0,
+              error: apiError.data?.message || 'Recherche web impossible.',
+            } satisfies WebSalePriceResult])) }));
+            if (apiError.status === 400 || apiError.status === 401 || apiError.status === 403 || apiError.status === 503) stop = true;
+          } finally {
+            setWebProgress((previous) => previous ? { ...previous, done: previous.done + batch.length } : null);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(3, batches.length) }, () => worker()));
+      if (failed || stop) showError(stop ? `${firstError} Recherche interrompue ; les résultats obtenus restent affichés.` : `${firstError} ${failed} produit(s) non traité(s).`, 'Recherche partielle');
+    } finally {
+      setIsResearching(false);
     }
   };
   const allChecked = visibleRows.length > 0 && visibleRows.every((row) => checkedKeys[rowKey(row)]);
@@ -404,7 +494,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   }, [visibleRows]);
 
   useEffect(() => { setPage(1); }, [limit, categoryId]);
-  useEffect(() => { setCheckedKeys({}); lastCheckedIndex.current = null; }, [activeTab, page, query, limit, categoryId]);
+  useEffect(() => { setCheckedKeys({}); lastCheckedIndex.current = null; setWebFilter('all'); }, [activeTab, page, query, limit, categoryId]);
   useEffect(() => {
     if (!selectAllRef.current) return;
     selectAllRef.current.indeterminate = checkedRows.length > 0 && !allChecked;
@@ -495,7 +585,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [clearRow, decisions, focusedKey, isSaving, keepBoth, readOnly, selectChoice, visibleRows]);
 
-  const resetView = (tab: CorrectionTab) => { setActiveTab(tab); setPage(1); setFilter('all'); setDecisions({}); setCheckedKeys({}); setFocusedKey(null); };
+  const resetView = (tab: CorrectionTab) => { setActiveTab(tab); setPage(1); setFilter('all'); setWebFilter('all'); setDecisions({}); setCheckedKeys({}); setFocusedKey(null); };
 
   const sendBackToPending = async () => {
     if (!checkedRows.length || isSaving) return;
@@ -638,15 +728,31 @@ const SalePriceCorrectionsContent: React.FC = () => {
                   <option value="gpt-5-mini">GPT-5 mini</option><option value="gpt-5">GPT-5</option><option value="gpt-5.2">GPT-5.2</option>
                 </select>
               </label>
-              <button type="button" onClick={() => void searchWeb()} disabled={!checkedRows.length || checkedRows.length > 10 || isResearching || isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-40">
-                {isResearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Chercher sur Internet ({checkedRows.length})
+              <button type="button" onClick={() => void searchWeb()} disabled={!checkedRows.length || checkedRows.length > 100 || isResearching || isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-40">
+                {isResearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} {isResearching && webProgress ? `Recherche ${webProgress.done}/${webProgress.total}` : `Chercher sur Internet (${checkedRows.length})`}
               </button>
-              <span className="text-[11px] text-stone-500">Sélectionnez jusqu’à 10 produits · résultats indicatifs</span>
+              <span className="text-[11px] text-stone-500">Jusqu’à 100 produits par page · résultats indicatifs</span>
               <button type="button" onClick={() => fillMissing('suggest')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-800 transition hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"><Wand2 className="h-3.5 w-3.5" /> Suggestions</button>
               <button type="button" onClick={() => fillMissing('keep')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Garder tout</button>
               <button type="button" onClick={clearPage} disabled={isSaving || !startedCount} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-600 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-40"><Eraser className="h-3.5 w-3.5" /> Effacer</button>
               <div className="hidden xl:block">{submitButton(true)}</div>
             </div>
+          </div>
+          <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-2 px-4 pb-2 sm:px-6">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-stone-500">Recherche web</span>
+            {([['all', 'Tous', rows.length], ['no_info', 'Sans infos', webCounts.no_info], ['found', 'Résultats trouvés', webCounts.found], ['near_10', 'Écart PV1 ≤ 10 DH', webCounts.near_10]] as const).map(([id, label, count]) => (
+              <button key={id} type="button" onClick={() => { setWebFilter(id); setCheckedKeys({}); lastCheckedIndex.current = null; }} className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${webFilter === id ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'}`}>{label} ({count})</button>
+            ))}
+            <span className="mx-1 hidden h-6 w-px bg-stone-200 sm:block" />
+            <button type="button" onClick={toggleCheckAll} disabled={!visibleRows.length || isResearching} className="rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700 disabled:opacity-40">{allChecked ? 'Désélectionner' : 'Sélectionner les affichés'}</button>
+            <span className="text-xs tabular-nums text-stone-600">{checkedRows.length} sélectionné(s)</span>
+            <button type="button" onClick={() => prepareWebPrices('ingco')} disabled={!eligibleWebRows('ingco').length || isSaving || isResearching} className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 disabled:opacity-40">Préparer PV1 depuis INGCO ({eligibleWebRows('ingco').length})</button>
+            <button type="button" onClick={() => prepareWebPrices('market')} disabled={!eligibleWebRows('market').length || isSaving || isResearching} className="rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 disabled:opacity-40">Préparer PV1 depuis Internet ({eligibleWebRows('market').length})</button>
+            <label className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900">PV2 moins
+              <input type="text" inputMode="decimal" value={pv2DiscountRaw} onChange={(event) => { if (/^\d{0,3}(?:[.,]\d{0,2})?$/.test(event.target.value)) setPv2DiscountRaw(event.target.value); }} aria-label="Pourcentage de réduction de PV2 par rapport à PV1" className="h-7 w-14 rounded border-amber-300 bg-white px-1 text-right text-xs font-bold tabular-nums" /> % de PV1
+            </label>
+            <button type="button" onClick={preparePv2Discount} disabled={!validPv2Discount || !eligibleDiscountRows.length || isSaving || isResearching} className="rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900 disabled:opacity-40" title="Calcule PV2 à partir du PV1 choisi ou du PV1 actuel, sans enregistrer immédiatement">Appliquer au PV2 ({eligibleDiscountRows.length})</button>
+            <span className="text-[11px] text-stone-500">PV2 reste au prix actuel si aucun choix n’est déjà fait.</span>
           </div>
           <div className="mx-auto hidden max-w-[1800px] items-center gap-2 px-6 pb-2 text-[11px] text-stone-500 lg:flex">
             <span className="font-semibold uppercase tracking-wide text-stone-400">Clavier</span>
@@ -730,8 +836,8 @@ const SalePriceCorrectionsContent: React.FC = () => {
               {!visibleRows.length ? (
                 <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
                   <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-                  <p className="text-sm font-bold text-stone-800">{filter === 'todo' ? 'Toutes les lignes de la page sont décidées.' : 'Aucune ligne décidée pour l’instant.'}</p>
-                  <button type="button" onClick={() => setFilter('all')} className="text-xs font-bold text-emerald-700 underline-offset-2 hover:underline">Afficher toutes les lignes</button>
+                  <p className="text-sm font-bold text-stone-800">Aucun produit pour ces filtres.</p>
+                  <button type="button" onClick={() => { setFilter('all'); setWebFilter('all'); }} className="text-xs font-bold text-emerald-700 underline-offset-2 hover:underline">Afficher toutes les lignes</button>
                 </div>
               ) : null}
             </div>
