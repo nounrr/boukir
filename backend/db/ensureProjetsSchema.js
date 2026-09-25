@@ -74,6 +74,11 @@ export const PROJETS_SCHEMA_STATEMENTS = [
     quantite DECIMAL(14,3) NOT NULL DEFAULT 1,
     prix_unitaire DECIMAL(14,2) NOT NULL DEFAULT 0,
     total DECIMAL(14,2) NOT NULL DEFAULT 0,
+    product_snapshot_id INT NULL,
+    prix_achat DECIMAL(14,4) NOT NULL DEFAULT 0,
+    cout_revient DECIMAL(14,4) NOT NULL DEFAULT 0,
+    prix_vente DECIMAL(14,4) NOT NULL DEFAULT 0,
+    prix_vente_2 DECIMAL(14,4) NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     KEY idx_projet_bon_items_bon (bon_id),
     KEY idx_projet_bon_items_product (product_id),
@@ -81,8 +86,25 @@ export const PROJETS_SCHEMA_STATEMENTS = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
+// Colonnes ajoutées après la première version (prix internes et catalogue
+// figés au moment de la saisie du bon, comme dans les bons de l'application).
+export const PROJET_BON_ITEM_PRICE_COLUMNS = [
+  ['product_snapshot_id', 'INT NULL'],
+  ['prix_achat', 'DECIMAL(14,4) NOT NULL DEFAULT 0'],
+  ['cout_revient', 'DECIMAL(14,4) NOT NULL DEFAULT 0'],
+  ['prix_vente', 'DECIMAL(14,4) NOT NULL DEFAULT 0'],
+  ['prix_vente_2', 'DECIMAL(14,4) NOT NULL DEFAULT 0'],
+];
+
 export async function ensureProjetsSchema() {
   for (const statement of PROJETS_SCHEMA_STATEMENTS) {
     await pool.query(statement);
+  }
+  const [columns] = await pool.query('SHOW COLUMNS FROM projet_bon_items');
+  const existing = new Set(columns.map((c) => c.Field));
+  for (const [name, definition] of PROJET_BON_ITEM_PRICE_COLUMNS) {
+    if (!existing.has(name)) {
+      await pool.query(`ALTER TABLE projet_bon_items ADD COLUMN ${name} ${definition}`);
+    }
   }
 }

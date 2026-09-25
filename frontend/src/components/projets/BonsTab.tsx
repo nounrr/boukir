@@ -1,87 +1,76 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, Pencil, Plus, Receipt, Trash2, Truck } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Pencil, Plus, Receipt, Trash2, Truck } from 'lucide-react';
+import BonFormModal, { type ProjectBonSubmission } from '../BonFormModal';
 import { type ProjetBon, type ProjetBonType, useDeleteProjetBonMutation, useSaveProjetBonMutation } from '../../store/api/projetsApi';
-import LinesEditor, { type EditableLine, linesTotal, newLine, toNumber } from './LinesEditor';
-import { EmptyState, ErrorBanner, Modal, errorMessage, formatDay, formatMoney, formatQty, iconButton, inputClass, labelClass, primaryButton, secondaryButton, todayInput } from './shared';
+import { EmptyState, ErrorBanner, formatDay, formatMoney, formatQty, iconButton, primaryButton } from './shared';
 
-const COPY: Record<ProjetBonType, { title: string; hint: string; single: string; prefix: string; icon: React.ElementType; empty: string }> = {
+const COPY: Record<ProjetBonType, { title: string; hint: string; single: string; prefix: string; icon: React.ElementType; empty: string; modalTab: 'Sortie' | 'Charge' }> = {
   products: {
     title: 'Bons produits',
-    hint: 'Produits sortis pour ce projet. Aucun impact sur le stock ni les statistiques.',
+    hint: 'Même saisie qu’un bon de sortie, sans client. Aucun impact sur le stock ni les statistiques.',
     single: 'bon produits',
     prefix: 'BP',
     icon: Truck,
     empty: 'Créez un bon pour tracer les produits utilisés sur le chantier.',
+    modalTab: 'Sortie',
   },
   charge: {
     title: 'Bons charge',
-    hint: 'Charges du projet (main d’œuvre, transport, achats…). Séparées de la caisse et des statistiques.',
+    hint: 'Même saisie qu’un bon charge, sans client. Séparé de la caisse et des statistiques.',
     single: 'bon charge',
     prefix: 'BC',
     icon: Receipt,
     empty: 'Créez un bon pour suivre les dépenses du projet.',
+    modalTab: 'Charge',
   },
 };
 
 const reference = (bon: ProjetBon) => `${COPY[bon.type].prefix}-${String(bon.id).padStart(4, '0')}`;
 
+// Convertit un bon projet au format attendu par BonFormModal (sans `id` :
+// le modal reste en mode projet et n'appelle jamais l'API des bons).
+function toModalValues(bon: ProjetBon) {
+  return {
+    type: COPY[bon.type].modalTab,
+    date_creation: `${bon.date_bon} 00:00:00`,
+    observations: bon.observations ?? '',
+    items: bon.items.map((item) => ({
+      product_id: item.product_id,
+      variant_id: item.variant_id,
+      unit_id: item.unit_id,
+      product_snapshot_id: item.product_snapshot_id ?? null,
+      designation: item.designation,
+      designation_custom: item.product_id ? '' : item.designation,
+      quantite: item.quantite,
+      prix_unitaire: item.prix_unitaire,
+      prix_achat: item.prix_achat ?? 0,
+      cout_revient: item.cout_revient ?? 0,
+      total: item.total ?? 0,
+    })),
+  };
+}
+
 const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon[] }> = ({ projetId, type, bons }) => {
   const copy = COPY[type];
-  const list = bons.filter((b) => b.type === type);
+  const list = useMemo(() => bons.filter((b) => b.type === type), [bons, type]);
   const total = list.reduce((sum, b) => sum + b.montant_total, 0);
-  const [save, { isLoading: saving }] = useSaveProjetBonMutation();
+  const [save] = useSaveProjetBonMutation();
   const [remove, { isLoading: deleting }] = useDeleteProjetBonMutation();
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [editing, setEditing] = useState<ProjetBon | null>(null);
-  const [open, setOpen] = useState(false);
-  const [date, setDate] = useState(todayInput());
-  const [observations, setObservations] = useState('');
-  const [lines, setLines] = useState<EditableLine[]>([]);
-  const [error, setError] = useState('');
+  const [modal, setModal] = useState<{ bon: ProjetBon | null } | null>(null);
   const [actionError, setActionError] = useState('');
 
-  const openForm = (bon: ProjetBon | null) => {
-    setEditing(bon);
-    setDate(bon?.date_bon ?? todayInput());
-    setObservations(bon?.observations ?? '');
-    setLines(bon
-      ? bon.items.map((i) => newLine({
-        designation: i.designation,
-        unite: i.unite ?? '',
-        quantite: String(i.quantite),
-        prix_unitaire: String(i.prix_unitaire),
-        product_id: i.product_id,
-        variant_id: i.variant_id,
-        unit_id: i.unit_id,
-      }))
-      : [newLine()]);
-    setError('');
-    setOpen(true);
-  };
-
-  const submit = async () => {
-    const items = lines
-      .filter((l) => l.designation.trim())
-      .map((l) => ({
-        designation: l.designation.trim(),
-        unite: l.unite.trim() || null,
-        quantite: toNumber(l.quantite),
-        prix_unitaire: toNumber(l.prix_unitaire),
-        product_id: l.product_id,
-        variant_id: l.variant_id,
-        unit_id: l.unit_id,
-      }));
-    if (!items.length) { setError('Ajoutez au moins une ligne avec une désignation.'); return; }
-    try {
-      await save({ projetId, id: editing?.id, data: { type, date_bon: date, observations: observations.trim() || null, items } }).unwrap();
-      setOpen(false);
-    } catch (err) { setError(errorMessage(err)); }
+  const submit = async (data: ProjectBonSubmission) => {
+    // Une erreur levée ici est affichée par le modal, qui reste ouvert.
+    await save({ projetId, id: modal?.bon?.id, data: { type, ...data } }).unwrap();
   };
 
   const onDelete = async (bon: ProjetBon) => {
     if (!window.confirm(`Supprimer le ${copy.single} ${reference(bon)} (${formatMoney(bon.montant_total)}) ?`)) return;
     setActionError('');
-    try { await remove({ projetId, id: bon.id }).unwrap(); } catch (err) { setActionError(errorMessage(err)); }
+    try { await remove({ projetId, id: bon.id }).unwrap(); } catch (err) {
+      setActionError((err as { data?: { message?: string } })?.data?.message || 'Suppression impossible.');
+    }
   };
 
   return (
@@ -93,7 +82,7 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-500">{list.length} bon(s) · <span className="font-semibold text-slate-800">{formatMoney(total)}</span></span>
-          <button type="button" className={primaryButton} onClick={() => openForm(null)}><Plus className="h-4 w-4" /> Nouveau {copy.single}</button>
+          <button type="button" className={primaryButton} onClick={() => setModal({ bon: null })}><Plus className="h-4 w-4" /> Nouveau {copy.single}</button>
         </div>
       </div>
       <ErrorBanner message={actionError} />
@@ -115,15 +104,25 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
                   </button>
                   <span className="whitespace-nowrap font-semibold tabular-nums text-rose-700">{formatMoney(bon.montant_total)}</span>
                   <div className="flex shrink-0">
-                    <button type="button" className={iconButton} onClick={() => openForm(bon)} aria-label="Modifier"><Pencil className="h-4 w-4" /></button>
+                    <button type="button" className={iconButton} onClick={() => setModal({ bon })} aria-label="Modifier"><Pencil className="h-4 w-4" /></button>
                     <button type="button" className={iconButton} onClick={() => onDelete(bon)} disabled={deleting} aria-label="Supprimer"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
                 {isOpen && (
                   <div className="overflow-x-auto bg-slate-50/70 px-4 pb-4 pt-1">
-                    <table className="w-full min-w-[560px] text-sm">
+                    <table className="w-full min-w-[900px] text-sm">
                       <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-                        <tr><th className="py-2">Désignation</th><th className="py-2">Unité</th><th className="py-2 text-right">Qté</th><th className="py-2 text-right">P.U.</th><th className="py-2 text-right">Total</th></tr>
+                        <tr>
+                          <th className="py-2">Désignation</th>
+                          <th className="py-2">Unité</th>
+                          <th className="py-2 text-right">Qté</th>
+                          <th className="py-2 text-right">PA</th>
+                          <th className="py-2 text-right">CR</th>
+                          <th className="py-2 text-right">PV</th>
+                          <th className="py-2 text-right">PV2</th>
+                          <th className="py-2 text-right">P.U. bon</th>
+                          <th className="py-2 text-right">Total</th>
+                        </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/70">
                         {bon.items.map((item) => (
@@ -131,6 +130,10 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
                             <td className="py-2 pr-3 text-slate-800">{item.designation}{item.product_id && <span className="ml-1 text-xs text-slate-400">#{item.product_id}</span>}</td>
                             <td className="py-2 pr-3 text-slate-600">{item.unite || '—'}</td>
                             <td className="py-2 text-right tabular-nums">{formatQty(item.quantite)}</td>
+                            <td className="py-2 text-right tabular-nums text-slate-600">{formatMoney(item.prix_achat)}</td>
+                            <td className="py-2 text-right tabular-nums text-slate-600">{formatMoney(item.cout_revient)}</td>
+                            <td className="py-2 text-right tabular-nums text-slate-600">{formatMoney(item.prix_vente)}</td>
+                            <td className="py-2 text-right tabular-nums text-slate-600">{formatMoney(item.prix_vente_2)}</td>
                             <td className="py-2 text-right tabular-nums">{formatMoney(item.prix_unitaire)}</td>
                             <td className="py-2 text-right font-medium tabular-nums">{formatMoney(item.total ?? 0)}</td>
                           </tr>
@@ -145,35 +148,18 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
         </div>
       )}
 
-      {open && (
-        <Modal
-          wide
-          title={editing ? `Modifier ${reference(editing)}` : `Nouveau ${copy.single}`}
-          onClose={() => setOpen(false)}
-          busy={saving}
-          footer={(
-            <>
-              <span className="mr-auto self-center text-sm text-slate-500">Total : <span className="font-bold text-slate-900">{formatMoney(linesTotal(lines))}</span></span>
-              <button type="button" className={secondaryButton} onClick={() => setOpen(false)} disabled={saving}>Annuler</button>
-              <button type="button" className={primaryButton} onClick={submit} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />} Enregistrer</button>
-            </>
-          )}
-        >
-          <div className="space-y-4">
-            <ErrorBanner message={error} />
-            <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
-              <div>
-                <label htmlFor="bon-date" className={labelClass}>Date</label>
-                <input id="bon-date" type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} required />
-              </div>
-              <div>
-                <label htmlFor="bon-obs" className={labelClass}>Observations</label>
-                <input id="bon-obs" className={inputClass} value={observations} onChange={(e) => setObservations(e.target.value)} placeholder="Chantier, fournisseur, remarque…" />
-              </div>
-            </div>
-            <LinesEditor lines={lines} onChange={setLines} withProducts disabled={saving} />
-          </div>
-        </Modal>
+      {modal && (
+        <BonFormModal
+          key={modal.bon?.id ?? 'new'}
+          isOpen
+          onClose={() => setModal(null)}
+          currentTab={copy.modalTab}
+          initialValues={modal.bon ? toModalValues(modal.bon) : undefined}
+          projectMode={{
+            title: modal.bon ? `Modifier ${reference(modal.bon)}` : `Nouveau ${copy.single} (projet)`,
+            onSubmit: submit,
+          }}
+        />
       )}
     </section>
   );

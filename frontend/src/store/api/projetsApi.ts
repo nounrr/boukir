@@ -40,6 +40,11 @@ export interface ProjetBonItem extends ProjetLine {
   product_id: number | null;
   variant_id: number | null;
   unit_id: number | null;
+  product_snapshot_id?: number | null;
+  prix_achat?: number;
+  cout_revient?: number;
+  prix_vente?: number;
+  prix_vente_2?: number;
 }
 
 export interface ProjetAvance {

@@ -215,8 +215,9 @@ router.get('/:id', async (req, res, next) => {
     );
     const [items] = bons.length
       ? await pool.query(
-        `SELECT id, bon_id, position, product_id, variant_id, unit_id, designation, unite,
-                quantite, prix_unitaire, total
+        `SELECT id, bon_id, position, product_id, variant_id, unit_id, product_snapshot_id,
+                designation, unite, quantite, prix_unitaire, total,
+                prix_achat, cout_revient, prix_vente, prix_vente_2
          FROM projet_bon_items WHERE bon_id IN (?) ORDER BY position, id`,
         [bons.map((b) => b.id)]
       )
@@ -224,7 +225,7 @@ router.get('/:id', async (req, res, next) => {
 
     devis.forEach((row) => toNumber(row, ['quantite', 'prix_unitaire', 'total']));
     avances.forEach((row) => toNumber(row, ['montant']));
-    items.forEach((row) => toNumber(row, ['quantite', 'prix_unitaire', 'total']));
+    items.forEach((row) => toNumber(row, ['quantite', 'prix_unitaire', 'total', 'prix_achat', 'cout_revient', 'prix_vente', 'prix_vente_2']));
     const itemsByBon = new Map();
     for (const item of items) {
       if (!itemsByBon.has(item.bon_id)) itemsByBon.set(item.bon_id, []);
@@ -351,10 +352,12 @@ async function insertBonItems(connection, bonId, items) {
   if (!items.length) return;
   await connection.query(
     `INSERT INTO projet_bon_items
-       (bon_id, position, product_id, variant_id, unit_id, designation, unite, quantite, prix_unitaire, total)
+       (bon_id, position, product_id, variant_id, unit_id, product_snapshot_id, designation, unite,
+        quantite, prix_unitaire, total, prix_achat, cout_revient, prix_vente, prix_vente_2)
      VALUES ?`,
     [items.map((i) => [
-      bonId, i.position, i.product_id, i.variant_id, i.unit_id, i.designation, i.unite, i.quantite, i.prix_unitaire, i.total,
+      bonId, i.position, i.product_id, i.variant_id, i.unit_id, i.product_snapshot_id, i.designation, i.unite,
+      i.quantite, i.prix_unitaire, i.total, i.prix_achat, i.cout_revient, i.prix_vente, i.prix_vente_2,
     ])]
   );
 }

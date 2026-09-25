@@ -437,6 +437,12 @@ const bonValidationSchema = Yup.object({
   items: Yup.array().min(1, 'Au moins un produit requis'),
 });
 
+// Mode projet : pas de client/fournisseur, seulement la date et les lignes.
+const projectBonValidationSchema = Yup.object({
+  date_bon: Yup.string().required('Date du bon requise'),
+  items: Yup.array().min(1, 'Au moins un produit requis'),
+});
+
 /* ------------------------------- Utilitaires ------------------------------- */
 const makeRowId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1183,6 +1189,36 @@ interface BonFormModalProps {
   onBonAdded?: (bon: any) => void;
   comptantPartialPaymentMode?: 'hidden' | 'required';
   defaultVendreAuFournisseur?: boolean;
+  /**
+   * Mode projet (page Projets) : même saisie que les bons, mais sans client ni
+   * fournisseur, et la validation est confiée à `onSubmit` au lieu de l'API des
+   * bons — aucun impact sur le stock, la caisse, le catalogue ni les statistiques.
+   */
+  projectMode?: {
+    title: string;
+    onSubmit: (data: ProjectBonSubmission) => Promise<void>;
+  };
+}
+
+export interface ProjectBonSubmissionItem {
+  product_id: number | null;
+  variant_id: number | null;
+  unit_id: number | null;
+  product_snapshot_id: number | null;
+  designation: string;
+  unite: string | null;
+  quantite: number;
+  prix_unitaire: number;
+  prix_achat: number;
+  cout_revient: number;
+  prix_vente: number;
+  prix_vente_2: number;
+}
+
+export interface ProjectBonSubmission {
+  date_bon: string;
+  observations: string | null;
+  items: ProjectBonSubmissionItem[];
 }
 
 const BonFormModal: React.FC<BonFormModalProps> = ({
@@ -1193,13 +1229,15 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   onBonAdded,
   comptantPartialPaymentMode = 'hidden',
   defaultVendreAuFournisseur = false,
+  projectMode,
 }) => {
 
   const { user, token } = useAuth();
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
   const paymentHistoryModeInitializedForBonId = useRef<number | null>(null);
-  const isEditMode = Boolean((initialValues as any)?.id);
+  const isProjectMode = Boolean(projectMode);
+  const isEditMode = !isProjectMode && Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
   const showInternalPrices = useCanViewInternalPrices();
   const showBonPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
@@ -2726,6 +2764,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           ? (initialValues as any).livraisons.map((l: any) => ({ vehicule_id: String(l.vehicule_id || ''), user_id: l.user_id ? String(l.user_id) : '' }))
           : [],
         lieu_charge: initialValues.lieu_chargement || initialValues.lieu_charge || '',
+        observations: (initialValues as any).observations || '',
         date_bon: formatMySQLToDateTimeInput(initialValues.date_creation || initialValues.date_bon || '') || getCurrentDateTimeInput(),
         items: mergedItems,
         montant_ht: initialValues.montant_ht || 0,
@@ -2756,6 +2795,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   vehicule_id: '',
   livraisons: [] as Array<{ vehicule_id: string; user_id?: string }>,
       lieu_charge: '',
+      observations: '',
       date_validation: '',
   statut: 'En attente',
   phone: '',
@@ -3794,6 +3834,60 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         }];
       }),
     };
+
+    if (projectMode) {
+      const toNum = (v: any) => {
+        const n = parseFloat(normalizeDecimal(String(v ?? '')));
+        return Number.isFinite(n) ? n : 0;
+      };
+      const projectItems: ProjectBonSubmissionItem[] = (values.items || []).flatMap((item: any, idx: number) => {
+        const q = toNum(qtyRaw[idx] ?? item.quantite);
+        const product: any = item.product_id
+          ? products.find((p: any) => String(p.id) === String(item.product_id))
+          : null;
+        const designation = String(
+          item.line_mode === 'detail'
+            ? (item.designation_custom || item.designation || '')
+            : (item.designation || item.designation_custom || product?.designation || '')
+        ).trim();
+        if ((!designation && !item.product_id) || q <= 0) return [];
+        const pa = toNum(item.prix_achat);
+        const cr = toNum(item.cout_revient);
+        const entered = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+          ? toNum(unitPriceRaw[idx])
+          : toNum(item.prix_unitaire);
+        // Même règle que le bon charge : une ligne produit est valorisée au coût.
+        const pu = requestType === 'Charge' && item.product_id ? (cr || pa) : entered;
+        const units: any[] = Array.isArray(product?.units) ? product.units : [];
+        const unit = item.unit_id ? units.find((u: any) => String(u.id) === String(item.unit_id)) : null;
+        const variantName = String(item.variant_name || '').trim();
+        return [{
+          product_id: item.product_id ? Number(item.product_id) : null,
+          variant_id: item.variant_id ? Number(item.variant_id) : null,
+          unit_id: item.unit_id ? Number(item.unit_id) : null,
+          product_snapshot_id: item.product_snapshot_id ? Number(item.product_snapshot_id) : null,
+          designation: variantName && !designation.includes(variantName) ? `${designation} - ${variantName}` : designation,
+          unite: unit?.unit_name || product?.base_unit || null,
+          quantite: q,
+          prix_unitaire: pu,
+          prix_achat: pa,
+          cout_revient: cr,
+          prix_vente: toNum(item.catalog_prix_vente_1 ?? product?.prix_vente),
+          prix_vente_2: toNum(item.catalog_prix_vente_2 ?? product?.prix_vente_2),
+        }];
+      });
+      if (!projectItems.length) {
+        showError('Ajoutez au moins une ligne avec une quantité.');
+        return;
+      }
+      await projectMode.onSubmit({
+        date_bon: String(values.date_bon || '').slice(0, 10),
+        observations: String(values.observations || '').trim() || null,
+        items: projectItems,
+      });
+      onClose();
+      return;
+    }
 
     if (requestType === 'Comptant') {
       if (values.payer_partiellement) {
@@ -4865,7 +4959,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate">
-            {isEditMode ? 'Modifier' : 'Créer'} un {currentTab}
+            {projectMode ? projectMode.title : <>{isEditMode ? 'Modifier' : 'Créer'} un {currentTab}</>}
           </h2>
           <button
             onClick={onClose}
@@ -4880,7 +4974,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         <Formik
           initialValues={initialFormValues}
           enableReinitialize={true}
-          validationSchema={bonValidationSchema}
+          validationSchema={isProjectMode ? projectBonValidationSchema : bonValidationSchema}
           onSubmit={handleSubmit}
           innerRef={formikRef}
         >
@@ -4894,7 +4988,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   Chef Chauffeur: modification limitée — vous pouvez changer uniquement les quantités.
                 </div>
               )}
-              {!isPDG && ['Sortie', 'Comptant'].includes(currentTab) && (
+              {!isProjectMode && !isPDG && ['Sortie', 'Comptant'].includes(currentTab) && (
                 <div className="flex flex-wrap gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <span className="font-medium">Autorisations disponibles :</span>
                   <span className="rounded bg-white px-2 py-0.5">
@@ -4943,6 +5037,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </div>
                 )}
 
+                {isProjectMode ? (
+                  <div className="sm:col-span-1 md:col-span-2">
+                    <label htmlFor="observations" className="block text-sm font-medium text-gray-700 mb-1">
+                      Observations
+                    </label>
+                    <Field type="text" id="observations" name="observations" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Chantier, fournisseur, remarque…" />
+                  </div>
+                ) : (
+                <>
                 {/* Lieu / Adresse */}
                 <div>
                   <label htmlFor="lieu_charge" className="block text-sm font-medium text-gray-700 mb-1">
@@ -5022,10 +5125,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </label>
                   </div>
                 )}
+                </>
+                )}
               </div>
 
               {/* Multi-livraisons (véhicules + chauffeurs) */}
-              {(currentTab !== 'Vehicule' || ((values.livraisons || []).length > 0)) && (
+              {!isProjectMode && (currentTab !== 'Vehicule' || ((values.livraisons || []).length > 0)) && (
                 <div className="mt-2">
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">Livraisons (multi-véhicules)</label>
@@ -5112,7 +5217,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Client */}
-              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Charge' || values.type === 'AvoirCharge' || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
+              {!isProjectMode && ((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Charge' || values.type === 'AvoirCharge' || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
@@ -5520,7 +5625,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Fournisseur */}
-              {(values.type === 'Commande' || values.type === 'AvoirFournisseur' || ((values.type === 'Sortie' || values.type === 'Avoir') && values.vendre_au_fournisseur)) && (
+              {!isProjectMode && (values.type === 'Commande' || values.type === 'AvoirFournisseur' || ((values.type === 'Sortie' || values.type === 'Avoir') && values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="fournisseur_id" className="block text-sm font-medium text-gray-700 mb-1">
@@ -5602,7 +5707,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-md font-medium">Produits</h3>
                   <div className="flex gap-2">
-                    {(values.type === 'Sortie' || values.type === 'Comptant') && (
+                    {!isProjectMode && (values.type === 'Sortie' || values.type === 'Comptant') && (
                       <button
                         type="button"
                         disabled={isQtyOnlyEdit}
@@ -7610,7 +7715,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           setFieldValue(`items.${index}.catalog_prix_vente_1`, value);
                                         }}
                                         disabled={!values.items[index].product_id}
-                                        title="Corrige le prix vente 1 du produit, de la variante et des snapshots liés. Ne modifie pas le prix du bon."
+                                        readOnly={isProjectMode}
+                                        title={isProjectMode ? 'Prix vente 1 du catalogue (lecture seule dans un projet)' : 'Corrige le prix vente 1 du produit, de la variante et des snapshots liés. Ne modifie pas le prix du bon.'}
                                       />
                                     </td>
                                     <td className="w-[110px] bg-amber-50/60 px-1 py-2">
@@ -7630,7 +7736,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           setFieldValue(`items.${index}.catalog_prix_vente_2`, value);
                                         }}
                                         disabled={!values.items[index].product_id}
-                                        title="Corrige le prix vente 2 du produit, de la variante et des snapshots liés. Ne modifie pas le prix du bon."
+                                        readOnly={isProjectMode}
+                                        title={isProjectMode ? 'Prix vente 2 du catalogue (lecture seule dans un projet)' : 'Corrige le prix vente 2 du produit, de la variante et des snapshots liés. Ne modifie pas le prix du bon.'}
                                       />
                                     </td>
                                   </>
@@ -8047,7 +8154,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   >
                     Annuler
                   </button>
-                  {initialValues && (
+                  {initialValues && !isProjectMode && (
                     <button
                       type="button"
                       onClick={() => setIsPrintModalOpen(true)}
@@ -8128,6 +8235,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   >
                     {(() => {
                       if (isSavingBon || isSubmitting) return isEditMode ? 'Mise à jour...' : 'Validation...';
+                      if (isProjectMode) return 'Enregistrer';
                       if (isEditMode) return 'Mettre à jour';
                       if (values.type === 'Devis') return 'Créer Devis';
                       return 'Valider Bon';

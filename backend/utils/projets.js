@@ -7,6 +7,7 @@ const MAX_AMOUNT = 999_999_999;
 
 export const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const round3 = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+const round4 = (value) => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
 
 export function parseId(value) {
   const id = Number(value);
@@ -93,10 +94,18 @@ export function validateLines(lines, { withProducts = false } = {}) {
       const product = optionalId(line.product_id);
       const variant = optionalId(line.variant_id);
       const unit = optionalId(line.unit_id);
-      if (!product.ok || !variant.ok || !unit.ok) return { error: `${label} : produit invalide.` };
+      const snapshot = optionalId(line.product_snapshot_id);
+      if (!product.ok || !variant.ok || !unit.ok || !snapshot.ok) return { error: `${label} : produit invalide.` };
       value.product_id = product.value;
       value.variant_id = product.value ? variant.value : null;
       value.unit_id = product.value ? unit.value : null;
+      value.product_snapshot_id = product.value ? snapshot.value : null;
+      // Prix de référence (PA, CR, PV, PV2) figés pour l'affichage uniquement.
+      for (const key of ['prix_achat', 'cout_revient', 'prix_vente', 'prix_vente_2']) {
+        const parsed = parseNumber(line[key] ?? 0, { label: `${label} : ${key}` });
+        if (parsed.error) return parsed;
+        value[key] = round4(parsed.value);
+      }
     }
     out.push(value);
   }
