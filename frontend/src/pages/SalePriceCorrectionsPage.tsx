@@ -243,6 +243,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
             {row.variant_name ? <p className="mt-0.5 text-sm font-semibold text-indigo-700">{row.variant_name}</p> : <p className="mt-0.5 text-xs text-stone-400">Produit de base</p>}
             <p className="mt-1 text-[11px] tabular-nums text-stone-500">ID {row.product_id}{row.reference ? ` · Réf. ${row.reference}` : ''}{row.variant_reference ? ` · Var. ${row.variant_reference}` : ''}</p>
             {webResult && !hasWebPrice(webResult) ? <span title={webResult.error || 'Aucun prix vérifié trouvé sur Internet'} className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">Sans infos</span> : null}
+            {webResult?.searched_at ? <p className="mt-1 text-[10px] text-stone-500">Recherche du {formatCorrectedAt(webResult.searched_at)}</p> : null}
           </div>
         </div>
       </td>
@@ -332,7 +333,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [search]);
 
   const { data: categories = [] } = useGetCategoriesQuery();
-  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab, category_id: categoryId === '' ? undefined : categoryId });
+  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab, category_id: categoryId === '' ? undefined : categoryId }, { refetchOnMountOrArgChange: true });
   const [applyCorrections, { isLoading: isApplying }] = useUpdateSalePriceCorrectionsMutation();
   const [resetCorrections, { isLoading: isResetting }] = useResetSalePriceCorrectionsMutation();
   const [researchSalePrices] = useResearchSalePricesMutation();
@@ -342,6 +343,19 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const rows = useMemo(() => data?.data ?? [], [data]);
   const meta = data?.meta;
   const readOnly = activeTab === 'processed';
+
+  useEffect(() => {
+    if (!data) return;
+    setWebResults((previous) => {
+      const next = { ...previous };
+      for (const row of data.data) {
+        const key = rowKey(row);
+        if (row.web_research) next[key] = row.web_research;
+        else delete next[key];
+      }
+      return next;
+    });
+  }, [data]);
 
   // Aucune décision n'est pré-cochée : tout part de l'action explicite du PDG.
   const selectChoice = useCallback((key: string, side: Side, choice?: Choice) => {

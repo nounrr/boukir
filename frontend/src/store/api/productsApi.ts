@@ -29,12 +29,13 @@ export interface SalePriceCorrectionRow {
   cost_price: number | null;
   purchase_price: number | null;
   last_purchase_at: string | null;
+  web_research: WebSalePriceResult | null;
   is_corrected: boolean;
   corrected_at: string | null;
 }
 
 export interface WebPriceGroup { price: number; count: number; sources: Array<{ site: string; url: string; title: string }> }
-export interface WebSalePriceResult { product_id: number; variant_id: number | null; market: WebPriceGroup[]; ingco: WebPriceGroup[]; offersCount: number; error?: string }
+export interface WebSalePriceResult { product_id: number; variant_id: number | null; market: WebPriceGroup[]; ingco: WebPriceGroup[]; offersCount: number; error?: string; model?: string; searched_at?: string }
 
 export interface SalePriceCorrectionsResponse {
   data: SalePriceCorrectionRow[];

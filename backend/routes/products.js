@@ -26,6 +26,7 @@ import {
   requireSalePriceCorrectionAccess,
 } from '../utils/salePriceCorrectionPermissions.js';
 import { WEB_PRICE_MODELS, summarizeWebPrices } from '../utils/webSalePriceResearch.js';
+import { ensureSalePriceWebResearchSchema } from '../db/ensureSalePriceWebResearchSchema.js';
 
 const router = Router();
 
@@ -4671,6 +4672,7 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
       return res.status(400).json({ message: 'Sélectionnez de 1 à 10 produits et un modèle valide.' });
     }
     if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ message: 'OPENAI_API_KEY non configurée côté serveur.' });
+    await ensureSalePriceWebResearchSchema();
     const targets = [];
     const seen = new Set();
     for (const entity of entities) {
@@ -4697,6 +4699,7 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
     const results = [];
     for (const product of targets) {
       const key = salePriceEntityKey(product.product_id, product.variant_id);
+      let result;
       try {
         const response = await client.responses.create({
           model,
@@ -4713,10 +4716,20 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
         });
         const rawText = String(response.output_text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
         const parsed = JSON.parse(rawText);
-        results.push({ product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), ...summarizeWebPrices(parsed, sourceUrls) });
+        result = { product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), ...summarizeWebPrices(parsed, sourceUrls) };
       } catch (error) {
-        results.push({ product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), market: [], ingco: [], offersCount: 0, error: error?.message || 'Recherche impossible.' });
+        result = { product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), market: [], ingco: [], offersCount: 0, error: String(error?.message || 'Recherche impossible.').slice(0, 500) };
       }
+      await pool.query(
+        `INSERT INTO sale_price_web_research
+          (entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, searched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE model = VALUES(model), market_json = VALUES(market_json),
+           ingco_json = VALUES(ingco_json), offers_count = VALUES(offers_count),
+           error_text = VALUES(error_text), searched_at = VALUES(searched_at)`,
+        [key, result.product_id, result.variant_id, model, JSON.stringify(result.market), JSON.stringify(result.ingco), result.offersCount, result.error || null]
+      );
+      results.push({ ...result, model, searched_at: new Date().toISOString() });
     }
     res.json({ model, searched_at: new Date().toISOString(), results });
   } catch (error) { next(error); }
@@ -4728,6 +4741,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
   try {
     await ensureProductsColumns();
     await ensureSalePriceCorrectionColumns();
+    await ensureSalePriceWebResearchSchema();
 
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
@@ -4784,6 +4798,23 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
     if (!entities.length) {
       return res.json({ data: [], meta: { page, limit, total, totalPages: Math.ceil(total / limit) } });
     }
+
+    const entityKeys = entities.map((entity) => salePriceEntityKey(entity.product_id, entity.variant_id));
+    const [savedResearch] = await pool.query(
+      `SELECT entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, searched_at
+       FROM sale_price_web_research WHERE entity_key IN (${entityKeys.map(() => '?').join(', ')})`,
+      entityKeys
+    );
+    const parseGroups = (value) => {
+      try { return Array.isArray(value) ? value : JSON.parse(String(value || '[]')); }
+      catch { return []; }
+    };
+    const researchByEntity = new Map(savedResearch.map((saved) => [saved.entity_key, {
+      product_id: Number(saved.product_id), variant_id: saved.variant_id == null ? null : Number(saved.variant_id),
+      market: parseGroups(saved.market_json), ingco: parseGroups(saved.ingco_json),
+      offersCount: Number(saved.offers_count), error: saved.error_text || undefined,
+      model: saved.model, searched_at: saved.searched_at,
+    }]));
 
     const productIds = [...new Set(entities.map((entity) => Number(entity.product_id)))];
     const placeholders = productIds.map(() => '?').join(', ');
@@ -4877,6 +4908,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
         cost_price: (entity.variant_id == null ? entity.product_cout_revient : entity.variant_cout_revient) == null ? null : Number(entity.variant_id == null ? entity.product_cout_revient : entity.variant_cout_revient),
         purchase_price: (entity.variant_id == null ? entity.product_prix_achat : entity.variant_prix_achat) == null ? null : Number(entity.variant_id == null ? entity.product_prix_achat : entity.variant_prix_achat),
         last_purchase_at: lastPurchase?.date_creation ?? null,
+        web_research: researchByEntity.get(key) ?? null,
         is_corrected: Boolean(entity.corrected_at), corrected_at: entity.corrected_at ?? null,
       };
     });
