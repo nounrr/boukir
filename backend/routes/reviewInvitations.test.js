@@ -25,6 +25,7 @@ const BASE_ROW = Object.freeze({
   closed_at: '2026-08-21 12:00:00',
   closed_by_employee_id: 3,
   completed_at: '2026-08-21 11:00:00',
+  work_finished: 1,
   completed_by_contact_id: 70,
   executing_assignment_id: 9,
   maalem_profile_id: 7,

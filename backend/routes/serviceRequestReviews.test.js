@@ -19,6 +19,7 @@ const CLOSED_CONTEXT = Object.freeze({
   closed_at: '2026-08-20 10:00:00',
   closed_by_employee_id: 5,
   completed_at: '2026-08-20 09:00:00',
+  work_finished: 1,
   completed_by_contact_id: 19,
   executing_assignment_id: 92,
   maalem_profile_id: 13,
@@ -165,6 +166,34 @@ test('une demande non clôturée est inéligible côté lecture et refusée côt
     assert.equal((await postResponse.json()).error_type, 'REQUEST_NOT_CLOSED');
     assert.equal(state.commits, 0);
     assert.equal(state.rollbacks, 1);
+  });
+});
+
+test('une demande annulée ou une intervention clôturée sans travail terminé ne permet aucun avis', async () => {
+  for (const [context, expectedReason] of [
+    [{ ...CLOSED_CONTEXT, request_status: 'cancelled', cancelled_at: new Date() }, 'REQUEST_NOT_CLOSED'],
+    [{ ...CLOSED_CONTEXT, work_finished: 0 }, 'WORK_NOT_FINISHED'],
+  ]) {
+    await withServer({ user: CUSTOMER, context }, async (baseUrl, state) => {
+      const response = await fetch(`${baseUrl}/api/service-requests/44/review`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating: 5 }),
+      });
+      assert.equal(response.status, 409);
+      assert.equal((await response.json()).error_type, expectedReason);
+      assert.equal(state.inserts.length, 0);
+    });
+  }
+});
+
+test('la clôture doit correspondre au Maalem exécutant final', async () => {
+  await withServer({ user: CUSTOMER, context: { ...CLOSED_CONTEXT, completed_by_contact_id: 99 } }, async (baseUrl, state) => {
+    const response = await fetch(`${baseUrl}/api/service-requests/44/review`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 5, maalem_profile_id: 13 }),
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error_type, 'COMPLETION_MISMATCH');
+    assert.equal(state.inserts.length, 0);
   });
 });
 

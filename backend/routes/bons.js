@@ -763,6 +763,7 @@ function compactPriceHistoryRows(rows, maxPerItemAndStatus = 1, separateStatusCl
         product_id: Number(row.product_id),
         variant_id: row.variant_id ?? null,
         unit_id: row.unit_id ?? null,
+        conversion_factor: row.conversion_factor ?? null,
         quantite: Number(row.quantite || 0),
         prix_unitaire: Number(row.prix_unitaire || 0),
         prix_achat: Number(row.prix_achat ?? row.prix_unitaire ?? 0),
@@ -787,10 +788,11 @@ router.get('/price-history', async (req, res) => {
       const [rows] = await pool.query(`
         SELECT b.id, b.date_creation, b.statut, b.client_id,
                NULL AS fournisseur_id, 0 AS vendre_au_fournisseur,
-               i.product_id, i.variant_id, i.unit_id, i.quantite,
+               i.product_id, i.variant_id, i.unit_id, pu.conversion_factor, i.quantite,
                i.prix_unitaire, NULL AS prix_achat
         FROM bons_comptant b
         JOIN comptant_items i ON i.bon_comptant_id = b.id
+        LEFT JOIN product_units pu ON pu.id = i.unit_id AND pu.product_id = i.product_id
         ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
       `);
       const relevantRows = rows.filter((row) => ['confirmed', 'pending'].includes(historyStatusClass(row.statut)));
@@ -805,10 +807,11 @@ router.get('/price-history', async (req, res) => {
         pool.query(`
           SELECT b.id, b.date_creation, b.statut, NULL AS client_id,
                  b.fournisseur_id, 0 AS vendre_au_fournisseur,
-                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.product_id, i.variant_id, i.unit_id, pu.conversion_factor, i.quantite,
                  i.prix_unitaire, i.prix_unitaire AS prix_achat
           FROM bons_commande b
           JOIN commande_items i ON i.bon_commande_id = b.id
+          LEFT JOIN product_units pu ON pu.id = i.unit_id AND pu.product_id = i.product_id
           WHERE b.fournisseur_id = ?
           ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
         `, [contactId]),
@@ -817,10 +820,11 @@ router.get('/price-history', async (req, res) => {
         queries.push(pool.query(`
           SELECT b.id, b.date_creation, b.statut, NULL AS client_id,
                  b.fournisseur_id, 0 AS vendre_au_fournisseur,
-                 i.product_id, i.variant_id, i.unit_id, i.quantite,
+                 i.product_id, i.variant_id, i.unit_id, pu.conversion_factor, i.quantite,
                  i.prix_unitaire, i.prix_unitaire AS prix_achat
           FROM avoirs_fournisseur b
           JOIN avoir_fournisseur_items i ON i.avoir_fournisseur_id = b.id
+          LEFT JOIN product_units pu ON pu.id = i.unit_id AND pu.product_id = i.product_id
           WHERE b.fournisseur_id = ?
           ORDER BY b.date_creation DESC, b.id DESC, i.id DESC
         `, [contactId]));

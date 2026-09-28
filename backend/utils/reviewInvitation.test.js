@@ -27,6 +27,7 @@ const CLOSED_CONTEXT = Object.freeze({
   closed_at: '2026-08-21T12:00:00.000Z',
   closed_by_employee_id: 3,
   completed_at: '2026-08-21T11:00:00.000Z',
+  work_finished: 1,
   completed_by_contact_id: 70,
   executing_assignment_id: 9,
   maalem_profile_id: 7,
@@ -60,6 +61,7 @@ test('le token signé ne contient aucune donnée métier et refuse altération o
 test('l’éligibilité refuse annulation, absence de Maalem final, auto-évaluation et avis existant', () => {
   assert.equal(reviewInvitationEligibility(CLOSED_CONTEXT).eligible, true);
   assert.equal(reviewInvitationEligibility({ ...CLOSED_CONTEXT, cancelled_at: NOW }).reason, 'REQUEST_NOT_CLOSED');
+  assert.equal(reviewInvitationEligibility({ ...CLOSED_CONTEXT, work_finished: 0 }).reason, 'WORK_NOT_FINISHED');
   assert.equal(reviewInvitationEligibility({ ...CLOSED_CONTEXT, executing_assignment_id: null }).reason, 'FINAL_MAALEM_MISSING');
   assert.equal(reviewInvitationEligibility({ ...CLOSED_CONTEXT, requester_contact_id: 70 }).reason, 'SELF_REVIEW_FORBIDDEN');
   assert.equal(reviewInvitationEligibility({ ...CLOSED_CONTEXT, review_id: 4 }).reason, 'ALREADY_REVIEWED');
@@ -130,6 +132,7 @@ function workerDouble(overrides = {}) {
     closed_at: '2026-08-21T10:00:00.000Z',
     closed_by_employee_id: 3,
     completed_at: '2026-08-21T09:00:00.000Z',
+    work_finished: 1,
     completed_by_contact_id: 70,
     executing_assignment_id: 9,
     maalem_contact_id: 70,

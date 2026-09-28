@@ -34,6 +34,8 @@ import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
 import { printProductTicket } from '../utils/productTicketPrint';
 import { isProductNonCalcule } from '../utils/productNonCalcule';
+import { adaptHistoricalUnitPrice } from '../utils/comptantUnitPrice';
+import { projetBonUnitPrice } from '../utils/projetBonPricing';
 import { toBackendUrl } from '../utils/url';
 
 /* -------------------------- Select avec recherche -------------------------- */
@@ -1240,7 +1242,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const isEditMode = !isProjectMode && Boolean((initialValues as any)?.id);
   const isPDG = user?.role === 'PDG';
   const showInternalPrices = useCanViewInternalPrices();
-  const showBonPrices = showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
+  const showBonPrices = isProjectMode || showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
   const formatPrixAchatOption = (value: any) => showInternalPrices ? formatPurchasePrice(value) : '';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
   const { data: myBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, { skip: !isOpen });
@@ -2521,6 +2523,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       const preMergeMap = new Map<string, any>();
       const preMergedRaw: any[] = [];
       for (const it of (rawItems || [])) {
+        if (isProjectMode) {
+          preMergedRaw.push({ ...it });
+          continue;
+        }
         const pid = String(it.product_id ?? it.produit_id ?? it.product?.id ?? '');
         const vid = String(it.variant_id ?? it.variantId ?? it.variant?.id ?? '');
         if (!pid) {
@@ -2609,7 +2615,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
         // Priority: snapshot → variant → item → product catalog
         // For Commande edit mode, keep the purchase price stored on the bon item itself.
-        if (!isCommandeEdit && (snapshotFound || variantFound)) {
+        if (!isProjectMode && !isCommandeEdit && (snapshotFound || variantFound)) {
           // Snapshot/variant are the authoritative source for COST only (PA/CR)
           // prix_unitaire (selling price) comes from the bon items table, NOT from snapshot
           const bestPA = Number(snapshotFound?.prix_achat) || Number(variantFound?.prix_achat);
@@ -2626,16 +2632,16 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
               prix_achat = basePA ? scaleDecimal(basePA, convFactor) : prix_achat;
             }
           }
-          if (!cout_revient || cout_revient === 0) {
+          if (!isProjectMode && (!cout_revient || cout_revient === 0)) {
             const baseCR = Number((productFound as any)?.cout_revient) || 0;
             cout_revient = baseCR ? scaleDecimal(baseCR, convFactor) : cout_revient;
           }
-          if (!prix_unitaire || prix_unitaire === 0) {
+          if (!isProjectMode && (!prix_unitaire || prix_unitaire === 0)) {
             prix_unitaire = Number((productFound as any)?.prix_vente) || prix_unitaire;
           }
         }
 
-        if (resolvedCostContext.source !== 'item') {
+        if (!isProjectMode && resolvedCostContext.source !== 'item') {
           if (!isCommandeEdit) {
             prix_achat = resolvedCostContext.prix_achat;
           }
@@ -2663,7 +2669,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         // Preserve variant/unit selection in edit mode
         const variant_id = toIdString(it.variant_id ?? it.variantId ?? it.variant?.id);
         const unit_id = toIdString(it.unit_id ?? it.unitId ?? it.unit?.id);
-        if (initialValues?.type !== 'Commande' && variant_id && productFound?.variants?.length) {
+        if (!isProjectMode && initialValues?.type !== 'Commande' && variant_id && productFound?.variants?.length) {
           const catalogVariant = (productFound.variants as any[]).find((v: any) => String(v.id) === String(variant_id));
           if (catalogVariant) {
             const variantPrixVente = Number(catalogVariant.prix_vente ?? (productFound as any)?.prix_vente ?? prix_unitaire) || 0;
@@ -3070,7 +3076,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, resolvedPA);
         anyPatched = true;
       }
-      if (resolvedCR > 0 && currentCR !== resolvedCR) {
+      if (!isProjectMode && resolvedCR > 0 && currentCR !== resolvedCR) {
         formikRef.current!.setFieldValue(`items.${idx}.cout_revient`, resolvedCR);
         anyPatched = true;
       }
@@ -3853,11 +3859,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         if ((!designation && !item.product_id) || q <= 0) return [];
         const pa = toNum(item.prix_achat);
         const cr = toNum(item.cout_revient);
-        const entered = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
-          ? toNum(unitPriceRaw[idx])
-          : toNum(item.prix_unitaire);
-        // Même règle que le bon charge : une ligne produit est valorisée au coût.
-        const pu = requestType === 'Charge' && item.product_id ? (cr || pa) : entered;
+        const entered = projetBonUnitPrice(item, unitPriceRaw[idx]);
+        const pu = entered;
         const units: any[] = Array.isArray(product?.units) ? product.units : [];
         const unit = item.unit_id ? units.find((u: any) => String(u.id) === String(item.unit_id)) : null;
         const variantName = String(item.variant_name || '').trim();
@@ -4548,48 +4551,51 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     if (!productId) return [];
     const pid = String(productId);
     const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
-    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
-
-    type HistItem = { prix_unitaire?: number; total?: number; quantite?: number };
+    type HistItem = { prix_unitaire?: number; price?: number; product_id?: number | string; id?: number | string; variant_id?: number | string; unit_id?: number | string; conversion_factor?: number };
     const prices: Array<{ price: number; time: number; bonId: number }> = [];
+    const product = (products as any[]).find((entry: any) => String(entry.id) === pid);
+    const units = Array.isArray(product?.units) ? product.units : [];
 
     const accepted = new Set(['validé', 'valide', 'validée', 'en attente']);
 
-    const scan = (bon: any, requireExactVariantUnit: boolean) => {
+    const scan = (bon: any, matchVariant: boolean) => {
       const statut = String(bon.statut || '').toLowerCase();
       if (!accepted.has(statut)) return; // n'inclut que Validé ou En attente
       const items = parseItems(bon.items);
       const bonTime = toTime(bon.date_creation || bon.date);
       for (const it of items as HistItem[]) {
-        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+        const itPid = String(it.product_id ?? it.id ?? '');
         if (itPid !== pid) continue;
-        if (requireExactVariantUnit) {
-          const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
-          const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
-          if (wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
-          if (wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
-        }
-        const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
-        if (!Number.isFinite(price) || price <= 0) continue;
+        const itVariantId = it.variant_id == null || it.variant_id === '' ? null : String(it.variant_id);
+        if (matchVariant && itVariantId !== wantedVariantId) continue;
+        const price = adaptHistoricalUnitPrice(
+          Number(it.prix_unitaire ?? it.price ?? 0),
+          it.unit_id,
+          it.conversion_factor,
+          unitId,
+          units
+        );
+        if (price === null) continue;
         prices.push({ price, time: bonTime, bonId: Number(bon.id || 0) });
       }
     };
 
-    const collect = (requireExactVariantUnit: boolean) => {
+    const collect = (matchVariant: boolean) => {
       prices.length = 0;
-      for (const b of comptantHistory as any[]) scan(b, requireExactVariantUnit);
+      for (const b of comptantHistory as any[]) scan(b, matchVariant);
       return [...prices]
         .sort((a, b) => (b.time - a.time) || (b.bonId - a.bonId))
         .slice(0, Math.max(1, limit))
         .map((entry) => entry.price);
     };
 
-    const requiresExactVariantUnit = wantedVariantId !== null || wantedUnitId !== null;
-    if (requiresExactVariantUnit) {
-      const exact = collect(true);
-      if (exact.length > 0) return exact;
+    // Take the latest price for the selected variant across all units, then convert it.
+    // Fall back to another variant only when that variant has no history.
+    for (const matchVariant of [true, false]) {
+      const matches = collect(matchVariant);
+      if (matches.length > 0) return matches;
     }
-    return collect(false);
+    return [];
   };
 
   const getLastPurchasePriceForSupplierProduct = (
@@ -4603,9 +4609,10 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     const fid = String(fournisseurId);
     const pid = String(productId);
     const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
-    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
+    const product = (products as any[]).find((entry: any) => String(entry.id) === pid);
+    const units = Array.isArray(product?.units) ? product.units : [];
 
-    type HistItem = { prix_achat?: number; prix_unitaire?: number; price?: number };
+    type HistItem = { prix_achat?: number; prix_unitaire?: number; price?: number; product_id?: number | string; id?: number | string; variant_id?: number | string; unit_id?: number | string; conversion_factor?: number };
     let bestConfirmedPrice: number | null = null;
     let bestConfirmedTime = -1;
     let bestPendingPrice: number | null = null;
@@ -4614,7 +4621,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     const confirmedStatuses = new Set(['validé', 'valide', 'validée', 'livré', 'livre']);
     const pendingStatuses = new Set(['en attente']);
 
-    const collectBestPrice = (requireExactVariantUnit: boolean) => {
+    const collectBestPrice = (matchVariant: boolean) => {
       bestConfirmedPrice = null;
       bestConfirmedTime = -1;
       bestPendingPrice = null;
@@ -4633,18 +4640,20 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         const bonTime = toTime(bon.date_creation || bon.date);
 
         for (const it of items as HistItem[]) {
-          const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+          const itPid = String(it.product_id ?? it.id ?? '');
           if (itPid !== pid) continue;
 
-          if (requireExactVariantUnit) {
-            const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
-            const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
-            if (wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
-            if (wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
-          }
+          const itVariantId = it.variant_id == null || it.variant_id === '' ? null : String(it.variant_id);
+          if (matchVariant && itVariantId !== wantedVariantId) continue;
 
-          const price = Number((it as any).prix_achat ?? (it as any).prix_unitaire ?? (it as any).price ?? 0);
-          if (!Number.isFinite(price) || price <= 0) continue;
+          const price = adaptHistoricalUnitPrice(
+            Number(it.prix_achat ?? it.prix_unitaire ?? it.price ?? 0),
+            it.unit_id,
+            it.conversion_factor,
+            unitId,
+            units
+          );
+          if (price === null) continue;
 
           if (isConfirmed && bonTime > bestConfirmedTime) {
             bestConfirmedTime = bonTime;
@@ -4664,13 +4673,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return bestConfirmedPrice ?? bestPendingPrice;
     };
 
-    const requiresExactVariantUnit = wantedVariantId !== null || wantedUnitId !== null;
-    if (requiresExactVariantUnit) {
-      const exactMatchPrice = collectBestPrice(true);
-      if (exactMatchPrice != null) return exactMatchPrice;
-    }
-
-    return collectBestPrice(false);
+    return collectBestPrice(true) ?? collectBestPrice(false);
   };
 
   const getLastSalePriceForSupplierProduct = (
@@ -4861,7 +4864,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
   const unit = Number(product.prix_vente || 0);
   const pa = Number(product.prix_achat || 0);
-  const cr = Number(product.cout_revient || 0);
+  const cr = isProjectMode
+    ? (resolveAverageSnapshotCoutRevient(snapshotProducts as any[], product.id, product.variant_id) ?? Number(product.cout_revient || 0))
+    : Number(product.cout_revient || 0);
   const kg = Number(product.kg || 0);
   const q = Number(values.items?.[rowIndex]?.quantite || 0);
 
@@ -4871,7 +4876,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     values,
     product.id,
     product.variant_id,
-    values.items?.[rowIndex]?.unit_id,
+    isProjectMode ? '' : values.items?.[rowIndex]?.unit_id,
     values.type === 'Commande' ? pa : unit
   );
   const salePrice = values.type === 'Charge' ? chargePrice : preferredPrice;
@@ -4899,6 +4904,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   }
 
   setFieldValue(`items.${rowIndex}.product_id`, product.id);
+  if (isProjectMode) setFieldValue(`items.${rowIndex}.unit_id`, '');
   setFieldValue(
     `items.${rowIndex}._product_image_url`,
     product.variant_image_url || product.image_url || ''
@@ -6047,7 +6053,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   const showCommandeSpecialColumns = values.type === 'Commande';
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
                   const visibleEntries = ((values.type === 'Charge' || values.type === 'AvoirCharge')
-                    ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode !== 'detail')
+                    ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }: { row: any }) => row?.line_mode !== 'detail')
                     : values.items.map((row: any, index: number) => ({ row, index })));
                   const showSnapshotBarreColumn = values.type !== 'Commande' && visibleEntries.some(({ row }: any) => !!row?.unite_special);
                   const showPv2Toggle = !isEditMode && showBonPrices
@@ -6058,7 +6064,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   const allPv2Applied = pv2EligibleEntries.length > 0
                     && pv2EligibleEntries.every(({ row, index }: any) => isRowPv2Applied(row, index));
                   const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
-                    ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
+                    ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }: { row: any }) => row?.line_mode === 'detail')
                     : [];
                   const emptyColSpan = (showBonPrices ? 9 : 7) + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0) + (isPDG ? 2 : 0);
 
@@ -6130,7 +6136,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     PV2
                                   </label>
                                 )}
-                                <span>{values.type === 'Commande' ? 'Prix d\'achat' : 'P. Unit.'}</span>
+                                <span>{values.type === 'Commande' ? 'Prix d\'achat' : isProjectMode && values.type === 'Charge' ? 'Coût revient' : 'P. Unit.'}</span>
                               </div>
                             </th>)}
                             {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
@@ -6605,7 +6611,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           values,
                                           product.id,
                                           productVariantId,
-                                          values.items[index]?.unit_id,
+                                          isProjectMode ? '' : values.items[index]?.unit_id,
                                           values.type === 'Commande' ? effectivePA : effectivePV
                                         );
                                         const effectiveUnitPrice = values.type === 'Charge'
@@ -6866,8 +6872,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
                                               if (pvNum !== null && Number.isFinite(pvNum)) {
                                                 effectivePrice = pvNum;
-                                              } else if (values.type === 'Charge') {
-                                                newPrice = scaleDecimal(baseCR, factor);
                                               } else {
                                                 effectivePrice = scaleDecimal(basePriceVente, factorSel);
                                               }
@@ -6925,13 +6929,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                     const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
                                     const basePriceVente = getCatalogPrixVente(product, values.items[index].variant_id, snapshotProducts as any[]);
-                                    if (values.type === 'Commande') {
-                                      return (
-                                        <span className="inline-flex min-h-[36px] w-full items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-base font-semibold text-emerald-700">
-                                          {baseUnit}
-                                        </span>
-                                      );
-                                    }
                                     if (!product || selectableUnits.length === 0) {
                                       const displayUnit = !product && values.items[index].unite ? values.items[index].unite : baseUnit;
                                       return (
@@ -7013,8 +7010,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               });
 
                                               if (values.type === 'Commande') {
-                                                newPrice = scaleDecimal(baseA, factor);
+                                                newPrice = resolvePreferredUnitPrice(
+                                                  values,
+                                                  values.items[index].product_id,
+                                                  selectedVariantId,
+                                                  uId,
+                                                  scaleDecimal(baseA, factor)
+                                                );
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
+                                              } else if (values.type === 'Charge') {
+                                                newPrice = scaleDecimal(baseCR, factor);
+                                                setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               } else {
                                                 // If unit has an explicit selling price override, prefer it (only when no variant is selected)
                                                 const unitPv = unit?.prix_vente;
@@ -7065,7 +7071,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             setFieldValue(`items.${index}.cout_revient`, baseCR);
 
                                             if (values.type === 'Commande') {
-                                              newPrice = baseA;
+                                              newPrice = resolvePreferredUnitPrice(
+                                                values,
+                                                values.items[index].product_id,
+                                                selectedVariantId,
+                                                '',
+                                                baseA
+                                              );
                                               setFieldValue(`items.${index}.prix_achat`, newPrice);
                                             } else {
                                               newPrice = values.type === 'Charge' ? baseCR : baseV;
@@ -7267,7 +7279,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         multiplier = 0; // Devis, Vehicule : pas d'effet stock
     }
     const predicted = availableStock + multiplier * (q * factor);
-    return (
+    return values.type === 'Commande' ? (
+      <div className="text-[10px] text-gray-600 mt-0.5">
+        Stock actuel: {formatFull(availableStock / factor)} {selectedUnitId ? units.find((u: any) => String(u.id) === String(selectedUnitId))?.unit_name || baseUnit : baseUnit}
+        {' · '}Après commande: {formatFull(predicted / factor)} {selectedUnitId ? units.find((u: any) => String(u.id) === String(selectedUnitId))?.unit_name || baseUnit : baseUnit}
+      </div>
+    ) : (
       <div className="text-[10px] text-gray-600 mt-0.5">Stock après création: {formatFull(Number(predicted))} {baseUnit}</div>
     );
   })()}
@@ -7433,9 +7450,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const displayPA = basePA
                                       ? scaleDecimal(basePA, factor)
                                       : Number(costCtx.prix_achat) || Number(item.prix_achat) || 0;
-                                    const displayCR = baseCR
-                                      ? scaleDecimal(baseCR, factor)
-                                      : Number(costCtx.cout_revient) || Number(item.cout_revient) || 0;
+                                    const displayCR = isProjectMode
+                                      ? Number(item.cout_revient ?? 0)
+                                      : baseCR
+                                        ? scaleDecimal(baseCR, factor)
+                                        : Number(costCtx.cout_revient) || Number(item.cout_revient) || 0;
                                     const unitPvRaw = unitObj?.prix_vente;
                                     const unitPv = unitPvRaw === null || unitPvRaw === undefined || unitPvRaw === ''
                                       ? null
@@ -7490,8 +7509,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     pattern="[0-9]*[.,]?[0-9]*"
     name={values.type === 'Commande' ? `items.${index}.prix_achat` : `items.${index}.prix_unitaire`}
     className="min-w-0 flex-1 px-2 py-1 border border-gray-300 rounded-md text-sm"
-    disabled={isQtyOnlyEdit || (values.type === 'Charge' && !!values.items[index]?.product_id)}
-    value={values.type === 'Charge' && values.items[index]?.product_id
+    disabled={isQtyOnlyEdit || (!isProjectMode && values.type === 'Charge' && !!values.items[index]?.product_id)}
+    value={!isProjectMode && values.type === 'Charge' && values.items[index]?.product_id
       ? String(resolveItemCostContext(values.items[index], products as any[], snapshotProducts as any[]).cout_revient || 0)
       : (unitPriceRaw[index] ?? '')}
     onChange={(e) => {
@@ -7512,6 +7531,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         setFieldValue(`items.${index}.prix_achat`, unit);
       } else {
         setFieldValue(`items.${index}.prix_unitaire`, unit);
+        if (isProjectMode && values.type === 'Charge' && values.items[index]?.product_id) {
+          setFieldValue(`items.${index}.cout_revient`, unit);
+        }
       }
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
@@ -7552,6 +7574,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         setFieldValue(`items.${index}.prix_achat`, val);
       } else {
         setFieldValue(`items.${index}.prix_unitaire`, val);
+        if (isProjectMode && values.type === 'Charge' && values.items[index]?.product_id) {
+          setFieldValue(`items.${index}.cout_revient`, val);
+        }
       }
       // Conserver la saisie brute (normalisée . pour décimale) sans arrondi
       setUnitPriceRaw((prev) => ({ ...prev, [index]: (unitPriceRaw[index] ?? '').replace(',', '.') }));
@@ -7565,6 +7590,21 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   onKeyDown={onCellKeyDown(index, 'unit')}
   />
   </div>
+  {isProjectMode && values.type !== 'Charge' && values.items[index]?.product_id && (
+    <label className="mt-2 block text-xs font-medium text-amber-900">
+      Coût de revient du projet
+      <input
+        type="text"
+        inputMode="decimal"
+        className="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1 text-sm"
+        value={String(values.items[index].cout_revient ?? '')}
+        onChange={(event) => {
+          if (!isDecimalLike(event.target.value)) return;
+          setFieldValue(`items.${index}.cout_revient`, event.target.value);
+        }}
+      />
+    </label>
+  )}
   {values.client_id && values.items[index].product_id && (() => {
     const last = values.type === 'Avoir' && !values.vendre_au_fournisseur
       ? getLastSortieUnitPriceForClientProduct(
@@ -7659,7 +7699,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     {(() => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-      const u = values.type === 'Charge' && values.items[index]?.product_id
+      const u = !isProjectMode && values.type === 'Charge' && values.items[index]?.product_id
         ? resolveItemCostContext(values.items[index], products as any[], snapshotProducts as any[]).cout_revient
         : (parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0);
   return formatFull(q * u);
@@ -7900,7 +7940,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).filter((field) => showInternalPrices || field === 'prix_unitaire').map((field) => (
                                       <div key={field} className={field === 'prix_unitaire' ? '' : 'hidden'}>
                                         <label className="mb-1 block text-xs font-medium text-gray-700">
-                                          {field === 'prix_achat' ? 'Prix achat' : field === 'cout_revient' ? 'Cout revient' : field === 'prix_gros' ? 'Prix gros' : 'Prix vente'}
+                                          {field === 'prix_achat' ? 'Prix achat' : field === 'cout_revient' ? 'Cout revient' : field === 'prix_gros' ? 'Prix gros' : isProjectMode ? 'Prix unitaire' : 'Prix vente'}
                                         </label>
                                         <input
                                           type="text"
@@ -7913,6 +7953,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const nextValue = parseFloat(normalizeDecimal(raw)) || 0;
                                             setFieldValue(`items.${index}.${field}`, nextValue);
                                             if (field === 'prix_unitaire') {
+                                              setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
                                               const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
                                               setFieldValue(`items.${index}.total`, q * nextValue);
                                             }

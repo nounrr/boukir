@@ -31,7 +31,7 @@ router.get('/:token', async (req, res, next) => {
               sr.requester_contact_id, sr.status AS request_status, sr.cancelled_at,
               sr.deleted_at AS request_deleted_at,
               si.id AS intervention_id, si.status AS intervention_status, si.closed_at,
-              si.closed_by_employee_id, si.completed_at, si.completed_by_contact_id,
+              si.closed_by_employee_id, si.completed_at, si.completed_by_contact_id, si.work_finished,
               si.executing_assignment_id, sra.maalem_profile_id,
               mp.contact_id AS maalem_contact_id, maalem.nom_complet AS maalem_public_name,
               COALESCE(mr.id, mri.review_id) AS review_id,

@@ -41,6 +41,7 @@ export const PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL = `LEFT JOIN (
     AND sr.status = 'closed' AND sr.cancelled_at IS NULL AND sr.deleted_at IS NULL
     AND si.status = 'closed' AND si.closed_at IS NOT NULL
     AND si.closed_by_employee_id IS NOT NULL AND si.completed_at IS NOT NULL
+    AND si.work_finished = 1
     AND si.completed_by_contact_id = review_mp.contact_id
     AND si.executing_assignment_id IS NOT NULL
   GROUP BY mr.maalem_profile_id
@@ -84,6 +85,7 @@ export async function getPublishedMaalemReviews(db, maalemProfileId, { page = 1,
     AND sr.status = 'closed' AND sr.cancelled_at IS NULL AND sr.deleted_at IS NULL
     AND si.status = 'closed' AND si.closed_at IS NOT NULL
     AND si.closed_by_employee_id IS NOT NULL AND si.completed_at IS NOT NULL
+    AND si.work_finished = 1
     AND si.completed_by_contact_id = mp.contact_id AND si.executing_assignment_id IS NOT NULL
     AND mp.is_public = 1 AND mp.status = 'approved' AND mp.deleted_at IS NULL
     AND provider.deleted_at IS NULL AND provider.is_active = 1 AND COALESCE(provider.is_blocked, 0) = 0
@@ -209,6 +211,7 @@ export async function getPublishedMaalemReviewStatistics(db, maalemProfileId) {
        AND si.closed_at IS NOT NULL
        AND si.closed_by_employee_id IS NOT NULL
        AND si.completed_at IS NOT NULL
+       AND si.work_finished = 1
        AND si.completed_by_contact_id = mp.contact_id
        AND si.executing_assignment_id IS NOT NULL`,
     [profileId]

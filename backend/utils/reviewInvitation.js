@@ -85,6 +85,9 @@ export function reviewInvitationEligibility(context) {
   if (context.intervention_status !== 'closed' || !context.closed_at || !context.closed_by_employee_id || !context.completed_at) {
     return { eligible: false, reason: 'INTERVENTION_NOT_CLOSED' };
   }
+  if (Number(context.work_finished) !== 1) {
+    return { eligible: false, reason: 'WORK_NOT_FINISHED' };
+  }
   if (!context.executing_assignment_id || !context.maalem_profile_id || !context.maalem_contact_id) {
     return { eligible: false, reason: 'FINAL_MAALEM_MISSING' };
   }
@@ -104,7 +107,7 @@ async function loadClosedRequestContext(connection, requestId, forUpdate = false
             sr.deleted_at AS request_deleted_at,
             requester.telephone AS client_phone, requester.locale AS client_locale,
             si.id AS intervention_id, si.status AS intervention_status, si.closed_at,
-            si.closed_by_employee_id, si.completed_at, si.completed_by_contact_id,
+            si.closed_by_employee_id, si.completed_at, si.completed_by_contact_id, si.work_finished,
             si.executing_assignment_id, sra.maalem_profile_id,
             mp.contact_id AS maalem_contact_id, maalem.nom_complet AS maalem_public_name,
             mr.id AS review_id, mr.submitted_at AS review_submitted_at
@@ -188,7 +191,7 @@ async function loadInvitationForUpdate(connection, invitationId) {
             sr.status AS request_status, sr.cancelled_at, sr.deleted_at AS request_deleted_at,
             requester.telephone AS client_phone, requester.locale AS client_locale,
             si.status AS intervention_status, si.closed_at, si.closed_by_employee_id,
-            si.completed_at, si.completed_by_contact_id, si.executing_assignment_id,
+            si.completed_at, si.completed_by_contact_id, si.work_finished, si.executing_assignment_id,
             sra.maalem_profile_id, mp.contact_id AS maalem_contact_id,
             maalem.nom_complet AS maalem_public_name,
             mr.id AS active_review_id, mr.submitted_at AS active_review_submitted_at
@@ -369,7 +372,8 @@ export async function findClosedRequestsWithoutInvitation(db = pool, limit = 25)
      WHERE sr.request_source IN ('selected_maalem', 'selected_service')
        AND sr.status = 'closed' AND sr.cancelled_at IS NULL AND sr.deleted_at IS NULL
        AND si.status = 'closed' AND si.closed_at IS NOT NULL AND si.closed_by_employee_id IS NOT NULL
-       AND si.completed_at IS NOT NULL AND si.completed_by_contact_id = mp.contact_id
+       AND si.completed_at IS NOT NULL AND si.work_finished = 1
+       AND si.completed_by_contact_id = mp.contact_id
        AND si.executing_assignment_id IS NOT NULL
        AND mr.id IS NULL AND mri.id IS NULL
      ORDER BY si.closed_at, sr.id LIMIT ?`,

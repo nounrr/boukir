@@ -622,8 +622,18 @@ router.get('/notifications', async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT mnd.* FROM maalem_notification_deliveries mnd
        INNER JOIN service_requests sr ON sr.id = mnd.service_request_id AND sr.deleted_at IS NULL
+       LEFT JOIN maalem_review_invitations mri
+         ON mri.service_request_id = sr.id AND mri.intervention_id = mnd.intervention_id
+       LEFT JOIN maalem_reviews mr
+         ON mr.service_request_id = sr.id AND mr.deleted_at IS NULL
        WHERE mnd.contact_id = ? AND sr.requester_contact_id = ? AND mnd.channel = 'IN_APP'
-       ORDER BY mnd.created_at DESC, mnd.id DESC LIMIT 100`, [req.user.id, req.user.id]
+         AND (mnd.notification_type NOT IN (?, ?)
+           OR (mri.status IN ('scheduled', 'sent', 'failed') AND mr.id IS NULL
+             AND sr.status = 'closed' AND sr.cancelled_at IS NULL))
+       ORDER BY mnd.created_at DESC, mnd.id DESC LIMIT 100`,
+      [req.user.id, req.user.id,
+        OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_INVITATION,
+        OPERATIONAL_NOTIFICATION_EVENTS.REVIEW_REMINDER]
     );
     res.json({ notifications: rows.map((row) => normalizeOperationalNotificationRow(row, { includeAction: true })) });
   } catch (error) { next(error); }

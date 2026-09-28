@@ -32,6 +32,21 @@ test('bon requires lines and ignores variant without product', () => {
   assert.equal(bon.items[0].variant_id, null);
 });
 
+test('project bon keeps a detailed price and a manually adjusted product cost', () => {
+  const bon = validateBon({
+    type: 'charge', date_bon: '2026-01-01',
+    items: [
+      { designation: 'Main d’œuvre', quantite: 2, prix_unitaire: 175 },
+      { product_id: 8, designation: 'Ciment', quantite: 3, prix_unitaire: 95.25, cout_revient: 95.25 },
+    ],
+  }).value;
+  assert.equal(bon.items[0].prix_unitaire, 175);
+  assert.equal(bon.items[0].total, 350);
+  assert.equal(bon.items[1].cout_revient, 95.25);
+  assert.equal(bon.items[1].total, 285.75);
+  assert.equal(bon.montant_total, 635.75);
+});
+
 test('situation merges movements chronologically with a running balance', () => {
   const rows = buildSituation(
     [{ id: 1, date_avance: '2026-01-05', montant: 1000, mode_paiement: 'Espece' }],

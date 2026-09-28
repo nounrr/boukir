@@ -3,9 +3,11 @@ import pool from '../db/pool.js';
 import { forbidRoles, verifyToken } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { buildCommandeStockDeltaMaps } from '../utils/commandeStock.js';
 import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
 
 const router = express.Router();
+const commandeUnitFactorSql = 'COALESCE((SELECT NULLIF(pu.conversion_factor, 0) FROM product_units pu WHERE pu.id = ci.unit_id AND pu.product_id = ci.product_id), 1)';
 
 // S'assure que la colonne inclus_en_caisse existe sur bons_commande
 async function ensureInclusEnCaisseColumn() {
@@ -300,7 +302,7 @@ router.post('/', verifyToken, async (req, res) => {
     // Stock (nouvelle règle): Commande => ajoute au stock dès la création (même "En attente")
     // Sauf si créé directement en "Annulé".
     if (st !== 'Annulé') {
-      const deltas = buildStockDeltaMaps(normalizedItems, +1);
+      const deltas = await buildCommandeStockDeltaMaps(connection, normalizedItems, +1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
     }
 
@@ -402,10 +404,10 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
     if (enteringCancelled || leavingCancelled) {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
+        'SELECT product_id, variant_id, unit_id, quantite FROM commande_items WHERE bon_commande_id = ?',
         [id]
       );
-      const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? -1 : +1);
+      const deltas = await buildCommandeStockDeltaMaps(connection, itemsStock, enteringCancelled ? -1 : +1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
     }
 
@@ -422,7 +424,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0) AS source_prix_vente_pourcentage,
             CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 OR COALESCE(pv.prix_vente, p.prix_vente) IS NULL THEN NULL
-              ELSE ROUND(((COALESCE(pv.prix_vente, p.prix_vente) / ci.prix_unitaire) - 1) * 100, 2)
+              ELSE ROUND(((COALESCE(pv.prix_vente, p.prix_vente) / (ci.prix_unitaire / ${commandeUnitFactorSql})) - 1) * 100, 2)
             END AS computed_prix_vente_pourcentage
           FROM commande_items ci
           JOIN products p ON p.id = ci.product_id
@@ -434,7 +436,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.prix_unitaire IS NOT NULL
                 AND ci.prix_unitaire <> 0
                 AND COALESCE(pv.prix_vente, p.prix_vente) IS NOT NULL
-                AND ROUND(((COALESCE(pv.prix_vente, p.prix_vente) / ci.prix_unitaire) - 1) * 100, 2) NOT BETWEEN -999.99 AND 999.99
+                AND ROUND(((COALESCE(pv.prix_vente, p.prix_vente) / (ci.prix_unitaire / ${commandeUnitFactorSql})) - 1) * 100, 2) NOT BETWEEN -999.99 AND 999.99
               )
             )
           ORDER BY ci.id ASC
@@ -496,8 +498,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               JOIN bons_commande bc ON bc.id = ps.bon_commande_id
              SET
                ps.en_validation = 1,
-               ps.prix_achat = ci.prix_unitaire,
-               ps.quantite = ci.quantite,
+               ps.prix_achat = ci.prix_unitaire / ${commandeUnitFactorSql},
+               ps.quantite = ci.quantite * ${commandeUnitFactorSql},
                ps.created_at = COALESCE(bc.date_creation, bc.created_at, ps.created_at)
              WHERE ps.bon_commande_id = ?`,
             [id]
@@ -528,14 +530,14 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               SELECT
                 ci.product_id,
                 ci.variant_id,
-                ci.prix_unitaire AS prix_achat,
+                ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
                 COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
                 COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
                 COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
                 COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
                 COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
                 LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
-                ci.quantite,
+                ci.quantite * ${commandeUnitFactorSql},
                 ci.bon_commande_id,
                 1 AS en_validation,
                 COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
@@ -565,14 +567,14 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               SELECT
                 ci.product_id,
                 ci.variant_id,
-                ci.prix_unitaire AS prix_achat,
+                ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
                 COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
                 COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
                 COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
                 COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
                 COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
                 LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
-                ci.quantite,
+                ci.quantite * ${commandeUnitFactorSql},
                 ci.bon_commande_id,
                 1 AS en_validation,
                 COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
@@ -600,14 +602,14 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             SELECT
               ci.product_id,
               ci.variant_id,
-              ci.prix_unitaire AS prix_achat,
+              ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
               COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
               COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
               COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
               COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
               COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
               LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
-              ci.quantite,
+              ci.quantite * ${commandeUnitFactorSql},
               ci.bon_commande_id,
               COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
             FROM commande_items ci
@@ -625,10 +627,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       await connection.execute(
         `UPDATE product_snapshot ps
            JOIN (
-             SELECT bon_commande_id, product_id, variant_id, AVG(prix_unitaire) AS prix_unitaire
-               FROM commande_items
-              WHERE bon_commande_id = ?
-              GROUP BY bon_commande_id, product_id, variant_id
+             SELECT ci.bon_commande_id, ci.product_id, ci.variant_id,
+                    AVG(ci.prix_unitaire / ${commandeUnitFactorSql}) AS prix_unitaire
+               FROM commande_items ci
+              WHERE ci.bon_commande_id = ?
+              GROUP BY ci.bon_commande_id, ci.product_id, ci.variant_id
            ) ci
              ON ci.bon_commande_id = ps.bon_commande_id
             AND ci.product_id = ps.product_id
@@ -982,10 +985,10 @@ router.put('/:id', verifyToken, async (req, res) => {
     // Commande => effet = +quantite au stock
     const deltas = buildStockDeltaMaps([], 1);
     if (oldStatut !== 'Annulé') {
-      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldItemsStock, -1));
+      mergeStockDeltaMaps(deltas, await buildCommandeStockDeltaMaps(connection, oldItemsStock, -1));
     }
     if (st !== 'Annulé') {
-      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, +1));
+      mergeStockDeltaMaps(deltas, await buildCommandeStockDeltaMaps(connection, items, +1));
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
@@ -1034,14 +1037,14 @@ router.put('/:id', verifyToken, async (req, res) => {
           SELECT
             ci.product_id,
             ci.variant_id,
-            ci.prix_unitaire AS prix_achat,
+            ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
             COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
             COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
             COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
             COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
             COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
             LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
-            ci.quantite,
+            ci.quantite * ${commandeUnitFactorSql},
             ci.bon_commande_id,
             ? AS en_validation,
             COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
@@ -1064,10 +1067,12 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(
         `UPDATE product_snapshot ps
            JOIN (
-             SELECT bon_commande_id, product_id, variant_id, AVG(prix_unitaire) AS prix_unitaire, SUM(quantite) AS quantite
-               FROM commande_items
-              WHERE bon_commande_id = ?
-              GROUP BY bon_commande_id, product_id, variant_id
+             SELECT ci.bon_commande_id, ci.product_id, ci.variant_id,
+                    AVG(ci.prix_unitaire / ${commandeUnitFactorSql}) AS prix_unitaire,
+                    SUM(ci.quantite * ${commandeUnitFactorSql}) AS quantite
+               FROM commande_items ci
+              WHERE ci.bon_commande_id = ?
+              GROUP BY ci.bon_commande_id, ci.product_id, ci.variant_id
            ) ci
              ON ci.bon_commande_id = ps.bon_commande_id
             AND ci.product_id = ps.product_id
@@ -1175,10 +1180,10 @@ router.delete('/:id', verifyToken, async (req, res) => {
     const statut = bonRows[0].statut;
     if (statut !== 'Annulé') {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
+        'SELECT product_id, variant_id, unit_id, quantite FROM commande_items WHERE bon_commande_id = ?',
         [id]
       );
-      const deltas = buildStockDeltaMaps(itemsStock, -1);
+      const deltas = await buildCommandeStockDeltaMaps(connection, itemsStock, -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
     }
 

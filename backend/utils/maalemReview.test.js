@@ -42,6 +42,7 @@ test('getPublishedMaalemReviews pagine et ne retourne aucun identifiant ni champ
     assert.match(sql, /sr\.status = 'closed'/);
     assert.match(sql, /sr\.cancelled_at IS NULL/);
     assert.match(sql, /si\.status = 'closed'/);
+    assert.match(sql, /si\.work_finished = 1/);
     assert.match(sql, /si\.completed_by_contact_id = mp\.contact_id/);
     assert.match(sql, /sra\.id = si\.executing_assignment_id/);
   }
@@ -85,6 +86,7 @@ test('getPublishedMaalemReviewStatistics ne compte que les avis publiés encore 
       assert.match(sql, /mr\.deleted_at IS NULL/);
       assert.match(sql, /sr\.status = 'closed'/);
       assert.match(sql, /si\.status = 'closed'/);
+      assert.match(sql, /si\.work_finished = 1/);
       assert.match(sql, /si\.completed_by_contact_id = mp\.contact_id/);
       assert.match(sql, /sra\.maalem_profile_id = mr\.maalem_profile_id/);
       return [[{
