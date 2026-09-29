@@ -244,6 +244,10 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
             <p className="mt-1 text-[11px] tabular-nums text-stone-500">ID {row.product_id}{row.reference ? ` · Réf. ${row.reference}` : ''}{row.variant_reference ? ` · Var. ${row.variant_reference}` : ''}</p>
             {webResult && !hasWebPrice(webResult) ? <span title={webResult.error || 'Aucun prix vérifié trouvé sur Internet'} className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">Sans infos</span> : null}
             {webResult?.searched_at ? <p className="mt-1 text-[10px] text-stone-500">Recherche du {formatCorrectedAt(webResult.searched_at)}</p> : null}
+            {webResult ? <p className="mt-1 text-[11px] font-semibold tabular-nums text-indigo-700">
+              Coût recherche estimé : {typeof webResult.usage?.estimated_cost_usd === 'number' ? `${webResult.usage.estimated_cost_usd.toFixed(4)} $` : 'indisponible'}
+              {webResult.cached ? <span className="ml-1 font-normal text-stone-500">· cache (0 $ pour ce lancement)</span> : null}
+            </p> : null}
           </div>
         </div>
       </td>
@@ -322,6 +326,8 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [checkedKeys, setCheckedKeys] = useState<Record<string, true>>({});
   const [webModel, setWebModel] = useState('gpt-5-mini');
+  const [forceWebRefresh, setForceWebRefresh] = useState(false);
+  const [webBudgetRaw, setWebBudgetRaw] = useState('3');
   const [pv2DiscountRaw, setPv2DiscountRaw] = useState('10');
   const [webResults, setWebResults] = useState<Record<string, WebSalePriceResult>>({});
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
@@ -339,10 +345,19 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [researchSalePrices] = useResearchSalePricesMutation();
   const [isResearching, setIsResearching] = useState(false);
   const [webProgress, setWebProgress] = useState<{ done: number; total: number } | null>(null);
+  const [webRunStats, setWebRunStats] = useState<{ cached: number; webCalls: number; estimatedCostUsd: number } | null>(null);
   const isSaving = isApplying || isResetting;
   const rows = useMemo(() => data?.data ?? [], [data]);
   const meta = data?.meta;
   const readOnly = activeTab === 'processed';
+  const pageWebCosts = useMemo(() => rows.reduce((total, row) => {
+    const cost = webResults[rowKey(row)]?.usage?.estimated_cost_usd;
+    if (typeof cost === 'number' && Number.isFinite(cost)) {
+      total.amount += cost;
+      total.count += 1;
+    }
+    return total;
+  }, { amount: 0, count: 0 }), [rows, webResults]);
 
   useEffect(() => {
     if (!data) return;
@@ -454,44 +469,69 @@ const SalePriceCorrectionsContent: React.FC = () => {
   };
   const searchWeb = async () => {
     if (!checkedRows.length || checkedRows.length > 100 || isResearching) return;
+    const maxEstimatedCostUsd = Number(webBudgetRaw.replace(',', '.'));
+    if (!Number.isFinite(maxEstimatedCostUsd) || maxEstimatedCostUsd <= 0) {
+      showError('Indiquez un budget positif en dollars pour cette recherche.');
+      return;
+    }
     const selected = [...checkedRows];
-    // Une requête par produit évite les délais d'expiration HTTP ; trois recherches avancent en parallèle.
+    // Une requête à la fois permet d'arrêter immédiatement après une erreur de quota.
     const batches = selected.map((row) => [row]);
     let cursor = 0;
     let failed = 0;
     let firstError = '';
     let stop = false;
+    let budgetReached = false;
+    let consecutiveFailures = 0;
+    const runStats = { cached: 0, webCalls: 0, estimatedCostUsd: 0 };
     setIsResearching(true);
+    setWebRunStats(null);
     setWebProgress({ done: 0, total: selected.length });
-    setWebResults((previous) => {
-      const next = { ...previous };
-      selected.forEach((row) => { delete next[rowKey(row)]; });
-      return next;
-    });
     try {
       const worker = async () => {
         while (!stop && cursor < batches.length) {
           const batch = batches[cursor++];
           try {
-            const response = await researchSalePrices({ model: webModel, entities: batch.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
+            const response = await researchSalePrices({ model: webModel, refresh: forceWebRefresh, entities: batch.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
+            for (const result of response.results) {
+              if (result.cached) runStats.cached += 1;
+              if (!result.cached) {
+                runStats.webCalls += result.usage?.web_search_calls || 0;
+                runStats.estimatedCostUsd += result.usage?.estimated_cost_usd || 0;
+              }
+              if (result.error) {
+                failed += 1;
+                firstError ||= result.error;
+                consecutiveFailures += 1;
+              } else consecutiveFailures = 0;
+            }
+            setWebRunStats({ ...runStats });
             setWebResults((previous) => ({ ...previous, ...Object.fromEntries(response.results.map((result) => [rowKey(result), result])) }));
+            if (runStats.estimatedCostUsd >= maxEstimatedCostUsd) {
+              budgetReached = true;
+              stop = true;
+            }
+            if (consecutiveFailures >= 3) stop = true;
           } catch (researchError) {
             const apiError = researchError as { status?: number; data?: { message?: string } };
             firstError ||= apiError.data?.message || 'Recherche web impossible.';
             failed += batch.length;
+            consecutiveFailures += batch.length;
             setWebResults((previous) => ({ ...previous, ...Object.fromEntries(batch.map((row) => [rowKey(row), {
               product_id: row.product_id, variant_id: row.variant_id, market: [], ingco: [], offersCount: 0,
               error: apiError.data?.message || 'Recherche web impossible.',
             } satisfies WebSalePriceResult])) }));
-            if (apiError.status === 400 || apiError.status === 401 || apiError.status === 403 || apiError.status === 503) stop = true;
+            if ([400, 401, 402, 403, 429, 503].includes(Number(apiError.status)) || consecutiveFailures >= 3) stop = true;
           } finally {
             setWebProgress((previous) => previous ? { ...previous, done: previous.done + batch.length } : null);
           }
         }
       };
-      await Promise.all(Array.from({ length: Math.min(3, batches.length) }, () => worker()));
-      if (failed || stop) showError(stop ? `${firstError} Recherche interrompue ; les résultats obtenus restent affichés.` : `${firstError} ${failed} produit(s) non traité(s).`, 'Recherche partielle');
+      await worker();
+      if (budgetReached) showError(`Budget estimé de ${maxEstimatedCostUsd.toFixed(2)} $ atteint. Les résultats obtenus restent affichés.`, 'Recherche interrompue');
+      else if (failed || stop) showError(stop ? `${firstError} Recherche interrompue ; les résultats obtenus restent affichés.` : `${firstError} ${failed} produit(s) non traité(s).`, 'Recherche partielle');
     } finally {
+      setWebRunStats(runStats);
       setIsResearching(false);
     }
   };
@@ -718,6 +758,9 @@ const SalePriceCorrectionsContent: React.FC = () => {
               {meta.total > 0 ? <> · affichage {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} · page {meta.page} sur {meta.totalPages}</> : null}
             </p>
           ) : null}
+          {rows.length > 0 ? <p className="mt-1 text-xs font-semibold tabular-nums text-indigo-700" aria-live="polite">
+            Coût total estimé des recherches de cette page : {pageWebCosts.amount.toFixed(4)} $ ({pageWebCosts.count} produit{pageWebCosts.count > 1 ? 's' : ''} avec coût connu)
+          </p> : null}
         </div>
       </header>
 
@@ -742,10 +785,22 @@ const SalePriceCorrectionsContent: React.FC = () => {
                   <option value="gpt-5-mini">GPT-5 mini</option><option value="gpt-5">GPT-5</option><option value="gpt-5.2">GPT-5.2</option>
                 </select>
               </label>
+              <label className="inline-flex items-center gap-1.5 text-xs text-stone-600">
+                <input type="checkbox" checked={forceWebRefresh} onChange={(event) => setForceWebRefresh(event.target.checked)} disabled={isResearching} />
+                Actualiser même si recherché depuis moins de 24 h
+              </label>
+              <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-700">
+                Budget estimé ($)
+                <input type="text" inputMode="decimal" value={webBudgetRaw} onChange={(event) => setWebBudgetRaw(event.target.value)}
+                  disabled={isResearching} className="h-9 w-16 rounded-md border border-stone-300 px-2 text-xs" />
+              </label>
               <button type="button" onClick={() => void searchWeb()} disabled={!checkedRows.length || checkedRows.length > 100 || isResearching || isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-40">
                 {isResearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} {isResearching && webProgress ? `Recherche ${webProgress.done}/${webProgress.total}` : `Chercher sur Internet (${checkedRows.length})`}
               </button>
-              <span className="text-[11px] text-stone-500">Jusqu’à 100 produits par page · résultats indicatifs</span>
+              <span className="text-[11px] text-stone-500">Jusqu’à 100 produits par page · contexte web léger · résultats récents réutilisés 24 h · budget indicatif, dépassement possible sur la dernière recherche</span>
+              {webRunStats && <span className="text-[11px] text-stone-600">
+                Ce lancement : {webRunStats.cached} en cache · {webRunStats.webCalls} recherche(s) web · coût API estimé {webRunStats.estimatedCostUsd.toFixed(4)} $
+              </span>}
               <button type="button" onClick={() => fillMissing('suggest')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-800 transition hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"><Wand2 className="h-3.5 w-3.5" /> Suggestions</button>
               <button type="button" onClick={() => fillMissing('keep')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Garder tout</button>
               <button type="button" onClick={clearPage} disabled={isSaving || !startedCount} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-600 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-40"><Eraser className="h-3.5 w-3.5" /> Effacer</button>

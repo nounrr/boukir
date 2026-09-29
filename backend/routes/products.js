@@ -25,7 +25,7 @@ import {
   canAccessSalePriceCorrections,
   requireSalePriceCorrectionAccess,
 } from '../utils/salePriceCorrectionPermissions.js';
-import { WEB_PRICE_MODELS, summarizeWebPrices } from '../utils/webSalePriceResearch.js';
+import { WEB_PRICE_MODELS, canReuseWebPriceResearch, parseWebResearchUsage, summarizeWebPrices, summarizeWebResearchUsage } from '../utils/webSalePriceResearch.js';
 import { ensureSalePriceWebResearchSchema } from '../db/ensureSalePriceWebResearchSchema.js';
 
 const router = Router();
@@ -4668,6 +4668,7 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
   try {
     const entities = req.body?.entities;
     const model = String(req.body?.model || 'gpt-5-mini');
+    const refresh = req.body?.refresh === true;
     if (!Array.isArray(entities) || entities.length < 1 || entities.length > 10 || !WEB_PRICE_MODELS.includes(model)) {
       return res.status(400).json({ message: 'Sélectionnez de 1 à 10 produits et un modèle valide.' });
     }
@@ -4695,18 +4696,43 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
       }
       targets.push(product);
     }
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim(), maxRetries: 1, timeout: 90000 });
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim(), maxRetries: 0, timeout: 90000 });
     const results = [];
     for (const product of targets) {
       const key = salePriceEntityKey(product.product_id, product.variant_id);
+      if (!refresh) {
+        const [[saved]] = await pool.query(
+          'SELECT model, market_json, ingco_json, offers_count, error_text, usage_json, searched_at FROM sale_price_web_research WHERE entity_key = ? LIMIT 1',
+          [key]
+        );
+        if (canReuseWebPriceResearch(saved, model)) {
+          const parseGroups = (value) => {
+            try { return Array.isArray(value) ? value : JSON.parse(String(value || '[]')); }
+            catch { return []; }
+          };
+          results.push({
+            product_id: Number(product.product_id),
+            variant_id: product.variant_id == null ? null : Number(product.variant_id),
+            market: parseGroups(saved.market_json),
+            ingco: parseGroups(saved.ingco_json),
+            offersCount: Number(saved.offers_count) || 0,
+            model, searched_at: saved.searched_at, cached: true,
+            usage: parseWebResearchUsage(saved.usage_json),
+          });
+          continue;
+        }
+      }
       let result;
+      let response;
       try {
-        const response = await client.responses.create({
+        response = await client.responses.create({
           model,
-          tools: [{ type: 'web_search', search_context_size: 'high', user_location: { type: 'approximate', country: 'MA' } }],
+          tools: [{ type: 'web_search', search_context_size: 'low', user_location: { type: 'approximate', country: 'MA' } }],
           tool_choice: 'required',
           include: ['web_search_call.action.sources'],
           store: false,
+          max_tool_calls: 2,
+          max_output_tokens: 5000,
           input: `Cherche les prix de vente actuels au Maroc (MAD) pour ce produit exact : ${JSON.stringify({ designation: product.designation, reference: product.reference, variante: product.variant_name, reference_variante: product.variant_reference })}. Compare plusieurs sites marchands et cherche séparément le site officiel INGCO. N'inclus que les offres dont la référence, la variante et l'unité correspondent. Ne convertis pas une autre devise et n'invente aucun prix. Réponds uniquement en JSON : {"offers":[{"price":123.45,"currency":"MAD","url":"https://page-produit-exacte","title":"nom exact"}]}. Chaque URL doit être la page produit consultée, pas une page de recherche. Si aucune offre vérifiable, renvoie {"offers":[]}.`,
         });
         const sourceUrls = response.output.flatMap((entry) => {
@@ -4716,18 +4742,24 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
         });
         const rawText = String(response.output_text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
         const parsed = JSON.parse(rawText);
-        result = { product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), ...summarizeWebPrices(parsed, sourceUrls) };
+        result = { product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), ...summarizeWebPrices(parsed, sourceUrls), usage: summarizeWebResearchUsage(response, model) };
       } catch (error) {
-        result = { product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), market: [], ingco: [], offersCount: 0, error: String(error?.message || 'Recherche impossible.').slice(0, 500) };
+        if ([400, 401, 402, 403, 429].includes(Number(error?.status))) {
+          return res.status(Number(error.status)).json({
+            message: String(error?.message || 'Recherche interrompue par OpenAI.').slice(0, 500),
+            code: error?.code || null,
+          });
+        }
+        result = { product_id: Number(product.product_id), variant_id: product.variant_id == null ? null : Number(product.variant_id), market: [], ingco: [], offersCount: 0, error: String(error?.message || 'Recherche impossible.').slice(0, 500), usage: response ? summarizeWebResearchUsage(response, model) : undefined };
       }
       await pool.query(
         `INSERT INTO sale_price_web_research
-          (entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, searched_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          (entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, usage_json, searched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE model = VALUES(model), market_json = VALUES(market_json),
            ingco_json = VALUES(ingco_json), offers_count = VALUES(offers_count),
-           error_text = VALUES(error_text), searched_at = VALUES(searched_at)`,
-        [key, result.product_id, result.variant_id, model, JSON.stringify(result.market), JSON.stringify(result.ingco), result.offersCount, result.error || null]
+           error_text = VALUES(error_text), usage_json = VALUES(usage_json), searched_at = VALUES(searched_at)`,
+        [key, result.product_id, result.variant_id, model, JSON.stringify(result.market), JSON.stringify(result.ingco), result.offersCount, result.error || null, result.usage ? JSON.stringify(result.usage) : null]
       );
       results.push({ ...result, model, searched_at: new Date().toISOString() });
     }
@@ -4801,7 +4833,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
 
     const entityKeys = entities.map((entity) => salePriceEntityKey(entity.product_id, entity.variant_id));
     const [savedResearch] = await pool.query(
-      `SELECT entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, searched_at
+      `SELECT entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, usage_json, searched_at
        FROM sale_price_web_research WHERE entity_key IN (${entityKeys.map(() => '?').join(', ')})`,
       entityKeys
     );
@@ -4814,6 +4846,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
       market: parseGroups(saved.market_json), ingco: parseGroups(saved.ingco_json),
       offersCount: Number(saved.offers_count), error: saved.error_text || undefined,
       model: saved.model, searched_at: saved.searched_at,
+      usage: parseWebResearchUsage(saved.usage_json),
     }]));
 
     const productIds = [...new Set(entities.map((entity) => Number(entity.product_id)))];
