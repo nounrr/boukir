@@ -20,10 +20,13 @@ test('groups only cited MAD prices and keeps INGCO separate', () => {
 test('reuses only recent successful research from the same model', () => {
   const now = Date.parse('2026-09-29T12:00:00Z');
   const saved = { model: 'gpt-5-mini', error_text: null, searched_at: '2026-09-29T11:00:00Z' };
-  assert.equal(canReuseWebPriceResearch(saved, 'gpt-5-mini', now), true);
-  assert.equal(canReuseWebPriceResearch(saved, 'gpt-5', now), false);
-  assert.equal(canReuseWebPriceResearch({ ...saved, error_text: 'quota' }, 'gpt-5-mini', now), false);
-  assert.equal(canReuseWebPriceResearch({ ...saved, searched_at: '2026-09-28T11:00:00Z' }, 'gpt-5-mini', now), false);
+  assert.equal(canReuseWebPriceResearch(saved, 'gpt-5-mini', 'low', now), true);
+  assert.equal(canReuseWebPriceResearch(saved, 'gpt-5-mini', 'medium', now), false);
+  assert.equal(canReuseWebPriceResearch({ ...saved, search_context_size: 'high' }, 'gpt-5-mini', 'high', now), true);
+  assert.equal(canReuseWebPriceResearch({ ...saved, search_context_size: 'high' }, 'gpt-5-mini', 'low', now), false);
+  assert.equal(canReuseWebPriceResearch(saved, 'gpt-5', 'low', now), false);
+  assert.equal(canReuseWebPriceResearch({ ...saved, error_text: 'quota' }, 'gpt-5-mini', 'low', now), false);
+  assert.equal(canReuseWebPriceResearch({ ...saved, searched_at: '2026-09-28T11:00:00Z' }, 'gpt-5-mini', 'low', now), false);
 });
 
 test('estimates billed tokens and actual web search calls separately', () => {

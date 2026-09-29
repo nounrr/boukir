@@ -1,4 +1,5 @@
 export const WEB_PRICE_MODELS = ['gpt-5-mini', 'gpt-5', 'gpt-5.2'];
+export const WEB_PRICE_CONTEXT_SIZES = ['low', 'medium', 'high'];
 
 export const WEB_PRICE_CACHE_HOURS = 24;
 
@@ -11,8 +12,8 @@ const MODEL_TOKEN_RATES = {
   'gpt-5.2': { input: 1.75, cachedInput: 0.175, output: 14 },
 };
 
-export function canReuseWebPriceResearch(row, model, now = Date.now()) {
-  if (!row || row.model !== model || row.error_text) return false;
+export function canReuseWebPriceResearch(row, model, contextSize = 'low', now = Date.now()) {
+  if (!row || row.model !== model || (row.search_context_size || 'low') !== contextSize || row.error_text) return false;
   const searchedAt = new Date(row.searched_at).getTime();
   const age = now - searchedAt;
   return Number.isFinite(age) && age >= 0 && age < WEB_PRICE_CACHE_HOURS * 60 * 60 * 1000;

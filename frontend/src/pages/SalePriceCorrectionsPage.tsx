@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Sparkles, Wand2 } from 'lucide-react';
-import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, type WebPriceGroup, type WebSalePriceResult, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionsQuery, useResearchSalePricesMutation, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
+import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, type WebPriceGroup, type WebSalePriceResult, type WebSearchContextSize, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionsQuery, useResearchSalePricesMutation, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
@@ -327,6 +327,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [checkedKeys, setCheckedKeys] = useState<Record<string, true>>({});
   const [webModel, setWebModel] = useState('gpt-5-mini');
+  const [webContextSize, setWebContextSize] = useState<WebSearchContextSize>('low');
   const [forceWebRefresh, setForceWebRefresh] = useState(false);
   const [webBudgetRaw, setWebBudgetRaw] = useState('3');
   const [pv2DiscountRaw, setPv2DiscountRaw] = useState('10');
@@ -493,7 +494,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
         while (!stop && cursor < batches.length) {
           const batch = batches[cursor++];
           try {
-            const response = await researchSalePrices({ model: webModel, refresh: forceWebRefresh, entities: batch.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
+            const response = await researchSalePrices({ model: webModel, search_context_size: webContextSize, refresh: forceWebRefresh, entities: batch.map((row) => ({ product_id: row.product_id, variant_id: row.variant_id })) }).unwrap();
             for (const result of response.results) {
               if (result.cached) runStats.cached += 1;
               if (!result.cached) {
@@ -782,8 +783,13 @@ const SalePriceCorrectionsContent: React.FC = () => {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-700">Modèle IA
-                <select value={webModel} onChange={(event) => setWebModel(event.target.value)} className="h-9 rounded-lg border-stone-300 bg-white text-xs">
+                <select value={webModel} onChange={(event) => setWebModel(event.target.value)} disabled={isResearching} className="h-9 rounded-lg border-stone-300 bg-white text-xs">
                   <option value="gpt-5-mini">GPT-5 mini</option><option value="gpt-5">GPT-5</option><option value="gpt-5.2">GPT-5.2</option>
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-700">Profondeur web
+                <select value={webContextSize} onChange={(event) => setWebContextSize(event.target.value as WebSearchContextSize)} disabled={isResearching} className="h-9 rounded-lg border-stone-300 bg-white text-xs">
+                  <option value="low">Faible</option><option value="medium">Moyenne</option><option value="high">Élevée</option>
                 </select>
               </label>
               <label className="inline-flex items-center gap-1.5 text-xs text-stone-600">
@@ -798,7 +804,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
               <button type="button" onClick={() => void searchWeb()} disabled={!checkedRows.length || checkedRows.length > 100 || isResearching || isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-40">
                 {isResearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} {isResearching && webProgress ? `Recherche ${webProgress.done}/${webProgress.total}` : `Chercher sur Internet (${checkedRows.length})`}
               </button>
-              <span className="text-[11px] text-stone-500">Jusqu’à 100 produits par page · contexte web léger · résultats récents réutilisés 24 h · budget indicatif, dépassement possible sur la dernière recherche</span>
+              <span className="text-[11px] text-stone-500">Jusqu’à 100 produits par page · une profondeur plus élevée peut coûter davantage · résultats de même profondeur réutilisés 24 h · budget indicatif, dépassement possible sur la dernière recherche</span>
               {webRunStats && <span className="text-[11px] text-stone-600">
                 Ce lancement : {webRunStats.cached} en cache · {webRunStats.webCalls} recherche(s) web · coût API calculé {formatUsdCost(webRunStats.estimatedCostUsd)}
               </span>}

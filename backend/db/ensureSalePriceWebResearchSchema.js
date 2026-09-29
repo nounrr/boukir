@@ -11,6 +11,7 @@ export function ensureSalePriceWebResearchSchema() {
         product_id INT NOT NULL,
         variant_id INT NULL,
         model VARCHAR(64) NOT NULL,
+        search_context_size VARCHAR(6) NOT NULL DEFAULT 'low',
         market_json JSON NOT NULL,
         ingco_json JSON NOT NULL,
         offers_count INT NOT NULL DEFAULT 0,
@@ -24,6 +25,14 @@ export function ensureSalePriceWebResearchSchema() {
       if (!columns.length) {
         try {
           await pool.query('ALTER TABLE sale_price_web_research ADD COLUMN usage_json JSON NULL AFTER error_text');
+        } catch (error) {
+          if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+        }
+      }
+      const [contextColumns] = await pool.query("SHOW COLUMNS FROM sale_price_web_research LIKE 'search_context_size'");
+      if (!contextColumns.length) {
+        try {
+          await pool.query("ALTER TABLE sale_price_web_research ADD COLUMN search_context_size VARCHAR(6) NOT NULL DEFAULT 'low' AFTER model");
         } catch (error) {
           if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
         }

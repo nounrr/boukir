@@ -25,7 +25,7 @@ import {
   canAccessSalePriceCorrections,
   requireSalePriceCorrectionAccess,
 } from '../utils/salePriceCorrectionPermissions.js';
-import { WEB_PRICE_MODELS, canReuseWebPriceResearch, parseWebResearchUsage, summarizeWebPrices, summarizeWebResearchUsage } from '../utils/webSalePriceResearch.js';
+import { WEB_PRICE_CONTEXT_SIZES, WEB_PRICE_MODELS, canReuseWebPriceResearch, parseWebResearchUsage, summarizeWebPrices, summarizeWebResearchUsage } from '../utils/webSalePriceResearch.js';
 import { ensureSalePriceWebResearchSchema } from '../db/ensureSalePriceWebResearchSchema.js';
 
 const router = Router();
@@ -4668,9 +4668,10 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
   try {
     const entities = req.body?.entities;
     const model = String(req.body?.model || 'gpt-5-mini');
+    const contextSize = req.body?.search_context_size ?? 'low';
     const refresh = req.body?.refresh === true;
-    if (!Array.isArray(entities) || entities.length < 1 || entities.length > 10 || !WEB_PRICE_MODELS.includes(model)) {
-      return res.status(400).json({ message: 'Sélectionnez de 1 à 10 produits et un modèle valide.' });
+    if (!Array.isArray(entities) || entities.length < 1 || entities.length > 10 || !WEB_PRICE_MODELS.includes(model) || !WEB_PRICE_CONTEXT_SIZES.includes(contextSize)) {
+      return res.status(400).json({ message: 'Sélectionnez de 1 à 10 produits, un modèle et une profondeur web valides.' });
     }
     if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ message: 'OPENAI_API_KEY non configurée côté serveur.' });
     await ensureSalePriceWebResearchSchema();
@@ -4702,10 +4703,10 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
       const key = salePriceEntityKey(product.product_id, product.variant_id);
       if (!refresh) {
         const [[saved]] = await pool.query(
-          'SELECT model, market_json, ingco_json, offers_count, error_text, usage_json, searched_at FROM sale_price_web_research WHERE entity_key = ? LIMIT 1',
+          'SELECT model, search_context_size, market_json, ingco_json, offers_count, error_text, usage_json, searched_at FROM sale_price_web_research WHERE entity_key = ? LIMIT 1',
           [key]
         );
-        if (canReuseWebPriceResearch(saved, model)) {
+        if (canReuseWebPriceResearch(saved, model, contextSize)) {
           const parseGroups = (value) => {
             try { return Array.isArray(value) ? value : JSON.parse(String(value || '[]')); }
             catch { return []; }
@@ -4716,7 +4717,7 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
             market: parseGroups(saved.market_json),
             ingco: parseGroups(saved.ingco_json),
             offersCount: Number(saved.offers_count) || 0,
-            model, searched_at: saved.searched_at, cached: true,
+            model, search_context_size: contextSize, searched_at: saved.searched_at, cached: true,
             usage: parseWebResearchUsage(saved.usage_json),
           });
           continue;
@@ -4727,7 +4728,7 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
       try {
         response = await client.responses.create({
           model,
-          tools: [{ type: 'web_search', search_context_size: 'low', user_location: { type: 'approximate', country: 'MA' } }],
+          tools: [{ type: 'web_search', search_context_size: contextSize, user_location: { type: 'approximate', country: 'MA' } }],
           tool_choice: 'required',
           include: ['web_search_call.action.sources'],
           store: false,
@@ -4754,16 +4755,16 @@ router.post('/sale-price-corrections/web-research', requireSalePriceCorrectionAc
       }
       await pool.query(
         `INSERT INTO sale_price_web_research
-          (entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, usage_json, searched_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE model = VALUES(model), market_json = VALUES(market_json),
+          (entity_key, product_id, variant_id, model, search_context_size, market_json, ingco_json, offers_count, error_text, usage_json, searched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE model = VALUES(model), search_context_size = VALUES(search_context_size), market_json = VALUES(market_json),
            ingco_json = VALUES(ingco_json), offers_count = VALUES(offers_count),
            error_text = VALUES(error_text), usage_json = VALUES(usage_json), searched_at = VALUES(searched_at)`,
-        [key, result.product_id, result.variant_id, model, JSON.stringify(result.market), JSON.stringify(result.ingco), result.offersCount, result.error || null, result.usage ? JSON.stringify(result.usage) : null]
+        [key, result.product_id, result.variant_id, model, contextSize, JSON.stringify(result.market), JSON.stringify(result.ingco), result.offersCount, result.error || null, result.usage ? JSON.stringify(result.usage) : null]
       );
-      results.push({ ...result, model, searched_at: new Date().toISOString() });
+      results.push({ ...result, model, search_context_size: contextSize, searched_at: new Date().toISOString() });
     }
-    res.json({ model, searched_at: new Date().toISOString(), results });
+    res.json({ model, search_context_size: contextSize, searched_at: new Date().toISOString(), results });
   } catch (error) { next(error); }
 });
 
@@ -4833,7 +4834,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
 
     const entityKeys = entities.map((entity) => salePriceEntityKey(entity.product_id, entity.variant_id));
     const [savedResearch] = await pool.query(
-      `SELECT entity_key, product_id, variant_id, model, market_json, ingco_json, offers_count, error_text, usage_json, searched_at
+      `SELECT entity_key, product_id, variant_id, model, search_context_size, market_json, ingco_json, offers_count, error_text, usage_json, searched_at
        FROM sale_price_web_research WHERE entity_key IN (${entityKeys.map(() => '?').join(', ')})`,
       entityKeys
     );
@@ -4845,7 +4846,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
       product_id: Number(saved.product_id), variant_id: saved.variant_id == null ? null : Number(saved.variant_id),
       market: parseGroups(saved.market_json), ingco: parseGroups(saved.ingco_json),
       offersCount: Number(saved.offers_count), error: saved.error_text || undefined,
-      model: saved.model, searched_at: saved.searched_at,
+      model: saved.model, search_context_size: saved.search_context_size, searched_at: saved.searched_at,
       usage: parseWebResearchUsage(saved.usage_json),
     }]));
 

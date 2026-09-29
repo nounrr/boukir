@@ -35,9 +35,10 @@ export interface SalePriceCorrectionRow {
 }
 
 export interface WebPriceGroup { price: number; count: number; sources: Array<{ site: string; url: string; title: string }> }
+export type WebSearchContextSize = 'low' | 'medium' | 'high';
 export interface WebSalePriceResult {
   product_id: number; variant_id: number | null; market: WebPriceGroup[]; ingco: WebPriceGroup[]; offersCount: number;
-  error?: string; model?: string; searched_at?: string; cached?: boolean;
+  error?: string; model?: string; search_context_size?: WebSearchContextSize; searched_at?: string; cached?: boolean;
   usage?: { input_tokens: number; output_tokens: number; web_search_calls: number; estimated_cost_usd: number | null };
 }
 
@@ -306,8 +307,8 @@ const productsApi = api.injectEndpoints({
     }),
 
     researchSalePrices: builder.mutation<
-      { model: string; searched_at: string; results: WebSalePriceResult[] },
-      { model: string; refresh?: boolean; entities: Array<{ product_id: number; variant_id: number | null }> }
+      { model: string; search_context_size: WebSearchContextSize; searched_at: string; results: WebSalePriceResult[] },
+      { model: string; search_context_size: WebSearchContextSize; refresh?: boolean; entities: Array<{ product_id: number; variant_id: number | null }> }
     >({
       query: (body) => ({ url: '/products/sale-price-corrections/web-research', method: 'POST', body }),
     }),
