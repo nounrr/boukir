@@ -16,6 +16,7 @@ type Decision = { pv1?: Choice; pv2?: Choice };
 
 const KEEP: Choice = { kind: 'keep' };
 const money = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatUsdCost = (value: number) => `${value.toFixed(9).replace(/0+$/, '').replace(/\.$/, '')} $`;
 const quantity = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const rowKey = (row: Pick<SalePriceCorrectionRow, 'product_id' | 'variant_id'>) => `${row.product_id}:${row.variant_id ?? 'base'}`;
 const samePrice = (a: number, b: number) => Math.abs(Number(a) - Number(b)) < 0.005;
@@ -244,8 +245,8 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
             <p className="mt-1 text-[11px] tabular-nums text-stone-500">ID {row.product_id}{row.reference ? ` · Réf. ${row.reference}` : ''}{row.variant_reference ? ` · Var. ${row.variant_reference}` : ''}</p>
             {webResult && !hasWebPrice(webResult) ? <span title={webResult.error || 'Aucun prix vérifié trouvé sur Internet'} className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">Sans infos</span> : null}
             {webResult?.searched_at ? <p className="mt-1 text-[10px] text-stone-500">Recherche du {formatCorrectedAt(webResult.searched_at)}</p> : null}
-            {webResult ? <p className="mt-1 text-[11px] font-semibold tabular-nums text-indigo-700">
-              Coût recherche estimé : {typeof webResult.usage?.estimated_cost_usd === 'number' ? `${webResult.usage.estimated_cost_usd.toFixed(4)} $` : 'indisponible'}
+            {typeof webResult?.usage?.estimated_cost_usd === 'number' ? <p className="mt-1 text-[11px] font-semibold tabular-nums text-indigo-700">
+              Coût calculé après recherche : {formatUsdCost(webResult.usage.estimated_cost_usd)}
               {webResult.cached ? <span className="ml-1 font-normal text-stone-500">· cache (0 $ pour ce lancement)</span> : null}
             </p> : null}
           </div>
@@ -758,8 +759,8 @@ const SalePriceCorrectionsContent: React.FC = () => {
               {meta.total > 0 ? <> · affichage {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} · page {meta.page} sur {meta.totalPages}</> : null}
             </p>
           ) : null}
-          {rows.length > 0 ? <p className="mt-1 text-xs font-semibold tabular-nums text-indigo-700" aria-live="polite">
-            Coût total estimé des recherches de cette page : {pageWebCosts.amount.toFixed(4)} $ ({pageWebCosts.count} produit{pageWebCosts.count > 1 ? 's' : ''} avec coût connu)
+          {pageWebCosts.count > 0 ? <p className="mt-1 text-xs font-semibold tabular-nums text-indigo-700" aria-live="polite">
+            Coût total calculé pour cette page : {formatUsdCost(pageWebCosts.amount)} ({pageWebCosts.count} produit{pageWebCosts.count > 1 ? 's' : ''})
           </p> : null}
         </div>
       </header>
@@ -799,7 +800,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
               </button>
               <span className="text-[11px] text-stone-500">Jusqu’à 100 produits par page · contexte web léger · résultats récents réutilisés 24 h · budget indicatif, dépassement possible sur la dernière recherche</span>
               {webRunStats && <span className="text-[11px] text-stone-600">
-                Ce lancement : {webRunStats.cached} en cache · {webRunStats.webCalls} recherche(s) web · coût API estimé {webRunStats.estimatedCostUsd.toFixed(4)} $
+                Ce lancement : {webRunStats.cached} en cache · {webRunStats.webCalls} recherche(s) web · coût API calculé {formatUsdCost(webRunStats.estimatedCostUsd)}
               </span>}
               <button type="button" onClick={() => fillMissing('suggest')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-800 transition hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"><Wand2 className="h-3.5 w-3.5" /> Suggestions</button>
               <button type="button" onClick={() => fillMissing('keep')} disabled={isSaving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-bold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Garder tout</button>

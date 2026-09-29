@@ -29,14 +29,18 @@ test('reuses only recent successful research from the same model', () => {
 test('estimates billed tokens and actual web search calls separately', () => {
   const usage = summarizeWebResearchUsage({
     usage: { input_tokens: 10000, output_tokens: 1000, input_tokens_details: { cached_tokens: 2000 } },
-    output: [{ type: 'web_search_call' }, { type: 'web_search_call' }, { type: 'message' }],
+    output: [{ type: 'web_search_call', action: { type: 'search' } }, { type: 'web_search_call', action: { type: 'search' } }, { type: 'web_search_call', action: { type: 'open_page' } }, { type: 'message' }],
   }, 'gpt-5-mini');
   assert.deepEqual(usage, {
     input_tokens: 10000,
     output_tokens: 1000,
     web_search_calls: 2,
-    estimated_cost_usd: 0.0241,
+    estimated_cost_usd: 0.02405,
   });
+});
+
+test('does not invent a zero cost when OpenAI did not return usage', () => {
+  assert.equal(summarizeWebResearchUsage({ output: [{ type: 'web_search_call', action: { type: 'search' } }] }, 'gpt-5-mini'), undefined);
 });
 
 test('reads saved research costs and ignores missing or invalid historical costs', () => {

@@ -19,11 +19,12 @@ export function canReuseWebPriceResearch(row, model, now = Date.now()) {
 }
 
 export function summarizeWebResearchUsage(response, model) {
+  if (!response?.usage) return undefined;
   const inputTokens = Math.max(0, Number(response?.usage?.input_tokens) || 0);
   const outputTokens = Math.max(0, Number(response?.usage?.output_tokens) || 0);
   const cachedInputTokens = Math.min(inputTokens, Math.max(0, Number(response?.usage?.input_tokens_details?.cached_tokens) || 0));
   const webSearchCalls = Array.isArray(response?.output)
-    ? response.output.filter((item) => item?.type === 'web_search_call').length
+    ? response.output.filter((item) => item?.type === 'web_search_call' && item.action?.type === 'search').length
     : 0;
   const rates = MODEL_TOKEN_RATES[model];
   const estimatedCostUsd = rates
@@ -33,7 +34,7 @@ export function summarizeWebResearchUsage(response, model) {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     web_search_calls: webSearchCalls,
-    estimated_cost_usd: estimatedCostUsd == null ? null : Math.round(estimatedCostUsd * 10000) / 10000,
+    estimated_cost_usd: estimatedCostUsd == null ? null : Math.round(estimatedCostUsd * 1_000_000_000) / 1_000_000_000,
   };
 }
 
