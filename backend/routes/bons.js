@@ -956,7 +956,7 @@ router.get('/paged/:type', async (req, res) => {
 
     if (type === 'Comptant') {
       if (paymentState === 'unpaid') {
-        whereParts.push(`COALESCE(b.non_paye, 0) = 1 AND LOWER(COALESCE(b.statut, '')) NOT LIKE '%annul%' AND LOWER(COALESCE(b.statut, '')) <> 'avoir'`);
+        whereParts.push(`COALESCE(b.non_paye, 0) = 1 AND LOWER(COALESCE(b.statut, '')) <> 'avoir'`);
       } else if (paymentState === 'paid') {
         whereParts.push(`COALESCE(b.non_paye, 0) <> 1`);
       }

@@ -1408,7 +1408,7 @@ const BonsPage = () => {
 
   const isBonComptantNonPaye = (bon: any): boolean => {
     const statut = String(bon?.statut || '').trim().toLowerCase();
-    if (statut.includes('annul') || statut === 'avoir') return false;
+    if (statut === 'avoir') return false;
     return (bon as any)?.non_paye === true || Number((bon as any)?.non_paye ?? 0) === 1;
   };
 
@@ -1424,8 +1424,7 @@ const BonsPage = () => {
 
   // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
   // et certains endpoints ne renvoyaient pas `type`.
-  // Garde locale pour que les bons annulés disparaissent aussi immédiatement
-  // de l'onglet non payé, même pendant le rafraîchissement de la requête.
+  // Garder les bons dans leur onglet selon leur état de paiement, même annulés.
   const sortedBons = useMemo(() => {
     if (currentTab === 'ComptantNonPaye') {
       return bons.filter(isBonComptantNonPaye);
