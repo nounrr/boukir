@@ -295,6 +295,12 @@ router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus')
     const [updated] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
     res.json(updated[0]);
   } catch (err) {
+    if (err?.status === 429) {
+      const headerValue = err.headers?.get?.('retry-after') ?? err.headers?.['retry-after'];
+      const retryAfter = Math.max(1, Math.min(120, Number(headerValue) || 60));
+      res.set('Retry-After', String(retryAfter));
+      return res.status(429).json({ message: 'Limite temporaire de génération IA. Nouvelle tentative automatique possible.', retry_after_seconds: retryAfter });
+    }
     next(err);
   } finally {
     if (savedPath) await fs.promises.unlink(savedPath).catch(() => {});

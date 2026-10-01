@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Edit, Trash2, Search, Tags, FolderTree, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Category } from '../types';
@@ -14,6 +14,16 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import { CATEGORY_IMAGE_ESTIMATE_USD, categoryImageCostLabel } from '../utils/categoryImageCost';
 
+type ImageBatchProgress = {
+	total: number;
+	completed: number;
+	succeeded: number;
+	failed: number;
+	costUsd: number;
+	estimatedCosts: number;
+	failedNames: string[];
+};
+
 const CategoriesPage: React.FC = () => {
 	const { data: categories = [], isLoading, refetch } = useGetCategoriesQuery();
 	const [deleteCategory] = useDeleteCategoryMutation();
@@ -22,6 +32,10 @@ const CategoriesPage: React.FC = () => {
 	const userRole = useSelector((state: RootState) => state.auth.user?.role);
 	const canGenerateImage = ['PDG', 'Manager', 'ManagerPlus'].includes(userRole || '');
 	const [generatingImageId, setGeneratingImageId] = useState<number | null>(null);
+	const [batchRunning, setBatchRunning] = useState(false);
+	const batchRunningRef = useRef(false);
+	const [batchActiveIds, setBatchActiveIds] = useState<Set<number>>(new Set());
+	const [batchProgress, setBatchProgress] = useState<ImageBatchProgress | null>(null);
 
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -64,7 +78,7 @@ const CategoriesPage: React.FC = () => {
 	};
 
 	const handleGenerateImage = async (category: Category) => {
-		if (generatingImageId !== null) return;
+		if (generatingImageId !== null || batchRunning) return;
 		setGeneratingImageId(category.id);
 		try {
 			await generateCategoryImage(category.id).unwrap();
@@ -73,6 +87,74 @@ const CategoriesPage: React.FC = () => {
 			showError(error?.data?.message || error?.message || "Erreur lors de la création de l'image");
 		} finally {
 			setGeneratingImageId(null);
+		}
+	};
+
+	const handleGenerateSelectedImages = async () => {
+		if (batchRunningRef.current || generatingImageId !== null) return;
+		const targets = categories.filter((category) => selectedIds.has(category.id));
+		if (targets.length === 0) return;
+
+		batchRunningRef.current = true;
+		setBatchRunning(true);
+		setBatchProgress({ total: targets.length, completed: 0, succeeded: 0, failed: 0, costUsd: 0, estimatedCosts: 0, failedNames: [] });
+		const failedCategories: Category[] = [];
+		let nextIndex = 0;
+
+		const worker = async () => {
+			while (nextIndex < targets.length) {
+				const category = targets[nextIndex++];
+				setBatchActiveIds((previous) => new Set(previous).add(category.id));
+				try {
+					let generated: Category | null = null;
+					for (let attempt = 0; attempt < 4; attempt++) {
+						try {
+							generated = await generateCategoryImage(category.id).unwrap();
+							break;
+						} catch (error: any) {
+							if (error?.status !== 429 || attempt === 3) throw error;
+							const seconds = Math.max(1, Math.min(120, Number(error?.data?.retry_after_seconds) || 60));
+							await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+						}
+					}
+					if (!generated) throw new Error('Aucune image retournée');
+					const cost = Number(generated.ai_image_cost_usd);
+					setBatchProgress((previous) => previous && ({
+						...previous,
+						completed: previous.completed + 1,
+						succeeded: previous.succeeded + 1,
+						costUsd: previous.costUsd + (Number.isFinite(cost) ? cost : 0),
+						estimatedCosts: previous.estimatedCosts + (Number(generated.ai_image_cost_estimated) === 1 ? 1 : 0),
+					}));
+				} catch {
+					failedCategories.push(category);
+					setBatchProgress((previous) => previous && ({
+						...previous,
+						completed: previous.completed + 1,
+						failed: previous.failed + 1,
+						failedNames: [...previous.failedNames, category.nom],
+					}));
+				} finally {
+					setBatchActiveIds((previous) => {
+						const next = new Set(previous);
+						next.delete(category.id);
+						return next;
+					});
+				}
+			}
+		};
+
+		try {
+			await Promise.all(Array.from({ length: Math.min(2, targets.length) }, () => worker()));
+			setSelectedIds(new Set(failedCategories.map((category) => category.id)));
+			await refetch();
+			const completed = targets.length - failedCategories.length;
+			if (completed > 0) showSuccess(`${completed} image(s) créée(s) sur ${targets.length}.`);
+			if (failedCategories.length > 0) showError(`${failedCategories.length} échec(s) : ${failedCategories.slice(0, 5).map((category) => category.nom).join(', ')}. Les catégories en échec restent sélectionnées.`);
+		} finally {
+			batchRunningRef.current = false;
+			setBatchRunning(false);
+			setBatchActiveIds(new Set());
 		}
 	};
 
@@ -213,11 +295,22 @@ const CategoriesPage: React.FC = () => {
 					<h1 className="text-2xl font-bold text-gray-900">Catégories</h1>
 				</div>
 				<div className="flex gap-2">
+					{canGenerateImage && (
+						<button
+							onClick={handleGenerateSelectedImages}
+							disabled={selectedIds.size === 0 || batchRunning || generatingImageId !== null || translating}
+							className="flex items-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-white hover:bg-purple-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+							title={selectedIds.size ? `Coût estimé : ${(selectedIds.size * CATEGORY_IMAGE_ESTIMATE_USD).toFixed(3)} USD` : 'Sélectionnez des catégories'}
+						>
+							<Sparkles size={18} />
+							{batchRunning ? `Images ${batchProgress?.completed || 0}/${batchProgress?.total || 0}` : `Images IA (${selectedIds.size})`}
+						</button>
+					)}
 					<button
 						onClick={handleTranslateSelected}
-						disabled={translating || selectedIds.size === 0}
+						disabled={translating || batchRunning || selectedIds.size === 0}
 						className={`flex items-center gap-2 px-4 py-2 rounded-md text-white ${
-							translating || selectedIds.size === 0
+							translating || batchRunning || selectedIds.size === 0
 								? 'bg-gray-400 cursor-not-allowed'
 								: 'bg-gray-700 hover:bg-gray-800'
 						}`}
@@ -241,7 +334,13 @@ const CategoriesPage: React.FC = () => {
 			</div>
 
 			<div className="mb-6">
-				{canGenerateImage && <p className="mb-3 text-sm text-gray-600">Image IA carrée, qualité moyenne : environ {CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD par génération. Chaque nouveau clic est facturé.</p>}
+				{canGenerateImage && <p className="mb-3 text-sm text-gray-600">Image IA carrée, qualité moyenne : environ {CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD par génération{selectedIds.size > 0 ? `, soit environ ${(selectedIds.size * CATEGORY_IMAGE_ESTIMATE_USD).toFixed(3)} USD pour la sélection` : ''}. Chaque image créée est facturée.</p>}
+				{batchProgress && (
+					<div role="status" className="mb-3 rounded-md border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+						{batchRunning ? 'Création en cours' : 'Création terminée'} : {batchProgress.completed}/{batchProgress.total} traitée(s), {batchProgress.succeeded} réussie(s), {batchProgress.failed} échec(s). Coût total des images créées : {batchProgress.costUsd.toFixed(4)} USD{batchProgress.estimatedCosts > 0 ? ` (${batchProgress.estimatedCosts} coût(s) estimé(s))` : ''}.
+						{batchProgress.failedNames.length > 0 && <span className="block mt-1">À réessayer : {batchProgress.failedNames.join(', ')}.</span>}
+					</div>
+				)}
 				<div className="relative max-w-md">
 					<Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
 					<input
@@ -264,6 +363,7 @@ const CategoriesPage: React.FC = () => {
 										type="checkbox"
 										checked={allFilteredSelected}
 										onChange={toggleSelectAllFiltered}
+										disabled={batchRunning}
 										aria-label="Sélectionner toutes les catégories filtrées"
 									/>
 								</th>
@@ -296,6 +396,7 @@ const CategoriesPage: React.FC = () => {
 											type="checkbox"
 											checked={selectedIds.has(c.id)}
 											onChange={() => toggleSelected(c.id)}
+											disabled={batchRunning}
 											aria-label={`Sélectionner catégorie ${c.nom}`}
 										/>
 									</td>
@@ -333,6 +434,7 @@ const CategoriesPage: React.FC = () => {
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm font-medium text-gray-900">{c.nom}</div>
+											{batchActiveIds.has(c.id) && <div className="text-xs text-purple-700">Création de l'image…</div>}
 											{categoryImageCostLabel(c) && <div className="text-xs text-purple-700">{categoryImageCostLabel(c)}</div>}
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
@@ -355,7 +457,7 @@ const CategoriesPage: React.FC = () => {
 												{canGenerateImage && (
 													<button
 														onClick={() => handleGenerateImage(c)}
-														disabled={generatingImageId !== null}
+														disabled={generatingImageId !== null || batchRunning}
 														className="inline-flex items-center gap-1 text-purple-700 hover:text-purple-900 disabled:opacity-50"
 														title={`Générer une image IA (environ ${CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD)`}
 													>
@@ -364,7 +466,7 @@ const CategoriesPage: React.FC = () => {
 												)}
 												<button
 													onClick={() => handleEdit(c)}
-													disabled={generatingImageId === c.id}
+													disabled={generatingImageId === c.id || batchActiveIds.has(c.id)}
 													className="text-blue-600 hover:text-blue-900"
 													title="Modifier"
 												>
@@ -373,6 +475,7 @@ const CategoriesPage: React.FC = () => {
 												{!(String(c.nom).toUpperCase() === 'UNCATEGORIZED' || c.id === 1) && (
 													<button
 														onClick={() => handleDelete(c.id)}
+														disabled={generatingImageId === c.id || batchActiveIds.has(c.id)}
 														className="text-red-600 hover:text-red-900"
 														title="Supprimer"
 													>
