@@ -11,7 +11,12 @@ test('counts restrict products to public, not deleted rows and errors propagate'
   const db = { query: async sql => { sqls.push(sql); return [[]]; } };
   let result;
   await createCatalogPagesRouter(db).stack[0].route.stack[0].handle({}, { set() {}, json(v) { result = v; } }, e => { throw e; });
-  for (const sql of sqls.slice(1)) { assert.match(sql, /ecom_published = 1/); assert.match(sql, /is_deleted, 0\) = 0/); }
+  for (const sql of sqls.slice(1)) {
+    assert.match(sql, /ecom_published = 1/);
+    assert.match(sql, /is_deleted, 0\) = 0/);
+    assert.match(sql, /est_service, 0\) = 0/);
+    assert.match(sql, /non_stockable, 0\) = 0/);
+  }
   assert.deepEqual(result, { categories: [], brands: [] });
   const failure = new Error('offline');
   let caught;

@@ -104,7 +104,7 @@ const CategoryFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, on
 								<input
 									id="image"
 									type="file"
-									accept="image/*"
+									accept="image/jpeg,image/png,image/webp"
 									className="w-full text-sm"
 									onChange={(e) => {
 										const file = e.currentTarget.files?.[0] || null;

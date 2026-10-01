@@ -68,6 +68,10 @@ router.get('/', async (req, res, next) => {
       INNER JOIN products p ON w.product_id = p.id
       LEFT JOIN product_variants pv ON w.variant_id = pv.id
       WHERE w.user_id = ?
+        AND p.ecom_published = 1
+        AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
       ORDER BY w.created_at DESC
     `, [userId]);
 
@@ -255,6 +259,8 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND (SELECT COALESCE(SUM(ps.quantite), 0)
                FROM product_snapshot ps
                WHERE ps.product_id = p.id
@@ -360,6 +366,8 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND (SELECT COALESCE(SUM(ps.quantite), 0)
                FROM product_snapshot ps
                WHERE ps.product_id = p.id
@@ -455,7 +463,9 @@ router.post('/items', async (req, res, next) => {
         id,
         designation,
         ecom_published,
-        is_deleted
+        is_deleted,
+        est_service,
+        non_stockable
       FROM products
       WHERE id = ?
     `, [productId]);
@@ -466,7 +476,7 @@ router.post('/items', async (req, res, next) => {
 
     const product = productRows[0];
 
-    if (!product.ecom_published || product.is_deleted) {
+    if (!product.ecom_published || product.is_deleted || product.est_service || product.non_stockable) {
       return res.status(400).json({ message: 'Ce produit n\'est pas disponible' });
     }
 
@@ -686,7 +696,9 @@ router.post('/items/:id/move-to-cart', async (req, res, next) => {
            AND ((ps.variant_id = w.variant_id) OR (ps.variant_id IS NULL AND w.variant_id IS NULL))
            AND COALESCE(ps.en_validation, 0) <> 0) AS snapshot_stock,
         p.ecom_published,
-        p.is_deleted
+        p.is_deleted,
+        p.est_service,
+        p.non_stockable
       FROM wishlist_items w
       INNER JOIN products p ON w.product_id = p.id
       WHERE w.id = ? AND w.user_id = ?
@@ -699,7 +711,7 @@ router.post('/items/:id/move-to-cart', async (req, res, next) => {
     const item = wishlistItems[0];
 
     // Check product availability
-    if (!item.ecom_published || item.is_deleted) {
+    if (!item.ecom_published || item.is_deleted || item.est_service || item.non_stockable) {
       return res.status(400).json({ message: 'Ce produit n\'est plus disponible' });
     }
 

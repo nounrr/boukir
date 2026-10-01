@@ -56,6 +56,27 @@ function isInStock(stockQty) {
   return toSafeNumber(stockQty) > 0;
 }
 
+async function firstRequiredVariant(product, snapshotEnabled) {
+  if (!product.has_variants || Number(product.is_obligatoire_variant || 0) !== 1) return null;
+  const priceExpr = snapshotEnabled ? `COALESCE((
+    SELECT NULLIF(ps.prix_vente, 0) FROM product_snapshot ps
+    WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
+    ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC LIMIT 1
+  ), pv.prix_vente)` : 'pv.prix_vente';
+  const stockExpr = snapshotEnabled ? `COALESCE((
+    SELECT SUM(ps.quantite) FROM product_snapshot ps
+    WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
+  ), pv.stock_quantity)` : 'pv.stock_quantity';
+  const [rows] = await pool.query(`
+    SELECT pv.id, pv.variant_name, pv.color_name, pv.variant_type,
+      ${priceExpr} AS prix_vente, ${stockExpr} AS stock_quantity, pv.image_url
+    FROM product_variants pv
+    WHERE pv.product_id = ? AND COALESCE(pv.is_deleted, 0) = 0
+    ORDER BY pv.variant_type, pv.variant_name, pv.id LIMIT 1
+  `, [product.id]);
+  return rows[0] || null;
+}
+
 // Make sure remise fields exist so ecommerce endpoints can always return them.
 ensureProductRemiseColumns().catch(e => console.error('ensureProductRemiseColumns:', e));
 
@@ -132,7 +153,9 @@ router.get('/', async (req, res, next) => {
 
     let whereConditions = [
       'p.ecom_published = 1',
-      'COALESCE(p.is_deleted, 0) = 0'
+      'COALESCE(p.is_deleted, 0) = 0',
+      'COALESCE(p.est_service, 0) = 0',
+      'COALESCE(p.non_stockable, 0) = 0'
     ];
     const params = [];
 
@@ -447,6 +470,7 @@ router.get('/', async (req, res, next) => {
             prix_vente: Number(v.prix_vente),
             remise_client: Number(v.remise_client || 0),
             remise_artisan: Number(v.remise_artisan || 0),
+            stock_quantity: Number(v.stock_quantity || 0),
             available: isInStock(v.stock_quantity),
             image_url: v.image_url
           };
@@ -492,11 +516,13 @@ router.get('/', async (req, res, next) => {
         ORDER BY is_default DESC, unit_name
       `, [r.id]);
 
+      const displayPrice = Number(r.is_obligatoire_variant || 0) === 1 && variants[0]
+        ? variants[0].prix_vente : originalPrice;
       const units = unitsData.map(u => ({
         id: u.id,
         name: u.unit_name,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: originalPrice * Number(u.conversion_factor || 1),
+        prix_vente: displayPrice * Number(u.conversion_factor || 1),
         is_default: !!u.is_default
       }));
 
@@ -507,19 +533,20 @@ router.get('/', async (req, res, next) => {
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
         designation_zh: r.designation_zh,
-        prix_vente: originalPrice,
-        prix_promo: promoPrice,
+        prix_vente: displayPrice,
+        prix_promo: promoPercentage > 0 ? displayPrice * (1 - promoPercentage / 100) : promoPrice,
         pourcentage_promo: promoPercentage,
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
         has_promo: promoPercentage > 0,
-        image_url: r.image_url,
+        image_url: Number(r.is_obligatoire_variant || 0) === 1 && variants[0]?.image_url ? variants[0].image_url : r.image_url,
         gallery: galleryImages.map(img => ({
           id: img.id,
           image_url: img.image_url,
           position: img.position
         })),
-        in_stock: isInStock(r.stock_qty),
+        in_stock: isInStock(Number(r.is_obligatoire_variant || 0) === 1 && variants[0]
+          ? variants[0].stock_quantity : r.stock_qty),
         purchase_limit: PURCHASE_LIMIT,
         has_variants: !!r.has_variants,
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
@@ -608,6 +635,8 @@ router.get('/', async (req, res, next) => {
         AND COALESCE(pv.is_deleted, 0) = 0
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
         ${colorsStockClause}
       ORDER BY color
     `);
@@ -630,6 +659,8 @@ router.get('/', async (req, res, next) => {
       INNER JOIN products p ON p.id = pu.product_id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
         ${unitsStockClause}
       ORDER BY pu.unit_name
     `);
@@ -658,6 +689,8 @@ router.get('/', async (req, res, next) => {
       FROM products p
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
         AND p.categorie_base IS NOT NULL
         AND p.categorie_base IN ('Professionel', 'Maison')
         ${utilityTypesStockClause}
@@ -701,6 +734,8 @@ router.get('/', async (req, res, next) => {
       FROM products
       WHERE ecom_published = 1
         AND COALESCE(is_deleted, 0) = 0
+        AND COALESCE(est_service, 0) = 0
+        AND COALESCE(non_stockable, 0) = 0
         ${priceRangeStockClause}
     `);
 
@@ -764,6 +799,8 @@ router.get('/:id', async (req, res, next) => {
       WHERE p.id = ?
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
     `, [id]);
 
     if (!rows.length) {
@@ -859,7 +896,7 @@ router.get('/:id', async (req, res, next) => {
           FROM product_variants pv
           WHERE pv.product_id = ?
             AND COALESCE(pv.is_deleted, 0) = 0
-          ORDER BY pv.variant_name
+          ORDER BY pv.variant_type, pv.variant_name, pv.id
         `
         : `
           SELECT 
@@ -876,7 +913,7 @@ router.get('/:id', async (req, res, next) => {
           FROM product_variants
           WHERE product_id = ?
             AND COALESCE(is_deleted, 0) = 0
-          ORDER BY variant_name
+          ORDER BY variant_type, variant_name, id
         `;
 
       const [variantsResult] = await pool.query(variantsQuery, [id]);
@@ -911,7 +948,8 @@ router.get('/:id', async (req, res, next) => {
     }
 
     // Calculate promo price
-    const originalPrice = Number(effectiveBasePrice);
+    const firstVariant = Number(r.is_obligatoire_variant || 0) === 1 ? variants[0] : null;
+    const originalPrice = firstVariant ? Number(firstVariant.prix_vente) : Number(effectiveBasePrice);
     const promoPercentage = Number(r.pourcentage_promo || 0);
     const promoPrice = promoPercentage > 0 
       ? originalPrice * (1 - promoPercentage / 100) 
@@ -978,6 +1016,7 @@ router.get('/:id', async (req, res, next) => {
               ) as stock_qty,`
           : 'p.stock_partage_ecom_qty as stock_qty,'}
           p.has_variants,
+          p.is_obligatoire_variant,
           p.categorie_id,
           p.brand_id,
           b.nom as brand_nom,
@@ -995,6 +1034,8 @@ router.get('/:id', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND ${snapshotEnabled
           ? `EXISTS (
                 SELECT 1
@@ -1033,7 +1074,8 @@ router.get('/:id', async (req, res, next) => {
 
       suggestions = await Promise.all(suggestedProducts.map(async (sp) => {
         const spPromoPercentage = Number(sp.pourcentage_promo || 0);
-        const spOriginalPrice = Number(sp.prix_vente);
+        const firstVariant = await firstRequiredVariant(sp, snapshotEnabled);
+        const spOriginalPrice = firstVariant ? Number(firstVariant.prix_vente) : Number(sp.prix_vente);
         const spPromoPrice = spPromoPercentage > 0 
           ? spOriginalPrice * (1 - spPromoPercentage / 100) 
           : null;
@@ -1060,15 +1102,22 @@ router.get('/:id', async (req, res, next) => {
           remise_client: Number(sp.remise_client || 0),
           remise_artisan: Number(sp.remise_artisan || 0),
           has_promo: spPromoPercentage > 0,
-          image_url: sp.image_url,
+          image_url: firstVariant?.image_url || sp.image_url,
           gallery: galleryImages.map(img => ({
             id: img.id,
             image_url: img.image_url,
             position: img.position
           })),
-          in_stock: isInStock(sp.stock_qty),
+          in_stock: isInStock(firstVariant ? firstVariant.stock_quantity : sp.stock_qty),
           purchase_limit: PURCHASE_LIMIT,
           has_variants: !!sp.has_variants,
+          is_obligatoire_variant: Number(sp.is_obligatoire_variant || 0) === 1,
+          variants: { all: firstVariant ? [{
+            id: firstVariant.id, name: firstVariant.variant_name,
+            variant_name: firstVariant.variant_name, color_name: firstVariant.color_name,
+            type: firstVariant.variant_type, prix_vente: Number(firstVariant.prix_vente),
+            available: isInStock(firstVariant.stock_quantity), image_url: firstVariant.image_url
+          }] : [] },
           brand: sp.brand_id ? {
             id: sp.brand_id,
             nom: sp.brand_nom
@@ -1108,11 +1157,11 @@ router.get('/:id', async (req, res, next) => {
       has_promo: promoPercentage > 0,
       
       // Stock
-      in_stock: isInStock(effectiveAnyStockQty),
+      in_stock: firstVariant ? firstVariant.available : isInStock(effectiveAnyStockQty),
       purchase_limit: PURCHASE_LIMIT,
       
       // Images & Media
-      image_url: r.image_url,
+      image_url: firstVariant?.image_url || r.image_url,
       gallery: gallery.map(img => ({
         id: img.id,
         image_url: img.image_url,
@@ -1227,6 +1276,8 @@ router.get('/featured/promo', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
         AND p.pourcentage_promo > 0
       ORDER BY p.pourcentage_promo DESC, p.created_at DESC
       LIMIT ?
@@ -1250,7 +1301,8 @@ router.get('/featured/promo', async (req, res, next) => {
     }
 
     const products = await Promise.all(rows.map(async (r) => {
-      const originalPrice = Number(r.prix_vente);
+      const firstVariant = await firstRequiredVariant(r, snapshotEnabled);
+      const originalPrice = firstVariant ? Number(firstVariant.prix_vente) : Number(r.prix_vente);
       const promoPercentage = Number(r.pourcentage_promo);
       const promoPrice = originalPrice * (1 - promoPercentage / 100);
 
@@ -1275,9 +1327,9 @@ router.get('/featured/promo', async (req, res, next) => {
         pourcentage_promo: promoPercentage,
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
-        in_stock: isInStock(r.stock_qty),
+        in_stock: isInStock(firstVariant ? firstVariant.stock_quantity : r.stock_qty),
         purchase_limit: PURCHASE_LIMIT,
-        image_url: r.image_url,
+        image_url: firstVariant?.image_url || r.image_url,
         gallery: galleryImages.map(img => ({
           id: img.id,
           image_url: img.image_url,
@@ -1287,6 +1339,12 @@ router.get('/featured/promo', async (req, res, next) => {
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
         isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
         brand_nom: r.brand_nom,
+        variants: { all: firstVariant ? [{
+          id: firstVariant.id, name: firstVariant.variant_name,
+          variant_name: firstVariant.variant_name, color_name: firstVariant.color_name,
+          type: firstVariant.variant_type, prix_vente: Number(firstVariant.prix_vente),
+          available: isInStock(firstVariant.stock_quantity), image_url: firstVariant.image_url
+        }] : [] },
         is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };
     }));
@@ -1343,6 +1401,8 @@ router.get('/featured/new', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
       ORDER BY p.created_at DESC
       LIMIT ?
     `, [Number(limit)]);
@@ -1365,7 +1425,8 @@ router.get('/featured/new', async (req, res, next) => {
     }
 
     const products = await Promise.all(rows.map(async (r) => {
-      const originalPrice = Number(r.prix_vente);
+      const firstVariant = await firstRequiredVariant(r, snapshotEnabled);
+      const originalPrice = firstVariant ? Number(firstVariant.prix_vente) : Number(r.prix_vente);
       const promoPercentage = Number(r.pourcentage_promo || 0);
       const promoPrice = promoPercentage > 0 
         ? originalPrice * (1 - promoPercentage / 100) 
@@ -1393,9 +1454,9 @@ router.get('/featured/new', async (req, res, next) => {
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
         has_promo: promoPercentage > 0,
-        in_stock: isInStock(r.stock_qty),
+        in_stock: isInStock(firstVariant ? firstVariant.stock_quantity : r.stock_qty),
         purchase_limit: PURCHASE_LIMIT,
-        image_url: r.image_url,
+        image_url: firstVariant?.image_url || r.image_url,
         gallery: galleryImages.map(img => ({
           id: img.id,
           image_url: img.image_url,
@@ -1405,6 +1466,12 @@ router.get('/featured/new', async (req, res, next) => {
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
         isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
         brand_nom: r.brand_nom,
+        variants: { all: firstVariant ? [{
+          id: firstVariant.id, name: firstVariant.variant_name,
+          variant_name: firstVariant.variant_name, color_name: firstVariant.color_name,
+          type: firstVariant.variant_type, prix_vente: Number(firstVariant.prix_vente),
+          available: isInStock(firstVariant.stock_quantity), image_url: firstVariant.image_url
+        }] : [] },
         is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };
     }));

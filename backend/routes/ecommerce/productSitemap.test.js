@@ -11,6 +11,8 @@ test('compact export uses the same publication/deletion guards as product detail
     set: () => {}, json: value => { result = value; },
   }, error => { throw error; });
   assert.match(query, /p.ecom_published = 1 AND COALESCE\(p.is_deleted, 0\) = 0/);
+  assert.match(query, /COALESCE\(p.est_service, 0\) = 0/);
+  assert.match(query, /COALESCE\(p.non_stockable, 0\) = 0/);
   assert.match(query, /SELECT p.id, p.updated_at/);
   assert.doesNotMatch(query, /LIMIT|SELECT \*/);
   assert.equal(result.total_items, 3737);

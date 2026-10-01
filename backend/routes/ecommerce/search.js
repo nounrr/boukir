@@ -191,6 +191,8 @@ router.get('/suggestions', async (req, res, next) => {
     const productWhere = [
       'p.ecom_published = 1',
       'COALESCE(p.is_deleted, 0) = 0',
+      'COALESCE(p.est_service, 0) = 0',
+      'COALESCE(p.non_stockable, 0) = 0',
     ];
     const productParams = [];
 
@@ -269,6 +271,8 @@ router.get('/suggestions', async (req, res, next) => {
         'p.id = ?',
         'p.ecom_published = 1',
         'COALESCE(p.is_deleted, 0) = 0',
+        'COALESCE(p.est_service, 0) = 0',
+        'COALESCE(p.non_stockable, 0) = 0',
       ];
       const directParams = [Number(refId)];
 
@@ -289,6 +293,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
+          p.is_obligatoire_variant,
           ${snapshotPriceExpr} AS prix_vente,
           p.pourcentage_promo,
           p.image_url,
@@ -331,6 +336,7 @@ router.get('/suggestions', async (req, res, next) => {
         p.designation_ar,
         p.designation_en,
         p.designation_zh,
+        p.is_obligatoire_variant,
         ${snapshotPriceExpr} AS prix_vente,
         p.pourcentage_promo,
         p.image_url,
@@ -368,14 +374,32 @@ router.get('/suggestions', async (req, res, next) => {
       ? [directProductRow, ...productRows.filter(r => Number(r.id) !== Number(directProductRow.id))]
       : productRows;
 
-    const products = mergedProductRows.slice(0, limitProducts).map(r => {
-      const originalPrice = Number(r.prix_vente);
+    const products = await Promise.all(mergedProductRows.slice(0, limitProducts).map(async r => {
+      let firstVariant = null;
+      if (Number(r.is_obligatoire_variant || 0) === 1) {
+        const [variants] = await pool.query(`
+          SELECT pv.id, pv.variant_name, pv.image_url,
+            COALESCE((SELECT SUM(ps.quantite) FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
+            ), pv.stock_quantity) AS stock_quantity,
+            COALESCE((SELECT NULLIF(ps.prix_vente, 0) FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
+              ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC LIMIT 1
+            ), pv.prix_vente) AS prix_vente
+          FROM product_variants pv
+          WHERE pv.product_id = ? AND COALESCE(pv.is_deleted, 0) = 0
+          ORDER BY pv.variant_type, pv.variant_name, pv.id LIMIT 1
+        `, [r.id]);
+        firstVariant = variants[0] || null;
+      }
+      const originalPrice = firstVariant ? Number(firstVariant.prix_vente) : Number(r.prix_vente);
       const promoPercentage = Number(r.pourcentage_promo || 0);
       const promoPrice = promoPercentage > 0 ? originalPrice * (1 - promoPercentage / 100) : null;
 
-      const primaryImage = r.first_gallery_image_url || r.image_url || null;
+      const primaryImage = firstVariant?.image_url || r.first_gallery_image_url || r.image_url || null;
 
-      const inStock = Number(r.stock_partage_ecom_qty || 0) > 0 || Number(r.has_variant_stock || 0) === 1;
+      const inStock = firstVariant ? Number(firstVariant.stock_quantity || 0) > 0
+        : Number(r.stock_partage_ecom_qty || 0) > 0 || Number(r.has_variant_stock || 0) === 1;
 
       return {
         id: r.id,
@@ -384,6 +408,7 @@ router.get('/suggestions', async (req, res, next) => {
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
         designation_zh: r.designation_zh,
+        first_variant_name: firstVariant?.variant_name || null,
         prix_vente: originalPrice,
         prix_promo: promoPrice,
         pourcentage_promo: promoPercentage,
@@ -406,7 +431,7 @@ router.get('/suggestions', async (req, res, next) => {
             }
           : null,
       };
-    });
+    }));
 
     res.json({
       query: qRaw,

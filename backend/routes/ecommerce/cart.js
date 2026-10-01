@@ -121,6 +121,8 @@ router.get('/', async (req, res, next) => {
       WHERE ci.user_id = ?
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
       ORDER BY ci.created_at DESC
     `
       : `
@@ -156,6 +158,8 @@ router.get('/', async (req, res, next) => {
       WHERE ci.user_id = ?
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
       ORDER BY ci.created_at DESC
     `;
 
@@ -295,6 +299,8 @@ router.get('/summary', async (req, res, next) => {
       WHERE ci.user_id = ?
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
     `, [userId]);
 
     res.json({
@@ -367,6 +373,8 @@ router.post('/items', async (req, res, next) => {
         designation,
         ecom_published,
         is_deleted,
+        est_service,
+        non_stockable,
         stock_partage_ecom_qty,
         has_variants,
         is_obligatoire_variant,
@@ -384,7 +392,7 @@ router.post('/items', async (req, res, next) => {
 
     const snapshotEnabled = await hasProductSnapshotTable(pool);
 
-    if (!product.ecom_published || product.is_deleted) {
+    if (!product.ecom_published || product.is_deleted || product.est_service || product.non_stockable) {
       return res.status(400).json({ message: 'Ce produit n\'est pas disponible' });
     }
 
@@ -752,6 +760,8 @@ router.get('/suggestions', async (req, res, next) => {
       WHERE ci.user_id = ?
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
     `, [userId]);
 
     const cartProductIds = cartItems.map(item => item.product_id);
@@ -768,6 +778,7 @@ router.get('/suggestions', async (req, res, next) => {
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         WHERE ci.user_id = ? AND p.categorie_id IS NOT NULL
+          AND COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 0
         GROUP BY p.categorie_id
         ORDER BY count DESC
         LIMIT 3
@@ -781,6 +792,7 @@ router.get('/suggestions', async (req, res, next) => {
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         WHERE ci.user_id = ? AND p.brand_id IS NOT NULL
+          AND COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 0
         GROUP BY p.brand_id
         ORDER BY count DESC
         LIMIT 3
@@ -822,6 +834,8 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND ${inStockWhereExpr}
           ${cartProductIds.length > 0 ? `AND p.id NOT IN (${cartPlaceholders})` : ''}
         ORDER BY relevance_score DESC, p.created_at DESC
@@ -915,6 +929,8 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND ${inStockWhereExpr}
         ORDER BY 
           CASE WHEN p.pourcentage_promo > 0 THEN 1 ELSE 2 END,
@@ -1006,6 +1022,8 @@ router.post('/validate', async (req, res, next) => {
         p.designation,
         p.ecom_published,
         p.is_deleted,
+        p.est_service,
+        p.non_stockable,
         p.stock_partage_ecom_qty,
         p.has_variants,
         p.is_obligatoire_variant,
@@ -1015,6 +1033,8 @@ router.post('/validate', async (req, res, next) => {
       INNER JOIN products p ON ci.product_id = p.id
       LEFT JOIN product_variants pv ON ci.variant_id = pv.id
       WHERE ci.user_id = ?
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
     `, [userId]);
 
     if (cartItems.length === 0) {
@@ -1050,7 +1070,7 @@ router.post('/validate', async (req, res, next) => {
       }
 
       // Check if product is still published
-      if (!item.ecom_published || item.is_deleted) {
+      if (!item.ecom_published || item.is_deleted || item.est_service || item.non_stockable) {
         issues.push({
           cart_item_id: item.id,
           product_id: item.product_id,

@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { FolderTree, PlusCircle, Pencil, Trash, ChevronDown, ChevronRight, Search, ArrowLeft, AlertCircle, Package, GripVertical } from 'lucide-react';
+import { FolderTree, PlusCircle, Pencil, Trash, ChevronDown, ChevronRight, Search, ArrowLeft, AlertCircle, Package, GripVertical, ImagePlus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Category } from '../types';
+import CategoryFormModal from '../components/CategoryFormModal';
+import { toBackendUrl } from '../utils/url';
 import {
 	useGetCategoriesQuery,
 	useCreateCategoryMutation,
@@ -29,6 +31,22 @@ const CategoryManagementPage: React.FC = () => {
 	const [createName, setCreateName] = useState('');
 	const [createNameAr, setCreateNameAr] = useState('');
 	const [createDescription, setCreateDescription] = useState('');
+	const [createImage, setCreateImage] = useState<File | null>(null);
+	const [createImagePreview, setCreateImagePreview] = useState('');
+	const [photoCategory, setPhotoCategory] = useState<Category | null>(null);
+
+	React.useEffect(() => () => {
+		if (createImagePreview) URL.revokeObjectURL(createImagePreview);
+	}, [createImagePreview]);
+
+	const resetCreateForm = () => {
+		setShowCreate(null);
+		setCreateName('');
+		setCreateNameAr('');
+		setCreateDescription('');
+		setCreateImage(null);
+		setCreateImagePreview('');
+	};
 
 	// Build hierarchy recursively
 	const buildTree = (parentId: number | null): Category[] => {
@@ -82,13 +100,11 @@ const CategoryManagementPage: React.FC = () => {
 				nom: createName,
 				nom_ar: createNameAr,
 				description: createDescription || undefined,
+				image: createImage || undefined,
 				parent_id: showCreate?.parentId || null,
 				created_by: 1,
 			}).unwrap();
-			setCreateName('');
-			setCreateNameAr('');
-			setCreateDescription('');
-			setShowCreate(null);
+			resetCreateForm();
 			showSuccess('Catégorie créée avec succès');
 		} catch (e: any) {
 			showError(e?.data?.message || e?.message || 'Erreur lors de la création');
@@ -276,6 +292,10 @@ const CategoryManagementPage: React.FC = () => {
 						<Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
 					)}
 
+					{cat.image_url && (
+						<img src={toBackendUrl(cat.image_url)} alt="" className="h-10 w-10 rounded-md border object-cover flex-shrink-0" />
+					)}
+
 					{/* Name */}
 					{isEditing ? (
 						<input
@@ -307,7 +327,15 @@ const CategoryManagementPage: React.FC = () => {
 					)}
 
 					{/* Actions */}
-					<div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+					<div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+						<button
+							onClick={() => setPhotoCategory(cat)}
+							className="p-2 hover:bg-purple-100 text-purple-600 rounded-lg transition-all hover:scale-110"
+							title={cat.image_url ? 'Modifier la photo' : 'Ajouter une photo'}
+							aria-label={`${cat.image_url ? 'Modifier' : 'Ajouter'} la photo de ${cat.nom}`}
+						>
+							<ImagePlus className="w-4 h-4" />
+						</button>
 						<button
 							onClick={() => setShowCreate({ parentId: cat.id })}
 							className="p-2 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-700 rounded-lg transition-all hover:scale-110"
@@ -461,6 +489,21 @@ const CategoryManagementPage: React.FC = () => {
 								rows={2}
 							/>
 						</div>
+						<div>
+							<label htmlFor="create-category-image" className="block text-sm font-medium text-gray-700 mb-1">Photo de la catégorie</label>
+							<input
+								id="create-category-image"
+								type="file"
+								accept="image/jpeg,image/png,image/webp"
+								onChange={(event) => {
+									const file = event.currentTarget.files?.[0] || null;
+									setCreateImage(file);
+									setCreateImagePreview(file ? URL.createObjectURL(file) : '');
+								}}
+								className="w-full text-sm"
+							/>
+							{createImagePreview && <img src={createImagePreview} alt="Aperçu de la catégorie" className="mt-2 h-24 w-24 rounded-md border object-cover" />}
+						</div>
 						<div className="flex items-center gap-2">
 							<button
 								onClick={handleCreate}
@@ -469,12 +512,7 @@ const CategoryManagementPage: React.FC = () => {
 								Créer
 							</button>
 							<button
-								onClick={() => {
-									setShowCreate(null);
-									setCreateName('');
-									setCreateNameAr('');
-									setCreateDescription('');
-								}}
+								onClick={resetCreateForm}
 								className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
 							>
 								Annuler
@@ -498,6 +536,13 @@ const CategoryManagementPage: React.FC = () => {
 					</div>
 				)}
 			</div>
+			{photoCategory && (
+				<CategoryFormModal
+					isOpen
+					onClose={() => setPhotoCategory(null)}
+					initialValues={photoCategory}
+				/>
+			)}
 		</div>
 	);
 };

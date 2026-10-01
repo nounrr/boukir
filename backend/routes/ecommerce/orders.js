@@ -409,6 +409,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           p.is_obligatoire_variant,
           p.ecom_published,
           p.is_deleted,
+          p.est_service,
+          p.non_stockable,
           pv.variant_name,
           pv.variant_type,
           pv.prix_vente as variant_price,
@@ -437,6 +439,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         LEFT JOIN product_units pu ON ci.unit_id = pu.id AND pu.product_id = p.id
         WHERE ci.user_id = ?
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
       `
         : `
         SELECT 
@@ -457,6 +461,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           p.is_obligatoire_variant,
           p.ecom_published,
           p.is_deleted,
+          p.est_service,
+          p.non_stockable,
           pv.variant_name,
           pv.variant_type,
           pv.prix_vente as variant_price,
@@ -471,6 +477,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         LEFT JOIN product_units pu ON ci.unit_id = pu.id AND pu.product_id = p.id
         WHERE ci.user_id = ?
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
       `;
 
       const [cartItems] = await connection.query(cartItemsQuery, [userId]);
@@ -515,6 +523,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             p.is_obligatoire_variant,
             p.ecom_published,
             p.is_deleted,
+            p.est_service,
+            p.non_stockable,
             pv.variant_name,
             pv.variant_type,
             pv.prix_vente as variant_price,
@@ -558,6 +568,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             p.is_obligatoire_variant,
             p.ecom_published,
             p.is_deleted,
+            p.est_service,
+            p.non_stockable,
             pv.variant_name,
             pv.variant_type,
             pv.prix_vente as variant_price,
@@ -598,7 +610,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
     const validatedItems = [];
 
     for (const item of orderItems) {
-      if (!item.ecom_published || item.is_deleted) {
+      if (!item.ecom_published || item.is_deleted || item.est_service || item.non_stockable) {
         return res.status(400).json({
           message: `Produit non disponible: ${item.designation}`
         });
@@ -1102,6 +1114,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           p.is_obligatoire_variant,
           p.ecom_published,
           p.is_deleted,
+          p.est_service,
+          p.non_stockable,
           pv.variant_name,
           pv.variant_type,
           pv.prix_vente as variant_price,
@@ -1130,6 +1144,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         LEFT JOIN product_units pu ON ci.unit_id = pu.id AND pu.product_id = p.id
         WHERE ci.user_id = ?
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
       `
         : `
         SELECT
@@ -1150,6 +1166,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           p.is_obligatoire_variant,
           p.ecom_published,
           p.is_deleted,
+          p.est_service,
+          p.non_stockable,
           pv.variant_name,
           pv.variant_type,
           pv.prix_vente as variant_price,
@@ -1164,6 +1182,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         LEFT JOIN product_units pu ON ci.unit_id = pu.id AND pu.product_id = p.id
         WHERE ci.user_id = ?
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
       `;
 
       const [cartItems] = await connection.query(cartItemsQuery, [userId]);
@@ -1214,6 +1234,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             p.is_obligatoire_variant,
             p.ecom_published,
             p.is_deleted,
+            p.est_service,
+            p.non_stockable,
             pv.variant_name,
             pv.variant_type,
             pv.prix_vente as variant_price,
@@ -1257,6 +1279,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             p.is_obligatoire_variant,
             p.ecom_published,
             p.is_deleted,
+            p.est_service,
+            p.non_stockable,
             pv.variant_name,
             pv.variant_type,
             pv.prix_vente as variant_price,
@@ -1302,7 +1326,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
 
     for (const item of orderItems) {
       // Check if product is published and not deleted
-      if (!item.ecom_published || item.is_deleted) {
+      if (!item.ecom_published || item.is_deleted || item.est_service || item.non_stockable) {
         await connection.rollback();
         return res.status(400).json({ 
           message: `Produit non disponible: ${item.designation}` 

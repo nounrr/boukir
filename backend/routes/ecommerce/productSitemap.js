@@ -8,6 +8,7 @@ export function createProductSitemapRouter(db) {
       const [rows] = await db.query(`
         SELECT p.id, p.updated_at, p.designation, p.designation_ar, p.designation_en, p.designation_zh FROM products p
         WHERE p.ecom_published = 1 AND COALESCE(p.is_deleted, 0) = 0
+          AND COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 0
         ORDER BY p.id ASC
       `);
       const products = rows.map(row => ({ id: Number(row.id), updated_at: row.updated_at ?? null,
