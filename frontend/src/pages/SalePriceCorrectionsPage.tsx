@@ -171,6 +171,8 @@ type CorrectionRowProps = {
   row: SalePriceCorrectionRow;
   index: number;
   decision?: Decision;
+  applyToAllVariants: boolean;
+  coveredByGroup: boolean;
   focused: boolean;
   checked: boolean;
   readOnly: boolean;
@@ -179,6 +181,7 @@ type CorrectionRowProps = {
   onSelect: (key: string, side: Side, choice?: Choice) => void;
   onKeepBoth: (key: string) => void;
   onClear: (key: string) => void;
+  onToggleApplyToAllVariants: (key: string) => void;
   onFocus: (key: string) => void;
   onToggleCheck: (key: string, index: number, shiftKey: boolean) => void;
   registerRow: (key: string, element: HTMLTableRowElement | null) => void;
@@ -209,12 +212,12 @@ const WebPrices: React.FC<{ groups?: WebPriceGroup[]; error?: string }> = ({ gro
   </div>)}</div>;
 };
 
-const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, focused, checked, readOnly, saving, webResult, onSelect, onKeepBoth, onClear, onFocus, onToggleCheck, registerRow }) => {
+const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, applyToAllVariants, coveredByGroup, focused, checked, readOnly, saving, webResult, onSelect, onKeepBoth, onClear, onToggleApplyToAllVariants, onFocus, onToggleCheck, registerRow }) => {
   const key = rowKey(row);
   const pv1 = resolvePrice(decision?.pv1, row.current_prix_vente);
   const pv2 = resolvePrice(decision?.pv2, row.current_prix_vente_2);
   const ready = pv1 !== null && pv2 !== null;
-  const changed = ready && (!samePrice(pv1, row.current_prix_vente) || !samePrice(pv2, row.current_prix_vente_2));
+  const changed = ready && (applyToAllVariants || !samePrice(pv1, row.current_prix_vente) || !samePrice(pv2, row.current_prix_vente_2));
   const rail = readOnly ? (checked ? 'bg-indigo-500' : 'bg-emerald-500') : ready ? (changed ? 'bg-indigo-500' : 'bg-emerald-500') : isStarted(decision) ? 'bg-amber-400' : 'bg-stone-200';
   const rowTint = readOnly ? (checked ? 'bg-indigo-50' : 'bg-white hover:bg-stone-50') : focused ? 'bg-stone-100' : 'bg-white hover:bg-stone-50';
 
@@ -260,12 +263,12 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
       </td>
       <td className="border-l border-stone-200 px-3 py-3"><CurrentPrice value={row.current_prix_vente} source={row.current_prix_vente_source} /></td>
       <td className="border-l border-indigo-100 bg-indigo-50/20 px-3 py-3">
-        <ChoiceColumn label={`Prix vente de ${row.designation}`} tone="indigo" current={row.current_prix_vente} choice={decision?.pv1} candidates={row.high_prices} shortcuts={PV1_KEYS} disabled={readOnly || saving} onSelect={(choice) => onSelect(key, 'pv1', choice)} />
+        <ChoiceColumn label={`Prix vente de ${row.designation}`} tone="indigo" current={row.current_prix_vente} choice={decision?.pv1} candidates={row.high_prices} shortcuts={PV1_KEYS} disabled={readOnly || saving || coveredByGroup} onSelect={(choice) => onSelect(key, 'pv1', choice)} />
       </td>
 
       <td className="border-l border-stone-200 px-3 py-3"><CurrentPrice value={row.current_prix_vente_2} source={row.current_prix_vente_2_source} /></td>
       <td className="border-l border-amber-100 bg-amber-50/20 px-3 py-3">
-        <ChoiceColumn label={`Prix vente 2 de ${row.designation}`} tone="amber" current={row.current_prix_vente_2} choice={decision?.pv2} candidates={row.low_prices} shortcuts={PV2_KEYS} disabled={readOnly || saving} onSelect={(choice) => onSelect(key, 'pv2', choice)} />
+        <ChoiceColumn label={`Prix vente 2 de ${row.designation}`} tone="amber" current={row.current_prix_vente_2} choice={decision?.pv2} candidates={row.low_prices} shortcuts={PV2_KEYS} disabled={readOnly || saving || coveredByGroup} onSelect={(choice) => onSelect(key, 'pv2', choice)} />
       </td>
 
       <td className="border-l border-stone-200 px-3 py-3"><WebPrices groups={webResult?.market} error={webResult?.error} /></td>
@@ -284,6 +287,14 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
           </div>
         ) : (
           <div className="space-y-2">
+            {row.variant_id === null && row.active_variant_count > 0 ? (
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-2 text-xs font-semibold text-indigo-900">
+                <input type="checkbox" checked={applyToAllVariants} onChange={() => onToggleApplyToAllVariants(key)} disabled={saving} className="mt-0.5 h-4 w-4 rounded border-indigo-300 text-indigo-600 disabled:opacity-50" />
+                <span>Appliquer ces 2 prix au produit original et à ses {row.active_variant_count} variante(s)</span>
+              </label>
+            ) : null}
+            {coveredByGroup ? <p className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-2 text-xs font-semibold text-indigo-800">Cette variante sera corrigée avec le produit original.</p> : null}
+            {!coveredByGroup ? <>
             <button
               type="button" onClick={() => onKeepBoth(key)} disabled={saving}
               className="flex w-full items-center gap-2 rounded-lg border border-stone-300 bg-white px-2.5 py-2 text-left text-xs font-bold leading-4 text-stone-700 transition hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"
@@ -297,6 +308,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
                   <>
                     {!samePrice(pv1, row.current_prix_vente) ? <p className="flex items-center gap-1 tabular-nums font-semibold text-indigo-700">PV1 <ArrowRight className="h-3 w-3" /> {money.format(pv1)} DH</p> : null}
                     {!samePrice(pv2, row.current_prix_vente_2) ? <p className="flex items-center gap-1 tabular-nums font-semibold text-amber-700">PV2 <ArrowRight className="h-3 w-3" /> {money.format(pv2)} DH</p> : null}
+                    {applyToAllVariants ? <p className="font-semibold text-indigo-700">Prix appliqués au produit et à toutes ses variantes</p> : null}
                     <p className="flex items-center gap-1 pt-0.5 text-[11px] font-semibold text-emerald-700"><Check className="h-3 w-3" /> Catalogue et stock liés</p>
                   </>
                 ) : <p className="flex items-center gap-1 font-semibold text-emerald-700"><Check className="h-3.5 w-3.5" /> Prix actuels confirmés</p>}
@@ -307,6 +319,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, fo
                 {isStarted(decision) ? `Choisissez aussi ${decision?.pv1 ? 'le prix vente 2' : 'le prix vente'}.` : 'Aucun choix — cette ligne ne sera pas envoyée.'}
               </p>
             )}
+            </> : null}
           </div>
         )}
       </td>
@@ -325,6 +338,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [filter, setFilter] = useState<RowFilter>('all');
   const [webFilter, setWebFilter] = useState<WebFilter>('all');
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [groupKeys, setGroupKeys] = useState<Record<string, true>>({});
   const [checkedKeys, setCheckedKeys] = useState<Record<string, true>>({});
   const [webModel, setWebModel] = useState('gpt-5-mini');
   const [webContextSize, setWebContextSize] = useState<WebSearchContextSize>('low');
@@ -394,6 +408,14 @@ const SalePriceCorrectionsContent: React.FC = () => {
   }, []);
   const clearRow = useCallback((key: string) => {
     setDecisions((previous) => { if (!previous[key]) return previous; const next = { ...previous }; delete next[key]; return next; });
+    setGroupKeys((previous) => { if (!previous[key]) return previous; const next = { ...previous }; delete next[key]; return next; });
+  }, []);
+  const toggleApplyToAllVariants = useCallback((key: string) => {
+    setGroupKeys((previous) => {
+      const next = { ...previous };
+      if (next[key]) delete next[key]; else next[key] = true;
+      return next;
+    });
   }, []);
   const registerRow = useCallback((key: string, element: HTMLTableRowElement | null) => {
     if (element) rowElements.current.set(key, element); else rowElements.current.delete(key);
@@ -403,6 +425,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const visibleRows = useMemo(() => {
     if (readOnly) return rows;
     return rows.filter((row) => {
+      if (row.variant_id !== null && groupKeys[`${row.product_id}:base`] && filter !== 'all') return false;
       if (filter !== 'all' && (filter === 'ready' ? !isReady(decisions[rowKey(row)]) : isReady(decisions[rowKey(row)]))) return false;
       const result = webResults[rowKey(row)];
       if (webFilter === 'no_info') return Boolean(result) && !hasWebPrice(result);
@@ -410,7 +433,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
       if (webFilter === 'near_10') return hasNearbyWebPrice(row, result);
       return true;
     });
-  }, [decisions, filter, readOnly, rows, webFilter, webResults]);
+  }, [decisions, filter, groupKeys, readOnly, rows, webFilter, webResults]);
 
   // Multi-sélection de l'onglet Traités : clic simple, ou Maj+clic pour une plage.
   const toggleCheck = useCallback((key: string, index: number, shiftKey: boolean) => {
@@ -556,17 +579,20 @@ const SalePriceCorrectionsContent: React.FC = () => {
     selectAllRef.current.indeterminate = checkedRows.length > 0 && !allChecked;
   }, [allChecked, checkedRows.length]);
 
+  const groupedProductIds = useMemo(() => new Set(rows.filter((row) => row.variant_id === null && groupKeys[rowKey(row)]).map((row) => row.product_id)), [groupKeys, rows]);
+  const actionableRowCount = rows.filter((row) => row.variant_id === null || !groupedProductIds.has(row.product_id)).length;
   const readyRows = useMemo(
-    () => rows.filter((row) => isReady(decisions[rowKey(row)])),
-    [decisions, rows]
+    () => rows.filter((row) => isReady(decisions[rowKey(row)]) && (row.variant_id === null || !groupedProductIds.has(row.product_id))),
+    [decisions, groupedProductIds, rows]
   );
   const changedCount = readyRows.filter((row) => {
     const decision = decisions[rowKey(row)];
-    return !samePrice(resolvePrice(decision.pv1, row.current_prix_vente)!, row.current_prix_vente)
+    return Boolean(groupKeys[rowKey(row)])
+      || !samePrice(resolvePrice(decision.pv1, row.current_prix_vente)!, row.current_prix_vente)
       || !samePrice(resolvePrice(decision.pv2, row.current_prix_vente_2)!, row.current_prix_vente_2);
   }).length;
-  const startedCount = rows.filter((row) => isStarted(decisions[rowKey(row)])).length;
-  const progress = rows.length ? Math.round((readyRows.length / rows.length) * 100) : 0;
+  const startedCount = rows.filter((row) => isStarted(decisions[rowKey(row)]) && (row.variant_id === null || !groupedProductIds.has(row.product_id))).length;
+  const progress = actionableRowCount ? Math.round((readyRows.length / actionableRowCount) * 100) : 0;
 
   const fillMissing = useCallback((mode: 'keep' | 'suggest') => {
     setDecisions((previous) => {
@@ -586,6 +612,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
 
   const clearPage = useCallback(() => {
     setDecisions((previous) => { const next = { ...previous }; for (const row of rows) delete next[rowKey(row)]; return next; });
+    setGroupKeys((previous) => { const next = { ...previous }; for (const row of rows) delete next[rowKey(row)]; return next; });
   }, [rows]);
 
   // Aucune ligne n'est focalisée tant que l'utilisateur n'a rien fait ; on se contente de
@@ -641,7 +668,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [clearRow, decisions, focusedKey, isSaving, keepBoth, readOnly, selectChoice, visibleRows]);
 
-  const resetView = (tab: CorrectionTab) => { setActiveTab(tab); setPage(1); setFilter('all'); setWebFilter('all'); setDecisions({}); setCheckedKeys({}); setFocusedKey(null); };
+  const resetView = (tab: CorrectionTab) => { setActiveTab(tab); setPage(1); setFilter('all'); setWebFilter('all'); setDecisions({}); setGroupKeys({}); setCheckedKeys({}); setFocusedKey(null); };
 
   const sendBackToPending = async () => {
     if (!checkedRows.length || isSaving) return;
@@ -670,26 +697,28 @@ const SalePriceCorrectionsContent: React.FC = () => {
 
   const submit = async () => {
     if (!readyRows.length || isSaving) return;
-    const confirmation = await showConfirmation(`${readyRows.length} ligne(s) décidée(s) seront traitée(s), dont ${changedCount} avec modification de prix.`, 'Corriger les prix de vente ?');
+    const groupedCount = readyRows.filter((row) => groupKeys[rowKey(row)]).length;
+    const confirmation = await showConfirmation(`${readyRows.length} ligne(s) décidée(s) seront traitée(s), dont ${changedCount} avec modification de prix.${groupedCount ? ` ${groupedCount} produit(s) seront aussi appliqués à toutes leurs variantes actives.` : ''}`, 'Corriger les prix de vente ?');
     if (!confirmation.isConfirmed) return;
     try {
-      await applyCorrections({
+      const result = await applyCorrections({
         corrections: readyRows.map((row) => {
           const decision = decisions[rowKey(row)];
           const prixVente = resolvePrice(decision.pv1, row.current_prix_vente)!;
           const prixVente2 = resolvePrice(decision.pv2, row.current_prix_vente_2)!;
+          const applyToAllVariants = row.variant_id === null && Boolean(groupKeys[rowKey(row)]);
           const unchanged = samePrice(prixVente, row.current_prix_vente) && samePrice(prixVente2, row.current_prix_vente_2);
-          return { product_id: row.product_id, variant_id: row.variant_id, action: unchanged ? 'confirm' as const : 'apply' as const, prix_vente: prixVente, prix_vente_2: prixVente2, expected_prix_vente: row.current_prix_vente, expected_prix_vente_2: row.current_prix_vente_2 };
+          return { product_id: row.product_id, variant_id: row.variant_id, action: unchanged && !applyToAllVariants ? 'confirm' as const : 'apply' as const, apply_to_all_variants: applyToAllVariants, prix_vente: prixVente, prix_vente_2: prixVente2, expected_prix_vente: row.current_prix_vente, expected_prix_vente_2: row.current_prix_vente_2 };
         }),
       }).unwrap();
-      const processed = readyRows.length;
-      setDecisions({}); setFocusedKey(null);
+      const processed = result.processed;
+      setDecisions({}); setGroupKeys({}); setFocusedKey(null);
       showSuccess(`${processed} ligne(s) traitée(s)`);
       await refetch();
     } catch (submitError) {
       const apiError = submitError as { status?: number; data?: { message?: string } };
       showError(apiError.data?.message || 'Impossible d’appliquer les corrections.', apiError.status === 409 ? 'Prix modifiés entre-temps' : 'Échec de la correction');
-      if (apiError.status === 409) { setDecisions({}); await refetch(); }
+      if (apiError.status === 409) { setDecisions({}); setGroupKeys({}); await refetch(); }
     }
   };
 
@@ -772,7 +801,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <div className="flex items-center gap-2">
                 <div className="h-1.5 w-28 overflow-hidden rounded-full bg-stone-200"><div className="h-full rounded-full bg-emerald-600 transition-[width] duration-200" style={{ width: `${progress}%` }} /></div>
-                <span className="whitespace-nowrap text-sm font-bold tabular-nums text-stone-900">{readyRows.length}/{rows.length}</span>
+                <span className="whitespace-nowrap text-sm font-bold tabular-nums text-stone-900">{readyRows.length}/{actionableRowCount}</span>
                 <span className="whitespace-nowrap text-xs text-stone-500">{changedCount} modif. · {startedCount - readyRows.length} incomplète(s)</span>
               </div>
               <div className="flex items-center gap-1 rounded-lg bg-stone-100 p-0.5" role="group" aria-label="Filtrer les lignes">
@@ -900,9 +929,10 @@ const SalePriceCorrectionsContent: React.FC = () => {
                     const key = rowKey(row);
                     return (
                       <CorrectionRow
-                        key={key} row={row} index={index} decision={decisions[key]} focused={focusedKey === key}
+                        key={key} row={row} index={index} decision={decisions[key]} applyToAllVariants={Boolean(groupKeys[key])}
+                        coveredByGroup={row.variant_id !== null && groupedProductIds.has(row.product_id)} focused={focusedKey === key}
                         checked={Boolean(checkedKeys[key])} readOnly={readOnly} saving={isSaving} webResult={webResults[key]}
-                        onSelect={selectChoice} onKeepBoth={keepBoth} onClear={clearRow} onFocus={focusRow}
+                        onSelect={selectChoice} onKeepBoth={keepBoth} onClear={clearRow} onToggleApplyToAllVariants={toggleApplyToAllVariants} onFocus={focusRow}
                         onToggleCheck={toggleCheck} registerRow={registerRow}
                       />
                     );
@@ -946,7 +976,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
 
       {rows.length > 0 ? (
         <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-xl xl:hidden">
-          <span className="whitespace-nowrap text-xs font-bold tabular-nums text-stone-700">{readOnly ? `${checkedRows.length}/${rows.length} sélect.` : `${readyRows.length}/${rows.length} décidée(s)`}</span>
+          <span className="whitespace-nowrap text-xs font-bold tabular-nums text-stone-700">{readOnly ? `${checkedRows.length}/${rows.length} sélect.` : `${readyRows.length}/${actionableRowCount} décidée(s)`}</span>
           {readOnly ? sendBackButton(true) : submitButton(true)}
         </div>
       ) : null}

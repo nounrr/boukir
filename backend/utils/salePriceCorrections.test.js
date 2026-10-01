@@ -8,16 +8,16 @@ import {
   snapshotMatchesEntity,
 } from './salePriceCorrections.js';
 
-test('keeps the base row when the variant is optional, drops it when mandatory', () => {
+test('keeps the original product row with optional and mandatory variants', () => {
   const variants = [{ id: 11, product_id: 1 }, { id: 12, product_id: 1 }, { id: 13, product_id: 1, is_deleted: 1 }];
 
   // Variante facultative : le produit de base se vend encore, il garde sa ligne.
   const optional = buildSellableEntities([{ id: 1, is_obligatoire_variant: 0 }, { id: 2 }], variants);
   assert.deepEqual(optional.map((row) => [row.product_id, row.variant_id]), [[1, null], [1, 11], [1, 12], [2, null]]);
 
-  // Variante obligatoire : seules les variantes actives sont vendables.
+  // Le prix du produit original reste disponible pour la correction groupee.
   const mandatory = buildSellableEntities([{ id: 1, is_obligatoire_variant: 1 }, { id: 2 }], variants);
-  assert.deepEqual(mandatory.map((row) => [row.product_id, row.variant_id]), [[1, 11], [1, 12], [2, null]]);
+  assert.deepEqual(mandatory.map((row) => [row.product_id, row.variant_id]), [[1, null], [1, 11], [1, 12], [2, null]]);
 
   // Variante obligatoire mais aucune variante active : le produit reste listable.
   const mandatoryWithoutVariant = buildSellableEntities([{ id: 3, is_obligatoire_variant: 1 }], []);

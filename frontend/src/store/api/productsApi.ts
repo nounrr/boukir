@@ -13,6 +13,7 @@ export interface HistoricalSalePrice {
 export interface SalePriceCorrectionRow {
   product_id: number;
   variant_id: number | null;
+  active_variant_count: number;
   reference: string | null;
   designation: string;
   variant_name: string | null;
@@ -319,6 +320,7 @@ const productsApi = api.injectEndpoints({
         corrections: Array<{
           product_id: number;
           variant_id: number | null;
+          apply_to_all_variants?: boolean;
           action: 'apply' | 'confirm';
           prix_vente: number;
           prix_vente_2: number;

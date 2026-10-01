@@ -24,11 +24,7 @@ export function buildSellableEntities(products = [], variants = []) {
       variant,
     }));
 
-    // Le produit de base reste vendable tant que la variante n'est pas imposee.
-    // Variante obligatoire : il n'est jamais vendu tel quel, donc pas de ligne pour lui.
-    const variantRequired = Number(product?.is_obligatoire_variant || 0) !== 0;
-    if (variantRows.length && variantRequired) return variantRows;
-
+    // Le produit original reste corrigeable, meme quand les variantes sont obligatoires.
     const baseRow = { product_id: Number(product.id), variant_id: null, product, variant: null };
     return [baseRow, ...variantRows];
   });
