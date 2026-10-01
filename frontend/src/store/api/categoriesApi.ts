@@ -59,6 +59,13 @@ export const categoriesApi = apiSlice.injectEndpoints({
         { type: 'Category', id: 'LIST' },
       ],
     }),
+    generateCategoryImage: builder.mutation<Category, number>({
+      query: (id) => ({ url: `/categories/${id}/generate-image`, method: 'POST' }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: 'Category', id },
+        { type: 'Category', id: 'LIST' },
+      ],
+    }),
     deleteCategory: builder.mutation<{ success: boolean }, { id: number }>({
       query: ({ id }) => ({ url: `/categories/${id}`, method: 'DELETE' }),
       invalidatesTags: [{ type: 'Category', id: 'LIST' }, 'Category'],
@@ -74,6 +81,7 @@ export const {
   useGetCategoryByIdQuery,
   useCreateCategoryMutation,
   useUpdateCategoryMutation,
+  useGenerateCategoryImageMutation,
   useDeleteCategoryMutation,
   useGetCategoryUsageQuery,
   useLazyGetCategoryUsageQuery,

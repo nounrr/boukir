@@ -1,15 +1,19 @@
 import React, { useMemo, useState } from 'react';
-import { FolderTree, PlusCircle, Pencil, Trash, ChevronDown, ChevronRight, Search, ArrowLeft, AlertCircle, Package, GripVertical, ImagePlus } from 'lucide-react';
+import { FolderTree, PlusCircle, Pencil, Trash, ChevronDown, ChevronRight, Search, ArrowLeft, AlertCircle, Package, GripVertical, ImagePlus, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import type { Category } from '../types';
+import type { RootState } from '../store';
 import CategoryFormModal from '../components/CategoryFormModal';
 import { toBackendUrl } from '../utils/url';
+import { CATEGORY_IMAGE_ESTIMATE_USD, categoryImageCostLabel } from '../utils/categoryImageCost';
 import {
 	useGetCategoriesQuery,
 	useCreateCategoryMutation,
 	useUpdateCategoryMutation,
 	useDeleteCategoryMutation,
 	useLazyGetCategoryUsageQuery,
+	useGenerateCategoryImageMutation,
 } from '../store/api/categoriesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 
@@ -19,6 +23,10 @@ const CategoryManagementPage: React.FC = () => {
 	const [updateCategory] = useUpdateCategoryMutation();
 	const [deleteCategory] = useDeleteCategoryMutation();
 	const [getUsage] = useLazyGetCategoryUsageQuery();
+	const [generateCategoryImage] = useGenerateCategoryImageMutation();
+	const userRole = useSelector((state: RootState) => state.auth.user?.role);
+	const canGenerateImage = ['PDG', 'Manager', 'ManagerPlus'].includes(userRole || '');
+	const [generatingImageId, setGeneratingImageId] = useState<number | null>(null);
 
 	const [search, setSearch] = useState('');
 	const [expanded, setExpanded] = useState<Record<number, boolean>>({});
@@ -118,6 +126,19 @@ const CategoryManagementPage: React.FC = () => {
 			showSuccess('Catégorie modifiée');
 		} catch (e: any) {
 			showError(e?.data?.message || e?.message || 'Erreur lors de la modification');
+		}
+	};
+
+	const handleGenerateImage = async (category: Category) => {
+		if (generatingImageId !== null) return;
+		setGeneratingImageId(category.id);
+		try {
+			await generateCategoryImage(category.id).unwrap();
+			showSuccess(`Image créée pour ${category.nom}`);
+		} catch (error: any) {
+			showError(error?.data?.message || error?.message || "Erreur lors de la création de l'image");
+		} finally {
+			setGeneratingImageId(null);
 		}
 	};
 
@@ -323,13 +344,27 @@ const CategoryManagementPage: React.FC = () => {
 							{cat.nom}
 							{cat.nom_ar ? <span className="ml-2 text-sm font-normal text-gray-500" dir="rtl">{cat.nom_ar}</span> : <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Arabe manquant</span>}
 							{hasChildren && <span className="ml-2 text-xs text-gray-500">({children.length})</span>}
+							{generatingImageId === cat.id && <span className="ml-2 text-xs text-purple-700">Création de l'image…</span>}
+							{categoryImageCostLabel(cat) && <span className="block text-xs font-normal text-purple-700">{categoryImageCostLabel(cat)}</span>}
 						</span>
 					)}
 
 					{/* Actions */}
 					<div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+						{canGenerateImage && (
+							<button
+								onClick={() => handleGenerateImage(cat)}
+								disabled={generatingImageId !== null}
+								className="p-2 hover:bg-purple-100 text-purple-700 rounded-lg disabled:opacity-50"
+								title={`Générer une image IA (environ ${CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD)`}
+								aria-label={`Générer une image IA pour ${cat.nom}`}
+							>
+								<Sparkles className="w-4 h-4" />
+							</button>
+						)}
 						<button
 							onClick={() => setPhotoCategory(cat)}
+							disabled={generatingImageId === cat.id}
 							className="p-2 hover:bg-purple-100 text-purple-600 rounded-lg transition-all hover:scale-110"
 							title={cat.image_url ? 'Modifier la photo' : 'Ajouter une photo'}
 							aria-label={`${cat.image_url ? 'Modifier' : 'Ajouter'} la photo de ${cat.nom}`}
@@ -397,6 +432,7 @@ const CategoryManagementPage: React.FC = () => {
 						<p className="text-sm text-gray-600 mt-1">
 							Glissez-déposez pour organiser la hiérarchie des catégories (niveaux illimités)
 						</p>
+						{canGenerateImage && <p className="text-xs text-purple-700 mt-1">Image IA : environ {CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD par clic. Chaque génération est facturée.</p>}
 					</div>
 				</div>
 			</div>

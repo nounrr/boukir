@@ -171,6 +171,10 @@ export interface Category {
   nom_zh?: string | null;
   description?: string;
   image_url?: string | null;
+  ai_image_cost_usd?: number | string | null;
+  ai_image_cost_estimated?: boolean | number;
+  ai_image_model?: string | null;
+  ai_image_quality?: string | null;
   parent_id?: number | null;
   created_by?: number;
   updated_by?: number;

@@ -74,6 +74,18 @@ export async function ensureCategoryColumns(db = pool) {
       if (!(await columnExists(connection, 'categories', 'nom_zh'))) {
         await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN nom_zh VARCHAR(255) NULL`);
       }
+      if (!(await columnExists(connection, 'categories', 'ai_image_cost_usd'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN ai_image_cost_usd DECIMAL(12,8) NULL`);
+      }
+      if (!(await columnExists(connection, 'categories', 'ai_image_cost_estimated'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN ai_image_cost_estimated TINYINT(1) NOT NULL DEFAULT 0`);
+      }
+      if (!(await columnExists(connection, 'categories', 'ai_image_model'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN ai_image_model VARCHAR(64) NULL`);
+      }
+      if (!(await columnExists(connection, 'categories', 'ai_image_quality'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN ai_image_quality VARCHAR(16) NULL`);
+      }
     });
 
     ensureState.categoriesColumns.done = true;

@@ -1,21 +1,27 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit, Trash2, Search, Tags, FolderTree } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Tags, FolderTree, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Category } from '../types';
 import {
 	useGetCategoriesQuery,
 	useDeleteCategoryMutation,
+	useGenerateCategoryImageMutation,
 } from '../store/api/categoriesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import CategoryFormModal from '../components/CategoryFormModal';
 import { toBackendUrl } from '../utils/url';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
+import { CATEGORY_IMAGE_ESTIMATE_USD, categoryImageCostLabel } from '../utils/categoryImageCost';
 
 const CategoriesPage: React.FC = () => {
 	const { data: categories = [], isLoading, refetch } = useGetCategoriesQuery();
 	const [deleteCategory] = useDeleteCategoryMutation();
+	const [generateCategoryImage] = useGenerateCategoryImageMutation();
 	const authTokenValue = useSelector((state: RootState) => (state as any).auth?.token);
+	const userRole = useSelector((state: RootState) => state.auth.user?.role);
+	const canGenerateImage = ['PDG', 'Manager', 'ManagerPlus'].includes(userRole || '');
+	const [generatingImageId, setGeneratingImageId] = useState<number | null>(null);
 
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -55,6 +61,19 @@ const CategoriesPage: React.FC = () => {
 	const handleEdit = (cat: Category) => {
 		setEditingCategory(cat);
 		setIsModalOpen(true);
+	};
+
+	const handleGenerateImage = async (category: Category) => {
+		if (generatingImageId !== null) return;
+		setGeneratingImageId(category.id);
+		try {
+			await generateCategoryImage(category.id).unwrap();
+			showSuccess(`Image créée pour ${category.nom}`);
+		} catch (error: any) {
+			showError(error?.data?.message || error?.message || "Erreur lors de la création de l'image");
+		} finally {
+			setGeneratingImageId(null);
+		}
 	};
 
 	const handleDelete = async (id: number) => {
@@ -222,6 +241,7 @@ const CategoriesPage: React.FC = () => {
 			</div>
 
 			<div className="mb-6">
+				{canGenerateImage && <p className="mb-3 text-sm text-gray-600">Image IA carrée, qualité moyenne : environ {CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD par génération. Chaque nouveau clic est facturé.</p>}
 				<div className="relative max-w-md">
 					<Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
 					<input
@@ -313,6 +333,7 @@ const CategoriesPage: React.FC = () => {
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm font-medium text-gray-900">{c.nom}</div>
+											{categoryImageCostLabel(c) && <div className="text-xs text-purple-700">{categoryImageCostLabel(c)}</div>}
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm text-gray-700" dir="rtl">{c.nom_ar || '-'}</div>
@@ -331,8 +352,19 @@ const CategoriesPage: React.FC = () => {
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
 											<div className="flex gap-2">
+												{canGenerateImage && (
+													<button
+														onClick={() => handleGenerateImage(c)}
+														disabled={generatingImageId !== null}
+														className="inline-flex items-center gap-1 text-purple-700 hover:text-purple-900 disabled:opacity-50"
+														title={`Générer une image IA (environ ${CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD)`}
+													>
+														<Sparkles size={16} /> {generatingImageId === c.id ? 'Création…' : 'Image IA'}
+													</button>
+												)}
 												<button
 													onClick={() => handleEdit(c)}
+													disabled={generatingImageId === c.id}
 													className="text-blue-600 hover:text-blue-900"
 													title="Modifier"
 												>

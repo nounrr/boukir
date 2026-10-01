@@ -4,8 +4,11 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
+import OpenAI from 'openai';
 import { ensureCategoryColumns } from '../utils/ensureCategorySchema.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
+import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -23,6 +26,23 @@ router.use(async (_req, _res, next) => {
 });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const categoryImagesDir = path.join(__dirname, '..', 'uploads', 'categories');
+const CATEGORY_SELECT = 'id, nom, nom_ar, nom_en, nom_zh, description, image_url, ai_image_cost_usd, ai_image_cost_estimated, ai_image_model, ai_image_quality, parent_id, created_by, updated_by, created_at, updated_at';
+const IMAGE_MODEL = 'gpt-image-2';
+const IMAGE_QUALITY = 'medium';
+const IMAGE_OUTPUT_ESTIMATE_USD = 0.053;
+const generatingCategories = new Set();
+
+function imageCost(result) {
+  const details = result?.usage?.input_tokens_details;
+  const textTokens = Number(details?.text_tokens);
+  const imageTokens = Number(details?.image_tokens ?? 0);
+  const outputTokens = Number(result?.usage?.output_tokens);
+  if ([textTokens, imageTokens, outputTokens].every(Number.isFinite)) {
+    return { usd: (textTokens * 5 + imageTokens * 8 + outputTokens * 30) / 1_000_000, estimated: false };
+  }
+  return { usd: IMAGE_OUTPUT_ESTIMATE_USD, estimated: true };
+}
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -74,7 +94,7 @@ function toNullableNumber(value) {
 
 router.get('/', async (_req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories ORDER BY id DESC');
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories ORDER BY id DESC`);
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -83,7 +103,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
-    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
     const cat = rows[0];
     if (!cat) return res.status(404).json({ message: 'Catégorie introuvable' });
     res.json(cat);
@@ -133,7 +153,7 @@ router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
       ]
     );
     const id = result.insertId;
-    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -144,7 +164,7 @@ router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
     const { nom, nom_ar, nom_en, nom_zh, description, parent_id, updated_by, image_url: image_url_body } = req.body;
-    const [exists] = await pool.query('SELECT id, parent_id FROM categories WHERE id = ?', [id]);
+    const [exists] = await pool.query('SELECT id, parent_id, image_url FROM categories WHERE id = ?', [id]);
     if (exists.length === 0) return res.status(404).json({ message: 'Catégorie introuvable' });
     
     const currentCategory = exists[0];
@@ -210,13 +230,76 @@ router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
       fields.push('image_url = ?');
       values.push(normalizeNullableText(image_url_body));
     }
+    if (image_url_from_upload || (image_url_body !== undefined && normalizeNullableText(image_url_body) !== currentCategory.image_url)) {
+      fields.push('ai_image_cost_usd = NULL', 'ai_image_cost_estimated = 0', 'ai_image_model = NULL', 'ai_image_quality = NULL');
+    }
     fields.push('updated_at = ?'); values.push(now);
     const sql = `UPDATE categories SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id);
     await pool.query(sql, values);
-    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
     res.json(rows[0]);
   } catch (err) { next(err); }
+});
+
+router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus'), async (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: 'ID invalide' });
+  if (generatingCategories.has(id)) return res.status(409).json({ message: 'Une image est déjà en cours de création pour cette catégorie' });
+  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+  if (!apiKey) return res.status(503).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
+
+  generatingCategories.add(id);
+  let savedPath = null;
+  try {
+    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, description FROM categories WHERE id = ?', [id]);
+    const category = rows[0];
+    if (!category) return res.status(404).json({ message: 'Catégorie introuvable' });
+
+    const label = String(category.nom || '').trim();
+    const details = String(category.description || '').trim().slice(0, 400);
+    const prompt = [
+      'Create one photorealistic square ecommerce category thumbnail for a hardware and home-improvement shop in Morocco.',
+      `Category: ${label}.`,
+      details ? `Category context: ${details}.` : '',
+      'Show a clear, tasteful arrangement of representative real products or materials for this category.',
+      'Clean studio lighting, neutral light background, centered composition, realistic colors.',
+      'No words, labels, logos, watermarks, people, or UI. Avoid depicting unrelated products.'
+    ].filter(Boolean).join(' ');
+
+    const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 120000 });
+    const result = await client.images.generate({
+      model: IMAGE_MODEL,
+      prompt,
+      size: '1024x1024',
+      quality: IMAGE_QUALITY,
+      n: 1,
+    });
+    const encoded = result?.data?.[0]?.b64_json;
+    if (!encoded) throw new Error('Réponse IA sans image');
+
+    const filename = `ai-category-${id}-${randomUUID()}.png`;
+    fs.mkdirSync(categoryImagesDir, { recursive: true });
+    savedPath = path.join(categoryImagesDir, filename);
+    await fs.promises.writeFile(savedPath, Buffer.from(encoded, 'base64'));
+    const imageUrl = `/uploads/categories/${filename}`;
+    const cost = imageCost(result);
+
+    const [update] = await pool.query(`
+      UPDATE categories SET image_url = ?, ai_image_cost_usd = ?, ai_image_cost_estimated = ?,
+        ai_image_model = ?, ai_image_quality = ?, updated_by = ?, updated_at = ?
+      WHERE id = ?
+    `, [imageUrl, cost.usd, cost.estimated ? 1 : 0, IMAGE_MODEL, IMAGE_QUALITY, req.user.id, new Date(), id]);
+    if (!update.affectedRows) return res.status(404).json({ message: 'Catégorie introuvable' });
+    savedPath = null;
+    const [updated] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
+    res.json(updated[0]);
+  } catch (err) {
+    next(err);
+  } finally {
+    if (savedPath) await fs.promises.unlink(savedPath).catch(() => {});
+    generatingCategories.delete(id);
+  }
 });
 
 // Check if category is used by products
