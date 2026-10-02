@@ -6,7 +6,7 @@ import type { RootState } from '../store';
 import type { Product, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, X, Save, ChevronDown, ChevronRight, Package } from 'lucide-react';
+import { Plus, Trash2, X, Save, ChevronDown, ChevronRight, Package, Tag, Coins, Percent, Languages, Image as ImageIcon, History, ChevronsDownUp, ChevronsUpDown, AlertCircle } from 'lucide-react';
 // Switch to backend mutations
 import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUpdateSnapshotsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -23,6 +23,20 @@ const VARIANT_SUGGESTIONS: Record<string, string[]> = {
   Unité: ['Pièce', 'Boîte', 'Carton', 'Paquet', 'Palette', 'Lot', 'Sac', 'Bidon'],
   Autre: []
 };
+
+// Titled block used to group fields inside a variant card
+const VariantSection: React.FC<{ icon: React.ReactNode; title: string; right?: React.ReactNode; children: React.ReactNode }> = ({ icon, title, right, children }) => (
+  <section className="rounded-lg border border-gray-200 bg-gray-50/40 p-3">
+    <div className="mb-2.5 flex items-center justify-between gap-2">
+      <h5 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        {icon}
+        {title}
+      </h5>
+      {right}
+    </div>
+    {children}
+  </section>
+);
 
 // Helper to parse numbers with either ',' or '.'
 const toNum = (v: any) => {
@@ -359,7 +373,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [variantGalleryFilesMap, setVariantGalleryFilesMap] = useState<Record<number, File[]>>({});
   const [variantDeletedGalleryIdsMap, setVariantDeletedGalleryIdsMap] = useState<Record<number, number[]>>({});
   const [variantUseProductRemise, setVariantUseProductRemise] = useState<Record<number, boolean>>({});
-  
+  // Variant cards: existing variants start collapsed, new ones open; explicit toggles override.
+  const [variantOpenOverrides, setVariantOpenOverrides] = useState<Record<string, boolean>>({});
+  const getVariantCardKey = (variant: any, index: number) => (variant?.id ? `id-${variant.id}` : `new-${index}`);
+
   // Files for technical sheets
   // Long text technical sheets per language (no files)
   const [ficheFr, setFicheFr] = useState<string>('');
@@ -2198,7 +2215,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           >
                             <div className="flex items-center gap-3 flex-wrap">
                               {isOpen ? <ChevronDown size={18} className="text-blue-600" /> : <ChevronRight size={18} className="text-gray-400" />}
-                              <span className="text-sm font-bold text-gray-800">{s.bon_commande_id ? `Bon #${s.bon_commande_id}` : `Snapshot #${s.id}`}</span>
+                              <span className="px-2 py-0.5 rounded-md bg-gray-800 text-white text-xs font-mono font-semibold" title="ID du snapshot">Snapshot #{s.id}</span>
+                              {s.bon_commande_id && <span className="text-sm font-bold text-gray-800">Bon #{s.bon_commande_id}</span>}
                               <span className="text-sm text-gray-500">{String(s.created_at ?? '').slice(0, 10)}</span>
                               <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
                                 Qte: {formatNumber(Number(getSnapshotEditValue(s, 'quantite')))}
@@ -2553,38 +2571,135 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
           {/* Variantes */}
           <div className="mt-6 p-5 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-base font-bold text-gray-900">Variantes du produit</h3>
-              <label className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
-                <input
-                  type="checkbox"
-                  checked={!!(formik.values as any).isObligatoireVariant}
-                  disabled={!Array.isArray(formik.values.variants) || formik.values.variants.length === 0}
-                  onChange={(e) => formik.setFieldValue('isObligatoireVariant', e.target.checked)}
-                />
-                Variante obligatoire dans les bons
-              </label>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-gray-900">Variantes du produit</h3>
+                <span className="px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 text-xs font-semibold">
+                  {Array.isArray(formik.values.variants) ? formik.values.variants.length : 0}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {Array.isArray(formik.values.variants) && formik.values.variants.length > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setVariantOpenOverrides(Object.fromEntries(formik.values.variants.map((v: any, i: number) => [getVariantCardKey(v, i), true])))}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 rounded-md hover:bg-gray-100"
+                    >
+                      <ChevronsUpDown size={14} /> Tout déplier
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVariantOpenOverrides(Object.fromEntries(formik.values.variants.map((v: any, i: number) => [getVariantCardKey(v, i), false])))}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 rounded-md hover:bg-gray-100"
+                    >
+                      <ChevronsDownUp size={14} /> Tout replier
+                    </button>
+                  </div>
+                )}
+                <label className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={!!(formik.values as any).isObligatoireVariant}
+                    disabled={!Array.isArray(formik.values.variants) || formik.values.variants.length === 0}
+                    onChange={(e) => formik.setFieldValue('isObligatoireVariant', e.target.checked)}
+                  />
+                  Variante obligatoire dans les bons
+                </label>
+              </div>
             </div>
-            
+
             <FormikProvider value={formik}>
               <FieldArray
                 name="variants"
                 render={arrayHelpers => (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {formik.values.variants && formik.values.variants.length > 0 ? (
-                      formik.values.variants.map((variant: any, index: number) => (
-                        <div key={index} className="flex flex-col gap-4 bg-white p-5 rounded-xl border-2 border-gray-200 relative shadow-sm hover:shadow-md transition-shadow">
-                          <button
-                            type="button"
-                            onClick={() => arrayHelpers.remove(index)}
-                            className="absolute top-3 right-3 text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                            title="Supprimer la variante"
+                      formik.values.variants.map((variant: any, index: number) => {
+                        const cardKey = getVariantCardKey(variant, index);
+                        const variantErrors = (formik.errors.variants as any)?.[index];
+                        const hasVariantErrors = !!variantErrors && typeof variantErrors === 'object' && Object.keys(variantErrors).length > 0;
+                        const variantSnapshots: any[] = Array.isArray(variant?.snapshot_rows) ? variant.snapshot_rows : [];
+                        const hasVariantSnapshots = !!editingProduct && variantSnapshots.length > 0;
+                        const isCardOpen = (hasVariantErrors && formik.submitCount > 0) || (variantOpenOverrides[cardKey] ?? !variant.id);
+                        const swatch = variant.variant_type === 'Couleur' ? getVariantColor(variant.color_name, variant.variant_name) : null;
+                        return (
+                        <div key={index} className={`bg-white rounded-xl border-2 shadow-sm transition-shadow ${hasVariantErrors && formik.submitCount > 0 ? 'border-red-300' : isCardOpen ? 'border-blue-200 shadow-md' : 'border-gray-200 hover:shadow-md'}`}>
+                          {/* En-tête résumé (cliquable) */}
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setVariantOpenOverrides(prev => ({ ...prev, [cardKey]: !isCardOpen }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setVariantOpenOverrides(prev => ({ ...prev, [cardKey]: !isCardOpen }));
+                              }
+                            }}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer select-none ${isCardOpen ? 'border-b border-gray-100 bg-blue-50/40 rounded-t-xl' : 'rounded-xl hover:bg-gray-50'}`}
                           >
-                            <Trash2 size={18} />
-                          </button>
+                            {isCardOpen ? <ChevronDown size={18} className="text-blue-600 shrink-0" /> : <ChevronRight size={18} className="text-gray-400 shrink-0" />}
+                            {swatch ? (
+                              <span
+                                className="h-7 w-7 shrink-0 rounded-full border border-gray-300"
+                                style={{ backgroundColor: swatch.background }}
+                                title={variant.color_name || variant.variant_name}
+                              />
+                            ) : (
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">
+                                {index + 1}
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`truncate text-sm font-bold ${variant.variant_name ? 'text-gray-900' : 'text-gray-400 italic'}`}>
+                                  {variant.variant_name || 'Nouvelle variante'}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                                  {variant.variant_type || 'Autre'}
+                                </span>
+                                {variant.reference && (
+                                  <span className="text-xs text-gray-500">Réf: {variant.reference}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="hidden sm:flex items-center gap-1.5 flex-wrap justify-end">
+                              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
+                                Stock: {formatNumber(Number(variant.stock_quantity || 0))}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
+                                {formatNumber(Number(variant.prix_vente || 0))} DH
+                              </span>
+                              {hasVariantSnapshots && (
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                                  <History size={12} /> {variantSnapshots.length}
+                                </span>
+                              )}
+                              {variantSnapshots.some((s: any) => snapshotEdits[s.id]) && (
+                                <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-bold">modifié</span>
+                              )}
+                            </div>
+                            {hasVariantErrors && formik.submitCount > 0 && (
+                              <AlertCircle size={18} className="text-red-500 shrink-0" aria-label="Champs invalides" />
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                arrayHelpers.remove(index);
+                              }}
+                              className="shrink-0 text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                              title="Supprimer la variante"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
 
-                          {/* Ligne 1: Infos de base */}
-                          <div className={`grid grid-cols-1 gap-4 pr-8 ${variant.variant_type === 'Couleur' ? 'md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7' : 'md:grid-cols-6'}`}>
+                          {isCardOpen && (
+                          <div className="flex flex-col gap-3 p-4">
+                          {/* Identification */}
+                          <VariantSection icon={<Tag size={13} />} title="Identification">
+                          <div className={`grid grid-cols-1 gap-3 ${variant.variant_type === 'Couleur' ? 'md:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-3'}`}>
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
                               <select
@@ -2628,9 +2743,21 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 ))}
                               </datalist>
                             </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Référence</label>
+                              <input
+                                name={`variants.${index}.reference`}
+                                value={variant.reference || ''}
+                                onChange={formik.handleChange}
+                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                placeholder="Réf"
+                              />
+                            </div>
                             {variant.variant_type === 'Couleur' && (
                               <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Couleur : nom ou code hex (optionnel)</label>
+                                <label className="block text-xs font-medium text-gray-500 mb-1" title="Si vide, la couleur est déduite du nom de variante.">
+                                  Couleur <span className="font-normal text-gray-400">(optionnel)</span>
+                                </label>
                                 <div className="flex items-center gap-2">
                                   <input
                                     type="color"
@@ -2647,18 +2774,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                     onChange={formik.handleChange}
                                     maxLength={100}
                                     className="min-w-0 w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                    placeholder="Ex. Rouge, #FF0000"
+                                    placeholder="Rouge, #FF0000"
                                   />
-                                </div>
-                                <div className="mt-2 flex items-center gap-2">
-                                  <span
-                                    className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-300 p-1 text-center text-[10px] font-semibold leading-tight break-all"
-                                    style={{ backgroundColor: getVariantColor(variant.color_name, variant.variant_name).background, color: getVariantColor(variant.color_name, variant.variant_name).foreground }}
-                                    title={variant.variant_name || 'Aperçu couleur'}
-                                  >
-                                    {variant.variant_name}
-                                  </span>
-                                  <span className="text-xs text-gray-500">Si vide, la couleur est déduite du nom de variante.</span>
                                 </div>
                                 {asStringError((formik.errors.variants?.[index] as any)?.color_name) && (
                                   <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.color_name)}</p>
@@ -2670,16 +2787,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 </datalist>
                               </div>
                             )}
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Référence</label>
-                              <input
-                                name={`variants.${index}.reference`}
-                                value={variant.reference || ''}
-                                onChange={formik.handleChange}
-                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="Réf"
-                              />
-                            </div>
+                          </div>
+                          </VariantSection>
+
+                          {/* Stock & prix de vente */}
+                          <VariantSection icon={<Coins size={13} />} title="Stock & prix de vente">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Stock</label>
                               <input
@@ -2747,48 +2860,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               )}
                             </div>
                           </div>
+                          </VariantSection>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pr-8">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom AR</label>
-                              <input
-                                name={`variants.${index}.variant_name_ar`}
-                                value={(variant as any).variant_name_ar || ''}
-                                onChange={formik.handleChange}
-                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="العربية"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom EN</label>
-                              <input
-                                name={`variants.${index}.variant_name_en`}
-                                value={(variant as any).variant_name_en || ''}
-                                onChange={formik.handleChange}
-                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="English"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom ZH</label>
-                              <input
-                                name={`variants.${index}.variant_name_zh`}
-                                value={(variant as any).variant_name_zh || ''}
-                                onChange={formik.handleChange}
-                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="中文"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Ligne 2: Prix et Calculs */}
-                          {editingProduct && Array.isArray((variant as any)?.snapshot_rows) && ((variant as any).snapshot_rows.length > 0) && (
-                            <div className="mt-4 rounded-xl border-2 border-indigo-300 bg-gradient-to-b from-indigo-50 to-white p-4 shadow-sm">
-                              <div className="flex items-center justify-between mb-3">
-                                <h4 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
-                                  <Package size={16} />
-                                  Historique achats variante <span className="text-xs font-normal text-indigo-600">({(variant as any).snapshot_rows.length})</span>
-                                </h4>
+                          {/* Historique achats variante */}
+                          {hasVariantSnapshots && (
+                            <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
+                              <div className="flex items-center justify-between mb-2.5">
+                                <h5 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                                  <History size={13} />
+                                  Historique achats variante <span className="normal-case font-normal text-indigo-500">({variantSnapshots.length})</span>
+                                </h5>
                               </div>
                               <div className="space-y-2">
                                 {(variant as any).snapshot_rows.map((s: any) => {
@@ -2805,7 +2886,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       >
                                         <div className="flex items-center gap-3 flex-wrap">
                                           {isOpen ? <ChevronDown size={16} className="text-indigo-600" /> : <ChevronRight size={16} className="text-gray-400" />}
-                                          <span className="text-sm font-bold text-gray-800">{s.bon_commande_id ? `Bon #${s.bon_commande_id}` : `Snapshot #${s.id}`}</span>
+                                          <span className="px-2 py-0.5 rounded-md bg-gray-800 text-white text-xs font-mono font-semibold" title="ID du snapshot">Snapshot #{s.id}</span>
+                              {s.bon_commande_id && <span className="text-sm font-bold text-gray-800">Bon #{s.bon_commande_id}</span>}
                                           <span className="text-sm text-gray-500">{String(s.created_at ?? '').slice(0, 10)}</span>
                                           <span className="px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm font-semibold">
                                             Qte: {formatNumber(Number(getSnapshotEditValue(s, 'quantite')))}
@@ -2862,8 +2944,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           )}
 
                           {/* Prix et calculs variante — masqué si snapshots variante existent */}
-                          {!(editingProduct && Array.isArray((variant as any)?.snapshot_rows) && (variant as any).snapshot_rows.length > 0) && (
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-gray-100">
+                          {showInternalPrices && !hasVariantSnapshots && (
+                          <VariantSection icon={<Percent size={13} />} title="Prix d'achat & marges">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             {/* Prix Achat */}
                             {showInternalPrices && (<div>
                               <div className="flex justify-between items-center mb-1">
@@ -3018,12 +3101,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             </div>)}
 
                           </div>
+                          </VariantSection>
                           )}
 
-                          {/* Ligne 3: Remises */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                            <div className="col-span-1 md:col-span-3">
-                              <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                          {/* Remises */}
+                          <VariantSection
+                            icon={<Percent size={13} />}
+                            title="Remises"
+                            right={
+                              <label className="inline-flex items-center gap-1.5 text-xs text-gray-700">
                                 <input
                                   type="checkbox"
                                   checked={variantUseProductRemise[(variant.id as number) ?? index] || false}
@@ -3039,7 +3125,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 />
                                 Même remises que le produit
                               </label>
-                            </div>
+                            }
+                          >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Remise client (montant)</label>
                               <input
@@ -3077,10 +3165,59 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               />
                             </div>
                           </div>
+                          </VariantSection>
+
+                          {/* Traductions (repliable) */}
+                          <details className="group rounded-lg border border-gray-200 bg-gray-50/40">
+                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              <span className="flex items-center gap-1.5">
+                                <Languages size={13} />
+                                Traductions du nom
+                                <span className="normal-case font-normal text-gray-400">
+                                  {[variant.variant_name_ar && 'AR', variant.variant_name_en && 'EN', variant.variant_name_zh && 'ZH'].filter(Boolean).join(' · ') || 'aucune'}
+                                </span>
+                              </span>
+                              <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+                            </summary>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-3 pb-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Nom AR</label>
+                                <input
+                                  name={`variants.${index}.variant_name_ar`}
+                                  value={(variant as any).variant_name_ar || ''}
+                                  onChange={formik.handleChange}
+                                  dir="rtl"
+                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  placeholder="العربية"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Nom EN</label>
+                                <input
+                                  name={`variants.${index}.variant_name_en`}
+                                  value={(variant as any).variant_name_en || ''}
+                                  onChange={formik.handleChange}
+                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  placeholder="English"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Nom ZH</label>
+                                <input
+                                  name={`variants.${index}.variant_name_zh`}
+                                  value={(variant as any).variant_name_zh || ''}
+                                  onChange={formik.handleChange}
+                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  placeholder="中文"
+                                />
+                              </div>
+                            </div>
+                          </details>
 
                           {/* Médias de la variante (non partagés) */}
                           {variant.id && (
-                            <div className="pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <VariantSection icon={<ImageIcon size={13} />} title="Médias">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {/* Image principale de la variante */}
                               <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Image de la variante</label>
@@ -3188,11 +3325,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 )}
                               </div>
                             </div>
+                            </VariantSection>
+                          )}
+                          </div>
                           )}
                         </div>
-                      ))
+                        );
+                      })
                     ) : (
-                      <p className="text-sm text-gray-500 italic">Aucune variante ajoutée.</p>
+                      <div className="rounded-xl border-2 border-dashed border-gray-200 py-6 text-center text-sm text-gray-500">
+                        Aucune variante ajoutée.
+                      </div>
                     )}
                     
                     <button

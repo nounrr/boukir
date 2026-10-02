@@ -1381,6 +1381,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           id: variantId,
           variant_name: item?.variant_name ?? item?.variant?.variant_name ?? '',
           reference: item?.variant_reference ?? item?.variant?.reference ?? '',
+          image_url: item?.variant_image_url || item?.variant?.image_url || '',
           prix_achat: Number(item?.prix_achat ?? item?.pa ?? 0) || 0,
           cout_revient: Number(item?.cout_revient ?? item?.cr ?? item?.prix_achat ?? 0) || 0,
           prix_vente: Number(item?.prix_unitaire ?? item?.prix_vente ?? 0) || 0,
@@ -1403,6 +1404,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         id: productId,
         reference: item?.product_reference ?? item?.reference ?? item?.product?.reference ?? item?.produit?.reference ?? key,
         designation: item?.designation ?? item?.designation_custom ?? item?.product?.designation ?? item?.produit?.designation ?? '',
+        image_url: item?.image_url || item?.product?.image_url || item?.produit?.image_url || existing.image_url || '',
         prix_achat: Number(item?.prix_achat ?? item?.pa ?? existing.prix_achat ?? 0) || 0,
         cout_revient: Number(item?.cout_revient ?? item?.cr ?? item?.prix_achat ?? existing.cout_revient ?? 0) || 0,
         prix_vente: Number(item?.prix_unitaire ?? item?.prix_vente ?? existing.prix_vente ?? 0) || 0,
@@ -2687,16 +2689,16 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           _rowId: it._rowId || makeRowId(), // id stable
           ...it,
           _product_image_url:
-            it._product_image_url ??
-            it.variant_image_url ??
-            it.variant?.image_url ??
-            variantFound?.image_url ??
-            it.image_url ??
-            it.product?.image_url ??
-            it.produit?.image_url ??
-            productFound?.image_url ??
-            snapshotFound?.variant_image_url ??
-            snapshotFound?.image_url ??
+            it._product_image_url ||
+            it.variant_image_url ||
+            it.variant?.image_url ||
+            variantFound?.image_url ||
+            it.image_url ||
+            it.product?.image_url ||
+            it.produit?.image_url ||
+            productFound?.image_url ||
+            snapshotFound?.variant_image_url ||
+            snapshotFound?.image_url ||
             '',
           line_mode: isFreeChargeLine ? 'detail' : (it.line_mode || 'normal'),
           product_id: normalizedProductId,
@@ -4772,7 +4774,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return getLastUnitPriceForClientProduct(values?.client_id, productId, variantId, unitId) ?? fallback;
     }
 
-    if (type === 'Comptant' || type === 'AvoirComptant') {
+    // Comptant: l'input garde le prix de vente normal ; le dernier prix est
+    // seulement affiché (en bleu) sous l'input.
+    if (type === 'AvoirComptant') {
       return getLastUnitPricesForComptantProduct(productId, variantId, unitId, 1)[0] ?? fallback;
     }
 
@@ -7643,9 +7647,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       4
     );
     return lastPrices.length > 0 ? (
-      <div className="text-xs text-gray-500 mt-1">
-        4 derniers prix (Comptant): {lastPrices.map((price) => `${formatFull(Number(price))} DH`).join(' / ')}
-      </div>
+      <>
+        <div className="text-xs text-blue-600 font-medium mt-1">
+          Dernier prix: {formatFull(Number(lastPrices[0]))} DH
+        </div>
+        {lastPrices.length > 1 && (
+          <div className="text-xs text-gray-500">
+            4 derniers prix (Comptant): {lastPrices.map((price) => `${formatFull(Number(price))} DH`).join(' / ')}
+          </div>
+        )}
+      </>
     ) : null;
   })()}
   {(values.fournisseur_id && values.items[index].product_id && (values.type === 'Commande' || values.type === 'AvoirFournisseur')) && (() => {

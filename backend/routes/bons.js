@@ -254,6 +254,7 @@ const buildItemsSql = (cfg, { includeHistoricalAverage = true } = {}) => {
     : '';
   const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'base_unit', p.base_unit, 'unite', COALESCE(NULLIF(pu.unit_name, ''), p.base_unit), 'unit_name', COALESCE(NULLIF(pu.unit_name, ''), p.base_unit), 'conversion_factor', COALESCE(pu.conversion_factor, 1),`;
   const costVariantField = cfg.itemSnapshot ? `'cost_variant_id', COALESCE(${i}.variant_id, ps.variant_id),` : '';
+  const variantImageField = cfg.itemHasVariantUnit === false ? '' : `'variant_image_url', NULLIF(pv.image_url, ''),`;
   const originalSalePriceFields = cfg.itemHasVariantUnit === false ? '' : `'prix_original', CASE
         WHEN COALESCE(p.est_service, 0) = 1 THEN 0
         WHEN ${i}.unit_id IS NOT NULL THEN COALESCE(
@@ -286,6 +287,8 @@ const buildItemsSql = (cfg, { includeHistoricalAverage = true } = {}) => {
     SELECT JSON_ARRAYAGG(JSON_OBJECT(
       'id', ${i}.id,
       'product_id', ${i}.product_id,
+      'image_url', p.image_url,
+      ${variantImageField}
       'product_is_deleted', COALESCE(p.is_deleted, 0),
       'est_service', p.est_service,
       'rappel_non_calcule', p.rappel_non_calcule,
