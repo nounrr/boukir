@@ -43,6 +43,28 @@ export interface WebSalePriceResult {
   usage?: { input_tokens: number; output_tokens: number; web_search_calls: number; estimated_cost_usd: number | null };
 }
 
+export interface SalePriceCorrectionRequest {
+  id: number;
+  product_id: number;
+  variant_id: number | null;
+  designation: string;
+  reference: string | null;
+  variant_name: string | null;
+  image_url: string | null;
+  action: 'apply' | 'confirm';
+  apply_to_all_variants: boolean;
+  prix_vente: number;
+  prix_vente_2: number;
+  expected_prix_vente: number;
+  expected_prix_vente_2: number;
+  statut: 'En attente' | 'Validé' | 'Refusé' | 'Remplacé';
+  requested_by_name: string | null;
+  requested_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_message: string | null;
+}
+
 export interface SalePriceCorrectionsResponse {
   data: SalePriceCorrectionRow[];
   meta: { page: number; limit: number; total: number; totalPages: number };
@@ -294,7 +316,7 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
-    getSalePriceCorrectionAccess: builder.query<{ allowed: boolean }, void>({
+    getSalePriceCorrectionAccess: builder.query<{ allowed: boolean; can_validate?: boolean }, void>({
       query: () => '/products/sale-price-corrections/access',
       providesTags: ['SalePriceCorrectionAccess'],
     }),
@@ -315,7 +337,7 @@ const productsApi = api.injectEndpoints({
     }),
 
     updateSalePriceCorrections: builder.mutation<
-      { success: boolean; processed: number; updatedProducts: number; updatedVariants: number; updatedSnapshots: number },
+      { success: boolean; processed: number; pending_validation?: boolean; queued?: number; updatedProducts?: number; updatedVariants?: number; updatedSnapshots?: number },
       {
         corrections: Array<{
           product_id: number;
@@ -334,7 +356,23 @@ const productsApi = api.injectEndpoints({
         method: 'PATCH',
         body,
       }),
-      invalidatesTags: ['Product'],
+      invalidatesTags: ['Product', 'SalePriceCorrectionRequest'],
+    }),
+
+    getSalePriceCorrectionRequests: builder.query<
+      { can_validate: boolean; data: SalePriceCorrectionRequest[] },
+      { status: 'pending' | 'history' }
+    >({
+      query: (params) => ({ url: '/products/sale-price-corrections/requests', params }),
+      providesTags: ['SalePriceCorrectionRequest'],
+    }),
+
+    decideSalePriceCorrectionRequests: builder.mutation<
+      { success: boolean; decision: 'approve' | 'reject'; processed: number; failed: Array<{ id: number; message: string }> },
+      { ids: number[]; decision: 'approve' | 'reject' }
+    >({
+      query: (body) => ({ url: '/products/sale-price-corrections/requests/decide', method: 'POST', body }),
+      invalidatesTags: ['Product', 'SalePriceCorrectionRequest'],
     }),
 
     resetSalePriceCorrections: builder.mutation<
@@ -391,6 +429,8 @@ export const {
   useResearchSalePricesMutation,
   useUpdateSalePriceCorrectionsMutation,
   useResetSalePriceCorrectionsMutation,
+  useGetSalePriceCorrectionRequestsQuery,
+  useDecideSalePriceCorrectionRequestsMutation,
   useGetProductsWithSnapshotsQuery,
   useSearchProductsWithSnapshotsQuery,
 } = productsApi;

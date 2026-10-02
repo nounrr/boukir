@@ -46,6 +46,7 @@ import {
   MessageSquareText,
   ListTodo,
   FolderKanban,
+  ImageUp,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -111,6 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       title: 'Fiches produits',
       items: [
         { name: 'Photos Produits', href: '/product-photos', icon: Camera, show: !isChefChauffeur },
+        { name: 'Qualité images', href: '/products/image-enhancement', icon: ImageUp, show: !isChefChauffeur },
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Correction noms', href: '/products/name-corrections', icon: FileCheck2, show: !isChefChauffeur },
         { name: 'Correction prix ventes', href: '/products/sale-price-corrections', icon: CircleDollarSign, show: canViewSalePriceCorrections },

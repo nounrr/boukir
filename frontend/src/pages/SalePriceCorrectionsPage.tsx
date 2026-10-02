@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Sparkles, Wand2 } from 'lucide-react';
-import { type HistoricalSalePrice, type SalePriceCorrectionRow, type SalePriceSource, type WebPriceGroup, type WebSalePriceResult, type WebSearchContextSize, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionsQuery, useResearchSalePricesMutation, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
+import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Send, Sparkles, Wand2, X } from 'lucide-react';
+import { type HistoricalSalePrice, type SalePriceCorrectionRequest, type SalePriceCorrectionRow, type SalePriceSource, type WebPriceGroup, type WebSalePriceResult, type WebSearchContextSize, useDecideSalePriceCorrectionRequestsMutation, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionRequestsQuery, useGetSalePriceCorrectionsQuery, useResearchSalePricesMutation, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
 
-type CorrectionTab = 'pending' | 'processed';
+type CorrectionTab = 'pending' | 'validation' | 'processed';
 type RowFilter = 'all' | 'todo' | 'ready';
 type WebFilter = 'all' | 'no_info' | 'found' | 'near_10';
 type Side = 'pv1' | 'pv2';
@@ -328,7 +328,191 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, ap
 });
 CorrectionRow.displayName = 'CorrectionRow';
 
-const SalePriceCorrectionsContent: React.FC = () => {
+const requestStatusStyles: Record<SalePriceCorrectionRequest['statut'], string> = {
+  'En attente': 'border-amber-200 bg-amber-50 text-amber-800',
+  Validé: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  Refusé: 'border-red-200 bg-red-50 text-red-700',
+  Remplacé: 'border-stone-200 bg-stone-100 text-stone-600',
+};
+const requestDateTime = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const formatRequestDate = (value: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : requestDateTime.format(date);
+};
+
+const PriceChange: React.FC<{ label: string; tone: Tone; from: number; to: number }> = ({ label, tone, from, to }) => {
+  const changed = !samePrice(from, to);
+  const color = tone === 'indigo' ? 'text-indigo-700' : 'text-amber-700';
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-stone-400">{label}</p>
+      {changed ? (
+        <p className="flex flex-wrap items-center gap-1 text-sm tabular-nums">
+          <span className="text-stone-400 line-through">{money.format(from)}</span>
+          <ArrowRight className="h-3 w-3 text-stone-400" />
+          <span className={`font-bold ${color}`}>{money.format(to)} DH</span>
+        </p>
+      ) : (
+        <p className="text-sm tabular-nums text-stone-600">{money.format(to)} DH <span className="text-[10px] text-stone-400">inchangé</span></p>
+      )}
+    </div>
+  );
+};
+
+/** Onglet « À valider » : corrections soumises par les rôles non validateurs. */
+const ValidationPanel: React.FC<{ canValidate: boolean }> = ({ canValidate }) => {
+  const [view, setView] = useState<'pending' | 'history'>('pending');
+  const [selected, setSelected] = useState<Record<number, true>>({});
+  const { data, isLoading, isFetching, isError, refetch } = useGetSalePriceCorrectionRequestsQuery({ status: view }, { refetchOnMountOrArgChange: true });
+  const [decide, { isLoading: isDeciding }] = useDecideSalePriceCorrectionRequestsMutation();
+  const requests = useMemo(() => data?.data ?? [], [data]);
+  const selectable = canValidate && view === 'pending';
+  const selectedIds = requests.filter((request) => selected[request.id]).map((request) => request.id);
+  const allSelected = requests.length > 0 && selectedIds.length === requests.length;
+
+  useEffect(() => { setSelected({}); }, [view]);
+
+  const runDecision = async (ids: number[], decision: 'approve' | 'reject') => {
+    if (!ids.length || isDeciding) return;
+    const confirmation = await showConfirmation(
+      decision === 'approve'
+        ? `${ids.length} correction(s) seront appliquées au catalogue et au stock.`
+        : `${ids.length} correction(s) seront refusées. Les prix ne changent pas.`,
+      decision === 'approve' ? 'Valider les corrections ?' : 'Refuser les corrections ?'
+    );
+    if (!confirmation.isConfirmed) return;
+    try {
+      const result = await decide({ ids, decision }).unwrap();
+      setSelected({});
+      if (result.processed) showSuccess(`${result.processed} correction(s) ${decision === 'approve' ? 'validée(s) et appliquée(s)' : 'refusée(s)'}`);
+      if (result.failed.length) {
+        showError(result.failed.map((failure) => `#${failure.id} : ${failure.message}`).join('\n'), `${result.failed.length} demande(s) non traitée(s)`);
+      }
+    } catch (decideError) {
+      const apiError = decideError as { data?: { message?: string } };
+      showError(apiError.data?.message || 'Impossible de traiter ces demandes.', 'Échec de la validation');
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-[1800px] px-4 py-5 sm:px-6">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-1 rounded-lg bg-stone-100 p-0.5" role="group" aria-label="Filtrer les demandes">
+          {([{ id: 'pending', label: 'En attente' }, { id: 'history', label: 'Historique' }] as const).map((chip) => (
+            <button key={chip.id} type="button" onClick={() => setView(chip.id)} className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${view === chip.id ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}>{chip.label}</button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {selectable ? (
+            <>
+              <span className="text-xs tabular-nums text-stone-600">{selectedIds.length} sélectionnée(s)</span>
+              <button type="button" onClick={() => void runDecision(selectedIds, 'reject')} disabled={!selectedIds.length || isDeciding} className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"><X className="h-4 w-4" /> Refuser</button>
+              <button type="button" onClick={() => void runDecision(selectedIds, 'approve')} disabled={!selectedIds.length || isDeciding} className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">{isDeciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Valider</button>
+            </>
+          ) : null}
+          <button type="button" onClick={() => void refetch()} disabled={isFetching} aria-label="Actualiser" className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /></button>
+        </div>
+      </div>
+
+      {!canValidate ? (
+        <p className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+          <Clock className="h-4 w-4 shrink-0" /> Vos corrections ne sont pas appliquées directement : elles attendent la validation du PDG ou du Manager.
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <div className="flex min-h-72 items-center justify-center rounded-xl border border-stone-200 bg-white text-sm font-medium text-stone-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-emerald-600" /> Chargement des demandes…</div>
+      ) : isError ? (
+        <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-red-200 bg-white p-8 text-center">
+          <AlertCircle className="h-8 w-8 text-red-500" />
+          <p className="mt-3 font-bold text-stone-900">Impossible de charger les demandes</p>
+          <button type="button" onClick={() => void refetch()} className="mt-4 rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white">Réessayer</button>
+        </div>
+      ) : requests.length === 0 ? (
+        <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-stone-200 bg-white p-8 text-center">
+          <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+          <p className="mt-3 font-bold text-stone-900">{view === 'pending' ? 'Aucune correction à valider' : 'Aucune décision pour le moment'}</p>
+        </div>
+      ) : (
+        <div className={`overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm transition-opacity ${isFetching ? 'opacity-70' : ''}`}>
+          <table className="w-full min-w-[980px] border-collapse text-left">
+            <thead className="bg-stone-100/80 text-[11px] font-bold uppercase tracking-wide text-stone-500">
+              <tr>
+                <th className="px-4 py-3">
+                  <span className="flex items-center gap-2">
+                    {selectable ? (
+                      <input
+                        type="checkbox" checked={allSelected} disabled={isDeciding} aria-label="Tout sélectionner"
+                        onChange={() => setSelected(allSelected ? {} : Object.fromEntries(requests.map((request) => [request.id, true])) as Record<number, true>)}
+                        className="h-4 w-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                    ) : null}
+                    Produit / variante
+                  </span>
+                </th>
+                <th className="px-3 py-3">Prix vente</th>
+                <th className="px-3 py-3">Prix vente 2</th>
+                <th className="px-3 py-3">Demandé par</th>
+                <th className="px-3 py-3">{view === 'pending' ? 'Statut' : 'Décision'}</th>
+                {selectable ? <th className="px-3 py-3 text-right">Action</th> : null}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-200">
+              {requests.map((request) => (
+                <tr key={request.id} className={`align-top ${selected[request.id] ? 'bg-emerald-50/60' : 'hover:bg-stone-50'}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-3">
+                      {selectable ? (
+                        <input
+                          type="checkbox" checked={Boolean(selected[request.id])} disabled={isDeciding}
+                          aria-label={`Sélectionner ${request.designation}`}
+                          onChange={() => setSelected((previous) => { const next = { ...previous }; if (next[request.id]) delete next[request.id]; else next[request.id] = true; return next; })}
+                          className="mt-3 h-4 w-4 shrink-0 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                      ) : null}
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
+                        {request.image_url ? <img src={toBackendUrl(request.image_url)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageOff className="h-4 w-4 text-stone-400" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold leading-5 text-stone-900">{request.designation}</p>
+                        {request.variant_name ? <p className="text-sm font-semibold text-indigo-700">{request.variant_name}</p> : <p className="text-xs text-stone-400">Produit de base</p>}
+                        <p className="mt-0.5 text-[11px] tabular-nums text-stone-500">ID {request.product_id}{request.reference ? ` · Réf. ${request.reference}` : ''} · Demande #{request.id}</p>
+                        {request.apply_to_all_variants ? <span className="mt-1 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800">Produit + toutes ses variantes</span> : null}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3"><PriceChange label="PV1" tone="indigo" from={request.expected_prix_vente} to={request.prix_vente} /></td>
+                  <td className="px-3 py-3"><PriceChange label="PV2" tone="amber" from={request.expected_prix_vente_2} to={request.prix_vente_2} /></td>
+                  <td className="px-3 py-3 text-sm">
+                    <p className="font-semibold text-stone-800">{request.requested_by_name || '—'}</p>
+                    <p className="text-[11px] text-stone-500">{formatRequestDate(request.requested_at)}</p>
+                  </td>
+                  <td className="px-3 py-3 text-sm">
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-bold ${requestStatusStyles[request.statut] ?? requestStatusStyles['En attente']}`}>{request.statut}</span>
+                    {request.decided_at && request.statut !== 'Remplacé' ? (
+                      <p className="mt-1 text-[11px] text-stone-500">{request.decided_by_name ? `par ${request.decided_by_name} · ` : ''}{formatRequestDate(request.decided_at)}</p>
+                    ) : null}
+                  </td>
+                  {selectable ? (
+                    <td className="px-3 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <button type="button" onClick={() => void runDecision([request.id], 'reject')} disabled={isDeciding} title="Refuser" className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 transition hover:bg-red-50 disabled:opacity-50"><X className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => void runDecision([request.id], 'approve')} disabled={isDeciding} title="Valider et appliquer" className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-50"><Check className="h-4 w-4" /></button>
+                      </div>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+};
+
+const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canValidate }) => {
   const [activeTab, setActiveTab] = useState<CorrectionTab>('pending');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState<number>(30);
@@ -355,7 +539,10 @@ const SalePriceCorrectionsContent: React.FC = () => {
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [search]);
 
   const { data: categories = [] } = useGetCategoriesQuery();
-  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab, category_id: categoryId === '' ? undefined : categoryId }, { refetchOnMountOrArgChange: true });
+  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab === 'processed' ? 'processed' : 'pending', category_id: categoryId === '' ? undefined : categoryId }, { refetchOnMountOrArgChange: true, skip: activeTab === 'validation' });
+  const { data: pendingRequests } = useGetSalePriceCorrectionRequestsQuery({ status: 'pending' }, { pollingInterval: 60000 });
+  const pendingRequestCount = pendingRequests?.data.length ?? 0;
+  const isValidationTab = activeTab === 'validation';
   const [applyCorrections, { isLoading: isApplying }] = useUpdateSalePriceCorrectionsMutation();
   const [resetCorrections, { isLoading: isResetting }] = useResetSalePriceCorrectionsMutation();
   const [researchSalePrices] = useResearchSalePricesMutation();
@@ -363,7 +550,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const [webProgress, setWebProgress] = useState<{ done: number; total: number } | null>(null);
   const [webRunStats, setWebRunStats] = useState<{ cached: number; webCalls: number; estimatedCostUsd: number } | null>(null);
   const isSaving = isApplying || isResetting;
-  const rows = useMemo(() => data?.data ?? [], [data]);
+  const rows = useMemo(() => (activeTab === 'validation' ? [] : data?.data ?? []), [activeTab, data]);
   const meta = data?.meta;
   const readOnly = activeTab === 'processed';
   const pageWebCosts = useMemo(() => rows.reduce((total, row) => {
@@ -698,7 +885,10 @@ const SalePriceCorrectionsContent: React.FC = () => {
   const submit = async () => {
     if (!readyRows.length || isSaving) return;
     const groupedCount = readyRows.filter((row) => groupKeys[rowKey(row)]).length;
-    const confirmation = await showConfirmation(`${readyRows.length} ligne(s) décidée(s) seront traitée(s), dont ${changedCount} avec modification de prix.${groupedCount ? ` ${groupedCount} produit(s) seront aussi appliqués à toutes leurs variantes actives.` : ''}`, 'Corriger les prix de vente ?');
+    const confirmation = await showConfirmation(
+      `${readyRows.length} ligne(s) décidée(s)${canValidate ? ' seront traitée(s)' : ' seront envoyée(s) pour validation'}, dont ${changedCount} avec modification de prix.${groupedCount ? ` ${groupedCount} produit(s) concernent aussi toutes leurs variantes actives.` : ''}${canValidate ? '' : ' Les prix ne changeront qu’après validation par le PDG ou le Manager.'}`,
+      canValidate ? 'Corriger les prix de vente ?' : 'Envoyer pour validation ?'
+    );
     if (!confirmation.isConfirmed) return;
     try {
       const result = await applyCorrections({
@@ -711,9 +901,9 @@ const SalePriceCorrectionsContent: React.FC = () => {
           return { product_id: row.product_id, variant_id: row.variant_id, action: unchanged && !applyToAllVariants ? 'confirm' as const : 'apply' as const, apply_to_all_variants: applyToAllVariants, prix_vente: prixVente, prix_vente_2: prixVente2, expected_prix_vente: row.current_prix_vente, expected_prix_vente_2: row.current_prix_vente_2 };
         }),
       }).unwrap();
-      const processed = result.processed;
       setDecisions({}); setGroupKeys({}); setFocusedKey(null);
-      showSuccess(`${processed} ligne(s) traitée(s)`);
+      if (result.pending_validation) showSuccess(`${result.queued ?? readyRows.length} correction(s) envoyée(s) dans « À valider »`);
+      else showSuccess(`${result.processed} ligne(s) traitée(s)`);
       await refetch();
     } catch (submitError) {
       const apiError = submitError as { status?: number; data?: { message?: string } };
@@ -727,7 +917,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
       type="button" onClick={() => void submit()} disabled={!readyRows.length || isSaving}
       className={`inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'h-10' : 'h-11'}`}
     >
-      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Corriger {readyRows.length ? `(${readyRows.length})` : ''}
+      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : canValidate ? <Sparkles className="h-4 w-4" /> : <Send className="h-4 w-4" />} {canValidate ? 'Corriger' : 'Envoyer pour validation'} {readyRows.length ? `(${readyRows.length})` : ''}
     </button>
   );
 
@@ -741,18 +931,20 @@ const SalePriceCorrectionsContent: React.FC = () => {
               <h1 className="text-2xl font-bold tracking-tight text-stone-950">Assistant de correction des prix</h1>
               <p className="mt-1 max-w-3xl text-sm text-stone-500">Comparez les prix actuels aux ventes réellement pratiquées. Rien n’est présélectionné&nbsp;: chaque ligne n’est envoyée qu’après vos deux choix.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">{readOnly ? sendBackButton() : submitButton()}</div>
+            <div className="flex flex-wrap items-center gap-2">{isValidationTab ? null : readOnly ? sendBackButton() : submitButton()}</div>
           </div>
 
           <div className="mt-5 flex flex-col gap-3 border-t border-stone-100 pt-4 md:flex-row md:items-center md:justify-between">
             <nav className="flex gap-1" aria-label="État des corrections">
-              {([{ id: 'pending', label: 'À corriger' }, { id: 'processed', label: 'Traités' }] as const).map((tab) => (
-                <button key={tab.id} type="button" onClick={() => resetView(tab.id)} className={`relative px-4 py-2 text-sm font-bold transition ${activeTab === tab.id ? 'text-stone-950' : 'text-stone-500 hover:text-stone-800'}`}>
-                  {tab.label}{activeTab === tab.id ? <span className="absolute inset-x-2 -bottom-[17px] h-0.5 bg-emerald-600" /> : null}
+              {([{ id: 'pending', label: 'À corriger' }, { id: 'validation', label: 'À valider' }, { id: 'processed', label: 'Traités' }] as const).map((tab) => (
+                <button key={tab.id} type="button" onClick={() => resetView(tab.id)} className={`relative inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold transition ${activeTab === tab.id ? 'text-stone-950' : 'text-stone-500 hover:text-stone-800'}`}>
+                  {tab.label}
+                  {tab.id === 'validation' && pendingRequestCount > 0 ? <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white tabular-nums">{pendingRequestCount}</span> : null}
+                  {activeTab === tab.id ? <span className="absolute inset-x-2 -bottom-[17px] h-0.5 bg-emerald-600" /> : null}
                 </button>
               ))}
             </nav>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className={`flex flex-wrap items-center gap-2 ${isValidationTab ? 'hidden' : ''}`}>
               <label className="relative block w-full md:w-72">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                 <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ID, référence, produit, variante…" className="h-10 w-full rounded-lg border-stone-300 bg-stone-50 pl-9 pr-3 text-sm text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-emerald-500" />
@@ -783,7 +975,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
             </div>
           </div>
 
-          {meta ? (
+          {meta && !isValidationTab ? (
             <p className="mt-3 text-xs font-medium text-stone-500" aria-live="polite">
               <span className="font-bold tabular-nums text-stone-900">{meta.total}</span> entité(s){categoryId !== '' || query ? ' pour ce filtre' : ''}
               {meta.total > 0 ? <> · affichage {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} · page {meta.page} sur {meta.totalPages}</> : null}
@@ -883,6 +1075,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
         </div>
       ) : null}
 
+      {isValidationTab ? <ValidationPanel canValidate={canValidate} /> : (
       <section className="mx-auto max-w-[1800px] px-4 py-5 sm:px-6">
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center rounded-xl border border-stone-200 bg-white text-sm font-medium text-stone-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-emerald-600" /> Chargement des prix et de l’historique…</div>
@@ -973,6 +1166,7 @@ const SalePriceCorrectionsContent: React.FC = () => {
           </div>
         ) : null}
       </section>
+      )}
 
       {rows.length > 0 ? (
         <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-xl xl:hidden">
@@ -999,7 +1193,7 @@ const SalePriceCorrectionsPage: React.FC = () => {
   if (!data?.allowed) {
     return <div role="alert" className="mx-auto mt-12 max-w-md rounded-lg border border-amber-200 bg-white p-6 text-center text-sm text-stone-700"><h1 className="text-lg font-bold text-stone-900">Accès non autorisé</h1><p className="mt-2">Demandez au PDG l’autorisation « Correction prix ventes » dans « Autorisations par page ».</p></div>;
   }
-  return <SalePriceCorrectionsContent />;
+  return <SalePriceCorrectionsContent canValidate={Boolean(data.can_validate)} />;
 };
 
 export default SalePriceCorrectionsPage;

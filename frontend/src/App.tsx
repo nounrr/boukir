@@ -90,6 +90,7 @@ const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
 const InventoryPage = React.lazy(() => import('./pages/InventoryPage'));
 const ProductsTranslatePage = React.lazy(() => import('./pages/ProductsTranslatePage'));
 const ProductPhotoStudioPage = React.lazy(() => import('./pages/ProductPhotoStudioPage'));
+const ImageEnhancementPage = React.lazy(() => import('./pages/ImageEnhancementPage'));
 const PaymentPhoneCapturePage = React.lazy(() => import('./pages/PaymentPhoneCapturePage'));
 const RemisesPage = React.lazy(() => import('./pages/RemisesPage'));
 
@@ -373,6 +374,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <ProductPhotoStudioPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/products/image-enhancement"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <ImageEnhancementPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

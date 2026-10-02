@@ -254,12 +254,12 @@ router.use(async (_req, _res, next) => {
 // ----------------------------
 // AI processing
 // ----------------------------
-const ALLOWED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1-mini']);
-const ALLOWED_IMAGE_QUALITIES = new Set(['low', 'medium', 'high']);
-const DEFAULT_IMAGE_MODEL = ALLOWED_IMAGE_MODELS.has(process.env.AI_IMAGE_MODEL)
+export const ALLOWED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1-mini']);
+export const ALLOWED_IMAGE_QUALITIES = new Set(['low', 'medium', 'high']);
+export const DEFAULT_IMAGE_MODEL = ALLOWED_IMAGE_MODELS.has(process.env.AI_IMAGE_MODEL)
   ? process.env.AI_IMAGE_MODEL
   : 'gpt-image-2';
-const DEFAULT_IMAGE_QUALITY = ALLOWED_IMAGE_QUALITIES.has(process.env.AI_IMAGE_QUALITY)
+export const DEFAULT_IMAGE_QUALITY = ALLOWED_IMAGE_QUALITIES.has(process.env.AI_IMAGE_QUALITY)
   ? process.env.AI_IMAGE_QUALITY
   : 'medium';
 
@@ -280,7 +280,7 @@ const IMAGE_PROMPT =
   'CRITICAL: keep the product itself EXACTLY identical — same shape, colors, materials, labels, logos and text. ' +
   'Do not add any props, reflections, watermarks or text. Nothing else in the frame, only the product on white.';
 
-const getOpenAIClient = () => {
+export const getOpenAIClient = () => {
   const key = String(process.env.OPENAI_API_KEY ?? '').trim();
   if (!key) return null;
   return new OpenAI({ apiKey: key, maxRetries: 2 });
@@ -322,7 +322,7 @@ function registerProcessingJobs(jobs) {
   }
 }
 
-function getImageBilling(result, { model, quality }) {
+export function getImageBilling(result, { model, quality }) {
   const usage = result?.usage;
   const rates = IMAGE_TOKEN_RATES[model];
   const inputTextTokens = Number(usage?.input_tokens_details?.text_tokens);

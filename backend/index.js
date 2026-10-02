@@ -73,6 +73,7 @@ import uploadRouter from './routes/upload.js';
 import paymentPhoneCapturesRouter from './routes/paymentPhoneCaptures.js';
 import uploadsRouter from './routes/uploads.js';
 import productPhotosRouter from './routes/productPhotos.js';
+import productImageEnhancementRouter from './routes/productImageEnhancement.js';
 import productNameCorrectionsRouter from './routes/productNameCorrections.js';
 
 import importProuctsRouter from './routes/importProducts.js';
@@ -424,6 +425,7 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/payment-phone-captures', paymentPhoneCapturesRouter);
 app.use('/api/uploads', uploadsRouter);
 app.use('/api/product-photos', productPhotosRouter);
+app.use('/api/product-image-enhancement', productImageEnhancementRouter);
 app.use('/api/product-name-corrections', productNameCorrectionsRouter);
 
 app.use('/api/import/products-excel', importProuctsRouter);

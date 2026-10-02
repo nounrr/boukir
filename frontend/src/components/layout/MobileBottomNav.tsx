@@ -67,6 +67,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Stock', to: '/stock', show: true },
         { name: 'Stock faible rotation', to: '/slow-moving-stock', show: user?.role === 'PDG' },
         { name: 'Photos Produits', to: '/product-photos', show: true },
+        { name: 'Qualité images', to: '/products/image-enhancement', show: !isChefChauffeur },
         { name: 'Produits Translate', to: '/products/translate', show: true },
         { name: 'Catégories', to: '/categories', show: true },
         { name: 'Produits archivés', to: '/products/archived', show: user?.role === 'PDG' },

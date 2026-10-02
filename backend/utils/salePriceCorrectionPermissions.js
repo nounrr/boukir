@@ -10,9 +10,24 @@ export function canAccessSalePriceCorrections(user) {
     && normalizePermissionFlag(user.acces_correction_prix_vente);
 }
 
+// Only these roles apply corrections directly and decide on queued requests;
+// every other authorized role submits corrections for validation.
+const VALIDATOR_ROLES = new Set(['PDG', 'Manager']);
+
+export function canValidateSalePriceCorrections(user) {
+  return canAccessSalePriceCorrections(user) && VALIDATOR_ROLES.has(user.role);
+}
+
 export function requireSalePriceCorrectionAccess(req, res, next) {
   if (!canAccessSalePriceCorrections(req.user)) {
     return res.status(403).json({ message: 'Accès à la correction des prix de vente non autorisé.' });
+  }
+  return next();
+}
+
+export function requireSalePriceCorrectionValidator(req, res, next) {
+  if (!canValidateSalePriceCorrections(req.user)) {
+    return res.status(403).json({ message: 'Seuls le PDG et le Manager peuvent valider les corrections de prix de vente.' });
   }
   return next();
 }
