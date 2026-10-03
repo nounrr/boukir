@@ -1,4 +1,5 @@
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
+import { snapshotsForProductVariant } from '../utils/bonSnapshotIndex';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
@@ -537,7 +538,7 @@ const resolveAverageSnapshotCoutRevient = (
   let weightedValue = 0;
   let totalQty = 0;
 
-  for (const snap of snapshotProducts) {
+  for (const snap of snapshotsForProductVariant(snapshotProducts, productId, variantId)) {
     if (!snap?.snapshot_id) continue;
     if (String(snap.id) !== String(productId)) continue;
     if (String(snap.variant_id || '') !== variantKey) continue;
@@ -597,7 +598,7 @@ const findSnapshotForProductVariant = (
   if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return null;
   const variantKey = String(variantId || '');
   const pv = prixVente !== undefined && prixVente !== null && prixVente !== '' ? Number(prixVente) : null;
-  const candidates = snapshotProducts.filter((snap: any) => {
+  const candidates = snapshotsForProductVariant(snapshotProducts, productId, variantId).filter((snap: any) => {
     if (!snap?.snapshot_id) return false;
     if (String(snap.id) !== String(productId)) return false;
     if (String(snap.variant_id || '') !== variantKey) return false;
@@ -624,7 +625,7 @@ const findLatestSnapshotForProductVariant = (
 ) => {
   if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return null;
   const variantKey = String(variantId || '');
-  const candidates = snapshotProducts.filter((snap: any) => {
+  const candidates = snapshotsForProductVariant(snapshotProducts, productId, variantId).filter((snap: any) => {
     if (!snap?.snapshot_id) return false;
     if (String(snap.id) !== String(productId)) return false;
     if (String(snap.variant_id || '') !== variantKey) return false;
@@ -642,7 +643,7 @@ const findOldestPricedSnapshotForProductVariant = (
 ) => {
   if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return null;
   const variantKey = String(variantId || '');
-  const candidates = snapshotProducts.filter((snap: any) => {
+  const candidates = snapshotsForProductVariant(snapshotProducts, productId, variantId).filter((snap: any) => {
     if (!snap?.snapshot_id || String(snap.id) !== String(productId)) return false;
     if (String(snap.variant_id || '') !== variantKey) return false;
     const flag = snap.snapshot_en_validation;
@@ -1310,19 +1311,17 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Les grosses listes (produits, snapshots, clients, fournisseurs, historiques) ne se
   // chargent qu'à la PREMIÈRE interaction de l'utilisateur avec le formulaire
   // (clic / focus / saisie), c.-à-d. quand il ouvre un select pour rechercher.
-  // En mode édition OU formulaire pré-rempli (ex: avoir e-commerce avec items/contact
-  // déjà choisis) on charge tout de suite : ces lignes ont besoin des données pour
-  // s'afficher correctement.
+  // En édition, les lignes du bon fournissent les données d'affichage ; le
+  // catalogue et les lots sont recherchés à la demande, y compris pour les devis.
+  // Les formulaires pré-remplis en création chargent encore leurs données.
   const isPrefilled = useMemo(() => {
     const iv = initialValues as any;
     if (!iv) return false;
     if (Array.isArray(iv.items) && iv.items.length > 0) return true;
     return Boolean(iv.client_id || iv.fournisseur_id || iv.client_nom || iv.ecommerce_order_id);
   }, [initialValues]);
-  const needsImmediateCostData = isEditMode && String(currentTab || (initialValues as any)?.type || '') === 'Devis';
-  const loadImmediately = needsImmediateCostData || (!isEditMode && isPrefilled);
-  // Données des LIGNES (produits, snapshots, historiques) : chargées tout de suite en
-  // édition/préremplissage car les items existants en ont besoin pour s'afficher.
+  const loadImmediately = !isEditMode && isPrefilled;
+  // Le chargement complet est réservé aux formulaires pré-remplis en création.
   const [heavyDataReady, setHeavyDataReady] = useState<boolean>(() => loadImmediately);
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [selectedProductCache, setSelectedProductCache] = useState<Record<string, any>>({});

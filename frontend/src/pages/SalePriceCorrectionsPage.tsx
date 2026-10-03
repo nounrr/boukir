@@ -5,7 +5,7 @@ import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
 
-type CorrectionTab = 'pending' | 'validation' | 'processed';
+type CorrectionTab = 'pending' | 'validation' | 'processed' | 'typos';
 type RowFilter = 'all' | 'todo' | 'ready';
 type WebFilter = 'all' | 'no_info' | 'found' | 'near_10';
 type Side = 'pv1' | 'pv2';
@@ -539,7 +539,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [search]);
 
   const { data: categories = [] } = useGetCategoriesQuery();
-  const { data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab === 'processed' ? 'processed' : 'pending', category_id: categoryId === '' ? undefined : categoryId }, { refetchOnMountOrArgChange: true, skip: activeTab === 'validation' });
+  const { currentData: data, isLoading, isFetching, isError, error, refetch } = useGetSalePriceCorrectionsQuery({ page, limit, q: query || undefined, status: activeTab === 'typos' ? 'typos' : activeTab === 'processed' ? 'processed' : 'pending', category_id: categoryId === '' ? undefined : categoryId }, { refetchOnMountOrArgChange: true, skip: activeTab === 'validation' });
   const { data: pendingRequests } = useGetSalePriceCorrectionRequestsQuery({ status: 'pending' }, { pollingInterval: 60000 });
   const pendingRequestCount = pendingRequests?.data.length ?? 0;
   const isValidationTab = activeTab === 'validation';
@@ -552,7 +552,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
   const isSaving = isApplying || isResetting;
   const rows = useMemo(() => (activeTab === 'validation' ? [] : data?.data ?? []), [activeTab, data]);
   const meta = data?.meta;
-  const readOnly = activeTab === 'processed';
+  const readOnly = activeTab === 'processed' || activeTab === 'typos';
   const pageWebCosts = useMemo(() => rows.reduce((total, row) => {
     const cost = webResults[rowKey(row)]?.usage?.estimated_cost_usd;
     if (typeof cost === 'number' && Number.isFinite(cost)) {
@@ -873,7 +873,41 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
     }
   };
 
-  const sendBackButton = (compact?: boolean) => (
+  const swapSelectedPrices = async () => {
+    if (!checkedRows.length || isSaving || isFetching) return;
+    try {
+      const result = await applyCorrections({
+        corrections: checkedRows.map((row) => ({
+          product_id: row.product_id,
+          variant_id: row.variant_id,
+          action: 'apply' as const,
+          prix_vente: row.current_prix_vente_2,
+          prix_vente_2: row.current_prix_vente,
+          expected_prix_vente: row.current_prix_vente,
+          expected_prix_vente_2: row.current_prix_vente_2,
+        })),
+      }).unwrap();
+      setCheckedKeys({});
+      showSuccess(result.pending_validation
+        ? `${result.queued} échange(s) envoyé(s) pour validation`
+        : `${result.processed} échange(s) PV1 / PV2 effectué(s)`);
+      await refetch();
+    } catch (error) {
+      const apiError = error as { data?: { message?: string } };
+      showError(apiError.data?.message || 'Impossible d’échanger les prix.');
+      await refetch();
+    }
+  };
+
+  const swapButton = (compact?: boolean) => (
+    <button type="button" onClick={() => void swapSelectedPrices()} disabled={!checkedRows.length || isSaving || isFetching}
+      className={`inline-flex items-center gap-2 rounded-lg bg-indigo-700 px-5 text-sm font-bold text-white hover:bg-indigo-800 disabled:opacity-50 ${compact ? 'h-10' : 'h-11'}`}>
+      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+      {canValidate ? 'Échanger PV1 / PV2' : 'Envoyer l’échange pour validation'} {checkedRows.length ? `(${checkedRows.length})` : ''}
+    </button>
+  );
+
+  const sendBackButton = (compact?: boolean) => activeTab === 'typos' ? swapButton(compact) : (
     <button
       type="button" onClick={() => void sendBackToPending()} disabled={!checkedRows.length || isSaving}
       className={`inline-flex items-center gap-2 rounded-lg bg-indigo-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'h-10' : 'h-11'}`}
@@ -936,7 +970,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
 
           <div className="mt-5 flex flex-col gap-3 border-t border-stone-100 pt-4 md:flex-row md:items-center md:justify-between">
             <nav className="flex gap-1" aria-label="État des corrections">
-              {([{ id: 'pending', label: 'À corriger' }, { id: 'validation', label: 'À valider' }, { id: 'processed', label: 'Traités' }] as const).map((tab) => (
+              {([{ id: 'pending', label: 'À corriger' }, { id: 'validation', label: 'À valider' }, { id: 'processed', label: 'Traités' }, { id: 'typos', label: 'Faute de frappe' }] as const).map((tab) => (
                 <button key={tab.id} type="button" onClick={() => resetView(tab.id)} className={`relative inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold transition ${activeTab === tab.id ? 'text-stone-950' : 'text-stone-500 hover:text-stone-800'}`}>
                   {tab.label}
                   {tab.id === 'validation' && pendingRequestCount > 0 ? <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white tabular-nums">{pendingRequestCount}</span> : null}
@@ -944,6 +978,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
                 </button>
               ))}
             </nav>
+            {activeTab === 'typos' ? <p className="text-sm text-indigo-700">Produits et variantes traités avec PV2 supérieur à PV1. « Tout sélectionner » sélectionne la page affichée.</p> : null}
             <div className={`flex flex-wrap items-center gap-2 ${isValidationTab ? 'hidden' : ''}`}>
               <label className="relative block w-full md:w-72">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />

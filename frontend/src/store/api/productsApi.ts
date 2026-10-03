@@ -323,7 +323,7 @@ const productsApi = api.injectEndpoints({
 
     getSalePriceCorrections: builder.query<
       SalePriceCorrectionsResponse,
-      { page: number; limit: number; q?: string; status: 'pending' | 'processed'; category_id?: number }
+      { page: number; limit: number; q?: string; status: 'pending' | 'processed' | 'typos'; category_id?: number }
     >({
       query: (params) => ({ url: '/products/sale-price-corrections', params }),
       providesTags: ['Product'],

@@ -4795,11 +4795,20 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
     const offset = (page - 1) * limit;
     const q = String(req.query.q || '').trim().slice(0, 100);
-    const status = String(req.query.status || 'pending') === 'processed' ? 'processed' : 'pending';
+    const status = ['processed', 'typos'].includes(String(req.query.status)) ? String(req.query.status) : 'pending';
+    const hasTypoSnapshotValidation = status === 'typos' && await hasProductSnapshotEnValidationColumn();
+    const effectivePriceSql = (field) => `COALESCE((
+      SELECT ps.${field} FROM product_snapshot ps
+      WHERE ps.product_id = entity.product_id AND ps.variant_id <=> entity.variant_id
+        AND ps.${field} > 0 ${hasTypoSnapshotValidation ? 'AND COALESCE(ps.en_validation, 1) <> 0' : ''}
+      ORDER BY (ps.quantite > 0) DESC, ps.created_at ASC, ps.id ASC LIMIT 1
+    ), CASE WHEN entity.variant_${field} > 0 THEN entity.variant_${field} END, entity.product_${field}, 0)`;
     const categoryId = Number.parseInt(req.query.category_id, 10);
     const hasCategory = Number.isSafeInteger(categoryId) && categoryId > 0;
     const like = `%${q}%`;
-    const statusSql = status === 'processed'
+    const statusSql = status === 'typos'
+      ? `entity.corrected_at IS NOT NULL AND ${effectivePriceSql('prix_vente_2')} > ${effectivePriceSql('prix_vente')}`
+      : status === 'processed'
       ? 'entity.corrected_at IS NOT NULL'
       : `entity.corrected_at IS NULL AND NOT EXISTS (
           SELECT 1 FROM sale_price_correction_requests r

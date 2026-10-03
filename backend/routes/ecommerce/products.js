@@ -126,7 +126,7 @@ router.get('/', async (req, res, next) => {
       color,        // Single or comma-separated colors
       unit,         // Single or comma-separated units
       in_stock_only, // Filter only in-stock products
-      sort = 'newest', // newest, price_asc, price_desc, popular, promo
+      sort = 'category', // category, newest, price_asc, price_desc, popular, promo
       page = 1,     // Page number (starts from 1)
       limit = 50,   // Items per page
       per_page      // Alternative to limit
@@ -283,7 +283,8 @@ router.get('/', async (req, res, next) => {
     }
 
     // Build ORDER BY clause
-    let orderBy = 'p.created_at DESC'; // Default: newest first
+    const categoryOrder = 'c.nom IS NULL ASC, c.nom ASC, c.id ASC, p.designation ASC, p.id ASC';
+    let orderBy = categoryOrder;
     switch (sort) {
       case 'price_asc':
         orderBy = `${priceExpr} ASC`;
@@ -299,8 +300,11 @@ router.get('/', async (req, res, next) => {
         orderBy = 'p.created_at DESC';
         break;
       case 'newest':
-      default:
         orderBy = 'p.created_at DESC';
+        break;
+      case 'category':
+      default:
+        orderBy = categoryOrder;
         break;
     }
 
