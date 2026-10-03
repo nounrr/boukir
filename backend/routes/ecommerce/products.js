@@ -293,14 +293,14 @@ router.get('/', async (req, res, next) => {
         orderBy = `${priceExpr} DESC`;
         break;
       case 'promo':
-        orderBy = 'p.pourcentage_promo DESC, p.created_at DESC';
+        orderBy = `p.pourcentage_promo DESC, ${categoryOrder}`;
         break;
       case 'popular':
         // Could be based on sales count or views in the future
         orderBy = 'p.created_at DESC';
         break;
       case 'newest':
-        orderBy = 'p.created_at DESC';
+        orderBy = categoryOrder;
         break;
       case 'category':
       default:
