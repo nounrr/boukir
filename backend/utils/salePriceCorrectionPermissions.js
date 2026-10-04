@@ -13,8 +13,12 @@ export function canAccessSalePriceCorrections(user) {
 // Only these roles apply corrections directly and decide on queued requests;
 // every other authorized role submits corrections for validation.
 const VALIDATOR_ROLES = new Set(['PDG', 'Manager']);
+// This employee submits PV1/PV2 proposals for another validator, regardless of role.
+const VALIDATION_REQUIRED_CINS = new Set(['KB285549']);
 
 export function canValidateSalePriceCorrections(user) {
+  const cin = String(user?.cin ?? '').trim().toUpperCase();
+  if (VALIDATION_REQUIRED_CINS.has(cin)) return false;
   return canAccessSalePriceCorrections(user) && VALIDATOR_ROLES.has(user.role);
 }
 
@@ -27,7 +31,7 @@ export function requireSalePriceCorrectionAccess(req, res, next) {
 
 export function requireSalePriceCorrectionValidator(req, res, next) {
   if (!canValidateSalePriceCorrections(req.user)) {
-    return res.status(403).json({ message: 'Seuls le PDG et le Manager peuvent valider les corrections de prix de vente.' });
+    return res.status(403).json({ message: 'Votre compte ne peut pas valider les corrections de prix de vente. Elles doivent être validées par un autre responsable autorisé.' });
   }
   return next();
 }
