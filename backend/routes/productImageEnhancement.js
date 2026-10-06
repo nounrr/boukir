@@ -96,22 +96,26 @@ const absolutePathForUrl = (imageUrl) => {
   return abs.startsWith(`${uploadsRoot}${path.sep}`) ? abs : null;
 };
 
-async function loadAllImageUsages() {
-  const [rows] = await pool.query(`
-    SELECT 'product' AS kind, p.image_url AS url, p.id AS row_id, p.id AS product_id, NULL AS variant_id,
-           p.designation, NULL AS variant_name, p.categorie_id
+// Product and gallery tables may use different collations in existing databases.
+// Normalize every text column (including literals and NULL) before UNION ALL.
+const imageUsageText = (expression) => `CONVERT((${expression}) USING utf8mb4) COLLATE utf8mb4_unicode_ci`;
+
+export async function loadAllImageUsages(db = pool) {
+  const [rows] = await db.query(`
+    SELECT ${imageUsageText("'product'")} AS kind, ${imageUsageText('p.image_url')} AS url, p.id AS row_id, p.id AS product_id, NULL AS variant_id,
+           ${imageUsageText('p.designation')} AS designation, ${imageUsageText('NULL')} AS variant_name, p.categorie_id
       FROM products p
      WHERE COALESCE(p.is_deleted, 0) = 0 AND COALESCE(p.image_url, '') <> ''
     UNION ALL
-    SELECT 'product_gallery', pi.image_url, pi.id, p.id, NULL, p.designation, NULL, p.categorie_id
+    SELECT ${imageUsageText("'product_gallery'")}, ${imageUsageText('pi.image_url')}, pi.id, p.id, NULL, ${imageUsageText('p.designation')}, ${imageUsageText('NULL')}, p.categorie_id
       FROM product_images pi JOIN products p ON p.id = pi.product_id
      WHERE COALESCE(p.is_deleted, 0) = 0 AND COALESCE(pi.image_url, '') <> ''
     UNION ALL
-    SELECT 'variant', pv.image_url, pv.id, p.id, pv.id, p.designation, pv.variant_name, p.categorie_id
+    SELECT ${imageUsageText("'variant'")}, ${imageUsageText('pv.image_url')}, pv.id, p.id, pv.id, ${imageUsageText('p.designation')}, ${imageUsageText('pv.variant_name')}, p.categorie_id
       FROM product_variants pv JOIN products p ON p.id = pv.product_id
      WHERE COALESCE(p.is_deleted, 0) = 0 AND COALESCE(pv.is_deleted, 0) = 0 AND COALESCE(pv.image_url, '') <> ''
     UNION ALL
-    SELECT 'variant_gallery', vi.image_url, vi.id, p.id, pv.id, p.designation, pv.variant_name, p.categorie_id
+    SELECT ${imageUsageText("'variant_gallery'")}, ${imageUsageText('vi.image_url')}, vi.id, p.id, pv.id, ${imageUsageText('p.designation')}, ${imageUsageText('pv.variant_name')}, p.categorie_id
       FROM variant_images vi
       JOIN product_variants pv ON pv.id = vi.variant_id
       JOIN products p ON p.id = pv.product_id
