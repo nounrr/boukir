@@ -4,8 +4,10 @@ import type { AiImageModel, AiImageQuality } from '../store/api/productPhotosApi
 import {
   type EnhancementImage,
   type ImageEnhancementTab,
+  type ImageResolutionFilter,
   type ImageUsageKind,
   useEnhanceImagesMutation,
+  useQueueEnhancementImagesMutation,
   useGetEnhancementImagesQuery,
   useMarkImagesTreatedMutation,
   useUnmarkImagesTreatedMutation,
@@ -23,7 +25,7 @@ const TILE_SIZES = [
   { id: 'site', label: 'Taille site', px: SITE_DETAIL_SIZE },
 ] as const;
 type TileSize = (typeof TILE_SIZES)[number]['id'];
-// En dessous, l'image est agrandie par le navigateur sur la page détail et paraît floue.
+// Référence initiale pour repérer les petites images ; modifiable dans les filtres.
 const LOW_RESOLUTION_PX = 800;
 
 const kindLabels: Record<ImageUsageKind, string> = {
@@ -71,14 +73,16 @@ const ImageTile = React.memo<{
   tab: ImageEnhancementTab;
   selected: boolean;
   busy: boolean;
+  resolutionThreshold: number;
   onToggle: (url: string, shiftKey: boolean) => void;
   onQuickToggleTreated: (image: EnhancementImage) => void;
   onPreview: (image: EnhancementImage) => void;
-}>(({ image, tab, selected, busy, onToggle, onQuickToggleTreated, onPreview }) => {
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+}>(({ image, tab, selected, busy, resolutionThreshold, onToggle, onQuickToggleTreated, onPreview }) => {
+  const [loadedSize, setSize] = useState<{ w: number; h: number } | null>(null);
+  const size = image.dimensions ? { w: image.dimensions.width, h: image.dimensions.height } : loadedSize;
   const main = image.usages[0];
   const processing = image.status === 'processing';
-  const lowRes = size !== null && Math.max(size.w, size.h) < LOW_RESOLUTION_PX;
+  const lowRes = size !== null && Math.max(size.w, size.h) < resolutionThreshold;
   const extraUsages = image.usages.length - 1;
 
   return (
@@ -103,10 +107,10 @@ const ImageTile = React.memo<{
           {!processing ? (
             <button
               type="button" onClick={() => onQuickToggleTreated(image)} disabled={busy}
-              title={tab === 'untreated' ? 'Marquer comme traitée' : image.method === 'ai' ? "Remettre en non traitée (restaure l'original)" : 'Remettre en non traitée'}
-              className={`flex h-8 w-8 items-center justify-center rounded-full border shadow-sm transition disabled:opacity-50 ${tab === 'untreated' ? 'border-emerald-200 bg-white/95 text-emerald-600 hover:bg-emerald-600 hover:text-white' : 'border-stone-200 bg-white/95 text-stone-600 hover:bg-stone-800 hover:text-white'}`}
+              title={tab !== 'treated' ? 'Marquer comme traitée' : image.method === 'ai' ? "Remettre en non traitée (restaure l'original)" : 'Remettre en non traitée'}
+              className={`flex h-8 w-8 items-center justify-center rounded-full border shadow-sm transition disabled:opacity-50 ${tab !== 'treated' ? 'border-emerald-200 bg-white/95 text-emerald-600 hover:bg-emerald-600 hover:text-white' : 'border-stone-200 bg-white/95 text-stone-600 hover:bg-stone-800 hover:text-white'}`}
             >
-              {tab === 'untreated' ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+              {tab !== 'treated' ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
             </button>
           ) : null}
         </div>
@@ -188,6 +192,9 @@ const ImageEnhancementPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [categoryId, setCategoryId] = useState<number | ''>('');
+  const [resolution, setResolution] = useState<ImageResolutionFilter>('all');
+  const [resolutionThreshold, setResolutionThreshold] = useState(LOW_RESOLUTION_PX);
+  const [resolutionInput, setResolutionInput] = useState(String(LOW_RESOLUTION_PX));
   const [tileSize, setTileSize] = useState<TileSize>('medium');
   const [model, setModel] = useState<AiImageModel>('gpt-image-2');
   const [quality, setQuality] = useState<AiImageQuality>('low');
@@ -197,17 +204,24 @@ const ImageEnhancementPage: React.FC = () => {
   const defaultsApplied = useRef(false);
 
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [search]);
+  useEffect(() => {
+    const value = Number(resolutionInput);
+    if (!Number.isInteger(value) || value < 1 || value > 20000) return;
+    const timer = window.setTimeout(() => setResolutionThreshold(value), 400);
+    return () => window.clearTimeout(timer);
+  }, [resolutionInput]);
 
   const { data: categories = [] } = useGetCategoriesQuery();
   const [pollingInterval, setPollingInterval] = useState(0);
-  const { data, isLoading, isFetching, isError, refetch } = useGetEnhancementImagesQuery(
-    { tab, page, limit, q: query || undefined, category_id: categoryId === '' ? undefined : categoryId },
+  const { currentData: data, isLoading, isFetching, isError, refetch } = useGetEnhancementImagesQuery(
+    { tab, page, limit, q: query || undefined, category_id: categoryId === '' ? undefined : categoryId, resolution, resolution_px: resolutionThreshold },
     { refetchOnMountOrArgChange: true, pollingInterval }
   );
   const [markTreated, { isLoading: isMarking }] = useMarkImagesTreatedMutation();
   const [unmarkTreated, { isLoading: isUnmarking }] = useUnmarkImagesTreatedMutation();
   const [enhanceImages, { isLoading: isEnhancing }] = useEnhanceImagesMutation();
-  const busy = isMarking || isUnmarking || isEnhancing;
+  const [queueImages, { isLoading: isQueueing }] = useQueueEnhancementImagesMutation();
+  const busy = isMarking || isUnmarking || isEnhancing || isQueueing;
   const images = useMemo(() => data?.data ?? [], [data]);
   const counts = data?.counts;
   const meta = data?.meta;
@@ -222,8 +236,8 @@ const ImageEnhancementPage: React.FC = () => {
     setQuality(data.defaults.quality);
   }, [data?.defaults]);
 
-  useEffect(() => { setSelected({}); lastIndex.current = null; }, [tab, page, limit, query, categoryId]);
-  useEffect(() => { setPage(1); }, [limit, categoryId, tab]);
+  useEffect(() => { setSelected({}); lastIndex.current = null; }, [tab, page, limit, query, categoryId, resolution, resolutionThreshold]);
+  useEffect(() => { setPage(1); }, [limit, categoryId, tab, resolution, resolutionThreshold]);
 
   const selectableImages = useMemo(() => images.filter((image) => image.status !== 'processing'), [images]);
   const selectedUrls = selectableImages.filter((image) => selected[image.url]).map((image) => image.url);
@@ -262,6 +276,17 @@ const ImageEnhancementPage: React.FC = () => {
     } catch (error) { showError(apiMessage(error, 'Impossible de marquer ces images.')); }
   };
 
+  const runQueue = async () => {
+    if (!selectedUrls.length || busy || isFetching) return;
+    try {
+      const result = await queueImages({ urls: selectedUrls }).unwrap();
+      setSelected({});
+      setPage(1);
+      setTab('queued');
+      showSuccess(`${result.queued} image(s) transférée(s) dans « Images à traiter »${result.skipped ? ` · ${result.skipped} déjà ajoutée(s) ou indisponible(s)` : ''}`);
+    } catch (error) { showError(apiMessage(error, 'Impossible de transférer les images.')); }
+  };
+
   const runUnmark = async (urls: string[]) => {
     if (!urls.length || busy) return;
     const aiCount = images.filter((image) => urls.includes(image.url) && image.method === 'ai').length;
@@ -294,7 +319,7 @@ const ImageEnhancementPage: React.FC = () => {
   };
 
   const quickToggleTreated = useCallback((image: EnhancementImage) => {
-    if (tab === 'untreated') void runMark([image.url]);
+    if (tab !== 'treated') void runMark([image.url]);
     else void runUnmark([image.url]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, busy, images]);
@@ -338,7 +363,7 @@ const ImageEnhancementPage: React.FC = () => {
 
           <div className="mt-5 flex flex-col gap-3 border-t border-stone-100 pt-4 md:flex-row md:items-center md:justify-between">
             <nav className="flex gap-1" aria-label="État des images">
-              {([{ id: 'untreated', label: 'Non traitées', count: counts?.untreated }, { id: 'treated', label: 'Traitées', count: counts?.treated }] as const).map((item) => (
+              {([{ id: 'untreated', label: 'Non traitées', count: counts?.untreated }, { id: 'queued', label: 'Images à traiter', count: counts?.queued }, { id: 'treated', label: 'Traitées', count: counts?.treated }] as const).map((item) => (
                 <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`relative inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold transition ${tab === item.id ? 'text-stone-950' : 'text-stone-500 hover:text-stone-800'}`}>
                   {item.label}
                   {item.count != null ? <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-stone-700">{item.count}</span> : null}
@@ -356,6 +381,16 @@ const ImageEnhancementPage: React.FC = () => {
                 <option value="">Toutes les catégories</option>
                 {categories.map((category) => <option key={category.id} value={category.id}>{category.nom}</option>)}
               </select>
+              <select value={resolution} onChange={(event) => setResolution(event.target.value as ImageResolutionFilter)} aria-label="Filtrer par résolution" className="h-10 rounded-lg border-stone-300 bg-stone-50 px-3 text-sm font-medium text-stone-900 focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="all">Toutes les résolutions</option>
+                <option value="below">Inférieures à {resolutionThreshold} px</option>
+                <option value="above">Au moins {resolutionThreshold} px</option>
+                <option value="unknown">Résolution inconnue</option>
+              </select>
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-stone-600" title="Référence en pixels, sur le côté le plus long de l’image">
+                Référence
+                <input type="number" min={1} max={20000} step={1} value={resolutionInput} onChange={(event) => setResolutionInput(event.target.value)} onBlur={() => { const value = Number(resolutionInput); if (!Number.isInteger(value) || value < 1 || value > 20000) setResolutionInput(String(resolutionThreshold)); }} className="h-10 w-24 rounded-lg border-stone-300 bg-stone-50 px-2 text-sm text-stone-900 focus:border-indigo-500 focus:ring-indigo-500" /> px
+              </label>
               <div className="flex items-center gap-0.5 rounded-lg bg-stone-100 p-0.5" role="group" aria-label="Taille des images">
                 {TILE_SIZES.map((size) => (
                   <button key={size.id} type="button" onClick={() => setTileSize(size.id)} className={`rounded-md px-2.5 py-1.5 text-xs font-bold transition ${tileSize === size.id ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}>{size.label}</button>
@@ -367,6 +402,7 @@ const ImageEnhancementPage: React.FC = () => {
               <button type="button" onClick={() => void refetch()} disabled={isFetching} aria-label="Actualiser" className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /></button>
             </div>
           </div>
+          <p className="mt-3 text-xs text-stone-500">Résolution mesurée sur le côté le plus long. Les petites images peuvent paraître pixelisées lorsqu’elles sont agrandies. Les fichiers illisibles ou les liens externes sont classés en résolution inconnue.</p>
         </div>
       </header>
 
@@ -383,7 +419,10 @@ const ImageEnhancementPage: React.FC = () => {
               <span className="hidden text-[11px] text-stone-500 lg:inline">Maj + clic pour sélectionner une plage</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {tab === 'untreated' ? (
+              {tab === 'untreated' && <button type="button" onClick={() => void runQueue()} disabled={!selectedUrls.length || busy || isFetching} className="inline-flex h-10 items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50">
+                {isQueueing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />} Envoyer vers « Images à traiter » {selectedUrls.length ? `(${selectedUrls.length})` : ''}
+              </button>}
+              {tab !== 'treated' ? (
                 <>
                   <button type="button" onClick={() => void runMark(selectedUrls)} disabled={!selectedUrls.length || busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">
                     {isMarking ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Marquer traitées {selectedUrls.length ? `(${selectedUrls.length})` : ''}
@@ -414,13 +453,14 @@ const ImageEnhancementPage: React.FC = () => {
         ) : images.length === 0 ? (
           <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-stone-200 bg-white p-8 text-center">
             <CheckCircle2 className="h-9 w-9 text-emerald-600" />
-            <p className="mt-3 font-bold text-stone-900">{query || categoryId !== '' ? 'Aucune image pour ce filtre' : tab === 'untreated' ? 'Toutes les images sont traitées' : 'Aucune image traitée pour le moment'}</p>
+            <p className="mt-3 font-bold text-stone-900">{query || categoryId !== '' || resolution !== 'all' ? 'Aucune image pour ce filtre' : tab === 'queued' ? 'Aucune image en attente dans cette liste' : tab === 'untreated' ? 'Aucune image non traitée hors de la liste à traiter' : 'Aucune image traitée pour le moment'}</p>
+            {tab === 'queued' && !query && categoryId === '' && resolution === 'all' ? <p className="mt-2 text-sm text-stone-500">Sélectionnez des images dans « Non traitées », puis cliquez sur « Envoyer vers Images à traiter ».</p> : null}
           </div>
         ) : (
           <div className={`grid gap-3 transition-opacity ${isFetching && !pollingInterval ? 'opacity-70' : ''}`} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(${tilePx}px, 100%), 1fr))` }}>
             {images.map((image) => (
               <ImageTile
-                key={image.url} image={image} tab={tab} selected={Boolean(selected[image.url])} busy={busy}
+                key={image.url} image={image} tab={tab} selected={Boolean(selected[image.url])} busy={busy} resolutionThreshold={resolutionThreshold}
                 onToggle={toggle} onQuickToggleTreated={quickToggleTreated} onPreview={setPreview}
               />
             ))}

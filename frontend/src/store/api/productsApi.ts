@@ -1,6 +1,8 @@
 import { api } from './apiSlice';
 import type { Product, CreateProductData, ProductImageTarget } from '../../types';
 
+export interface CategoryOrderedProduct { id: number; reference: string | null; designation: string; image_url: string | null }
+
 export type SalePriceSource = 'snapshot' | 'variant' | 'product';
 
 export interface HistoricalSalePrice {
@@ -73,6 +75,14 @@ export interface SalePriceCorrectionsResponse {
 // API réelle vers le backend Express (/api/products)
 const productsApi = api.injectEndpoints({
   endpoints: (builder) => ({
+    getCategoryProductOrder: builder.query<{ products: CategoryOrderedProduct[]; order: number[] }, number>({
+      query: (categoryId) => `/products/category-order/${categoryId}`,
+      providesTags: ['Product'],
+    }),
+    saveCategoryProductOrder: builder.mutation<{ success: boolean; order: number[] }, { categoryId: number; product_ids: number[]; expected_order: number[] }>({
+      query: ({ categoryId, ...body }) => ({ url: `/products/category-order/${categoryId}`, method: 'PUT', body }),
+      invalidatesTags: ['Product'],
+    }),
     getProducts: builder.query<Product[], void>({
       query: () => ({ url: '/products' }),
       providesTags: ['Product'],
@@ -404,6 +414,8 @@ const productsApi = api.injectEndpoints({
 });
 
 export const {
+  useGetCategoryProductOrderQuery,
+  useSaveCategoryProductOrderMutation,
   useGetProductsQuery,
   useGetProductsPaginatedQuery,
   useSearchBonProductsQuery,

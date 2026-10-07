@@ -39,3 +39,13 @@ test('public price reads reject zero snapshot prices before falling back to prod
     assert.match(source, /NULLIF\(ps\.prix_vente, 0\)/, file);
   }
 });
+
+test('category reordering requests catalogue cache invalidation with its category', async () => {
+  let payload;
+  await revalidateEcommerceProduct(3, {
+    categoryId: 7,
+    env: { ECOMMERCE_FRONTEND_URL: 'https://boukirdiamond.com', ECOM_REVALIDATE_SECRET: 'secret' },
+    fetchImpl: async (url, options) => { payload = JSON.parse(options.body); return { ok: true }; },
+  });
+  assert.deepEqual(payload, { productId: 3, categoryId: 7 });
+});

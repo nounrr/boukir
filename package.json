@@ -52,6 +52,7 @@
     "google-auth-library": "^10.5.0",
     "helmet": "^8.2.0",
     "html2canvas": "^1.4.1",
+    "image-size": "^2.0.4",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.536.0",

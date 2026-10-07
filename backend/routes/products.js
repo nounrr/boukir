@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createCategoryProductOrderRouter } from './categoryProductOrder.js';
 import pool from '../db/pool.js';
 import multer from 'multer';
 import path from 'path';
@@ -31,6 +32,7 @@ import { WEB_PRICE_CONTEXT_SIZES, WEB_PRICE_MODELS, canReuseWebPriceResearch, pa
 import { ensureSalePriceWebResearchSchema } from '../db/ensureSalePriceWebResearchSchema.js';
 
 const router = Router();
+router.use('/category-order', createCategoryProductOrderRouter(pool, (productId, categoryId) => revalidateEcommerceProduct(productId, { categoryId })));
 
 function revalidateProductIds(productIds) {
   for (const productId of new Set(productIds.map(Number).filter(id => Number.isInteger(id) && id > 0))) {

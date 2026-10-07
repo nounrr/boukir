@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
+import { ensureCategoryProductOrderSchema, CATEGORY_PRODUCT_ORDER_SQL, CATEGORY_PRODUCT_ORDER_JOIN } from '../../utils/categoryProductOrder.js';
 import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 import { createProductSitemapRouter } from './productSitemap.js';
 import { createCatalogPagesRouter } from './catalogPages.js';
@@ -283,7 +284,8 @@ router.get('/', async (req, res, next) => {
     }
 
     // Build ORDER BY clause
-    const categoryOrder = 'c.nom IS NULL ASC, c.nom ASC, c.id ASC, p.designation ASC, p.id ASC';
+    await ensureCategoryProductOrderSchema(pool);
+    const categoryOrder = CATEGORY_PRODUCT_ORDER_SQL;
     let orderBy = categoryOrder;
     switch (sort) {
       case 'price_asc':
@@ -348,6 +350,7 @@ router.get('/', async (req, res, next) => {
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.categorie_id = c.id
+      ${CATEGORY_PRODUCT_ORDER_JOIN}
       WHERE ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?

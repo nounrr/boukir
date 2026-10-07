@@ -31,7 +31,7 @@ export async function revalidateEcommerceProduct(productId, options = {}) {
         'content-type': 'application/json',
         'x-revalidation-secret': config.secret,
       },
-      body: JSON.stringify({ productId: id }),
+      body: JSON.stringify({ productId: id, ...(options.categoryId ? { categoryId: options.categoryId } : {}) }),
       signal: AbortSignal.timeout(2500),
     })
     if (!response.ok) {

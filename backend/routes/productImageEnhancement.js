@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { queueEnhancementImages, enhancementImageTab } from '../utils/imageEnhancementQueue.js';
+import { filterImagesByResolution, readImageResolution, resolutionOptions } from '../utils/imageResolution.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -64,6 +66,11 @@ async function ensureSchema() {
       INDEX idx_pie_source (source_url, status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  await pool.query(`CREATE TABLE IF NOT EXISTS product_image_enhancement_queue (
+    source_url VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
+    created_by INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   // Un traitement "processing" au démarrage du process ne sera jamais terminé (serveur redémarré).
   await pool.query(
     "UPDATE product_image_enhancements SET status = 'error', error_message = 'Traitement interrompu (redémarrage du serveur)' WHERE status = 'processing'"
@@ -138,16 +145,18 @@ async function loadEnhancementState() {
   return { treatedByUrl, pendingBySource };
 }
 
-// GET /api/product-image-enhancement/images?tab=untreated|treated&q=&category_id=&page=&limit=
+// GET /api/product-image-enhancement/images?tab=untreated|queued|treated&q=&category_id=&page=&limit=
 router.get('/images', async (req, res, next) => {
   try {
-    const tab = req.query.tab === 'treated' ? 'treated' : 'untreated';
+    const tab = ['treated', 'queued'].includes(req.query.tab) ? req.query.tab : 'untreated';
     const q = String(req.query.q || '').trim().toLowerCase().slice(0, 100);
     const categoryId = Number.parseInt(req.query.category_id, 10);
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(200, Math.max(1, Number.parseInt(req.query.limit, 10) || 48));
+    const resolution = resolutionOptions(req.query);
 
-    const [usages, state] = await Promise.all([loadAllImageUsages(), loadEnhancementState()]);
+    const [usages, state, [queueRows]] = await Promise.all([loadAllImageUsages(), loadEnhancementState(), pool.query('SELECT source_url FROM product_image_enhancement_queue')]);
+    const queuedUrls = new Set(queueRows.map(row => row.source_url));
     const byUrl = new Map();
     for (const usage of usages) {
       const item = byUrl.get(usage.url) || { url: usage.url, usages: [], category_ids: new Set() };
@@ -163,15 +172,16 @@ router.get('/images', async (req, res, next) => {
       byUrl.set(usage.url, item);
     }
 
-    const counts = { untreated: 0, treated: 0, processing: 0 };
+    const counts = { untreated: 0, queued: 0, treated: 0, processing: 0 };
     const kindOrder = { product: 0, variant: 1, product_gallery: 2, variant_gallery: 3 };
     const filtered = [];
     for (const item of byUrl.values()) {
       const treated = state.treatedByUrl.get(item.url) || null;
       const pending = treated ? null : state.pendingBySource.get(item.url) || null;
-      if (treated) counts.treated += 1; else counts.untreated += 1;
+      const imageTab = enhancementImageTab(Boolean(treated), queuedUrls.has(item.url));
+      counts[imageTab] += 1;
       if (pending?.status === 'processing') counts.processing += 1;
-      if ((tab === 'treated') !== Boolean(treated)) continue;
+      if (tab !== imageTab) continue;
       if (Number.isInteger(categoryId) && categoryId > 0 && !item.category_ids.has(categoryId)) continue;
       if (q && !item.usages.some((usage) =>
         String(usage.product_id) === q
@@ -194,13 +204,30 @@ router.get('/images', async (req, res, next) => {
     }
 
     filtered.sort((a, b) => b.product_id - a.product_id || a.url.localeCompare(b.url));
-    const total = filtered.length;
+    const readDimensions = url => readImageResolution(absolutePathForUrl(url));
+    const matchingImages = await filterImagesByResolution(filtered, resolution, readDimensions);
+    const total = matchingImages.length;
+    const pageImages = await Promise.all(matchingImages.slice((page - 1) * limit, page * limit).map(async image => ({
+      ...image,
+      dimensions: image.dimensions === undefined ? await readDimensions(image.url) : image.dimensions,
+    })));
     res.json({
-      data: filtered.slice((page - 1) * limit, page * limit),
+      data: pageImages,
       counts,
       meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
       defaults: { model: DEFAULT_IMAGE_MODEL, quality: DEFAULT_ENHANCE_QUALITY },
     });
+  } catch (error) { next(error); }
+});
+
+// POST /queue { urls } — prépare une sélection à traiter, sans lancer l'IA.
+router.post('/queue', async (req, res, next) => {
+  try {
+    const urls = normalizeUrls(req.body?.urls);
+    if (!urls.length || urls.length > 200) return res.status(400).json({ message: 'Sélectionnez de 1 à 200 images.' });
+    const [usages, state] = await Promise.all([loadAllImageUsages(), loadEnhancementState()]);
+    const result = await queueEnhancementImages(pool, urls, new Set(usages.map(usage => usage.url)), state, req.user?.id);
+    res.json({ success: true, ...result });
   } catch (error) { next(error); }
 });
 
@@ -219,6 +246,7 @@ router.post('/mark', async (req, res, next) => {
         [url, url, req.user?.id || null]
       );
       marked += 1;
+      await pool.query('DELETE FROM product_image_enhancement_queue WHERE source_url = ?', [url]);
     }
     res.json({ success: true, marked });
   } catch (error) { next(error); }
@@ -344,6 +372,7 @@ async function enhanceOne(client, enhancement, { model, quality }) {
         WHERE id = ?`,
       [newUrl, billing.size, billing.inputTokens, billing.outputTokens, billing.costUsd, billing.pricingVersion, enhancement.id]
     );
+    await conn.query('DELETE FROM product_image_enhancement_queue WHERE source_url = ?', [enhancement.source_url]);
     await conn.commit();
     committed = true;
     revalidate(productIds);

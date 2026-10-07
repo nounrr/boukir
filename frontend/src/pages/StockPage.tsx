@@ -11,6 +11,7 @@ import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { useGetProductsPaginatedQuery, useDeleteProductMutation, useBulkAttachProductsMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation, useChangeProductBaseUnitMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
+import CategoryProductOrderModal from '../components/CategoryProductOrderModal';
 import CategoryFormModal from '../components/CategoryFormModal';
 import Swal from 'sweetalert2';
 import { printProductTicket } from '../utils/productTicketPrint';
@@ -65,6 +66,7 @@ const StockPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchTerm2, setSearchTerm2] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [orderingCategory, setOrderingCategory] = useState<number | null>(null);
   const [missingImageOnly, setMissingImageOnly] = useState(false);
   const [missingCategoryOnly, setMissingCategoryOnly] = useState(false);
   const [missingBrandOnly, setMissingBrandOnly] = useState(false);
@@ -750,6 +752,7 @@ const StockPage: React.FC = () => {
   return (
     <div className="p-6">
       {/* Hover image preview (fixed overlay so it isn't clipped by table overflow) */}
+      {orderingCategory !== null && <CategoryProductOrderModal key={orderingCategory} categoryId={orderingCategory} categoryName={categories.find(category => category.id === orderingCategory)?.nom || String(orderingCategory)} onClose={() => setOrderingCategory(null)} />}
       {hoverPreview?.url && typeof window !== 'undefined' && (() => {
         const maxW = 420;
         const maxH = 320;
@@ -1360,6 +1363,9 @@ const StockPage: React.FC = () => {
           <option value="quantite_desc">Quantite: plus grand</option>
           <option value="quantite_asc">Quantite: plus petit</option>
         </select>
+        <button type="button" disabled={!filterCategory || activeTab !== 'Produits'} onClick={() => setOrderingCategory(Number(filterCategory))} title={filterCategory ? 'Glisser les produits pour définir leur ordre sur le site' : 'Sélectionnez une catégorie pour classer ses produits'} className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 font-medium text-blue-700 disabled:opacity-40">
+          Classer pour le site
+        </button>
         <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
           missingImageOnly
             ? 'border-blue-300 bg-blue-50 text-blue-800'

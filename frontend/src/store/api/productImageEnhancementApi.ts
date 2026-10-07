@@ -1,7 +1,8 @@
 import { api } from './apiSlice';
 import type { AiImageModel, AiImageQuality } from './productPhotosApi';
 
-export type ImageEnhancementTab = 'untreated' | 'treated';
+export type ImageEnhancementTab = 'untreated' | 'queued' | 'treated';
+export type ImageResolutionFilter = 'all' | 'below' | 'above' | 'unknown';
 export type ImageEnhancementStatus = 'untreated' | 'processing' | 'error' | 'treated';
 export type ImageUsageKind = 'product' | 'product_gallery' | 'variant' | 'variant_gallery';
 
@@ -26,20 +27,25 @@ export interface EnhancementImage {
   ai_quality: string | null;
   ai_cost_usd: number | null;
   treated_at: string | null;
+  dimensions: { width: number; height: number } | null;
 }
 
 export interface EnhancementImagesResponse {
   data: EnhancementImage[];
-  counts: { untreated: number; treated: number; processing: number };
+  counts: { untreated: number; queued: number; treated: number; processing: number };
   meta: { page: number; limit: number; total: number; totalPages: number };
   defaults: { model: AiImageModel; quality: AiImageQuality };
 }
 
 export const productImageEnhancementApi = api.injectEndpoints({
   endpoints: (builder) => ({
+    queueEnhancementImages: builder.mutation<{ success: boolean; queued: number; skipped: number }, { urls: string[] }>({
+      query: (body) => ({ url: '/product-image-enhancement/queue', method: 'POST', body }),
+      invalidatesTags: ['ImageEnhancement'],
+    }),
     getEnhancementImages: builder.query<
       EnhancementImagesResponse,
-      { tab: ImageEnhancementTab; page: number; limit: number; q?: string; category_id?: number }
+      { tab: ImageEnhancementTab; page: number; limit: number; q?: string; category_id?: number; resolution?: ImageResolutionFilter; resolution_px?: number }
     >({
       query: (params) => ({ url: '/product-image-enhancement/images', params }),
       providesTags: ['ImageEnhancement'],
@@ -66,6 +72,7 @@ export const productImageEnhancementApi = api.injectEndpoints({
 });
 
 export const {
+  useQueueEnhancementImagesMutation,
   useGetEnhancementImagesQuery,
   useMarkImagesTreatedMutation,
   useUnmarkImagesTreatedMutation,
