@@ -37,7 +37,7 @@ export default function CategoryProductOrderModal({ categoryId, categoryName, on
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Classer les produits · {categoryName}</DialogTitle>
-          <DialogDescription>Glissez chaque ligne à la position souhaitée, puis enregistrez. Tous les produits de cette catégorie sont affichés ici. Le site e-commerce suivra cet ordre dans le tri par catégorie.</DialogDescription>
+          <DialogDescription>Glissez les produits de « {categoryName} » à la position souhaitée, puis enregistrez. Chaque catégorie possède son propre classement de produits, appliqué sur le site e-commerce.</DialogDescription>
         </DialogHeader>
         {isError ? <div role="alert" className="text-red-700">Impossible de charger les produits. <button type="button" onClick={() => void refetch()} className="underline">Réessayer</button></div>
           : isFetching ? <div className="flex items-center gap-2 py-8"><LoaderCircle className="animate-spin" /> Chargement…</div>

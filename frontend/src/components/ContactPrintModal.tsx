@@ -6,6 +6,7 @@ import type { Contact } from '../types';
 import ContactPrintTemplate, { type CompanyType, type ContactPrintMode, type PriceMode } from './ContactPrintTemplate';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designationLang';
+import { waitForPrintImages } from '../utils/waitForPrintImages';
 
 interface ContactPrintModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
+  const [includeProductImages, setIncludeProductImages] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   // Catalogue produits pour les désignations traduites (cache RTK Query partagé)
@@ -51,6 +53,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
       // html2canvas can truncate very tall content when the canvas exceeds browser limits.
       // We dynamically reduce scale for tall pages and generate a multi-page PDF.
       const el = printRef.current;
+      await waitForPrintImages(el);
       const baseScale = 1.5;
       const MAX_CANVAS_PX = 16384; // conservative (varies by browser/GPU)
       const elHeight = Math.max(el.scrollHeight, el.offsetHeight);
@@ -60,7 +63,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
         scale: safeScale,
         backgroundColor: '#ffffff',
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         logging: false,
       });
 
@@ -95,7 +98,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!printRef.current) return;
     const win = window.open('', '_blank');
     if (!win) return;
@@ -115,14 +118,15 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
       </html>
     `);
     win.document.close();
-    setTimeout(() => { win.focus(); win.print(); win.close(); }, 700);
+    await waitForPrintImages(win.document.body);
+    if (!win.closed) { win.focus(); win.print(); win.close(); }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
         <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold">Aperçu - {contact?.nom_complet} ({mode === 'transactions' ? 'Transactions' : 'Produits'})</h2>
             <div className="flex items-center gap-2">
           <label htmlFor="contact-company-select" className="text-sm">Société:</label>
@@ -151,6 +155,13 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 ))}
               </select>
             </div>
+            {mode === 'products' && <div className="flex items-center gap-2">
+              <label htmlFor="contact-images-select" className="text-sm">Images produit :</label>
+              <select id="contact-images-select" value={includeProductImages ? 'with' : 'without'} disabled={isGenerating} onChange={event => setIncludeProductImages(event.target.value === 'with')} className="px-2 py-1 border rounded text-sm">
+                <option value="without">Sans images</option>
+                <option value="with">Avec images</option>
+              </select>
+            </div>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handlePrint} disabled={isGenerating} className="flex items-center px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
@@ -185,6 +196,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 totalDebitSubtitle={totalDebitSubtitle}
                 designationLang={designationLang}
                 products={products as any[]}
+                includeProductImages={includeProductImages}
               />
             </div>
           </div>

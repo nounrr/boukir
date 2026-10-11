@@ -1364,7 +1364,7 @@ const StockPage: React.FC = () => {
           <option value="quantite_asc">Quantite: plus petit</option>
         </select>
         <button type="button" disabled={!filterCategory || activeTab !== 'Produits'} onClick={() => setOrderingCategory(Number(filterCategory))} title={filterCategory ? 'Glisser les produits pour définir leur ordre sur le site' : 'Sélectionnez une catégorie pour classer ses produits'} className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 font-medium text-blue-700 disabled:opacity-40">
-          Classer pour le site
+          Classer les produits de cette catégorie
         </button>
         <label className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1 ${
           missingImageOnly

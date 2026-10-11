@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prix Bosch au Maroc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: tableau de comparaison dense, en-tête compact avec synthèse, filtres, puis tableau scrollable */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --fg:#1d2422; --muted:#5f6b67; --line:#dde2df;
+  --accent:#0d6b5e; --accent-soft:#e1efec; --hi:#fff3d6; --hi-fg:#7a5200;
+  --up:#b3261e; --down:#1e7d3a; --na:#eceeed;
+  --f-display:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  --f-num:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --surface:#1c2320; --fg:#e7ece9; --muted:#9aa7a2; --line:#2e3834;
+  --accent:#5cc2b0; --accent-soft:#1f3833; --hi:#3a2f14; --hi-fg:#f3cf7a;
+  --up:#ff8a80; --down:#7fd69a; --na:#232b28; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --surface:#1c2320; --fg:#e7ece9; --muted:#9aa7a2; --line:#2e3834;
+  --accent:#5cc2b0; --accent-soft:#1f3833; --hi:#3a2f14; --hi-fg:#f3cf7a;
+  --up:#ff8a80; --down:#7fd69a; --na:#232b28; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:28px 40px;display:grid;gap:20px}
+header{display:grid;gap:6px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,3.4vw,34px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:0;max-width:75ch}
+.stats{display:flex;flex-wrap:wrap;gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px;min-width:0}
+.stat b{display:block;font-family:var(--f-display);font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.tools input{flex:1 1 240px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--fg);font:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.chip:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:980px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+thead th{position:sticky;top:0;background:var(--surface);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;z-index:1}
+tbody tr:hover{background:var(--accent-soft)}
+.pname{font-weight:600}
+.meta{font-size:12px;color:var(--muted)}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+th.num{text-align:right}
+.price a{color:var(--accent);text-decoration:none;font-family:var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap;border-bottom:1px solid currentColor}
+.price a:hover{border-bottom-width:2px}
+.price .no{color:var(--muted);font-size:12px}
+.ret{background:var(--hi);color:var(--hi-fg);font-weight:700}
+.ret .m{display:block;font-family:var(--f-body);font-weight:500;font-size:11px;white-space:normal;text-align:right}
+.gap.up{color:var(--up)} .gap.down{color:var(--down)}
+.note{font-size:12px;color:var(--muted);max-width:34ch}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--na);color:var(--muted)}
+.sumbox{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:14px}
+.sumbox .stat{background:var(--bg)}
+.stat em{font-style:normal;font-size:12px;color:var(--muted);margin-left:6px}
+.bar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--na)}
+.bar span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.lists>div{min-width:0}
+.lists h2{font-family:var(--f-display);font-size:15px;margin:0 0 6px}
+.lists h2 span{color:var(--muted);font-weight:500}
+.lists ul{margin:0;padding-left:18px;columns:2 220px;column-gap:20px;font-size:13px}
+.lists li{break-inside:avoid;margin-bottom:3px}
+.lists li small{color:var(--muted)}
+:root{--c-br:#0d6b5e;--c-ot:#d08c1a;--c-no:#b9c2be}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--c-br:#5cc2b0;--c-ot:#e9b04f;--c-no:#4a5551}}
+:root[data-theme="dark"]{--c-br:#5cc2b0;--c-ot:#e9b04f;--c-no:#4a5551}
+footer{font-size:12px;color:var(--muted);display:grid;gap:4px}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Prix Bosch au Maroc</h1>
+    <p class="sub">Votre prix de vente comparé aux prix publics TTC de Bricoma, Mr Bricolage, Bricop et Outillage Aouami, relevés le 10/10/2026. Le prix retenu est le prix qui revient le plus souvent ; à défaut, la médiane.</p>
+  </header>
+  <section class="sumbox" aria-label="Statistiques">
+    <div class="stats" id="stats"></div>
+    <div class="bar" id="bar" role="img"></div>
+    <div class="legend" id="legend"></div>
+    <div class="lists">
+      <div><h2>Absents de Bricoma <span id="c1"></span></h2><ul id="l1"></ul></div>
+      <div><h2>Introuvables sur tous les sites <span id="c2"></span></h2><ul id="l2"></ul></div>
+    </div>
+  </section>
+  <div class="tools">
+    <label for="q" class="meta" hidden>Rechercher</label>
+    <input id="q" type="search" placeholder="Rechercher un produit ou une référence…">
+    <div class="chips" role="group" aria-label="Filtrer">
+      <button class="chip" data-f="all" aria-pressed="true">Tous</button>
+      <button class="chip" data-f="br">Sur Bricoma</button>
+      <button class="chip" data-f="nobr">Absents de Bricoma</button>
+      <button class="chip" data-f="other">Ailleurs seulement</button>
+      <button class="chip" data-f="above">Votre prix au-dessus</button>
+      <button class="chip" data-f="none">Introuvables partout</button>
+    </div>
+  </div>
+  <div class="tablebox">
+    <table>
+      <thead><tr>
+        <th>Produit</th><th class="num">Prix actuel</th><th class="num">Bricoma</th>
+        <th class="num">Mr Bricolage</th><th class="num">Bricop</th><th class="num">Outillage Aouami</th>
+        <th class="num">Prix retenu</th><th class="num">Écart</th><th>Remarque</th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>Aucun produit ne correspond à ce filtre.</div>
+  </div>
+  <footer>
+    <span>Prix en MAD TTC. Écart = votre prix actuel moins le prix retenu ; en rouge quand votre prix est plus élevé.</span>
+    <span>Jumia n'a pas pu être consulté (vérification anti-robot). Les prix en magasin peuvent différer des prix en ligne.</span>
+  </footer>
+</div>
+
+<script>
+const ROWS=[{"n": "BOSCH 22 × 450 mm Mèche à Béton (2608836645)", "ref": "5299", "stock": 0, "pv": 250, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (Bricoma vend un 22×450 de marque Tivoly, pas Bosch)"}, {"n": "BOSCH GLL 80 - 33 g Niveau Laser", "ref": "3883", "stock": 4, "pv": 5500, "s": {"MB": {"p": 4999, "u": "https://mrbricolage.ma/produit/niveau-laser-gll80-33g/"}, "BP": {"p": 3999, "u": "https://www.bricop.ma/niveau-laser-3-plans-bosch-gll-80-33-g/"}}, "ret": 4499.0, "m": "Médiane (aucun prix répété)", "note": "GLL 80-33 G (3 plans verts)"}, {"n": "BOSCH 100 m Laser", "ref": "3882", "stock": 1, "pv": 3500, "s": {"MB": {"p": 3099, "u": "https://mrbricolage.ma/produit/telemtre-laser-glm-100-25-c-bosch/"}, "BP": {"p": 3049, "u": "https://www.bricop.ma/bosch-telemetres-laser-glm-100-25-c-0601072y00/"}}, "ret": 3074.0, "m": "Médiane (aucun prix répété)", "note": "Supposé télémètre GLM 100-25 C"}, {"n": "BOSCH GLL 12 - 22 g Niveau Laser Vert", "ref": "3881", "stock": 1, "pv": 1200, "s": {"MB": {"p": 999, "u": "https://mrbricolage.ma/produit/niveau-laser-gll-12-22-g/"}}, "ret": 999, "m": "Source unique", "note": "GLL 12-22 G (vert). La version rouge GLL 12-22 est à 799 chez Mr Bricolage"}, {"n": "BOSCH 120 m Laser", "ref": "3880", "stock": 2, "pv": 1200, "s": {"BP": {"p": 3372, "u": "https://www.bricop.ma/bosch-telemetre-laser-glm-120-c-professional-0601072f00-maroc/"}}, "ret": 3372, "m": "Source unique", "note": "À vérifier : supposé GLM 120 C, mais votre prix (1 200) est très inférieur"}, {"n": "BOSCH 50 m Laser", "ref": "3879", "stock": 2, "pv": 1800, "s": {"MB": {"p": 1599, "u": "https://mrbricolage.ma/produit/telemetre-glm-50-22-50m-prof-bosch/"}, "BP": {"p": 1650, "u": "https://www.bricop.ma/bosch-telemetre-laser-glm-50-c-0601072c00-maroc/"}}, "ret": 1624.5, "m": "Médiane (aucun prix répété)", "note": "Mr Bricolage : GLM 50-22 ; Bricop : GLM 50 C"}, {"n": "BOSCH 40 m Laser", "ref": "3878", "stock": 2, "pv": 1500, "s": {"BR": {"p": 1190, "u": "https://www.bricoma.ma/telemtre-glm-40.html"}, "MB": {"p": 1195, "u": "https://mrbricolage.ma/produit/telemetre-laser-bosch-glm-40-professional/"}, "BP": {"p": 1169, "u": "https://www.bricop.ma/bosch-telemetre-laser-glm-40-601072900-maroc/"}}, "ret": 1190, "m": "Médiane (aucun prix répété)", "note": "Télémètre GLM 40"}, {"n": "BOSCH INOX 12 Foret", "ref": "3272", "stock": 1, "pv": 50, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Foret à Béton 20 × 450 mm, SDS Plus - BOSCH", "ref": "7649", "stock": 12, "pv": 0, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (Bosch SDS plus-5X vendu jusqu’à 16 mm)"}, {"n": "Foret à Béton 14 × 260 mm, SDS Plus - BOSCH", "ref": "7648", "stock": 11, "pv": 0, "s": {"BP": {"p": 55, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-14x200x260-2608833818-maroc/"}}, "ret": 55, "m": "Source unique", "note": "SDS plus-5X 14×200×260"}, {"n": "Foret à Béton 12 × 460 mm, SDS Plus - BOSCH", "ref": "7647", "stock": 12, "pv": 0, "s": {"MB": {"p": 77.9, "u": "https://mrbricolage.ma/produit/foret-sds-5x-12x400x460-bosch-acc/"}, "BP": {"p": 77, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-12x400x460-2608833812-maroc/"}}, "ret": 77.45, "m": "Médiane (aucun prix répété)", "note": "SDS plus-5X 12×400×460"}, {"n": "Foret à Béton 14 × 160 mm, SDS Plus Réf 706 - BOSCH", "ref": "7576", "stock": 10, "pv": 50, "s": {"MB": {"p": 46.5, "u": "https://mrbricolage.ma/produit/foret-sds-5x-14x100x160-bosch-acc/"}, "BP": {"p": 47, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-14x100x160-2608833816-maroc/"}}, "ret": 46.75, "m": "Médiane (aucun prix répété)", "note": "SDS plus-5X 14×100×160"}, {"n": "Charbon Standard - BOSCH", "ref": "7372", "stock": 93, "pv": 35, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (charbons vendus par modèle de machine)"}, {"n": "Niveau Optique GOL 32 + Jauge de Niveau de Fluide GR 500 + BT 170 HD - BOSCH", "ref": "6996", "stock": 1, "pv": 5000, "s": {"BR": {"p": 4714, "u": "https://www.bricoma.ma/niveau-optique-bosch-gol-32g-professionel.html"}, "BP": {"p": 4611, "u": "https://www.bricop.ma/bosch-niveau-optique-gol-32-g-0601068501-maroc/"}}, "ret": 4662.5, "m": "Médiane (aucun prix répété)", "note": "Pas de kit en ligne : somme des 3 articles. Bricoma = GOL 32 G 2 925 + mire GR 500 710 + trépied BT 170 HB 1 079 ; Bricop = GOL 32 G 2 983 + GR 500 709 + BT 170 HD 919"}, {"n": "Mètre Laser BOSCH 25 m", "ref": "6632", "stock": 3, "pv": 600, "s": {"MB": {"p": 439, "u": "https://mrbricolage.ma/produit/telemetre-laser-glm-25-23/"}, "BP": {"p": 409, "u": "https://www.bricop.ma/bosch-telemetre-laser-glm-25-23-0601072w00/"}}, "ret": 424.0, "m": "Médiane (aucun prix répété)", "note": "Télémètre GLM 25-23"}, {"n": "LAME SCIE SAUTEUSE BOSCH 1 Pièces", "ref": "6081", "stock": 0, "pv": 6, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (lames vendues en cartes de 3 ou 5)"}, {"n": "Foret à béton SDS Plus 12 × 210 mm - Réf. 706 - BOSCH", "ref": "5500", "stock": 29, "pv": 45, "s": {"MB": {"p": 42.9, "u": "https://mrbricolage.ma/produit/foret-sds-5x-12x150x210-bosch-acc/"}, "BP": {"p": 44, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-12x150x210-2608833808-maroc/"}}, "ret": 43.45, "m": "Médiane (aucun prix répété)", "note": "SDS plus-5X 12×150×210"}, {"n": "ASPIRATEURE BOSCH 1100W 15L 15PCS", "ref": "5457", "stock": 1, "pv": 1850, "s": {"BP": {"p": 1818, "u": "https://www.bricop.ma/bosch-aspirateur-pour-solides-et-liquides-gas-15-06019e5000-maroc/"}}, "ret": 1818, "m": "Source unique", "note": "Supposé GAS 15 (1 100 W, 15 L)"}, {"n": "PERFORATEUR BOSCH GBH220 720W", "ref": "5302", "stock": 20, "pv": 1100, "s": {"BR": {"p": 819, "u": "https://www.bricoma.ma/marteau-perforateur-gbh-220-720w-2j.html"}, "MB": {"p": 940, "u": "https://mrbricolage.ma/produit/perforateur-sds-plus-gbh-220-720w-22mm-bosch/"}, "BP": {"p": 955, "u": "https://www.bricop.ma/bosch-perforateur-sds-plus-gbh-220-professional-720w-4-22mm-06112a6020-maroc/"}, "AO": {"p": 900, "u": "https://outillageaouami.com/product/perforateur-hilti-720w-bosch-gbh-220/"}}, "ret": 920.0, "m": "Médiane (aucun prix répété)", "note": "GBH 220"}, {"n": "Foret à Béton 10 × 160 mm, SDS Plus Réf 706 - BOSCH", "ref": "5301", "stock": 6, "pv": 40, "s": {"BP": {"p": 30, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-10x100x160-2608833798-maroc/"}}, "ret": 30, "m": "Source unique", "note": "SDS plus-5X 10×100×160"}, {"n": "Foret à Béton 26 × 450 mm, SDS Plus - BOSCH", "ref": "5300", "stock": 1, "pv": 350, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Foret à Béton 12 × 260 mm, SDS Plus - BOSCH", "ref": "5298", "stock": 12, "pv": 45, "s": {"BP": {"p": 47, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-12x200x260-2608833809-maroc/"}}, "ret": 47, "m": "Source unique", "note": "SDS plus-5X 12×200×260"}, {"n": "Foret à Béton 12 × 160 mm, SDS Plus - BOSCH", "ref": "5297", "stock": 19, "pv": 45, "s": {"MB": {"p": 38.9, "u": "https://mrbricolage.ma/produit/foret-sds-5x-12x100x160-bosch-acc/"}, "BP": {"p": 39, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-12x100x160-2608833807-maroc/"}}, "ret": 38.95, "m": "Médiane (aucun prix répété)", "note": "SDS plus-5X 12×100×160"}, {"n": "Foret à Béton 10 × 260 mm, SDS Plus - BOSCH", "ref": "5296", "stock": 10, "pv": 45, "s": {"BP": {"p": 39, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-10x200x260-2608833800-maroc/"}}, "ret": 39, "m": "Source unique", "note": "SDS plus-5X 10×200×260"}, {"n": "Foret à Béton 10 × 160 mm, SDS Plus - BOSCH", "ref": "5295", "stock": 8, "pv": 38, "s": {"BP": {"p": 30, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-10x100x160-2608833798-maroc/"}}, "ret": 30, "m": "Source unique", "note": "SDS plus-5X 10×100×160"}, {"n": "Foret à Béton 8 × 160 mm, SDS Plus - BOSCH", "ref": "5294", "stock": 17, "pv": 35, "s": {"BP": {"p": 27, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-8x100x160-2608833789-maroc/"}}, "ret": 27, "m": "Source unique", "note": "SDS plus-5X 8×100×160"}, {"n": "Foret à Béton 6 × 160 mm, SDS Plus - BOSCH", "ref": "5293", "stock": 15, "pv": 35, "s": {"BP": {"p": 26, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-6x100x160-2608833778-maroc/"}}, "ret": 26, "m": "Source unique", "note": "SDS plus-5X 6×100×160"}, {"n": "Foret à Béton 16 × 310 mm, SDS Plus Réf 706 - BOSCH", "ref": "5292", "stock": 15, "pv": 70, "s": {"BP": {"p": 66, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-16x250x310-2608833827-maroc/"}}, "ret": 66, "m": "Source unique", "note": "SDS plus-5X 16×250×310"}, {"n": "Foret à Béton 12 × 260 mm, SDS Plus Réf 706 - BOSCH", "ref": "5291", "stock": 8, "pv": 50, "s": {"BP": {"p": 47, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-12x200x260-2608833809-maroc/"}}, "ret": 47, "m": "Source unique", "note": "SDS plus-5X 12×200×260"}, {"n": "Foret à Béton 10 × 460 mm, SDS Plus Réf 706 - BOSCH", "ref": "5290", "stock": 21, "pv": 90, "s": {"MB": {"p": 71.58, "u": "https://mrbricolage.ma/produit/foret-sds-plus-x5-10x400x460/"}, "BP": {"p": 73, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-10x400x460-2608833803-maroc/"}}, "ret": 72.28999999999999, "m": "Médiane (aucun prix répété)", "note": "SDS plus-5X 10×400×460"}, {"n": "Foret à Béton 10 × 260 mm, SDS Plus Réf 706 - BOSCH", "ref": "5289", "stock": 15, "pv": 45, "s": {"BP": {"p": 39, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-10x200x260-2608833800-maroc/"}}, "ret": 39, "m": "Source unique", "note": "SDS plus-5X 10×200×260"}, {"n": "Foret à Béton 10 × 210 mm, SDS Plus Réf 706 - BOSCH", "ref": "5288", "stock": 18, "pv": 40, "s": {"BP": {"p": 33, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-10x150x210-2608833799-maroc/"}}, "ret": 33, "m": "Source unique", "note": "SDS plus-5X 10×150×210"}, {"n": "Foret à Béton 8 × 260 mm, SDS Plus Réf 706 - BOSCH", "ref": "5287", "stock": 18, "pv": 40, "s": {"BP": {"p": 35, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-8x200x260-2608833791-maroc/"}}, "ret": 35, "m": "Source unique", "note": "SDS plus-5X 8×200×260"}, {"n": "Foret à béton SDS Plus 8 × 210 mm - Réf. 706 - BOSCH", "ref": "5286", "stock": 12, "pv": 36, "s": {"BP": {"p": 31, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-8x150x210-2608833790-maroc/"}}, "ret": 31, "m": "Source unique", "note": "SDS plus-5X 8×150×210"}, {"n": "Foret à Béton 8 × 160 mm, SDS Plus Réf 706 - BOSCH", "ref": "5285", "stock": 14, "pv": 35, "s": {"BP": {"p": 27, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-8x100x160-2608833789-maroc/"}}, "ret": 27, "m": "Source unique", "note": "SDS plus-5X 8×100×160"}, {"n": "Foret à Béton 6 × 210 mm, SDS Plus Réf 706 - BOSCH", "ref": "5284", "stock": 16, "pv": 35, "s": {"BP": {"p": 29, "u": "https://www.bricop.ma/bosch-sds-plus-5xforets-pour-marteau-perforateur-6x150x210-2608833779-maroc/"}}, "ret": 29, "m": "Source unique", "note": "SDS plus-5X 6×150×210"}, {"n": "Foret à CARRELAGE BOSCH 6 mm", "ref": "5215", "stock": 70, "pv": 70, "s": {"BR": {"p": 46.9, "u": "https://www.bricoma.ma/forets-a-carrelage-cyl-9-ceramic-6-x-80-mm.html"}, "MB": {"p": 49.9, "u": "https://mrbricolage.ma/produit/foret-carrelage-cyl-9-ceramic-6-x-80mm-bosch-acc/"}, "BP": {"p": 48, "u": "https://www.bricop.ma/bosch-forets-a-carrelage-cyl-9-ceramic-6-x-80-mm-2608587161-maroc/"}}, "ret": 48, "m": "Médiane (aucun prix répété)", "note": "CYL-9 Ceramic 6×80"}, {"n": "Meuleuse BOSCH 700 W", "ref": "4746", "stock": 6, "pv": 450, "s": {"MB": {"p": 449, "u": "https://mrbricolage.ma/produit/meuleuse-angulaire-gws-700-115mm-710w-bosch/"}, "BP": {"p": 449, "u": "https://www.bricop.ma/bosch-meuleuse-angulaire-gws-700-professional-06013a30k1-maroc/"}, "AO": {"p": 450, "u": "https://outillageaouami.com/product/meuleuse-115mm-710w-bosch-gws-700/"}}, "ret": 449, "m": "Prix le plus fréquent", "note": "Supposé GWS 700 (710 W)"}, {"n": "Foret Marbre BOSCH 16", "ref": "3886", "stock": 2, "pv": 70, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Foret Marbre BOSCH 6", "ref": "3885", "stock": 0, "pv": 50, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "LASER BOSCH 300° GRL", "ref": "3877", "stock": 1, "pv": 13000, "s": {"BP": {"p": 10623, "u": "https://www.bricop.ma/bosch-telemetre-laser-grl-300-hv-prof-601061501-maroc/"}}, "ret": 10623, "m": "Source unique", "note": "Laser rotatif GRL 300 HV"}, {"n": "MARTEAU PERFORATEUR REGLAJE BOSCH 1100W", "ref": "3747", "stock": 0, "pv": 7300, "s": {"BR": {"p": 7369, "u": "https://www.bricoma.ma/marteau-perforateur-bosch-gbh-5-40-d-1-100w-8-5j-40mm.html"}, "MB": {"p": 6999, "u": "https://mrbricolage.ma/produit/marteau-perforateur-sds-max-gbh-5-40/"}, "BP": {"p": 6983, "u": "https://www.bricop.ma/bosch-perforateur-gbh-5-40-d-0611269000-maroc/"}}, "ret": 6999, "m": "Médiane (aucun prix répété)", "note": "À vérifier : supposé GBH 5-40 D (1 100 W)"}, {"n": "Meuleuse BOSCH 1400 W", "ref": "3631", "stock": 15, "pv": 1600, "s": {"MB": {"p": 1249, "u": "https://mrbricolage.ma/produit/meuleuse-angulaire-gws-1400-petite/"}, "BP": {"p": 1346, "u": "https://www.bricop.ma/bosch-meuleuse-gws-1400-professional-601824800-maroc/"}}, "ret": 1297.5, "m": "Médiane (aucun prix répété)", "note": "GWS 1400"}, {"n": "PERFORATEUR BOSCH 900W", "ref": "3630", "stock": 1, "pv": 7613.93, "s": {"BP": {"p": 6718, "u": "https://www.bricop.ma/bosch-perforateur-gbh-4-32-dfr-0611332101-maroc/"}}, "ret": 6718, "m": "Source unique", "note": "À vérifier : supposé GBH 4-32 DFR (900 W)"}, {"n": "Marteau Perforateur BOSCH 1100 W", "ref": "3629", "stock": 2, "pv": 5300, "s": {"BR": {"p": 7369, "u": "https://www.bricoma.ma/marteau-perforateur-bosch-gbh-5-40-d-1-100w-8-5j-40mm.html"}, "MB": {"p": 6999, "u": "https://mrbricolage.ma/produit/marteau-perforateur-sds-max-gbh-5-40/"}, "BP": {"p": 6983, "u": "https://www.bricop.ma/bosch-perforateur-gbh-5-40-d-0611269000-maroc/"}}, "ret": 6999, "m": "Médiane (aucun prix répété)", "note": "À vérifier : même modèle supposé que la ligne « réglage 1100W » (GBH 5-40 D)"}, {"n": "Foret Marbre BOSCH haute qualité 12", "ref": "3238", "stock": 0, "pv": 75, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Foret Marbre BOSCH 10", "ref": "3093", "stock": 1, "pv": 70, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Foret Marbre BOSCH 12", "ref": "2892", "stock": 37, "pv": 75, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Foret Marbre BOSCH 8", "ref": "2891", "stock": 0, "pv": 50, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Disque Diamant 180 mm Carrelage - BOSCH", "ref": "2884", "stock": 1, "pv": 350, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (Bosch vendu en 115, 125 et 230 mm)"}, {"n": "Foret HILTI 6 Courte BOSCH", "ref": "2472", "stock": 11, "pv": 35, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "Meuleuse BOSCH Batterie 18 V", "ref": "1867", "stock": 1, "pv": 2500, "s": {}, "ret": null, "m": "Non trouvé", "note": "Modèle non identifiable : GWS 18V-8 seule à 1 249 (Mr Bricolage), kits GWS 180-LI à 5 699–5 919"}, {"n": "Charbon BOSCH Petit", "ref": "1592", "stock": 114, "pv": 50, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (charbons vendus par modèle de machine)"}, {"n": "Charbon BOSCH Grand", "ref": "1591", "stock": 424, "pv": 70, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (charbons vendus par modèle de machine)"}, {"n": "Meuleuse BOSCH 710 W", "ref": "1452", "stock": 88, "pv": 450, "s": {"MB": {"p": 449, "u": "https://mrbricolage.ma/produit/meuleuse-angulaire-gws-700-115mm-710w-bosch/"}, "BP": {"p": 449, "u": "https://www.bricop.ma/bosch-meuleuse-angulaire-gws-700-professional-06013a30k1-maroc/"}, "AO": {"p": 450, "u": "https://outillageaouami.com/product/meuleuse-115mm-710w-bosch-gws-700/"}}, "ret": 449, "m": "Prix le plus fréquent", "note": "GWS 700 (710 W)"}, {"n": "Meuleuse BOSCH 2200 W", "ref": "1450", "stock": 58, "pv": 1200, "s": {"BR": {"p": 1039, "u": "https://www.bricoma.ma/meuleuse-angulaire-2200w.html"}, "MB": {"p": 1159, "u": "https://mrbricolage.ma/produit/meuleuse-angulaire-bosch-gws-2200w-230mm/"}, "BP": {"p": 1309, "u": "https://www.bricop.ma/bosch-meuleuse-angulaire-gws-2200-230-mm-0601852x00-maroc/"}}, "ret": 1159, "m": "Médiane (aucun prix répété)", "note": "GWS 2200"}, {"n": "Foret à CARRELAGE BOSCE 10 mm", "ref": "3237", "stock": 67, "pv": 75, "s": {"BR": {"p": 52, "u": "https://www.bricoma.ma/forets-a-carrelage-cyl-9-ceramic-10-x-90-mm.html"}, "MB": {"p": 55, "u": "https://mrbricolage.ma/produit/foret-carrelage-cyl-9-ceramic-10-x-90mm-bosch-acc/"}, "BP": {"p": 53, "u": "https://www.bricop.ma/bosch-forets-a-carrelage-cyl-9-ceramic-10-x-90-mm-2608587165-maroc/"}}, "ret": 53, "m": "Médiane (aucun prix répété)", "note": "CYL-9 Ceramic 10×90"}, {"n": "Foret à CARRELAGE BOSCE 8 mm", "ref": "3236", "stock": 4, "pv": 70, "s": {"BR": {"p": 50, "u": "https://www.bricoma.ma/forets-a-carrelage-cyl-9-ceramic-8-x-80-mm.html"}, "MB": {"p": 52.9, "u": "https://mrbricolage.ma/produit/foret-carrelage-cyl-9-ceramic-8-x-80mm-bosch-acc/"}, "BP": {"p": 52, "u": "https://www.bricop.ma/bosch-forets-a-carrelage-cyl-9-ceramic-8-x-80-mm-2608587164-maroc/"}}, "ret": 52, "m": "Médiane (aucun prix répété)", "note": "CYL-9 Ceramic 8×80"}];
+const SITES=[['BR','Bricoma'],['MB','Mr Bricolage'],['BP','Bricop'],['AO','Outillage Aouami']];
+const fmt=v=>v==null?'':v.toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let filter='all';
+function stats(){
+  const N=ROWS.length, br=ROWS.filter(r=>r.s.BR), nobr=ROWS.filter(r=>!r.s.BR);
+  const none=ROWS.filter(r=>r.ret==null), other=nobr.filter(r=>r.ret!=null);
+  const above=ROWS.filter(r=>r.ret!=null&&r.pv&&r.pv>r.ret).length;
+  const pc=n=>Math.round(n/N*100)+' %';
+  document.getElementById('stats').innerHTML=[
+    [N,'Produits Bosch',''],[br.length,'Trouvés sur Bricoma',pc(br.length)],[nobr.length,'Absents de Bricoma',pc(nobr.length)],
+    [other.length,'Trouvés sur un autre site',pc(other.length)],[none.length,'Introuvables sur tous les sites',pc(none.length)],[above,'Votre prix au-dessus du marché','']
+  ].map(([n,l,p])=>`<div class="stat"><b>${n}${p?`<em>${p}</em>`:''}</b><span>${l}</span></div>`).join('');
+  const seg=[[br.length,'var(--c-br)','Sur Bricoma'],[other.length,'var(--c-ot)','Absents de Bricoma, trouvés ailleurs'],[none.length,'var(--c-no)','Introuvables partout']];
+  const bar=document.getElementById('bar');
+  bar.innerHTML=seg.map(([n,c,l])=>`<span style="width:${n/N*100}%;background:${c}" title="${l} : ${n}"></span>`).join('');
+  bar.setAttribute('aria-label',seg.map(s=>s[2]+' '+s[0]).join(', '));
+  document.getElementById('legend').innerHTML=seg.map(([n,c,l])=>`<span><i style="background:${c}"></i>${l} : ${n}</span>`).join('');
+  const li=r=>`<li>${esc(r.n)} <small>· stock ${esc(r.stock)}</small></li>`;
+  document.getElementById('c1').textContent='('+nobr.length+')';document.getElementById('l1').innerHTML=nobr.map(li).join('');
+  document.getElementById('c2').textContent='('+none.length+')';document.getElementById('l2').innerHTML=none.map(li).join('');
+}
+function cell(r,k){const s=r.s[k];return `<td class="num price">${s?`<a href="${esc(s.u)}" target="_blank" rel="noopener">${fmt(s.p)}</a>`:'<span class="no">—</span>'}</td>`}
+function render(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  const list=ROWS.filter(r=>{
+    if(q&&!(r.n.toLowerCase().includes(q)||String(r.ref).includes(q)))return false;
+    if(filter==='br')return !!r.s.BR;
+    if(filter==='nobr')return !r.s.BR;
+    if(filter==='other')return !r.s.BR&&r.ret!=null;
+    if(filter==='above')return r.ret!=null&&r.pv&&r.pv>r.ret;
+    if(filter==='none')return r.ret==null;
+    return true;});
+  document.getElementById('tb').innerHTML=list.map(r=>{
+    const g=(r.ret!=null&&r.pv)?r.pv-r.ret:null, pct=g!=null?(g/r.ret*100):null;
+    return `<tr>
+      <td><div class="pname">${esc(r.n)}</div><div class="meta">Réf. ${esc(r.ref)} · Stock ${esc(r.stock)}</div></td>
+      <td class="num">${r.pv?fmt(r.pv):'<span class="no">—</span>'}</td>
+      ${SITES.map(([k])=>cell(r,k)).join('')}
+      <td class="num ${r.ret!=null?'ret':''}">${r.ret!=null?fmt(r.ret)+`<span class="m">${esc(r.m)}</span>`:'<span class="pill">Non trouvé</span>'}</td>
+      <td class="num gap ${g>0?'up':g<0?'down':''}">${g!=null?(g>0?'+':'')+fmt(g)+`<div class="meta">${(pct>0?'+':'')+pct.toFixed(1)} %</div>`:''}</td>
+      <td class="note">${esc(r.note)}</td></tr>`}).join('');
+  document.getElementById('empty').hidden=list.length>0;
+}
+document.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{
+  filter=b.dataset.f;document.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed',x===b));render();}));
+document.getElementById('q').addEventListener('input',render);
+stats();render();
+</script>
+
+</body>
+</html>

@@ -81,7 +81,6 @@ const SalePriceCorrectionsPage = React.lazy(() => import('./pages/SalePriceCorre
 // Les pages les plus volumineuses sont chargées uniquement lorsqu'elles sont ouvertes.
 const StockPage = React.lazy(() => import('./pages/StockPage'));
 const SlowMovingStockPage = React.lazy(() => import('./pages/SlowMovingStockPage'));
-const ContactsPage = React.lazy(() => import('./pages/ContactsPage'));
 const BonsPage = React.lazy(() => import('./pages/BonsPage'));
 const DeliveryRunsPage = React.lazy(() => import('./pages/DeliveryRunsPage'));
 const DeliveryStatsPage = React.lazy(() => import('./pages/DeliveryRunsPage').then(m => ({ default: m.DeliveryStatsPage })));
@@ -396,17 +395,6 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <ProductNameCorrectionsPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/contacts"
-          element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
-              <LayoutWithAccessCheck>
-                <ContactsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

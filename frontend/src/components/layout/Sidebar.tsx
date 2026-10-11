@@ -88,7 +88,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
     {
       title: 'Tiers',
       items: [
-        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'Employé' },
         { name: 'Clients', href: '/clients', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
         { name: 'Fournisseurs', href: '/fournisseurs', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
         { name: 'Charges', href: '/charges', icon: Users, show: user?.role === 'PDG' },

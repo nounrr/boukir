@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prix Sika au Maroc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: tableau de comparaison dense, en-tête compact avec synthèse, filtres, puis tableau scrollable */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --fg:#1d2422; --muted:#5f6b67; --line:#dde2df;
+  --accent:#0d6b5e; --accent-soft:#e1efec; --hi:#fff3d6; --hi-fg:#7a5200;
+  --up:#b3261e; --down:#1e7d3a; --na:#eceeed;
+  --f-display:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  --f-num:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --surface:#1c2320; --fg:#e7ece9; --muted:#9aa7a2; --line:#2e3834;
+  --accent:#5cc2b0; --accent-soft:#1f3833; --hi:#3a2f14; --hi-fg:#f3cf7a;
+  --up:#ff8a80; --down:#7fd69a; --na:#232b28; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --surface:#1c2320; --fg:#e7ece9; --muted:#9aa7a2; --line:#2e3834;
+  --accent:#5cc2b0; --accent-soft:#1f3833; --hi:#3a2f14; --hi-fg:#f3cf7a;
+  --up:#ff8a80; --down:#7fd69a; --na:#232b28; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:28px 40px;display:grid;gap:20px}
+header{display:grid;gap:6px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,3.4vw,34px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:0;max-width:75ch}
+.stats{display:flex;flex-wrap:wrap;gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px;min-width:0}
+.stat b{display:block;font-family:var(--f-display);font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.tools input{flex:1 1 240px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--fg);font:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.chip:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:980px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+thead th{position:sticky;top:0;background:var(--surface);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;z-index:1}
+tbody tr:hover{background:var(--accent-soft)}
+.pname{font-weight:600}
+.meta{font-size:12px;color:var(--muted)}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+th.num{text-align:right}
+.price a{color:var(--accent);text-decoration:none;font-family:var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap;border-bottom:1px solid currentColor}
+.price a:hover{border-bottom-width:2px}
+.price .no{color:var(--muted);font-size:12px}
+.ret{background:var(--hi);color:var(--hi-fg);font-weight:700}
+.ret .m{display:block;font-family:var(--f-body);font-weight:500;font-size:11px;white-space:normal;text-align:right}
+.gap.up{color:var(--up)} .gap.down{color:var(--down)}
+.note{font-size:12px;color:var(--muted);max-width:34ch}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--na);color:var(--muted)}
+.sumbox{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:14px}
+.sumbox .stat{background:var(--bg)}
+.stat em{font-style:normal;font-size:12px;color:var(--muted);margin-left:6px}
+.bar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--na)}
+.bar span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.lists>div{min-width:0}
+.lists h2{font-family:var(--f-display);font-size:15px;margin:0 0 6px}
+.lists h2 span{color:var(--muted);font-weight:500}
+.lists ul{margin:0;padding-left:18px;columns:2 220px;column-gap:20px;font-size:13px}
+.lists li{break-inside:avoid;margin-bottom:3px}
+.lists li small{color:var(--muted)}
+:root{--c-br:#0d6b5e;--c-ot:#d08c1a;--c-no:#b9c2be}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--c-br:#5cc2b0;--c-ot:#e9b04f;--c-no:#4a5551}}
+:root[data-theme="dark"]{--c-br:#5cc2b0;--c-ot:#e9b04f;--c-no:#4a5551}
+footer{font-size:12px;color:var(--muted);display:grid;gap:4px}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Prix Sika au Maroc</h1>
+    <p class="sub">Votre prix de vente comparé aux prix publics TTC de Bricoma, Mr Bricolage, Bricop et Outillage Aouami, relevés le 10/10/2026. Le prix retenu est le prix qui revient le plus souvent ; à défaut, la médiane.</p>
+  </header>
+  <section class="sumbox" aria-label="Statistiques">
+    <div class="stats" id="stats"></div>
+    <div class="bar" id="bar" role="img"></div>
+    <div class="legend" id="legend"></div>
+    <div class="lists">
+      <div><h2>Absents de Bricoma <span id="c1"></span></h2><ul id="l1"></ul></div>
+      <div><h2>Introuvables sur tous les sites <span id="c2"></span></h2><ul id="l2"></ul></div>
+    </div>
+  </section>
+  <div class="tools">
+    <label for="q" class="meta" hidden>Rechercher</label>
+    <input id="q" type="search" placeholder="Rechercher un produit ou une référence…">
+    <div class="chips" role="group" aria-label="Filtrer">
+      <button class="chip" data-f="all" aria-pressed="true">Tous</button>
+      <button class="chip" data-f="br">Sur Bricoma</button>
+      <button class="chip" data-f="nobr">Absents de Bricoma</button>
+      <button class="chip" data-f="other">Ailleurs seulement</button>
+      <button class="chip" data-f="above">Votre prix au-dessus</button>
+      <button class="chip" data-f="none">Introuvables partout</button>
+    </div>
+  </div>
+  <div class="tablebox">
+    <table>
+      <thead><tr>
+        <th>Produit</th><th class="num">Prix actuel</th><th class="num">Bricoma</th>
+        <th class="num">Mr Bricolage</th><th class="num">Bricop</th><th class="num">Outillage Aouami</th>
+        <th class="num">Prix retenu</th><th class="num">Écart</th><th>Remarque</th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>Aucun produit ne correspond à ce filtre.</div>
+  </div>
+  <footer>
+    <span>Prix en MAD TTC. Écart = votre prix actuel moins le prix retenu ; en rouge quand votre prix est plus élevé.</span>
+    <span>Jumia n'a pas pu être consulté (vérification anti-robot). Les prix en magasin peuvent différer des prix en ligne.</span>
+  </footer>
+</div>
+
+<script>
+const ROWS=[{"n": "SIKA Level 110 25 kg", "ref": "6430", "stock": 2, "pv": 280, "s": {"BP": {"p": 209, "u": "https://www.bricop.ma/sika-mortier-de-nivellement-sika-maroc/"}}, "ret": 209, "m": "Source unique", "note": "Probable : Bricop vend un « Mortier de nivellement Sika » sans fiche détaillée (Sikafloor-110 Level au Maroc) — à vérifier"}, {"n": "SIKA GROUTE 212 25 kg", "ref": "6171", "stock": 38, "pv": 250, "s": {"BR": {"p": 185, "u": "https://www.bricoma.ma/sikagrout-212-m-sac-de-25kg.html"}, "MB": {"p": 185, "u": "https://mrbricolage.ma/produit/sikagrout-212-scellement-25kg/"}, "BP": {"p": 195, "u": "https://www.bricop.ma/sika-sikagrout-212-m-sac-de-25-kg-maroc/"}}, "ret": 185, "m": "Prix le plus fréquent", "note": ""}, {"n": "SIKA Monotop® - 411 RM", "ref": "5265", "stock": 2, "pv": 515, "s": {"BR": {"p": 515, "u": "https://www.bricoma.ma/conservado-impermeabilisation-incolore-pour-la-protection-des-facades-7.html"}, "BP": {"p": 515, "u": "https://www.bricop.ma/sika-monotop-411-rm-s25kg-maroc/"}}, "ret": 515, "m": "Prix le plus fréquent", "note": ""}, {"n": "Sikaflex Pro - 3", "ref": "5048", "stock": 0, "pv": 120, "s": {"BR": {"p": 105, "u": "https://www.bricoma.ma/sikaflex-pro-3-concrete-grey-c300ml.html"}, "BP": {"p": 99, "u": "https://www.bricop.ma/sika-sikaflex-pro-3-beton-gris-c300-ml-maroc/"}}, "ret": 102.0, "m": "Médiane (aucun prix répété)", "note": ""}, {"n": "Sika' Décoffrage 5 L", "ref": "3712", "stock": 0, "pv": 500, "s": {"BR": {"p": 579, "u": "https://www.bricoma.ma/sikacrete-ucs-m-kit-3kg-1.html"}, "BP": {"p": 599, "u": "https://www.bricop.ma/sika-sika-decoffrage-protection-des-coffrages-bois-1-20-bidon-5l-maroc/"}}, "ret": 589.0, "m": "Médiane (aucun prix répété)", "note": ""}, {"n": "SIKA WATERBAR D19 × 15 m Joint Jaune", "ref": "3423", "stock": 1, "pv": 160, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (vendu seulement en France, ex. bag-distribution.fr)"}, {"n": "SIKA LANKOSEC 321", "ref": "3323", "stock": 64, "pv": 25, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "SIKA Conservador b25 L", "ref": "2408", "stock": 0, "pv": 750, "s": {"BR": {"p": 749, "u": "https://www.bricoma.ma/conservado-impermeabilisation-incolore-pour-la-protection-des-facades.html"}}, "ret": 749, "m": "Source unique", "note": "Bidon 25 L — en rupture chez Bricoma"}, {"n": "Sikafill® Toiture", "ref": "2406", "stock": 0, "pv": 650, "s": {"BP": {"p": 795, "u": "https://www.bricop.ma/sika-sikafill-blanc-toit-20kg-maroc/"}}, "ret": 795, "m": "Source unique", "note": "Format 20 kg supposé (votre prix 650). Bricop : Blanc 20 kg 795 / Rouge 20 kg 829. En 5 kg : Bricoma 135, Bricop 229"}, {"n": "SIKA Mortier Rapide 5 kg", "ref": "2405", "stock": 16, "pv": 350, "s": {"BP": {"p": 345, "u": "https://www.bricop.ma/sika-sika-mortier-rapide-seau-de-05kg-maroc/"}}, "ret": 345, "m": "Source unique", "note": "Seau 5 kg. Bricoma ne vend que le 10 kg (745)"}, {"n": "SIKA BOOM Mousse Construction", "ref": "2402", "stock": 42, "pv": 80, "s": {"MB": {"p": 60, "u": "https://mrbricolage.ma/produit/sika-boom-p-foam-750mi/"}, "BP": {"p": 79, "u": "https://www.bricop.ma/sika-sika-boom-mousse-polyurethanne-750ml-maroc/"}}, "ret": 69.5, "m": "Médiane (aucun prix répété)", "note": "Bombe 750 ml"}, {"n": "SikaCeram• 80I Blanc 25 kg", "ref": "2025", "stock": 3851, "pv": 60, "s": {"MB": {"p": 49.9, "u": "https://mrbricolage.ma/produit/sikaceram-80-i-blanc-sac-25-kg/"}}, "ret": 49.9, "m": "Source unique", "note": ""}, {"n": "SIKA M70 Blanc 20 kg", "ref": "2016", "stock": 5310, "pv": 38, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc"}, {"n": "SIKA 522 25 kg", "ref": "2015", "stock": 685, "pv": 120, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (SikaCeram 522 Prolidal)"}, {"n": "SIKA I 80 Gris 25 kg", "ref": "2011", "stock": 2, "pv": 55, "s": {"MB": {"p": 37.9, "u": "https://mrbricolage.ma/produit/sikaceram-80-i-gris-sac-25-kg/"}}, "ret": 37.9, "m": "Source unique", "note": ""}, {"n": "SIKA 1 kg", "ref": "1955", "stock": 3077, "pv": 40, "s": {"BR": {"p": 29.9, "u": "https://www.bricoma.ma/conservado-impermeabilisation-incolore-pour-la-protection-des-facades-10.html"}, "AO": {"p": 32, "u": "https://outillageaouami.com/product/sikalite-poudre-sac-1kg-sika/"}}, "ret": 30.95, "m": "Médiane (aucun prix répété)", "note": "Supposé Super Sikalite 1 kg (désignation ambiguë)"}, {"n": "SIKA Conservado 5 L", "ref": "1355", "stock": 1, "pv": 150, "s": {"MB": {"p": 155, "u": "https://mrbricolage.ma/produit/conservado-5-kg/"}}, "ret": 155, "m": "Source unique", "note": "Vendu « Conservado 5 kg » chez Mr Bricolage"}, {"n": "SIKA TOP®121 Surfaçage m", "ref": "1257", "stock": 15, "pv": 680, "s": {"BR": {"p": 589, "u": "https://www.bricoma.ma/kit-sikatop-121.html"}, "MB": {"p": 589, "u": "https://mrbricolage.ma/produit/kit-sikatop-121-de-26-75kg-en-gris/"}, "BP": {"p": 605, "u": "https://www.bricop.ma/sika-kit-sikatop-121-maroc/"}, "AO": {"p": 650, "u": "https://outillageaouami.com/product/sikatop-121-surfacage-m-gris-26-75kg/"}}, "ret": 589, "m": "Prix le plus fréquent", "note": ""}, {"n": "SIKA TOP 122 Réparation m", "ref": "1256", "stock": 28, "pv": 770, "s": {"BR": {"p": 745, "u": "https://www.bricoma.ma/kit-sikatop-122.html"}, "MB": {"p": 745, "u": "https://mrbricolage.ma/produit/kit-sika-top-122-preparation-m-35kg/"}, "BP": {"p": 745, "u": "https://www.bricop.ma/sika-kit-sikatop-122-reparation-m-maroc/"}}, "ret": 745, "m": "Prix le plus fréquent", "note": ""}, {"n": "Sika Latex 5 L", "ref": "1194", "stock": 667, "pv": 300, "s": {"BR": {"p": 289, "u": "https://www.bricoma.ma/sikagrout-212-m-sac-de-25kg-3.html"}, "BP": {"p": 309, "u": "https://www.bricop.ma/sika-sikalatex-m-flacon-de-05l-maroc/"}}, "ret": 299.0, "m": "Médiane (aucun prix répété)", "note": ""}, {"n": "Sika Latex 2 L", "ref": "1193", "stock": 223, "pv": 150, "s": {"BR": {"p": 125, "u": "https://www.bricoma.ma/sikagrout-212-m-sac-de-25kg-7.html"}, "MB": {"p": 125, "u": "https://mrbricolage.ma/produit/sikalatex-j2l/"}, "BP": {"p": 135, "u": "https://www.bricop.ma/sika-flacon-sikalatex-m-2l-maroc/"}, "AO": {"p": 145, "u": "https://outillageaouami.com/product/sikalatex-m-5l-2l/"}}, "ret": 125, "m": "Prix le plus fréquent", "note": ""}, {"n": "SIKA Dur 31 Colle m", "ref": "1192", "stock": 124, "pv": 230, "s": {"BR": {"p": 190, "u": "https://www.bricoma.ma/sikatop-armatec-108-m-kit-de-5kg-3.html"}, "MB": {"p": 190, "u": "https://mrbricolage.ma/produit/sikadur-31-colle-m-k124kg/"}, "BP": {"p": 210, "u": "https://www.bricop.ma/sika-kit-sikadur-31-colle-m-1-24kg-maroc/"}}, "ret": 190, "m": "Prix le plus fréquent", "note": ""}, {"n": "SILICONE SIKA FLEX PRO - 11FC", "ref": "6132", "stock": 100, "pv": 85, "s": {"BR": {"p": 72, "u": "https://www.bricoma.ma/sikaflex-pro11-fc-gris-cartouche-de-310ml.html"}, "MB": {"p": 72, "u": "https://mrbricolage.ma/produit/sikaflex-pro-11-fc-gris-c300ml/"}, "BP": {"p": 72, "u": "https://www.bricop.ma/sika-sikaflex-pro11-fc-gris-310ml-maroc/"}}, "ret": 72, "m": "Prix le plus fréquent", "note": ""}, {"n": "SILICONE SIKA FLEX PRO - 11FC — Blanc", "ref": "6132", "stock": 52, "pv": 80, "s": {"BR": {"p": 72, "u": "https://www.bricoma.ma/sikaflex-pro11-fc-blanc-cartouche-de-310ml.html"}, "BP": {"p": 72, "u": "https://www.bricop.ma/sika-sikaflex-pro11-fc-blanc-310ml-maroc/"}}, "ret": 72, "m": "Prix le plus fréquent", "note": ""}, {"n": "SILICONE SIKA FLEX PRO - 11FC — Gris", "ref": "6132", "stock": 48, "pv": 80, "s": {"BR": {"p": 72, "u": "https://www.bricoma.ma/sikaflex-pro11-fc-gris-cartouche-de-310ml.html"}, "MB": {"p": 72, "u": "https://mrbricolage.ma/produit/sikaflex-pro-11-fc-gris-c300ml/"}, "BP": {"p": 72, "u": "https://www.bricop.ma/sika-sikaflex-pro11-fc-gris-310ml-maroc/"}}, "ret": 72, "m": "Prix le plus fréquent", "note": ""}, {"n": "Hydrofuge Sika' Poudre 0.5kg", "ref": "1954", "stock": 4730, "pv": 20, "s": {"BR": {"p": 15.5, "u": "https://www.bricoma.ma/conservado-impermeabilisation-incolore-pour-la-protection-des-facades-4.html"}, "BP": {"p": 17, "u": "https://www.bricop.ma/sika-plastifiant-hydrofuge-pour-beton-sika-poudre-sachet-maroc/"}, "AO": {"p": 20, "u": "https://outillageaouami.com/product/hydrofuge-poudre-500g-sika/"}}, "ret": 17, "m": "Médiane (aucun prix répété)", "note": ""}, {"n": "Silicone Sikas Anchorfix2._", "ref": "1287", "stock": 74, "pv": 220, "s": {"BR": {"p": 219, "u": "https://www.bricoma.ma/sikaflex-112-crystal-clear-1.html"}, "MB": {"p": 219, "u": "https://mrbricolage.ma/produit/sika-anchorfix-2-300-ml/"}, "BP": {"p": 215, "u": "https://www.bricop.ma/sika-sika-ancre-fix-2-scellant-resine-cartouche-300ml-maroc/"}, "AO": {"p": 225, "u": "https://outillageaouami.com/product/sika-anchorfix/"}}, "ret": 219, "m": "Prix le plus fréquent", "note": ""}, {"n": "MASTIC SIKA 544 MARRON 5 kg", "ref": "1268", "stock": 21, "pv": 65.61, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (ParexLanko/SikaCeram 543-544 Prolijoint)"}, {"n": "MASTIC SIKA 544 BLEU 5 kg", "ref": "1267", "stock": 8, "pv": 74.52, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (ParexLanko/SikaCeram 543-544 Prolijoint)"}, {"n": "MASTIC SIKA 543 Gris 5 kg", "ref": "1266", "stock": 258, "pv": 65.61, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (ParexLanko/SikaCeram 543-544 Prolijoint)"}, {"n": "MASTIC SIKA 543 Noir 5 kg", "ref": "1265", "stock": 79, "pv": 65.61, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (ParexLanko/SikaCeram 543-544 Prolijoint)"}, {"n": "MASTIC SIKA 543 Blanc 5 kg", "ref": "1264", "stock": 146, "pv": 65.61, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (ParexLanko/SikaCeram 543-544 Prolijoint)"}, {"n": "MASTIC SIKA 543 BEIGE 5 kg", "ref": "1263", "stock": 150, "pv": 65.61, "s": {}, "ret": null, "m": "Non trouvé", "note": "Introuvable en ligne au Maroc (ParexLanko/SikaCeram 543-544 Prolijoint)"}, {"n": "Fibré SIKA FIBRE", "ref": "1191", "stock": 54, "pv": 80, "s": {}, "ret": null, "m": "Non trouvé", "note": "Aucun prix public : Rifaa (rifaa.ma) le référence sur devis (SikaFiber Polypropylene 12-32)"}, {"n": "Époxy Grout 5 kg", "ref": "2407", "stock": 2, "pv": 750, "s": {}, "ret": null, "m": "Non trouvé", "note": "Aucun prix public : Rifaa (rifaa.ma) le référence sur devis (SikaCeram EpoxyGrout)"}];
+const SITES=[['BR','Bricoma'],['MB','Mr Bricolage'],['BP','Bricop'],['AO','Outillage Aouami']];
+const fmt=v=>v==null?'':v.toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let filter='all';
+function stats(){
+  const N=ROWS.length, br=ROWS.filter(r=>r.s.BR), nobr=ROWS.filter(r=>!r.s.BR);
+  const none=ROWS.filter(r=>r.ret==null), other=nobr.filter(r=>r.ret!=null);
+  const above=ROWS.filter(r=>r.ret!=null&&r.pv&&r.pv>r.ret).length;
+  const pc=n=>Math.round(n/N*100)+' %';
+  document.getElementById('stats').innerHTML=[
+    [N,'Produits Sika',''],[br.length,'Trouvés sur Bricoma',pc(br.length)],[nobr.length,'Absents de Bricoma',pc(nobr.length)],
+    [other.length,'Trouvés sur un autre site',pc(other.length)],[none.length,'Introuvables sur tous les sites',pc(none.length)],[above,'Votre prix au-dessus du marché','']
+  ].map(([n,l,p])=>`<div class="stat"><b>${n}${p?`<em>${p}</em>`:''}</b><span>${l}</span></div>`).join('');
+  const seg=[[br.length,'var(--c-br)','Sur Bricoma'],[other.length,'var(--c-ot)','Absents de Bricoma, trouvés ailleurs'],[none.length,'var(--c-no)','Introuvables partout']];
+  const bar=document.getElementById('bar');
+  bar.innerHTML=seg.map(([n,c,l])=>`<span style="width:${n/N*100}%;background:${c}" title="${l} : ${n}"></span>`).join('');
+  bar.setAttribute('aria-label',seg.map(s=>s[2]+' '+s[0]).join(', '));
+  document.getElementById('legend').innerHTML=seg.map(([n,c,l])=>`<span><i style="background:${c}"></i>${l} : ${n}</span>`).join('');
+  const li=r=>`<li>${esc(r.n)} <small>· stock ${esc(r.stock)}</small></li>`;
+  document.getElementById('c1').textContent='('+nobr.length+')';document.getElementById('l1').innerHTML=nobr.map(li).join('');
+  document.getElementById('c2').textContent='('+none.length+')';document.getElementById('l2').innerHTML=none.map(li).join('');
+}
+function cell(r,k){const s=r.s[k];return `<td class="num price">${s?`<a href="${esc(s.u)}" target="_blank" rel="noopener">${fmt(s.p)}</a>`:'<span class="no">—</span>'}</td>`}
+function render(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  const list=ROWS.filter(r=>{
+    if(q&&!(r.n.toLowerCase().includes(q)||String(r.ref).includes(q)))return false;
+    if(filter==='br')return !!r.s.BR;
+    if(filter==='nobr')return !r.s.BR;
+    if(filter==='other')return !r.s.BR&&r.ret!=null;
+    if(filter==='above')return r.ret!=null&&r.pv&&r.pv>r.ret;
+    if(filter==='none')return r.ret==null;
+    return true;});
+  document.getElementById('tb').innerHTML=list.map(r=>{
+    const g=(r.ret!=null&&r.pv)?r.pv-r.ret:null, pct=g!=null?(g/r.ret*100):null;
+    return `<tr>
+      <td><div class="pname">${esc(r.n)}</div><div class="meta">Réf. ${esc(r.ref)} · Stock ${esc(r.stock)}</div></td>
+      <td class="num">${r.pv?fmt(r.pv):'<span class="no">—</span>'}</td>
+      ${SITES.map(([k])=>cell(r,k)).join('')}
+      <td class="num ${r.ret!=null?'ret':''}">${r.ret!=null?fmt(r.ret)+`<span class="m">${esc(r.m)}</span>`:'<span class="pill">Non trouvé</span>'}</td>
+      <td class="num gap ${g>0?'up':g<0?'down':''}">${g!=null?(g>0?'+':'')+fmt(g)+`<div class="meta">${(pct>0?'+':'')+pct.toFixed(1)} %</div>`:''}</td>
+      <td class="note">${esc(r.note)}</td></tr>`}).join('');
+  document.getElementById('empty').hidden=list.length>0;
+}
+document.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{
+  filter=b.dataset.f;document.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed',x===b));render();}));
+document.getElementById('q').addEventListener('input',render);
+stats();render();
+</script>
+
+</body>
+</html>

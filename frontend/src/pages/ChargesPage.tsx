@@ -1435,6 +1435,8 @@ const ChargeDetailPage: React.FC = () => {
           bon_date: dateIso,
           bon_date_iso: dateIso,
           product_reference: item.reference ?? item.product_reference ?? '',
+          product_id: item.product_id ?? item.produit_id,
+          product_image_url: item.product_image_url ?? item.image_url,
           product_designation: item.designation ?? item.product_designation ?? '-',
           quantite: qte,
           prix_unitaire: pu,

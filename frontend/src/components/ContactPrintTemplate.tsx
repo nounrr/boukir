@@ -3,6 +3,7 @@ import React from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
 import { isRtlLang, pickDesignationForLang, type DesignationLang } from '../utils/designationLang';
+import { toBackendUrl } from '../utils/url';
 
 export type CompanyType = 'DIAMOND' | 'MPC';
 export type ContactPrintMode = 'transactions' | 'products';
@@ -33,6 +34,7 @@ interface ContactPrintTemplateProps {
   designationLang?: DesignationLang;
   // Catalogue produits pour retrouver les traductions par product_id
   products?: any[];
+  includeProductImages?: boolean;
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
@@ -108,6 +110,8 @@ const groupProductHistoryRowsForPrint = (rows: any[]) => {
       row?.bon_numero ?? '',
       row?.bon_date_iso ?? row?.bon_date ?? '',
       row?.product_reference ?? '',
+      row?.product_id ?? '',
+      row?.product_image_url ?? '',
       row?.product_designation ?? '',
       row?.prix_unitaire ?? '',
       row?.type ?? '',
@@ -152,6 +156,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   totalDebitSubtitle,
   designationLang = 'fr',
   products = [],
+  includeProductImages = false,
 }) => {
   const langIsRtl = isRtlLang(designationLang);
   const productsById = React.useMemo(() => {
@@ -167,6 +172,11 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     if (designationLang === 'fr') return fallback;
     const product = row?.product_id != null ? productsById.get(String(row.product_id)) : undefined;
     return pickDesignationForLang(designationLang, fallback, row, product);
+  };
+  const rowImage = (row: any): string => {
+    if (row.syntheticInitial || String(row.type || '').toLowerCase() === 'paiement') return '';
+    const product = productsById.get(String(row.product_id));
+    return toBackendUrl(row.product_image_url || row.image_url || product?.image_url);
   };
   // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
 
@@ -246,6 +256,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const productsColSpan =
     1 + // Bon
     (showReferenceCol ? 1 : 0) +
+    (includeProductImages ? 1 : 0) +
     1 + // Désignation
     (showCodeReglementCol ? 1 : 0) +
     (showAddressCol ? 1 : 0) +
@@ -450,6 +461,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 {/* Bon N° avec Date intégrée sous le numéro */}
                 <th>Bon N° / Date</th>
                 {showReferenceCol && <th>Référence</th>}
+                {includeProductImages && <th style={{ width: '52px' }}>Image</th>}
                 <th className="col-designation">Désignation</th>
                 {showCodeReglementCol && <th>Code règlement</th>}
                 {showAddressCol && <th className="col-address">Adresse Livraison</th>}
@@ -512,6 +524,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                       )}
 
                       {/* Désignation (wrap libre) */}
+                      {includeProductImages && <td style={{ width: '52px', textAlign: 'center' }}>
+                        {rowImage(it) ? <img src={rowImage(it)} alt={rowDesignation(it)} loading="eager" style={{ width: '44px', height: '44px', objectFit: 'contain', display: 'block', margin: '0 auto' }} onError={event => { event.currentTarget.style.display = 'none'; }} /> : '—'}
+                      </td>}
                       <td
                         className="cell-wrap col-designation"
                         dir={langIsRtl && !it.syntheticInitial ? 'rtl' : undefined}
@@ -570,6 +585,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 <tr>
                   <td>—</td>
                   {showReferenceCol && <td>—</td>}
+                  {includeProductImages && <td>—</td>}
                   <td className="cell-wrap">TOTAL</td>
                   {showCodeReglementCol && <td>—</td>}
                   {showAddressCol && <td>—</td>}
