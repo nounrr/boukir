@@ -4985,7 +4985,7 @@ router.get('/sale-price-corrections', requireSalePriceCorrectionAccess, async (r
 const salePriceHttpError = (status, message) => Object.assign(new Error(message), { httpStatus: status });
 
 // Validates a PATCH payload; returns { normalized } or { error }.
-function normalizeSalePriceCorrections(body) {
+export function normalizeSalePriceCorrections(body) {
   const corrections = body?.corrections;
   if (!Array.isArray(corrections) || corrections.length === 0) {
     return { error: 'corrections array requis' };
@@ -5036,7 +5036,7 @@ function normalizeSalePriceCorrections(body) {
 }
 
 // Applies validated corrections inside an open transaction. Throws salePriceHttpError on conflict.
-async function applySalePriceCorrections(connection, normalized, userId, hasEnValidation) {
+export async function applySalePriceCorrections(connection, normalized, userId, hasEnValidation) {
   let updatedProducts = 0;
   let updatedVariants = 0;
   let updatedSnapshots = 0;

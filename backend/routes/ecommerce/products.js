@@ -4,6 +4,7 @@ import { ensureCategoryProductOrderSchema, CATEGORY_PRODUCT_ORDER_SQL, CATEGORY_
 import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 import { createProductSitemapRouter } from './productSitemap.js';
 import { createCatalogPagesRouter } from './catalogPages.js';
+import { DEFAULT_VARIANT_ORDER_SQL, prioritizeDefaultVariant } from '../../utils/ecommerceDefaultVariant.js';
 
 const router = Router();
 // Must precede /:id.
@@ -69,11 +70,12 @@ async function firstRequiredVariant(product, snapshotEnabled) {
     WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
   ), pv.stock_quantity)` : 'pv.stock_quantity';
   const [rows] = await pool.query(`
-    SELECT pv.id, pv.variant_name, pv.color_name, pv.variant_type,
+    SELECT * FROM (SELECT pv.id, pv.variant_name, pv.color_name, pv.variant_type,
       ${priceExpr} AS prix_vente, ${stockExpr} AS stock_quantity, pv.image_url
     FROM product_variants pv
     WHERE pv.product_id = ? AND COALESCE(pv.is_deleted, 0) = 0
-    ORDER BY pv.variant_type, pv.variant_name, pv.id LIMIT 1
+    ) effective_variants
+    ORDER BY ${DEFAULT_VARIANT_ORDER_SQL} LIMIT 1
   `, [product.id]);
   return rows[0] || null;
 }
@@ -523,6 +525,7 @@ router.get('/', async (req, res, next) => {
         ORDER BY is_default DESC, unit_name
       `, [r.id]);
 
+      variants = prioritizeDefaultVariant(variants, r.is_obligatoire_variant);
       const displayPrice = Number(r.is_obligatoire_variant || 0) === 1 && variants[0]
         ? variants[0].prix_vente : originalPrice;
       const units = unitsData.map(u => ({
@@ -955,6 +958,7 @@ router.get('/:id', async (req, res, next) => {
     }
 
     // Calculate promo price
+    variants = prioritizeDefaultVariant(variants, r.is_obligatoire_variant);
     const firstVariant = Number(r.is_obligatoire_variant || 0) === 1 ? variants[0] : null;
     const originalPrice = firstVariant ? Number(firstVariant.prix_vente) : Number(effectiveBasePrice);
     const promoPercentage = Number(r.pourcentage_promo || 0);

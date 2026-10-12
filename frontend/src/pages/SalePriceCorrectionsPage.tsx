@@ -4,7 +4,7 @@ import { type HistoricalSalePrice, type SalePriceCorrectionRequest, type SalePri
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
-import { isCustomPriceChoice, type SalePriceChoice as Choice } from '../utils/salePriceChoice';
+import { isCustomPriceChoice, salePriceCorrectionAction, type SalePriceChoice as Choice } from '../utils/salePriceChoice';
 
 type CorrectionTab = 'pending' | 'validation' | 'processed' | 'typos';
 type RowFilter = 'all' | 'todo' | 'ready';
@@ -217,7 +217,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, ap
   const pv1 = resolvePrice(decision?.pv1, row.current_prix_vente);
   const pv2 = resolvePrice(decision?.pv2, row.current_prix_vente_2);
   const ready = pv1 !== null && pv2 !== null;
-  const changed = ready && (applyToAllVariants || !samePrice(pv1, row.current_prix_vente) || !samePrice(pv2, row.current_prix_vente_2));
+  const changed = ready && salePriceCorrectionAction(decision ?? {}, applyToAllVariants) === 'apply';
   const rail = readOnly ? (checked ? 'bg-indigo-500' : 'bg-emerald-500') : ready ? (changed ? 'bg-indigo-500' : 'bg-emerald-500') : isStarted(decision) ? 'bg-amber-400' : 'bg-stone-200';
   const rowTint = readOnly ? (checked ? 'bg-indigo-50' : 'bg-white hover:bg-stone-50') : focused ? 'bg-stone-100' : 'bg-white hover:bg-stone-50';
 
@@ -306,8 +306,8 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, ap
               <div className="space-y-1 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1.5 text-xs">
                 {changed ? (
                   <>
-                    {!samePrice(pv1, row.current_prix_vente) ? <p className="flex items-center gap-1 tabular-nums font-semibold text-indigo-700">PV1 <ArrowRight className="h-3 w-3" /> {money.format(pv1)} DH</p> : null}
-                    {!samePrice(pv2, row.current_prix_vente_2) ? <p className="flex items-center gap-1 tabular-nums font-semibold text-amber-700">PV2 <ArrowRight className="h-3 w-3" /> {money.format(pv2)} DH</p> : null}
+                    <p className="flex items-center gap-1 tabular-nums font-semibold text-indigo-700">PV1 <ArrowRight className="h-3 w-3" /> {money.format(pv1)} DH</p>
+                    <p className="flex items-center gap-1 tabular-nums font-semibold text-amber-700">PV2 <ArrowRight className="h-3 w-3" /> {money.format(pv2)} DH</p>
                     {applyToAllVariants ? <p className="font-semibold text-indigo-700">Prix appliqués au produit et à toutes ses variantes</p> : null}
                     <p className="flex items-center gap-1 pt-0.5 text-[11px] font-semibold text-emerald-700"><Check className="h-3 w-3" /> Catalogue et stock liés</p>
                   </>
@@ -797,9 +797,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
   );
   const changedCount = readyRows.filter((row) => {
     const decision = decisions[rowKey(row)];
-    return Boolean(groupKeys[rowKey(row)])
-      || !samePrice(resolvePrice(decision.pv1, row.current_prix_vente)!, row.current_prix_vente)
-      || !samePrice(resolvePrice(decision.pv2, row.current_prix_vente_2)!, row.current_prix_vente_2);
+    return salePriceCorrectionAction(decision, Boolean(groupKeys[rowKey(row)])) === 'apply';
   }).length;
   const startedCount = rows.filter((row) => isStarted(decisions[rowKey(row)]) && (row.variant_id === null || !groupedProductIds.has(row.product_id))).length;
   const progress = actionableRowCount ? Math.round((readyRows.length / actionableRowCount) * 100) : 0;
@@ -954,8 +952,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
           const prixVente = resolvePrice(decision.pv1, row.current_prix_vente)!;
           const prixVente2 = resolvePrice(decision.pv2, row.current_prix_vente_2)!;
           const applyToAllVariants = row.variant_id === null && Boolean(groupKeys[rowKey(row)]);
-          const unchanged = samePrice(prixVente, row.current_prix_vente) && samePrice(prixVente2, row.current_prix_vente_2);
-          return { product_id: row.product_id, variant_id: row.variant_id, action: unchanged && !applyToAllVariants ? 'confirm' as const : 'apply' as const, apply_to_all_variants: applyToAllVariants, prix_vente: prixVente, prix_vente_2: prixVente2, expected_prix_vente: row.current_prix_vente, expected_prix_vente_2: row.current_prix_vente_2 };
+          return { product_id: row.product_id, variant_id: row.variant_id, action: salePriceCorrectionAction(decision, applyToAllVariants), apply_to_all_variants: applyToAllVariants, prix_vente: prixVente, prix_vente_2: prixVente2, expected_prix_vente: row.current_prix_vente, expected_prix_vente_2: row.current_prix_vente_2 };
         }),
       }).unwrap();
       setDecisions({}); setGroupKeys({}); setFocusedKey(null);
