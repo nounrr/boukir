@@ -1,0 +1,1392 @@
+{
+  "sourceUrl": "https://boukirdiamond.com/en/shop?category_id=107&brand_id=1",
+  "retrievedAt": "2026-10-11T15:36:34.627Z",
+  "products": [
+    {
+      "reference": "6140",
+      "name": "SILICONE BIOSCUD BT FIX KERAKOLL",
+      "price": 150,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "6140",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1771088661333-521706641.jpg",
+      "imageSource": "/uploads/products/1771088661333-521706641.jpg",
+      "usageVideo": "product-videos/6140.mp4",
+      "videoSource": "exact_reference",
+      "hasVideo": true,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/6140",
+      "variants": [],
+      "usageVideoDuration": 10
+    },
+    {
+      "reference": "6190",
+      "name": "Silicone Coloré - KERAKOLL",
+      "price": 0,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "6190",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1783883545449-812773100.jpg",
+      "imageSource": "/uploads/products/1783883545449-812773100.jpg",
+      "usageVideo": "product-videos/6190.mp4",
+      "videoSource": "exact_reference",
+      "hasVideo": true,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/6190",
+      "variants": [
+        {
+          "id": 307,
+          "reference": null,
+          "name": "04",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "c5c7c4",
+            "size": null
+          },
+          "image": "products/1783883545449-812773100.jpg",
+          "imageSource": "/uploads/products/1783883545449-812773100.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 308,
+          "reference": null,
+          "name": "05",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "bfbfbb",
+            "size": null
+          },
+          "image": "products/1783883545862-495062544.jpg",
+          "imageSource": "/uploads/products/1783883545862-495062544.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 309,
+          "reference": null,
+          "name": "11",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "3c3b39",
+            "size": null
+          },
+          "image": "products/1783883546302-58084445.jpg",
+          "imageSource": "/uploads/products/1783883546302-58084445.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 310,
+          "reference": null,
+          "name": "19",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "617969",
+            "size": null
+          },
+          "image": "products/1783883546742-857758788.jpg",
+          "imageSource": "/uploads/products/1783883546742-857758788.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 311,
+          "reference": null,
+          "name": "22",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "d3cdbd",
+            "size": null
+          },
+          "image": "products/1783883547201-508192748.jpg",
+          "imageSource": "/uploads/products/1783883547201-508192748.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 312,
+          "reference": null,
+          "name": "23",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "dbd7ba",
+            "size": null
+          },
+          "image": "products/1783883547704-915173898.jpg",
+          "imageSource": "/uploads/products/1783883547704-915173898.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 313,
+          "reference": null,
+          "name": "24",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "dbd7ba",
+            "size": null
+          },
+          "image": "products/1783883548475-242472464.jpg",
+          "imageSource": "/uploads/products/1783883548475-242472464.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 314,
+          "reference": null,
+          "name": "26",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "8d7c6c",
+            "size": null
+          },
+          "image": "products/1783883548943-751840405.jpg",
+          "imageSource": "/uploads/products/1783883548943-751840405.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 315,
+          "reference": null,
+          "name": "28",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "463c32",
+            "size": null
+          },
+          "image": "products/1783883549365-392136135.jpg",
+          "imageSource": "/uploads/products/1783883549365-392136135.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 316,
+          "reference": null,
+          "name": "30",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "aa8f72",
+            "size": null
+          },
+          "image": "products/1783883549756-711695877.jpg",
+          "imageSource": "/uploads/products/1783883549756-711695877.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 317,
+          "reference": null,
+          "name": "36",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "6c635e",
+            "size": null
+          },
+          "image": "products/1783883550132-827746934.jpg",
+          "imageSource": "/uploads/products/1783883550132-827746934.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 98,
+          "reference": null,
+          "name": "37",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7e6a6b",
+            "size": null
+          },
+          "image": "products/1783883542831-152688870.jpg",
+          "imageSource": "/uploads/products/1783883542831-152688870.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 99,
+          "reference": null,
+          "name": "38",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "514545",
+            "size": null
+          },
+          "image": "products/1783883543178-902497029.jpg",
+          "imageSource": "/uploads/products/1783883543178-902497029.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 318,
+          "reference": null,
+          "name": "39",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b39c94",
+            "size": null
+          },
+          "image": "products/1783883550496-834717899.jpg",
+          "imageSource": "/uploads/products/1783883550496-834717899.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 319,
+          "reference": null,
+          "name": "40",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "96615d",
+            "size": null
+          },
+          "image": "products/1783883550928-884451819.jpg",
+          "imageSource": "/uploads/products/1783883550928-884451819.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 100,
+          "reference": null,
+          "name": "41",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7e5a4e",
+            "size": null
+          },
+          "image": "products/1783883543456-359566376.jpg",
+          "imageSource": "/uploads/products/1783883543456-359566376.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 101,
+          "reference": null,
+          "name": "42",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "8d3132",
+            "size": null
+          },
+          "image": "products/1783883543805-257763992.jpg",
+          "imageSource": "/uploads/products/1783883543805-257763992.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 320,
+          "reference": null,
+          "name": "43",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b3aba0",
+            "size": null
+          },
+          "image": "products/1783883551232-647885142.jpg",
+          "imageSource": "/uploads/products/1783883551232-647885142.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 321,
+          "reference": null,
+          "name": "44",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "9e9a8e",
+            "size": null
+          },
+          "image": "products/1783883551504-759005434.jpg",
+          "imageSource": "/uploads/products/1783883551504-759005434.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 322,
+          "reference": null,
+          "name": "45",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7a7267",
+            "size": null
+          },
+          "image": "products/1783883551826-369205737.jpg",
+          "imageSource": "/uploads/products/1783883551826-369205737.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 104,
+          "reference": null,
+          "name": "46",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "584f46",
+            "size": null
+          },
+          "image": "products/1783883544839-185713009.jpg",
+          "imageSource": "/uploads/products/1783883544839-185713009.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 102,
+          "reference": null,
+          "name": "47",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "8fa8a1",
+            "size": null
+          },
+          "image": "products/1783883544171-653743240.jpg",
+          "imageSource": "/uploads/products/1783883544171-653743240.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 105,
+          "reference": null,
+          "name": "48",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b0a6a5",
+            "size": null
+          },
+          "image": "products/1783883545138-92061817.jpg",
+          "imageSource": "/uploads/products/1783883545138-92061817.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 103,
+          "reference": null,
+          "name": "49",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "a5a5ad",
+            "size": null
+          },
+          "image": "products/1783883544503-755684956.jpg",
+          "imageSource": "/uploads/products/1783883544503-755684956.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 323,
+          "reference": null,
+          "name": "50",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7b7178",
+            "size": null
+          },
+          "image": "products/1783883552143-386336209.jpg",
+          "imageSource": "/uploads/products/1783883552143-386336209.jpg",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 364,
+          "reference": null,
+          "name": "kk1",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "d1cfcb",
+            "size": null
+          },
+          "image": "products/1781865380669-799591320.webp",
+          "imageSource": "/uploads/products/1781865380669-799591320.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 368,
+          "reference": null,
+          "name": "kk10",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "626766",
+            "size": null
+          },
+          "image": "products/1781865382410-939419869.webp",
+          "imageSource": "/uploads/products/1781865382410-939419869.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 84,
+          "reference": null,
+          "name": "KK103",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "975537",
+            "size": null
+          },
+          "image": "products/1781865380258-851706698.webp",
+          "imageSource": "/uploads/products/1781865380258-851706698.webp",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 89,
+          "reference": null,
+          "name": "KK107",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "c3bca9",
+            "size": null
+          },
+          "image": "products/1783883539384-274378284.jpg",
+          "imageSource": "/uploads/products/1783883539384-274378284.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 377,
+          "reference": null,
+          "name": "kk109",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b5aca1",
+            "size": null
+          },
+          "image": "products/1781865384152-440205990.webp",
+          "imageSource": "/uploads/products/1781865384152-440205990.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 378,
+          "reference": null,
+          "name": "kk110",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "aba796",
+            "size": null
+          },
+          "image": "products/1781865384294-937279311.webp",
+          "imageSource": "/uploads/products/1781865384294-937279311.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 85,
+          "reference": null,
+          "name": "KK114",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "994440",
+            "size": null
+          },
+          "image": "products/1781865380464-251740205.webp",
+          "imageSource": "/uploads/products/1781865380464-251740205.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 369,
+          "reference": null,
+          "name": "kk12",
+          "price": 166.17,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "292a2e",
+            "size": null
+          },
+          "image": "products/1781865382601-438718075.webp",
+          "imageSource": "/uploads/products/1781865382601-438718075.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 93,
+          "reference": null,
+          "name": "KK129",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "9b816a",
+            "size": null
+          },
+          "image": "products/1783883540905-888996606.jpg",
+          "imageSource": "/uploads/products/1783883540905-888996606.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 92,
+          "reference": null,
+          "name": "KK130",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "cebe8b",
+            "size": null
+          },
+          "image": "products/1783883540487-175519833.jpg",
+          "imageSource": "/uploads/products/1783883540487-175519833.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 381,
+          "reference": null,
+          "name": "kk147",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7e6d77",
+            "size": null
+          },
+          "image": "products/1781865385007-216633877.webp",
+          "imageSource": "/uploads/products/1781865385007-216633877.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 374,
+          "reference": null,
+          "name": "kk151",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "ab9a82",
+            "size": null
+          },
+          "image": "products/1781865383571-388814236.webp",
+          "imageSource": "/uploads/products/1781865383571-388814236.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 380,
+          "reference": null,
+          "name": "kk153",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "a98d76",
+            "size": null
+          },
+          "image": "products/1781865384822-508935365.webp",
+          "imageSource": "/uploads/products/1781865384822-508935365.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 95,
+          "reference": null,
+          "name": "KK154",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "806456",
+            "size": null
+          },
+          "image": "products/1783883541495-304569381.jpg",
+          "imageSource": "/uploads/products/1783883541495-304569381.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 97,
+          "reference": null,
+          "name": "KK156",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7f5a51",
+            "size": null
+          },
+          "image": "products/1783883542334-44482470.jpg",
+          "imageSource": "/uploads/products/1783883542334-44482470.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 379,
+          "reference": null,
+          "name": "kk157",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "7b736a",
+            "size": null
+          },
+          "image": "products/1781865384490-624641665.webp",
+          "imageSource": "/uploads/products/1781865384490-624641665.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 72,
+          "reference": null,
+          "name": "KK2",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#e9ecda",
+            "size": null
+          },
+          "image": "products/1781865375949-693741071.webp",
+          "imageSource": "/uploads/products/1781865375949-693741071.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 365,
+          "reference": null,
+          "name": "kk2",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "cfcdc7",
+            "size": null
+          },
+          "image": "products/1781865381020-286087236.webp",
+          "imageSource": "/uploads/products/1781865381020-286087236.webp",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 76,
+          "reference": null,
+          "name": "KK26",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#9098a7",
+            "size": null
+          },
+          "image": "products/1781865377828-135989253.webp",
+          "imageSource": "/uploads/products/1781865377828-135989253.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 91,
+          "reference": null,
+          "name": "KK27",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "bb8944",
+            "size": null
+          },
+          "image": "products/1783883540078-922661880.jpg",
+          "imageSource": "/uploads/products/1783883540078-922661880.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 78,
+          "reference": null,
+          "name": "KK29",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#516c7b",
+            "size": null
+          },
+          "image": "products/1781865378078-740803603.webp",
+          "imageSource": "/uploads/products/1781865378078-740803603.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 79,
+          "reference": null,
+          "name": "KK30",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#486170",
+            "size": null
+          },
+          "image": "products/1781865378231-685829564.webp",
+          "imageSource": "/uploads/products/1781865378231-685829564.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 73,
+          "reference": null,
+          "name": "KK4",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#dde5dc",
+            "size": null
+          },
+          "image": "products/1781865376337-53000070.webp",
+          "imageSource": "/uploads/products/1781865376337-53000070.webp",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 366,
+          "reference": null,
+          "name": "kk4",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "bdc3bc",
+            "size": null
+          },
+          "image": "products/1781865381348-146295527.webp",
+          "imageSource": "/uploads/products/1781865381348-146295527.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 87,
+          "reference": null,
+          "name": "KK47",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b0b4b3",
+            "size": null
+          },
+          "image": "products/1783883538398-892232781.jpg",
+          "imageSource": "/uploads/products/1783883538398-892232781.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 88,
+          "reference": null,
+          "name": "KK50",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "d6cfbf",
+            "size": null
+          },
+          "image": "products/1783883538948-529090638.jpg",
+          "imageSource": "/uploads/products/1783883538948-529090638.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 86,
+          "reference": null,
+          "name": "KK55",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "bec6af",
+            "size": null
+          },
+          "image": "products/1783883537320-419067787.jpg",
+          "imageSource": "/uploads/products/1783883537320-419067787.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 74,
+          "reference": null,
+          "name": "KK6",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#b5b5b5",
+            "size": null
+          },
+          "image": "products/1781865376868-408973277.webp",
+          "imageSource": "/uploads/products/1781865376868-408973277.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 367,
+          "reference": null,
+          "name": "kk6",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b0b0b0",
+            "size": null
+          },
+          "image": "products/1781865381967-2852265.webp",
+          "imageSource": "/uploads/products/1781865381967-2852265.webp",
+          "available": false,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 80,
+          "reference": null,
+          "name": "KK64",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "cac9b5",
+            "size": null
+          },
+          "image": "products/1781865378469-716974229.webp",
+          "imageSource": "/uploads/products/1781865378469-716974229.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 94,
+          "reference": null,
+          "name": "KK66",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "a68a74",
+            "size": null
+          },
+          "image": "products/1783883541157-589527120.jpg",
+          "imageSource": "/uploads/products/1783883541157-589527120.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 81,
+          "reference": null,
+          "name": "KK68",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#a6a89f",
+            "size": null
+          },
+          "image": "products/1781865378668-21344978.webp",
+          "imageSource": "/uploads/products/1781865378668-21344978.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 82,
+          "reference": null,
+          "name": "KK69",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#a29e96",
+            "size": null
+          },
+          "image": "products/1781865378976-489206884.webp",
+          "imageSource": "/uploads/products/1781865378976-489206884.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 96,
+          "reference": null,
+          "name": "KK71",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "87634d",
+            "size": null
+          },
+          "image": "products/1783883541761-70078589.jpg",
+          "imageSource": "/uploads/products/1783883541761-70078589.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 370,
+          "reference": null,
+          "name": "kk76",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "cccaba",
+            "size": null
+          },
+          "image": "products/1781865382794-148497780.webp",
+          "imageSource": "/uploads/products/1781865382794-148497780.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 371,
+          "reference": null,
+          "name": "kk79",
+          "price": 140,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "b6b09c",
+            "size": null
+          },
+          "image": "products/1781865382972-510052691.webp",
+          "imageSource": "/uploads/products/1781865382972-510052691.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 75,
+          "reference": null,
+          "name": "KK8",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "#a8a8a8",
+            "size": null
+          },
+          "image": "products/1781865377263-419516520.webp",
+          "imageSource": "/uploads/products/1781865377263-419516520.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 83,
+          "reference": null,
+          "name": "KK81",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "898176",
+            "size": null
+          },
+          "image": "products/1781865379177-914589359.webp",
+          "imageSource": "/uploads/products/1781865379177-914589359.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 372,
+          "reference": null,
+          "name": "kk83",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "857e77",
+            "size": null
+          },
+          "image": "products/1781865383155-456476593.webp",
+          "imageSource": "/uploads/products/1781865383155-456476593.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 373,
+          "reference": null,
+          "name": "kk88",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "d3ceb5",
+            "size": null
+          },
+          "image": "products/1781865383354-566324091.webp",
+          "imageSource": "/uploads/products/1781865383354-566324091.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 90,
+          "reference": null,
+          "name": "KK89",
+          "price": 0,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "ccbfac",
+            "size": null
+          },
+          "image": "products/1783883539762-157063320.jpg",
+          "imageSource": "/uploads/products/1783883539762-157063320.jpg",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 375,
+          "reference": null,
+          "name": "kk92",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "877c6e",
+            "size": null
+          },
+          "image": "products/1781865383760-849792217.webp",
+          "imageSource": "/uploads/products/1781865383760-849792217.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        },
+        {
+          "id": 376,
+          "reference": null,
+          "name": "kk94",
+          "price": 149.62,
+          "currency": "MAD",
+          "parentProductId": "6190",
+          "variant": {
+            "color": "393530",
+            "size": null
+          },
+          "image": "products/1781865383956-997416032.webp",
+          "imageSource": "/uploads/products/1781865383956-997416032.webp",
+          "available": true,
+          "usageVideo": null,
+          "videoSource": "none",
+          "hasVideo": false
+        }
+      ],
+      "usageVideoDuration": 10
+    },
+    {
+      "reference": "1285",
+      "name": "Silicone TETRA FIX Blanc KERAKOLL",
+      "price": 100,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "1285",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1772626700520-25950090.jpeg",
+      "imageSource": "/uploads/products/1772626700520-25950090.jpeg",
+      "usageVideo": null,
+      "videoSource": "none",
+      "hasVideo": false,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/1285",
+      "variants": [],
+      "usageVideoDuration": null
+    },
+    {
+      "reference": "1284",
+      "name": "Silicone TETRA FIX CRYSTAL KERAKOLL",
+      "price": 120,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "1284",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1772626198551-735241282.webp",
+      "imageSource": "/uploads/products/1772626198551-735241282.webp",
+      "usageVideo": "product-videos/1284.mp4",
+      "videoSource": "exact_reference",
+      "hasVideo": true,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/1284",
+      "variants": [],
+      "usageVideoDuration": 10
+    },
+    {
+      "reference": "1286",
+      "name": "Silicone TETRA FIX Gris KERAKOLL",
+      "price": 100,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "1286",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1772626689637-18761615.jpeg",
+      "imageSource": "/uploads/products/1772626689637-18761615.jpeg",
+      "usageVideo": null,
+      "videoSource": "none",
+      "hasVideo": false,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/1286",
+      "variants": [],
+      "usageVideoDuration": null
+    },
+    {
+      "reference": "1354",
+      "name": "Silicone TETRA FIX Noir KERAKOLL",
+      "price": 100,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "1354",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1772626071551-275317849.webp",
+      "imageSource": "/uploads/products/1772626071551-275317849.webp",
+      "usageVideo": "product-videos/1354.mp4",
+      "videoSource": "exact_reference",
+      "hasVideo": true,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/1354",
+      "variants": [],
+      "usageVideoDuration": 10
+    },
+    {
+      "reference": "7059",
+      "name": "Tetra Seal Gris 12X290ML IB - KERAKOLL",
+      "price": 140,
+      "currency": "MAD",
+      "category": "SILICONE SEALANT",
+      "brand": "Kerakoll",
+      "parentProductId": "7059",
+      "variant": {
+        "color": null,
+        "size": null
+      },
+      "image": "products/1784531456737-909271556.jpg",
+      "imageSource": "/uploads/products/1784531456737-909271556.jpg",
+      "usageVideo": null,
+      "videoSource": "none",
+      "hasVideo": false,
+      "description": null,
+      "specifications": null,
+      "sourceUrl": "https://boukirdiamond.com/en/product/7059",
+      "variants": [],
+      "usageVideoDuration": null
+    }
+  ]
+}

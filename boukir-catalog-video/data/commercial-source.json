@@ -1,0 +1,740 @@
+{
+  "retrievedAt": "2026-10-11T18:46:03.130Z",
+  "origin": "https://boukirdiamond.com",
+  "contact": {
+    "phone": "0650812894",
+    "email": "boukir.diamond23@gmail.com",
+    "city": "Tanger"
+  },
+  "groups": [
+    {
+      "key": "materials",
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=8&search=Sika&in_stock_only=false",
+      "products": [
+        {
+          "id": 2015,
+          "reference": "2015",
+          "designation": "SIKA 522 25 kg",
+          "designation_ar": "سيكا 522 25 KG",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 121.5,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1773241237656-534002549.jpeg",
+          "gallery": [],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 2011,
+          "reference": "2011",
+          "designation": "SIKA I 80 Gris 25 kg",
+          "designation_ar": "سيكا I 80 رمادي 25 KG",
+          "designation_en": null,
+          "designation_zh": null,
+          "prix_vente": 55,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1785785555937-759247060.jpg",
+          "gallery": [
+            {
+              "id": 1643,
+              "image_url": "/uploads/products/1785785555937-759247060.jpg",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 2016,
+          "reference": "2016",
+          "designation": "SIKA M70 Blanc 20 kg",
+          "designation_ar": "سيكا M70 أبيض 20 KG",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 38,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1785785535508-123544940.jpg",
+          "gallery": [
+            {
+              "id": 1642,
+              "image_url": "/uploads/products/1785785535508-123544940.jpg",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 2025,
+          "reference": "2025",
+          "designation": "SikaCeram• 80I Blanc 25 kg",
+          "designation_ar": "SIKA I80 أبيض 25 كغ",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 55,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1771347113949-883537014.webp",
+          "gallery": [],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 3423,
+          "reference": "3423",
+          "designation": "SIKA WATERBAR D19 × 15 m Joint Jaune",
+          "designation_ar": "SIKA WATERBAR D19 × 15 م حشية أصفر",
+          "designation_en": null,
+          "designation_zh": null,
+          "prix_vente": 160,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1785785468940-705999272.jpg",
+          "gallery": [
+            {
+              "id": 1639,
+              "image_url": "/uploads/products/1785785468940-705999272.jpg",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 75,
+            "nom": "ÉTANCHÉITÉ & IMPERMEABILISATION",
+            "nom_ar": "العزل المائي",
+            "nom_en": "Waterproofing & Sealants",
+            "nom_zh": "防水与密封"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 1263,
+          "reference": "1263",
+          "designation": "MASTIC SIKA 543 BEIGE 5 kg",
+          "designation_ar": "معجون SIKA 543 بيج 5 كغ",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 66.42,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/shoots/ai-1783966091660-569875937.png",
+          "gallery": [
+            {
+              "id": 318,
+              "image_url": "/uploads/products/shoots/ai-1783966091660-569875937.png",
+              "position": 0
+            },
+            {
+              "id": 319,
+              "image_url": "/uploads/products/shoots/ai-1783966120750-599795239.png",
+              "position": 1
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 76,
+            "nom": "MASTIQUE ET JOINT",
+            "nom_ar": "مانع التسرب والمفاصل",
+            "nom_en": "Sealants and joints",
+            "nom_zh": "密封胶与接缝"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 1264,
+          "reference": "1264",
+          "designation": "MASTIC SIKA 543 Blanc 5 kg",
+          "designation_ar": "معجون SIKA 543 أبيض 5 كغ",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 66.42,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1785172710784-514598883.png",
+          "gallery": [
+            {
+              "id": 1218,
+              "image_url": "/uploads/products/1785172710784-514598883.png",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 76,
+            "nom": "MASTIQUE ET JOINT",
+            "nom_ar": "مانع التسرب والمفاصل",
+            "nom_en": "Sealants and joints",
+            "nom_zh": "密封胶与接缝"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 1266,
+          "reference": "1266",
+          "designation": "MASTIC SIKA 543 Gris 5 kg",
+          "designation_ar": "معجون SIKA 543 رمادي 5 كغ",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 65.61,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1785172714266-963635485.png",
+          "gallery": [
+            {
+              "id": 1220,
+              "image_url": "/uploads/products/1785172714266-963635485.png",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 2,
+            "nom": "Sika",
+            "image_url": "/uploads/brands/1786039193616-602638958.jpg"
+          },
+          "categorie": {
+            "id": 76,
+            "nom": "MASTIQUE ET JOINT",
+            "nom_ar": "مانع التسرب والمفاصل",
+            "nom_en": "Sealants and joints",
+            "nom_zh": "密封胶与接缝"
+          },
+          "is_wishlisted": null
+        }
+      ]
+    },
+    {
+      "key": "tools",
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=8&search=Meuleuse&in_stock_only=false",
+      "products": [
+        {
+          "id": 6668,
+          "reference": "6668",
+          "designation": "SUPPORT de Disque MINI De Meuleuse",
+          "designation_ar": "حامل  شفرة صغير",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 40,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/shoots/ai-1785161893932-180031633.png",
+          "gallery": [
+            {
+              "id": 340,
+              "image_url": "/uploads/products/shoots/ai-1784054986682-912835943.png",
+              "position": 0
+            },
+            {
+              "id": 1206,
+              "image_url": "/uploads/products/shoots/ai-1785161893932-180031633.png",
+              "position": 1
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": null,
+          "categorie": {
+            "id": 92,
+            "nom": "DISQUE DE DECOUPE",
+            "nom_ar": "قرص تقطيع",
+            "nom_en": "cutting disc",
+            "nom_zh": "切割片"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 6944,
+          "reference": "6944",
+          "designation": "Mallette Meuleuse 76 mm 20 V 1 Batteries 7Discs - INGCO",
+          "designation_ar": "حقيبة آلة جلخ 76 مم 20 V 1 بطاريات 7Discs - INGCO",
+          "designation_en": null,
+          "designation_zh": null,
+          "prix_vente": 699,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1782734668315-347784962.jpg",
+          "gallery": [
+            {
+              "id": 68,
+              "image_url": "/uploads/products/1782734668322-964804465.jpg",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 8,
+            "nom": "INGCO",
+            "image_url": "/uploads/brands/1786039110728-833719549.jpg"
+          },
+          "categorie": {
+            "id": 60,
+            "nom": "GENERAL",
+            "nom_ar": "عام",
+            "nom_en": "General",
+            "nom_zh": "通用"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 6937,
+          "reference": "6937",
+          "designation": "Meuleuse 1650 W - XCORT",
+          "designation_ar": "آلة جلخ 1650 واط - XCORT",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 1200,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1782832712325-973261528.png",
+          "gallery": [
+            {
+              "id": 109,
+              "image_url": "/uploads/products/1782832712351-24399238.png",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 7,
+            "nom": "Xcort",
+            "image_url": "/uploads/brands/1786039123794-757092547.jpg"
+          },
+          "categorie": {
+            "id": 60,
+            "nom": "GENERAL",
+            "nom_ar": "عام",
+            "nom_en": "General",
+            "nom_zh": "通用"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 4746,
+          "reference": "4746",
+          "designation": "Meuleuse BOSCH 700 W",
+          "designation_ar": "آلة جلخ BOSCH 700 واط",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 450,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1785353130817-939905658.jpg",
+          "gallery": [
+            {
+              "id": 1446,
+              "image_url": "/uploads/products/1785353130817-939905658.jpg",
+              "position": 0
+            }
+          ],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 6,
+            "nom": "Bosch",
+            "image_url": "/uploads/brands/1786039133799-236791104.png"
+          },
+          "categorie": {
+            "id": 60,
+            "nom": "GENERAL",
+            "nom_ar": "عام",
+            "nom_en": "General",
+            "nom_zh": "通用"
+          },
+          "is_wishlisted": null
+        }
+      ]
+    },
+    {
+      "key": "finishes",
+      "url": "https://boukirdiamond.com/api/ecommerce/products?per_page=8&search=H40&in_stock_only=false&brand_id=1",
+      "products": [
+        {
+          "id": 2031,
+          "reference": "2031",
+          "designation": "H40 Gel Blanc 20 kg - KERAKOLL",
+          "designation_ar": "H40 جل أبيض 20 كغ - KERAKOLL",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 176.26,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1772287772639-71399483.png",
+          "gallery": [],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 1,
+            "nom": "Kerakoll",
+            "image_url": "/uploads/brands/1786039235339-980632502.png"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 2030,
+          "reference": "2030",
+          "designation": "H40 ICON Blanc 20 kg - KERAKOLL",
+          "designation_ar": "H40 ICON أبيض 20 كغ - KERAKOLL",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 144.09,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1772287867179-596451225.jpeg",
+          "gallery": [],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 1,
+            "nom": "Kerakoll",
+            "image_url": "/uploads/brands/1786039235339-980632502.png"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        },
+        {
+          "id": 2523,
+          "reference": "2523",
+          "designation": "KERAKOLL H40 EXTREME 10 kg",
+          "designation_ar": "KERAKOLL H40 EXTREME 10 كغ",
+          "designation_en": "",
+          "designation_zh": "",
+          "prix_vente": 920.27,
+          "prix_promo": null,
+          "pourcentage_promo": 0,
+          "remise_client": 0,
+          "remise_artisan": 0,
+          "has_promo": false,
+          "image_url": "/uploads/products/1772287817651-30550411.jpeg",
+          "gallery": [],
+          "in_stock": true,
+          "purchase_limit": 20,
+          "has_variants": false,
+          "is_obligatoire_variant": false,
+          "isObligatoireVariant": false,
+          "base_unit": "u",
+          "categorie_base": "Maison",
+          "variants": {
+            "all": [],
+            "colors": null,
+            "sizes": null,
+            "other": null
+          },
+          "units": null,
+          "brand": {
+            "id": 1,
+            "nom": "Kerakoll",
+            "image_url": "/uploads/brands/1786039235339-980632502.png"
+          },
+          "categorie": {
+            "id": 50,
+            "nom": "COLLES DE CARRELAGE & MARBRE",
+            "nom_ar": "لاصقات البلاط والرخام",
+            "nom_en": "Tile and marble adhesives",
+            "nom_zh": "瓷砖和大理石粘合剂"
+          },
+          "is_wishlisted": null
+        }
+      ]
+    }
+  ]
+}

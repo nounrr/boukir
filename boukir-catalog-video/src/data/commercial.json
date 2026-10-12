@@ -1,0 +1,66 @@
+{
+  "retrievedAt": "2026-10-11T18:46:03.130Z",
+  "products": [
+    {
+      "id": 6937,
+      "reference": "6937",
+      "name": "Meuleuse 1650 W - XCORT",
+      "image": "commercial/6937-small.webp",
+      "group": "tools",
+      "url": "https://boukirdiamond.com/fr/product/6937"
+    },
+    {
+      "id": 4746,
+      "reference": "4746",
+      "name": "Meuleuse BOSCH 700 W",
+      "image": "commercial/4746.jpg",
+      "group": "tools",
+      "url": "https://boukirdiamond.com/fr/product/4746"
+    },
+    {
+      "id": 2015,
+      "reference": "2015",
+      "name": "SIKA 522 25 kg",
+      "image": "commercial/2015.jpeg",
+      "group": "materials",
+      "url": "https://boukirdiamond.com/fr/product/2015"
+    },
+    {
+      "id": 2011,
+      "reference": "2011",
+      "name": "SIKA I 80 Gris 25 kg",
+      "image": "commercial/2011.jpg",
+      "group": "materials",
+      "url": "https://boukirdiamond.com/fr/product/2011"
+    },
+    {
+      "id": 2031,
+      "reference": "2031",
+      "name": "H40 Gel Blanc 20 kg - KERAKOLL",
+      "image": "commercial/2031-small.webp",
+      "group": "finishes",
+      "url": "https://boukirdiamond.com/fr/product/2031"
+    },
+    {
+      "id": 2030,
+      "reference": "2030",
+      "name": "H40 ICON Blanc 20 kg - KERAKOLL",
+      "image": "commercial/2030.jpeg",
+      "group": "finishes",
+      "url": "https://boukirdiamond.com/fr/product/2030"
+    },
+    {
+      "id": 6190,
+      "reference": "6190",
+      "name": "Silicone Coloré - KERAKOLL",
+      "image": "commercial/6190.jpg",
+      "group": "finishes",
+      "url": "https://boukirdiamond.com/en/product/6190"
+    }
+  ],
+  "contact": {
+    "phone": "0650812894",
+    "email": "boukir.diamond23@gmail.com",
+    "city": "Tanger"
+  }
+}

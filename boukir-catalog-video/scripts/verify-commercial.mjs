@@ -1,0 +1,16 @@
+import {spawnSync} from 'node:child_process';
+import {readFile,writeFile} from 'node:fs/promises';
+import path from 'node:path';
+const root=path.resolve(import.meta.dirname,'..');
+const filename=path.resolve(root,process.argv[2]??'out/boukir-commercial-1548x516.mp4');
+const binary=path.join(root,'node_modules/@remotion/compositor-win32-x64-msvc/ffprobe.exe');
+const result=spawnSync(binary,['-v','error','-show_streams','-show_format','-count_frames','-of','json',filename],{encoding:'utf8',windowsHide:true});
+if(result.status!==0)throw new Error(result.stderr);
+const metadata=JSON.parse(result.stdout),video=metadata.streams.find(s=>s.codec_type==='video'),audio=metadata.streams.find(s=>s.codec_type==='audio');
+const checks={width:video.width===1548,height:video.height===516,fps:video.avg_frame_rate==='30/1'&&video.r_frame_rate==='30/1',squarePixels:video.sample_aspect_ratio==='1:1',panoramic:video.display_aspect_ratio==='3:1',h264:video.codec_name==='h264',mp4:metadata.format.format_name.includes('mp4'),duration:Math.abs(Number(metadata.format.duration)-40)<.04,frames:Number(video.nb_read_frames)===1200,pixelFormat:['yuv420p','yuvj420p'].includes(video.pix_fmt),audio:audio?.codec_name==='aac'};
+const report={file:filename,verifiedAt:new Date().toISOString(),width:video.width,height:video.height,fps:video.avg_frame_rate,sampleAspectRatio:video.sample_aspect_ratio,displayAspectRatio:video.display_aspect_ratio,codec:video.codec_name,pixelFormat:video.pix_fmt,durationSeconds:Number(metadata.format.duration),frames:Number(video.nb_read_frames),audioCodec:audio?.codec_name,checks};
+await writeFile(path.join(root,'out/commercial-verification.json'),JSON.stringify(report,null,2));
+const source=JSON.parse(await readFile(path.join(root,'src/data/commercial.json'),'utf8'));
+await writeFile(path.join(root,'out/commercial-verification.txt'),`BOUKIR DIAMOND — CONTRÔLE FINAL\n\nWidth: ${video.width} px\nHeight: ${video.height} px\nFrame rate: ${video.avg_frame_rate}\nPixel aspect ratio: ${video.sample_aspect_ratio}\nDisplay aspect ratio: ${video.display_aspect_ratio}\nCodec: ${video.codec_name}\nFormat: MP4\nPixel format: ${video.pix_fmt}\nDuration: ${report.durationSeconds} seconds\nFrames: ${report.frames}\nAudio: ${audio?.codec_name}\n\nConception native : 1548 × 516 pixels.\nZone de sécurité : 60 px gauche/droite, 35 px haut/bas.\nProduits : ${source.products.map(p=>p.reference).join(', ')}.\nSources : https://boukirdiamond.com/ et data/commercial-source.json.\nRésultat : ${Object.values(checks).every(Boolean)?'CONFORME':'ÉCHEC'}\n`);
+console.log(JSON.stringify(report,null,2));
+if(!Object.values(checks).every(Boolean))throw new Error('Le MP4 ne respecte pas les spécifications imposées.');

@@ -529,6 +529,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
   const [forceWebRefresh, setForceWebRefresh] = useState(false);
   const [webBudgetRaw, setWebBudgetRaw] = useState('3');
   const [pv2DiscountRaw, setPv2DiscountRaw] = useState('10');
+  const [bulkPrices, setBulkPrices] = useState<Record<Side, string>>({ pv1: '', pv2: '' });
   const [webResults, setWebResults] = useState<Record<string, WebSalePriceResult>>({});
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const rowElements = useRef(new Map<string, HTMLTableRowElement>());
@@ -640,6 +641,28 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
   }, [visibleRows]);
 
   const checkedRows = useMemo(() => visibleRows.filter((row) => checkedKeys[rowKey(row)]), [checkedKeys, visibleRows]);
+  const bulkPriceRows = checkedRows.filter((row) => row.variant_id === null || !groupKeys[`${row.product_id}:base`]);
+  const parseBulkPrice = (side: Side) => {
+    const raw = bulkPrices[side].trim().replace(',', '.');
+    if (!/^\d+(?:\.\d{0,2})?$/.test(raw)) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  const prepareBulkPrice = (side: Side) => {
+    const value = parseBulkPrice(side);
+    if (value === null || !bulkPriceRows.length || readOnly || isSaving || isResearching || isFetching) return;
+    setDecisions((previous) => {
+      const next = { ...previous };
+      for (const row of bulkPriceRows) {
+        const key = rowKey(row);
+        next[key] = { pv1: KEEP, pv2: KEEP, ...previous[key], [side]: { kind: 'price', value } };
+      }
+      return next;
+    });
+    // Garder la sélection visible pour pouvoir appliquer ensuite l'autre prix.
+    if (filter === 'todo') setFilter('all');
+    showSuccess(`${side === 'pv1' ? 'PV' : 'PV2'} de ${money.format(value)} DH préparé pour ${bulkPriceRows.length} produit(s). Vérifiez puis validez les corrections.`);
+  };
   const pv2Discount = Number(pv2DiscountRaw.replace(',', '.'));
   const validPv2Discount = pv2DiscountRaw.trim() !== '' && Number.isFinite(pv2Discount) && pv2Discount > 0 && pv2Discount <= 100;
   const eligibleDiscountRows = checkedRows.filter((row) => (resolvePrice(decisions[rowKey(row)]?.pv1, row.current_prix_vente) ?? row.current_prix_vente) > 0);
@@ -1085,6 +1108,34 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
             </label>
             <button type="button" onClick={preparePv2Discount} disabled={!validPv2Discount || !eligibleDiscountRows.length || isSaving || isResearching} className="rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900 disabled:opacity-40" title="Calcule PV2 à partir du PV1 choisi ou du PV1 actuel, sans enregistrer immédiatement">Appliquer au PV2 ({eligibleDiscountRows.length})</button>
             <span className="text-[11px] text-stone-500">PV2 reste au prix actuel si aucun choix n’est déjà fait.</span>
+          </div>
+          <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-3 px-4 pb-3 sm:px-6">
+            <span className="text-xs font-bold text-stone-700">Prix commun à la sélection ({bulkPriceRows.length})</span>
+            {(['pv1', 'pv2'] as const).map((side) => (
+              <div key={side} className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-2 ${side === 'pv1' ? 'border-indigo-200 bg-indigo-50' : 'border-amber-200 bg-amber-50'}`}>
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-stone-800">
+                  {side === 'pv1' ? 'PV' : 'PV2'}
+                  <input
+                    type="text" inputMode="decimal" value={bulkPrices[side]} placeholder="0,00"
+                    aria-label={`Prix commun ${side === 'pv1' ? 'PV' : 'PV2'}`}
+                    disabled={isSaving || isResearching || isFetching}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      if (/^\d*(?:[.,]\d{0,2})?$/.test(raw)) setBulkPrices((previous) => ({ ...previous, [side]: raw }));
+                    }}
+                    onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); prepareBulkPrice(side); } }}
+                    className="h-8 w-24 rounded-md border-stone-300 bg-white px-2 text-right text-sm font-bold tabular-nums disabled:opacity-50"
+                  />
+                  DH
+                </label>
+                <button type="button" onClick={() => prepareBulkPrice(side)}
+                  disabled={parseBulkPrice(side) === null || !bulkPriceRows.length || isSaving || isResearching || isFetching}
+                  className={`h-8 rounded-md px-3 text-xs font-bold text-white disabled:opacity-40 ${side === 'pv1' ? 'bg-indigo-700 hover:bg-indigo-800' : 'bg-amber-700 hover:bg-amber-800'}`}>
+                  Appliquer {side === 'pv1' ? 'PV' : 'PV2'} à la sélection
+                </button>
+              </div>
+            ))}
+            <span className="text-[11px] text-stone-500">L’autre prix conserve votre choix ou son montant actuel. Vérifiez puis validez.</span>
           </div>
           <div className="mx-auto hidden max-w-[1800px] items-center gap-2 px-6 pb-2 text-[11px] text-stone-500 lg:flex">
             <span className="font-semibold uppercase tracking-wide text-stone-400">Clavier</span>

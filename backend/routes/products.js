@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createCategoryProductOrderRouter } from './categoryProductOrder.js';
 import pool from '../db/pool.js';
+import { initializeOnce } from '../utils/initializeOnce.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -242,9 +243,7 @@ async function loadAverageSnapshotCoutRevient(productIds) {
 }
 
 // Ensure soft-delete and image_url columns exist
-let ensuredProductsColumns = false;
-async function ensureProductsColumns() {
-  if (ensuredProductsColumns) return;
+const ensureProductsColumns = initializeOnce(async () => {
 
   // Ensure product_units has prix_vente column (nullable override; when NULL => auto compute from factor)
   try {
@@ -809,7 +808,7 @@ async function ensureProductsColumns() {
       await pool.query(`ALTER TABLE products ADD CONSTRAINT fk_products_category FOREIGN KEY (categorie_id) REFERENCES categories(id) ON DELETE SET NULL`);
     } catch (e) { console.log('FK creation failed', e); }
   }
-};
+});
 
 // Core product search/filter/paginate logic. Shared by the GET /search endpoint
 // and the GET /stock-pdf export so both return identical (snapshot-aware) data.
