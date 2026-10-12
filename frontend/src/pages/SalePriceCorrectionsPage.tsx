@@ -4,6 +4,7 @@ import { type HistoricalSalePrice, type SalePriceCorrectionRequest, type SalePri
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
+import { isCustomPriceChoice, type SalePriceChoice as Choice } from '../utils/salePriceChoice';
 
 type CorrectionTab = 'pending' | 'validation' | 'processed' | 'typos';
 type RowFilter = 'all' | 'todo' | 'ready';
@@ -11,7 +12,6 @@ type WebFilter = 'all' | 'no_info' | 'found' | 'near_10';
 type Side = 'pv1' | 'pv2';
 type Tone = 'indigo' | 'amber';
 // `keep` est un choix explicite, distinct d'un prix qui vaudrait la même chose que l'actuel.
-type Choice = { kind: 'keep' } | { kind: 'price'; value: number };
 type Decision = { pv1?: Choice; pv2?: Choice };
 
 const KEEP: Choice = { kind: 'keep' };
@@ -144,23 +144,23 @@ const CurrentPrice = React.memo<{ value: number; source: SalePriceSource }>(({ v
 CurrentPrice.displayName = 'CurrentPrice';
 
 const ChoiceColumn: React.FC<{ label: string; tone: Tone; current: number; choice?: Choice; candidates: HistoricalSalePrice[]; shortcuts: readonly string[]; disabled: boolean; onSelect: (choice?: Choice) => void }> = ({ label, tone, current, choice, candidates, shortcuts, disabled, onSelect }) => {
-  const customSelected = choice?.kind === 'price' && !candidates.some((candidate) => samePrice(choice.value, candidate.price));
+  const customSelected = isCustomPriceChoice(choice, candidates);
   return (
     <div role="radiogroup" aria-label={label} className="space-y-1.5">
       <KeepOption value={current} selected={choice?.kind === 'keep'} disabled={disabled} onSelect={() => onSelect(KEEP)} />
       {candidates.length ? candidates.map((candidate, index) => (
         <PriceCandidate
           key={candidate.price} candidate={candidate} tone={tone} shortcut={shortcuts[index] ?? '·'} disabled={disabled}
-          selected={choice?.kind === 'price' && samePrice(choice.value, candidate.price)}
+          selected={!customSelected && choice?.kind === 'price' && samePrice(choice.value, candidate.price)}
           onSelect={() => onSelect({ kind: 'price', value: candidate.price })}
         />
       )) : <p className="px-1 text-[11px] leading-4 text-stone-400">Aucune vente exploitable.</p>}
       <CustomPriceOption
         tone={tone}
         selected={customSelected}
-        value={customSelected ? choice.value : undefined}
+        value={customSelected && choice?.kind === 'price' ? choice.value : undefined}
         disabled={disabled}
-        onSelect={(value) => onSelect({ kind: 'price', value })}
+        onSelect={(value) => onSelect({ kind: 'price', value, custom: true })}
         onClear={() => onSelect(undefined)}
       />
     </div>
