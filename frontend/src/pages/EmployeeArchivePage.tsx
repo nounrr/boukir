@@ -288,13 +288,13 @@ const EmployeeArchivePage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <button
+                    {user?.role === 'PDG' && <button
                       onClick={() => handleRestore(employee)}
                       className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-sm transition-colors"
                     >
                       <RotateCcw size={14} />
                       Restaurer
-                    </button>
+                    </button>}
                   </td>
                 </tr>
               ))}

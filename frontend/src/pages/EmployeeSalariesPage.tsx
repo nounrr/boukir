@@ -9,6 +9,7 @@ import {
 } from '../store/api/employeesApi.server';
 import type { EmployeeSalaireEntry } from '../types';
 import { useAuth } from '../hooks/redux';
+import { canReadEmployeeData } from '../utils/employeePagePermissions';
 import { ArrowLeft, Plus, Calendar, DollarSign, Edit2, Trash2, Save, X } from 'lucide-react';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 
@@ -16,18 +17,9 @@ const EmployeeSalariesPage: React.FC = () => {
   const params = useParams();
   const employeId = Number(params.id);
   const { user } = useAuth();
-  const managerDenied = user?.role === 'Manager';
-  const employeeDenied = user?.role === 'Employé' && user.id !== employeId;
-  const isDenied = managerDenied || employeeDenied;
-  
-  // Vérifier si l'utilisateur a accès aux salaires
-  // Manager n'a pas accès du tout
-  // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux salaires d'un autre employé
-  // Les employés et Manager+ ont accès en lecture seule
-  const isReadOnly = user?.role === 'Employé' || user?.role === 'ManagerPlus';
-  
-  // Manager+ ne peut pas voir le salaire prévu, seulement les montants payés
-  const canSeeSalaire = user?.role === 'PDG' || (user?.role === 'Employé' && user.id === employeId);
+  const isDenied = !canReadEmployeeData(user, 'salaries', employeId);
+  const isReadOnly = user?.role !== 'PDG';
+  const canSeeSalaire = canReadEmployeeData(user, 'salary_details', employeId);
 
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -57,8 +49,7 @@ const EmployeeSalariesPage: React.FC = () => {
     return { diff, salaire: salaireNum, total: totalMonth };
   }, [employee?.salaire, totalMonth]);
 
-  if (managerDenied) return <Navigate to="/employees" replace />;
-  if (employeeDenied) return <Navigate to={`/employees/${user.id}/salaries`} replace />;
+  if (isDenied) return <Navigate to="/dashboard" replace />;
 
   const onAdd = async (e: React.FormEvent) => {
     e.preventDefault();

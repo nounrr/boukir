@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
+import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
 import { canViewInternalPrices } from '../../utils/internalPrices';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
@@ -158,9 +159,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
     {
       title: 'Ressources humaines',
       items: [
-        { name: 'Employés', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
-        { name: 'Employés archivés', href: '/employees/archive', icon: Archive, show: !isChefChauffeur && user?.role === 'PDG' },
-        { name: 'Salaires', href: '/salaires', icon: Wallet, show: user?.role === 'PDG' },
+        { name: 'Employés', href: '/employees', icon: Users, show: canManageEmployees(user) },
+        { name: 'Employés archivés', href: '/employees/archive', icon: Archive, show: canAccessEmployeePage(user, 'archives') },
+        { name: 'Salaires', href: '/salaires', icon: Wallet, show: canAccessEmployeePage(user, 'salary_details') },
         { name: 'Absences', href: '/absences', icon: CalendarX, show: !isChefChauffeur && (canManageAbsences || canViewAbsenceStats) },
         { name: 'Stats absences', href: '/absences/statistiques', icon: PieChart, show: !isChefChauffeur && canViewAbsenceStats },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },

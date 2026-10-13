@@ -83,18 +83,19 @@ const PagePermissionsPage: React.FC = () => {
     // Retirer un droit parent retire aussi ses droits dépendants, sinon le
     // serveur refuserait la mise à jour pour dépendance non satisfaite.
     const payload: Record<string, boolean> = { [`${group.key}.${permissionKey}`]: nextValue };
-    if (!nextValue) {
-      group.permissions
-        .filter((p) => p.requires === permissionKey)
-        .forEach((child) => {
-          payload[`${group.key}.${child.key}`] = false;
+    const setWithDependencies = (key: string, value: boolean) => {
+      payload[`${group.key}.${key}`] = value;
+      if (value) {
+        const parent = group.permissions.find((p) => p.key === key)?.requires;
+        if (parent && payload[`${group.key}.${parent}`] !== true) setWithDependencies(parent, true);
+      } else {
+        group.permissions.filter((p) => p.requires === key).forEach((child) => {
+          if (payload[`${group.key}.${child.key}`] !== false) setWithDependencies(child.key, false);
         });
-    }
-    // Accorder un droit dépendant accorde aussi son prérequis.
+      }
+    };
+    setWithDependencies(permissionKey, nextValue);
     const definition = group.permissions.find((p) => p.key === permissionKey);
-    if (nextValue && definition?.requires) {
-      payload[`${group.key}.${definition.requires}`] = true;
-    }
 
     setSavingKey(cellKey);
     try {

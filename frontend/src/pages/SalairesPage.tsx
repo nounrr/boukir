@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { canAccessEmployeePage } from '../utils/employeePagePermissions';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/redux';
 import {
@@ -285,7 +286,7 @@ const MonthlyView: React.FC = () => {
 
 const SalairesPage: React.FC = () => {
   const { user } = useAuth();
-  const isDenied = user?.role !== 'PDG';
+  const isDenied = !canAccessEmployeePage(user, 'salary_details');
 
   // Accès réservé au PDG
 

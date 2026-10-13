@@ -12,6 +12,7 @@ import {
 import { useGetEmployeeDocsQuery, useGetDocumentTypesQuery } from '../store/api/employeeDocsApi';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
+import { canAccessEmployeePage, canReadEmployeeData } from '../utils/employeePagePermissions';
 import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight, Check, X, Clock, Users, ArrowLeft } from 'lucide-react';
 // merged imports above
 // imports merged above
@@ -411,12 +412,15 @@ const validationSchemaEdit = Yup.object({
 const EmployeePage: React.FC = () => { // NOSONAR
   // TOUS LES HOOKS DOIVENT ÊTRE APPELÉS EN PREMIER (avant toute condition de retour)
   const { user } = useAuth();
+  const canViewSalaries = canAccessEmployeePage(user, 'salaries');
+  const canViewSalaryDetails = canAccessEmployeePage(user, 'salary_details');
+  const canAddSalary = canViewSalaries && (user?.role === 'PDG' || user?.role === 'ManagerPlus');
   const navigate = useNavigate();
   const [isPasswordVerified, setIsPasswordVerified] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [showPasswordError, setShowPasswordError] = useState(false);
   
-  const { data: employees = [], isLoading } = useGetEmployeesQuery();
+  const { data: employees = [], isLoading } = useGetEmployeesQuery(undefined, { skip: !canAccessEmployeePage(user, 'view') });
   const [createEmployee] = useCreateEmployeeMutation();
   const [updateEmployee] = useUpdateEmployeeMutation();
   const [deleteEmployee] = useDeleteEmployeeMutation();
@@ -437,7 +441,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
     const m = String(d.getMonth() + 1).padStart(2, '0');
     return `${d.getFullYear()}-${m}`;
   });
-  const { data: salarySummary = [] } = useGetSalaireMonthlySummaryQueryServer({ month: selectedMonth });
+  const { data: salarySummary = [] } = useGetSalaireMonthlySummaryQueryServer({ month: selectedMonth }, { skip: !canViewSalaries });
 
   const salaryMap = React.useMemo(() => {
     const m = new Map<number, number>();
@@ -604,7 +608,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
   };
 
   // Rediriger les employés vers leur page personnelle
-  if (user?.role === 'Employé') {
+  if (user?.role === 'Employé' && !canAccessEmployeePage(user, 'view')) {
     window.location.href = '/employee/self';
     return (
       <div className="flex justify-center items-center h-64">
@@ -681,9 +685,9 @@ const EmployeePage: React.FC = () => { // NOSONAR
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
-          {user?.role === 'PDG' ? 'Gestion des Employés' : 'Employés - Ajout de montants'}
+          {user?.role === 'PDG' ? 'Gestion des Employés' : 'Employés'}
         </h1>
-        {user?.role === 'PDG' && (
+        {(user?.role === 'PDG' || canAccessEmployeePage(user, 'archives')) && (
           <div className="flex items-center gap-3">
             <Link 
               to="/employees/archive"
@@ -692,7 +696,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <Users size={20} />
               Employés Archivés
             </Link>
-            <button
+            {user?.role === 'PDG' && <button
               onClick={() => {
                 setEditingEmployee(null);
                 formik.resetForm();
@@ -704,7 +708,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
             >
               <Plus size={20} />
               Nouvel Employé
-            </button>
+            </button>}
           </div>
         )}
       </div>
@@ -782,8 +786,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom Complet</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'embauche</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
-              {/* Colonne Salaire visible uniquement pour PDG */}
-              {user?.role === 'PDG' && (
+              {canViewSalaryDetails && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
               )}
               {user?.role === 'PDG' && (
@@ -841,8 +844,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       <span className="text-gray-400 text-sm">-</span>
                     )}
                   </td>
-                  {/* Colonne Salaire visible uniquement pour PDG */}
-                  {user?.role === 'PDG' && (
+                  {canViewSalaryDetails && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
                     </td>
@@ -860,10 +862,14 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     </td>
                   )}
                   <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '200px' }}>
-                    <PendingSalaryCell employeeId={employee.id} selectedMonth={selectedMonth} />
+                    {canReadEmployeeData(user, 'salaries', employee.id)
+                      ? <PendingSalaryCell employeeId={employee.id} selectedMonth={selectedMonth} />
+                      : <span className="text-gray-400">Accès non autorisé</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <EmployeeDocsStats employeeId={employee.id} />
+                    {canReadEmployeeData(user, 'documents', employee.id)
+                      ? <EmployeeDocsStats employeeId={employee.id} />
+                      : <span className="text-gray-400">Accès non autorisé</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex gap-2 items-center">
@@ -885,7 +891,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                           </button>
                         </>
                       )}
-                      <button
+                      {canAddSalary && <button
                         onClick={() => {
                           setSalaryModalEmployee(employee);
                           setSalaryMontant('');
@@ -896,16 +902,16 @@ const EmployeePage: React.FC = () => { // NOSONAR
                         title="Ajouter montant"
                       >
                         <Banknote size={16} />
-                      </button>
-                      {user?.role === 'PDG' && (
-                        <>
+                      </button>}
+                      {canReadEmployeeData(user, 'documents', employee.id) && (
                           <Link to={`/employees/${employee.id}/documents`} className="text-gray-600 hover:text-gray-900" title="Documents">
                             <FileText size={16} />
                           </Link>
+                      )}
+                      {canReadEmployeeData(user, 'salaries', employee.id) && (
                           <Link to={`/employees/${employee.id}/salaries`} className="text-gray-600 hover:text-gray-900" title="Salaires">
                             <Wallet size={16} />
                           </Link>
-                        </>
                       )}
                     </div>
                   </td>

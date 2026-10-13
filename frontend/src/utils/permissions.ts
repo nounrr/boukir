@@ -1,9 +1,10 @@
 import type { User } from '../types';
+import { canAccessEmployeePage } from './employeePagePermissions';
 
 // Utilitaires pour les permissions basées sur les rôles
 
 export const canManageEmployees = (user: User | null): boolean => {
-  return user?.role === 'PDG' || user?.role === 'ManagerPlus';
+  return canAccessEmployeePage(user, 'view');
 };
 
 export const canManageStock = (user: User | null): boolean => {

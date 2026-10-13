@@ -184,7 +184,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees"
           element={
-            <ProtectedRoute requiredRoles={['PDG', 'ManagerPlus']}>
+            <ProtectedRoute employeePermission="view">
               <LayoutWithAccessCheck>
                 <EmployeePage />
               </LayoutWithAccessCheck>
@@ -206,7 +206,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/archive"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute employeePermission="archives">
               <LayoutWithAccessCheck>
                 <EmployeeArchivePage />
               </LayoutWithAccessCheck>
@@ -217,7 +217,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/documents"
           element={
-            <ProtectedRoute requiredRoles={['PDG', 'Employé']}>
+            <ProtectedRoute employeePermission="documents" allowOwnEmployee>
               <LayoutWithAccessCheck>
                 <EmployeeDocumentsPage />
               </LayoutWithAccessCheck>
@@ -228,7 +228,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/salaries"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute employeePermission="salaries" allowOwnEmployee>
               <LayoutWithAccessCheck>
                 <EmployeeSalariesPage />
               </LayoutWithAccessCheck>
@@ -239,7 +239,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/salaires"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute employeePermission="salary_details">
               <LayoutWithAccessCheck>
                 <SalairesPage />
               </LayoutWithAccessCheck>

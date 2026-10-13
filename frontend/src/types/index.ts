@@ -7,6 +7,7 @@ export interface User {
   date_embauche?: string | null;
   role?: Role | null;
   acces_prix_internes?: boolean | number | null;
+  employee_page_permissions?: Record<'view' | 'documents' | 'salaries' | 'salary_details' | 'archives', boolean>;
   created_at?: string;
   updated_at?: string;
 }

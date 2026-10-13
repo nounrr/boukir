@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
-import { verifyToken, requireRole, requireRoles, requireSelfOrRoles } from '../middleware/auth.js';
+import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
+import { requireEmployeePagePermission } from '../utils/employeePagePermissions.js';
 import { getAbsenceDeductionsByMonth, getEmployeeDeduction } from '../utils/absences.js';
 
 const router = Router();
@@ -91,7 +92,7 @@ function computeMonthlyDue(emp, year, monthIndex, deduction = { total: 0, jours_
 }
 
 // List salary entries for an employee, optional month filter (YYYY-MM)
-router.get('/employees/:id/salaires', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
+router.get('/employees/:id/salaires', requireEmployeePagePermission('salaries', 'id'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { month } = req.query; // format YYYY-MM
@@ -108,7 +109,7 @@ router.get('/employees/:id/salaires', requireSelfOrRoles('PDG', 'ManagerPlus'), 
 });
 
 // Create salary entry for an employee
-router.post('/employees/:id/salaires', requireRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
+router.post('/employees/:id/salaires', requireRoles('PDG', 'ManagerPlus'), requireEmployeePagePermission('salaries'), async (req, res, next) => {
   try {
     const employe_id = Number(req.params.id);
     const { montant, note, statut } = req.body;
@@ -128,7 +129,7 @@ router.post('/employees/:id/salaires', requireRoles('PDG', 'ManagerPlus'), async
 });
 
 // Monthly summary: total amount per employee for a given month
-router.get('/salaires/summary', requireRole('PDG'), async (req, res, next) => {
+router.get('/salaires/summary', requireEmployeePagePermission('salaries'), async (req, res, next) => {
   try {
     const { month } = req.query; // YYYY-MM
     if (!month || typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) {
@@ -242,7 +243,7 @@ async function fetchAllEmployeesWithDeleted() {
 
 // GET /api/salaires-global?month=YYYY-MM
 // One row per employee: prorated salary due for the month + total amount already paid (all-time and this month).
-router.get('/salaires-global', requireRole('PDG'), async (req, res, next) => {
+router.get('/salaires-global', requireEmployeePagePermission('salary_details'), async (req, res, next) => {
   try {
     const { month } = req.query; // YYYY-MM (defaults to current month)
     let year;
@@ -309,7 +310,7 @@ router.get('/salaires-global', requireRole('PDG'), async (req, res, next) => {
 
 // GET /api/salaires-global/:id/months?from=YYYY-MM&to=YYYY-MM
 // Month-by-month breakdown for a single employee (prorated due + paid per month).
-router.get('/salaires-global/:id/months', requireRole('PDG'), async (req, res, next) => {
+router.get('/salaires-global/:id/months', requireEmployeePagePermission('salary_details'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const employees = await fetchAllEmployeesWithDeleted();
@@ -399,7 +400,7 @@ router.get('/salaires-global/:id/months', requireRole('PDG'), async (req, res, n
 
 // GET /api/salaires-global/by-month
 // One row per month (all employees combined): prorated due total + paid total + per-employee breakdown.
-router.get('/salaires-global/by-month', requireRole('PDG'), async (req, res, next) => {
+router.get('/salaires-global/by-month', requireEmployeePagePermission('salary_details'), async (req, res, next) => {
   try {
     const employees = await fetchAllEmployeesWithDeleted();
 

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
-import { verifyToken, requireRole, requireRoles, requireSelfOrRoles } from '../middleware/auth.js';
+import { verifyToken, requireRole } from '../middleware/auth.js';
+import { normalizeEmployeePagePermissions, requireEmployeePagePermission } from '../utils/employeePagePermissions.js';
 import {
   normalizeClientCollaborationPermissions,
   parseStrictClientCollaborationPermissions,
@@ -43,12 +44,12 @@ const EMPLOYEE_SELECT = `
   created_by, updated_by, created_at, updated_at
 `;
 
-router.get('/', requireRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
+router.get('/', requireEmployeePagePermission('view'), async (req, res, next) => {
   try {
     const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE deleted_at IS NULL ORDER BY id DESC`);
     if (req.user?.role !== 'PDG') {
       rows.forEach((employee) => {
-        employee.salaire = null;
+        if (!normalizeEmployeePagePermissions(req.user).salary_details) employee.salaire = null;
         employee.bon_plafond_autorisations = null;
         employee.bon_client_bloque_autorisations = null;
       });
@@ -209,14 +210,14 @@ router.put('/maalem-review-permissions/:id(\\d+)', requireRole('PDG'), async (re
   } catch (error) { return next(error); }
 });
 
-router.get('/:id(\\d+)', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
+router.get('/:id(\\d+)', requireEmployeePagePermission('view', 'id'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE id = ? AND deleted_at IS NULL`, [id]);
     const emp = rows[0];
     if (!emp) return res.status(404).json({ message: 'Employé introuvable' });
     if (req.user?.role !== 'PDG' && Number(req.user?.id) !== id) {
-      emp.salaire = null;
+      if (!normalizeEmployeePagePermissions(req.user).salary_details) emp.salaire = null;
       emp.bon_plafond_autorisations = null;
       emp.bon_client_bloque_autorisations = null;
     }
@@ -345,11 +346,14 @@ router.delete('/:id', requireRole('PDG'), async (req, res, next) => {
 });
 
 // Route pour récupérer les employés supprimés (pour l'administration)
-router.get('/deleted/list', requireRole('PDG'), async (_req, res, next) => {
+router.get('/deleted/list', requireEmployeePagePermission('archives'), async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       'SELECT id, nom_complet, cin, date_embauche, role, salaire, deleted_at, updated_by FROM employees WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC'
     );
+    if (!normalizeEmployeePagePermissions(req.user).salary_details) {
+      rows.forEach((employee) => { employee.salaire = null; });
+    }
     res.json(rows);
   } catch (err) { next(err); }
 });

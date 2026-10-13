@@ -4,16 +4,17 @@ import { useGetEmployeeDocsQuery, useCreateEmployeeDocMutation, useDeleteEmploye
 import { ArrowLeft, FileText, Plus, Upload, Trash2, File, FolderOpen, FileType } from 'lucide-react';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import { useAuth } from '../hooks/redux';
+import { canReadEmployeeData } from '../utils/employeePagePermissions';
 
 const EmployeeDocumentsPage: React.FC = () => {
   const { user } = useAuth();
   const params = useParams();
   const employeId = Number(params.id);
-  const isDenied = user?.role === 'Employé' && user.id !== employeId;
+  const isDenied = !canReadEmployeeData(user, 'documents', employeId);
   
   // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux docs d'un autre employé
   // Les employés ont accès en lecture seule
-  const isReadOnly = user?.role === 'Employé';
+  const isReadOnly = user?.role !== 'PDG';
   
   const { data: docs = [], isLoading } = useGetEmployeeDocsQuery(employeId, { skip: !employeId || isDenied });
   const { data: types = [] } = useGetDocumentTypesQuery(undefined, { skip: isDenied });
@@ -27,7 +28,7 @@ const EmployeeDocumentsPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
 
   if (isDenied) {
-    return <Navigate to={`/employees/${user.id}/documents`} replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   const openDocument = async (documentId: number) => {

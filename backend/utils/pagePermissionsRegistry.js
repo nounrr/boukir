@@ -4,6 +4,7 @@ import { ensureFondCaissePermissionSchema } from './fondCaissePermissions.js';
 import { ensureStatsDetailsPermissionSchema } from './statsDetailsPermissions.js';
 import { ensureSalePriceCorrectionPermissionSchema } from './salePriceCorrectionPermissions.js';
 import { ensureInternalPricePermissionSchema } from './internalPricePermissions.js';
+import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmployeePagePermissions } from './employeePagePermissions.js';
 
 /**
  * Registre unique des autorisations par page.
@@ -20,6 +21,20 @@ import { ensureInternalPricePermissionSchema } from './internalPricePermissions.
  *  3. rien d'autre : l'API et l'ecran PDG s'adaptent automatiquement.
  */
 export const PAGE_PERMISSION_GROUPS = Object.freeze([
+  {
+    key: 'employees',
+    label: 'Employés · pages et données',
+    page: 'Employés, documents, salaires et archives',
+    href: '/employees',
+    description: 'Accès en consultation aux données des employés. Les opérations de gestion conservent leurs restrictions. Chaque employé conserve l’accès à ses propres données.',
+    permissions: [
+      { key: 'view', column: EMPLOYEE_PAGE_COLUMNS.view, label: 'Liste et fiches employés', description: 'Consulter les identités, rôles et dates d’embauche.' },
+      { key: 'documents', column: EMPLOYEE_PAGE_COLUMNS.documents, label: 'Documents des employés', description: 'Consulter et télécharger les documents des autres employés.', requires: 'view' },
+      { key: 'salaries', column: EMPLOYEE_PAGE_COLUMNS.salaries, label: 'Versements de salaires', description: 'Consulter les montants versés, les notes et les statuts.', requires: 'view' },
+      { key: 'salary_details', column: EMPLOYEE_PAGE_COLUMNS.salary_details, label: 'Salaires prévus et vue globale', description: 'Voir les salaires prévus, les calculs détaillés et la page Salaires.', requires: 'salaries' },
+      { key: 'archives', column: EMPLOYEE_PAGE_COLUMNS.archives, label: 'Employés archivés', description: 'Consulter les employés archivés. La restauration reste réservée au PDG.', requires: 'view' },
+    ],
+  },
   {
     key: 'internal_prices',
     label: 'Prix d’achat et coût de revient',
@@ -221,6 +236,10 @@ export function normalizePagePermissions(employee) {
   const isPdg = role === 'PDG';
 
   return PAGE_PERMISSION_GROUPS.reduce((acc, group) => {
+    if (group.key === 'employees') {
+      acc[group.key] = normalizeEmployeePagePermissions(employee);
+      return acc;
+    }
     const applicable = !isClientAccount && isGroupApplicableToRole(group, role);
     acc[group.key] = group.permissions.reduce((flags, permission) => {
       if (!applicable) flags[permission.key] = false;
@@ -290,6 +309,7 @@ export function parsePagePermissionUpdate(body, employee) {
 
 /** Garantit que toutes les colonnes du registre existent avant lecture. */
 export async function ensurePagePermissionSchema(db = pool) {
+  await ensureEmployeePagePermissionSchema(db);
   await ensureInternalPricePermissionSchema(db);
   await ensureFondCaissePermissionSchema(db);
   await ensureStatsDetailsPermissionSchema(db);

@@ -56,6 +56,7 @@ export const pagePermissionsApi = api.injectEndpoints({
         body: { permissions },
       }),
       invalidatesTags: [
+        'Auth',
         'PagePermissions',
         'ClientCollaborationPermissions',
         'MaalemReviewPermissions',

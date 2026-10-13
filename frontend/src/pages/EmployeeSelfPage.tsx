@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  useGetSalaireMonthlySummaryQueryServer,
   useGetEmployeeSalaireEntriesQueryServer,
   useGetEmployeeQueryServer,
 } from '../store/api/employeesApi.server';
@@ -138,15 +137,14 @@ const EmployeeSelfPage: React.FC = () => {
   // Charger les données complètes de l'employé avec le salaire
   const { data: employee } = useGetEmployeeQueryServer(employeeId || 0, { skip: !employeeId });
 
-  const { data: salarySummary = [] } = useGetSalaireMonthlySummaryQueryServer({ month: selectedMonth });
+  const { data: salaryEntries = [] } = useGetEmployeeSalaireEntriesQueryServer({ id: employeeId || 0, month: selectedMonth }, { skip: !employeeId });
   const { data: docs = [] } = useGetEmployeeDocsQuery(employeeId || 0);
   const { data: types = [] } = useGetDocumentTypesQuery();
 
   // Calculer le total du mois
   const currentMonthTotal = React.useMemo(() => {
-    const summary = (salarySummary as any[]).find((s: any) => Number(s.employe_id) === employeeId);
-    return summary ? Number(summary.total || 0) : 0;
-  }, [salarySummary, employeeId]);
+    return salaryEntries.reduce((total, entry) => total + Number(entry.montant || 0), 0);
+  }, [salaryEntries]);
 
   // Statistiques des documents
   const docsStats = React.useMemo(() => {

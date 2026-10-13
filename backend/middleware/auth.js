@@ -7,6 +7,7 @@ import { normalizeAbsencePermissions } from '../utils/absencePermissions.js';
 import { normalizeFondCaissePermissions } from '../utils/fondCaissePermissions.js';
 import { normalizeStatsDetailsPermissions } from '../utils/statsDetailsPermissions.js';
 import { ensureInternalPricePermissionSchema } from '../utils/internalPricePermissions.js';
+import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmployeePagePermissions } from '../utils/employeePagePermissions.js';
 
 export function getJwtSecret() {
   const secret = String(process.env.JWT_SECRET || '').trim();
@@ -57,13 +58,14 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
 
       if (isEmployeePayload(req.user)) {
         await ensureInternalPricePermissionSchema();
+        await ensureEmployeePagePermissionSchema();
         const [rows] = await pool.query(
           `SELECT id, cin, role, acces_commentaires_clients, acces_rappels_clients,
                   acces_avis_maalem, moderation_avis_maalem,
                   restauration_avis_maalem, details_prives_avis_maalem,
                   acces_gestion_absences, acces_statistiques_absences,
                   acces_ouverture_fond_caisse, acces_statistiques_details,
-                  acces_correction_prix_vente, acces_prix_internes
+                  acces_correction_prix_vente, acces_prix_internes, ${Object.values(EMPLOYEE_PAGE_COLUMNS).join(', ')}
            FROM employees WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
           [userId]
         );
@@ -72,6 +74,8 @@ export function verifyCurrentUserWithSchedule(req, res, next) {
 
         req.user = {
           ...req.user,
+          ...Object.fromEntries(Object.values(EMPLOYEE_PAGE_COLUMNS).map((column) => [column, employee[column]])),
+          employee_page_permissions: normalizeEmployeePagePermissions(employee),
           id: employee.id,
           cin: employee.cin,
           role: employee.role,

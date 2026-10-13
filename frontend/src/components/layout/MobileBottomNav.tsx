@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees } from '../../utils/permissions';
+import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
@@ -50,6 +51,9 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
         { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
+        { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
+        { name: 'Employés archivés', to: '/employees/archive', show: canAccessEmployeePage(user, 'archives') },
+        { name: 'Salaires', to: '/salaires', show: canAccessEmployeePage(user, 'salary_details') },
       ],
     },
   ] : [
@@ -105,6 +109,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'gestion', label: 'Gestion', icon: Users,
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
+        { name: 'Employés archivés', to: '/employees/archive', show: canAccessEmployeePage(user, 'archives') },
+        { name: 'Salaires', to: '/salaires', show: canAccessEmployeePage(user, 'salary_details') },
         { name: 'Autorisations par page', to: '/employees/page-permissions', show: user?.role === 'PDG' },
         { name: 'Accès aux prix internes', to: '/employees/internal-price-permissions', show: user?.role === 'PDG' },
         { name: 'Accès commentaires & rappels', to: '/employees/client-collaboration-permissions', show: user?.role === 'PDG' },

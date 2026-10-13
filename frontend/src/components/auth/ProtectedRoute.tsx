@@ -1,5 +1,7 @@
 import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { canAccessEmployeePage, canReadEmployeeData } from '../../utils/employeePagePermissions';
+import type { EmployeePagePermission } from '../../utils/employeePagePermissions';
 import { useAuth } from '../../hooks/redux';
 import type { Role } from '../../types';
 
@@ -8,16 +10,24 @@ interface ProtectedRouteProps {
   requiredRole?: Role;
   requiredRoles?: Role[];
   forbiddenRoles?: Role[];
+  employeePermission?: EmployeePagePermission;
+  allowOwnEmployee?: boolean;
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
   children, 
   requiredRole,
   requiredRoles,
-  forbiddenRoles
+  forbiddenRoles,
+  employeePermission,
+  allowOwnEmployee = false,
 }) => {
   const { isAuthenticated, user, passwordChangeRequired } = useAuth();
   const location = useLocation();
+  const params = useParams();
+  const employeeAllowed = employeePermission && (allowOwnEmployee
+    ? canReadEmployeeData(user, employeePermission, Number(params.id))
+    : canAccessEmployeePage(user, employeePermission));
 
   // Si l'utilisateur n'est pas authentifié, rediriger vers la page de login
   if (!isAuthenticated) {
@@ -30,7 +40,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // ChefChauffeur: allow only Bons + Véhicules (and change-password)
-  if (user?.role === 'ChefChauffeur') {
+  if (user?.role === 'ChefChauffeur' && !employeeAllowed) {
     const allowed =
       location.pathname === '/bons' ||
       location.pathname === '/vehicules' ||
@@ -41,6 +51,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     if (!allowed) {
       return <Navigate to="/bons" replace />;
     }
+  }
+
+  if (employeePermission && !employeeAllowed) {
+    return <div className="p-8 text-center text-red-700">Accès aux données des employés non autorisé.</div>;
   }
 
   // Si le rôle de l'utilisateur est dans les rôles interdits

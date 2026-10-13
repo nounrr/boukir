@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
 import { requireRole, verifyToken } from '../middleware/auth.js';
+import { requireEmployeePagePermission } from '../utils/employeePagePermissions.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10,11 +11,7 @@ const employeeDocsDir = path.resolve(__dirname, '..', 'uploads', 'employee_docs'
 
 router.use(verifyToken);
 
-function requireOwnerOrPdg(req, res, next) {
-  const employeeId = Number(req.params.employe_id);
-  if (req.user?.role === 'PDG' || Number(req.user?.id) === employeeId) return next();
-  return res.status(403).json({ message: 'Accès refusé' });
-}
+const requireOwnerOrPdg = requireEmployeePagePermission('documents', 'employe_id');
 
 // Document Types
 router.get('/types', async (_req, res, next) => {
