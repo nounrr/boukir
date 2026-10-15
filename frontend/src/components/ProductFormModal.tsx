@@ -93,9 +93,11 @@ const buildTouchedFromErrors = (value: unknown): any => {
   return true;
 };
 
-const flattenErrorMessages = (value: unknown, path = ''): string[] => {
+type FormError = { path: string | null; message: string };
+
+const flattenErrorMessages = (value: unknown, path = ''): FormError[] => {
   if (!value) return [];
-  if (typeof value === 'string') return path ? [`${path}: ${value}`] : [value];
+  if (typeof value === 'string') return [{ path: path || null, message: value }];
   if (Array.isArray(value)) return value.flatMap((entry, index) => flattenErrorMessages(entry, `${path}[${index}]`));
   if (typeof value === 'object') {
     return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) => {
@@ -156,7 +158,7 @@ const validationSchema = Yup.object({
       cout_revient_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_gros: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
-      prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
+      prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage de vente ne peut pas être négatif').optional(),
       prix_vente: Yup.number().transform(numberTransform()).typeError('Prix vente requis').min(0).required('Prix vente requis'),
       prix_vente_2: Yup.number().transform(numberTransform()).min(0).optional(),
       stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').min(0, 'Quantité >= 0').required('Quantité requise'),
@@ -217,7 +219,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [savingSnapshots, setSavingSnapshots] = useState(false);
   const [bulkSnapshotSalePrice, setBulkSnapshotSalePrice] = useState('');
   const [bulkSnapshotSalePrice2, setBulkSnapshotSalePrice2] = useState('');
-  const [submitErrorMessages, setSubmitErrorMessages] = useState<string[]>([]);
+  const [submitErrorMessages, setSubmitErrorMessages] = useState<FormError[]>([]);
+  const modalScrollRef = React.useRef<HTMLDivElement>(null);
 
   const toggleSnapshotExpanded = (id: number) => {
     setExpandedSnapshots(prev => {
@@ -376,6 +379,48 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   // Variant cards: existing variants start collapsed, new ones open; explicit toggles override.
   const [variantOpenOverrides, setVariantOpenOverrides] = useState<Record<string, boolean>>({});
   const getVariantCardKey = (variant: any, index: number) => (variant?.id ? `id-${variant.id}` : `new-${index}`);
+
+  const describeFormError = ({ path, message }: FormError) => {
+    const readableMessage = path && message.startsWith(`${path} `)
+      ? message.slice(path.length + 1)
+      : message;
+    const variantMatch = path?.match(/^variants\[(\d+)\](?:\.(.+))?$/);
+    if (variantMatch) {
+      const index = Number(variantMatch[1]);
+      const variant = formik.values.variants?.[index];
+      const name = String(variant?.variant_name || '').trim() || `Variante ${index + 1}`;
+      const fields: Record<string, string> = {
+        prix_vente_pourcentage: '% vente', prix_vente: 'Prix vente', prix_achat: 'Prix achat',
+        stock_quantity: 'Quantité', variant_name: 'Nom', variant_type: 'Type',
+      };
+      return `Variante « ${name} » (n° ${index + 1})${variantMatch[2] ? ` — ${fields[variantMatch[2]] || variantMatch[2]}` : ''} : ${readableMessage}`;
+    }
+    return path ? `${path} : ${readableMessage}` : readableMessage;
+  };
+
+  const scrollToFormError = (path: string | null) => {
+    if (!path) return;
+    const variantMatch = path.match(/^variants\[(\d+)\]/);
+    if (variantMatch) {
+      const index = Number(variantMatch[1]);
+      const variant = formik.values.variants?.[index];
+      if (variant) {
+        setVariantOpenOverrides((previous) => ({ ...previous, [getVariantCardKey(variant, index)]: true }));
+      }
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const container = modalScrollRef.current;
+      const inputName = path.replace(/\[(\d+)\]/g, '.$1');
+      const field = Array.from(container?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[name]') || [])
+        .find((element) => element.name === path || element.name === inputName);
+      const card = variantMatch
+        ? container?.querySelector<HTMLElement>(`[data-variant-index="${Number(variantMatch[1])}"]`)
+        : null;
+      const target = field || card;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (field && !field.disabled) field.focus({ preventScroll: true });
+    }));
+  };
 
   // Files for technical sheets
   // Long text technical sheets per language (no files)
@@ -1212,7 +1257,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const handlePrimarySubmit = async () => {
     if (hasCostRuleViolation) {
-      setSubmitErrorMessages(costRuleViolations);
+      setSubmitErrorMessages(costRuleViolations.map((message) => ({ path: null, message })));
       return;
     }
 
@@ -1226,7 +1271,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }
 
     formik.setTouched(buildTouchedFromErrors(errors), true);
-    setSubmitErrorMessages(flattenErrorMessages(errors));
+    const formErrors = flattenErrorMessages(errors);
+    setSubmitErrorMessages(formErrors);
+    scrollToFormError(formErrors[0]?.path || null);
 
     if (hasSnapshotChanges) {
       await handleSaveSnapshots();
@@ -1238,7 +1285,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[92vh] overflow-y-auto shadow-2xl border border-gray-200">
+      <div ref={modalScrollRef} className="bg-white rounded-2xl w-full max-w-6xl max-h-[92vh] overflow-y-auto shadow-2xl border border-gray-200">
         <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-700 to-blue-500 px-6 py-5 rounded-t-2xl flex items-center justify-between gap-4 shadow-md">
           <h2 className="text-2xl font-bold text-white tracking-tight">
             {editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
@@ -1276,8 +1323,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <div className="mb-1 font-semibold">Le formulaire contient encore des champs invalides.</div>
               <div className="space-y-1">
-                {submitErrorMessages.slice(0, 8).map((message, index) => (
-                  <div key={`${message}-${index}`}>{message}</div>
+                {submitErrorMessages.slice(0, 8).map((error, index) => (
+                  <button
+                    key={`${error.path || error.message}-${index}`}
+                    type="button"
+                    onClick={() => scrollToFormError(error.path)}
+                    className="block text-left hover:underline"
+                  >
+                    {describeFormError(error)}
+                  </button>
                 ))}
               </div>
             </div>
@@ -2619,12 +2673,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         const cardKey = getVariantCardKey(variant, index);
                         const variantErrors = (formik.errors.variants as any)?.[index];
                         const hasVariantErrors = !!variantErrors && typeof variantErrors === 'object' && Object.keys(variantErrors).length > 0;
+                        const showVariantError = hasVariantErrors && (formik.submitCount > 0
+                          || submitErrorMessages.some((error) => error.path?.startsWith(`variants[${index}]`)));
                         const variantSnapshots: any[] = Array.isArray(variant?.snapshot_rows) ? variant.snapshot_rows : [];
                         const hasVariantSnapshots = !!editingProduct && variantSnapshots.length > 0;
-                        const isCardOpen = (hasVariantErrors && formik.submitCount > 0) || (variantOpenOverrides[cardKey] ?? !variant.id);
+                        const isCardOpen = (showVariantError && variantOpenOverrides[cardKey] !== false) || (variantOpenOverrides[cardKey] ?? !variant.id);
                         const swatch = variant.variant_type === 'Couleur' ? getVariantColor(variant.color_name, variant.variant_name) : null;
                         return (
-                        <div key={index} className={`bg-white rounded-xl border-2 shadow-sm transition-shadow ${hasVariantErrors && formik.submitCount > 0 ? 'border-red-300' : isCardOpen ? 'border-blue-200 shadow-md' : 'border-gray-200 hover:shadow-md'}`}>
+                        <div key={index} data-variant-index={index} className={`bg-white rounded-xl border-2 shadow-sm transition-shadow ${showVariantError ? 'border-red-300' : isCardOpen ? 'border-blue-200 shadow-md' : 'border-gray-200 hover:shadow-md'}`}>
                           {/* En-tête résumé (cliquable) */}
                           <div
                             role="button"
@@ -2679,7 +2735,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-bold">modifié</span>
                               )}
                             </div>
-                            {hasVariantErrors && formik.submitCount > 0 && (
+                            {showVariantError && (
                               <AlertCircle size={18} className="text-red-500 shrink-0" aria-label="Champs invalides" />
                             )}
                             <button
