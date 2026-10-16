@@ -34,6 +34,7 @@ import { api } from '../store/api/apiSlice';
   } from '../store/api/contactsApi';
 import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { isProductNonCalcule } from '../utils/productNonCalcule';
+import { toCommandeDuplicateItem } from '../utils/bonDuplication';
 import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designationLang';
 import {
   useGetComptantPaymentsQuery,
@@ -2506,18 +2507,9 @@ const BonsPage = () => {
           newBonData.fournisseur_id = parseInt(selectedContactForDuplicate);
 
           const mapped = itemsToDuplicate.map((it: any) => {
-            const q = Number(it.quantite ?? it.qty ?? 0) || 0;
             // Prix d'achat / coût de revient depuis l'item ou le produit
             const purchaseUnit = resolveCostWithVariantUnit(it);
-            const total = Number(purchaseUnit) * q;
-            return {
-              product_id: it.product_id || it.produit_id || it.id,
-              quantite: q,
-              prix_unitaire: Number(purchaseUnit) || 0,
-              remise_pourcentage: 0,
-              remise_montant: 0,
-              total,
-            };
+            return toCommandeDuplicateItem(it, purchaseUnit);
           }).filter((it: any) => it.product_id && it.quantite > 0);
 
           const newTotal = mapped.reduce((sum: number, it: any) => sum + (Number(it.total) || 0), 0);
