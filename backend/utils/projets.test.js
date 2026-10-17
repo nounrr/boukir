@@ -70,3 +70,32 @@ test('stats summarise devis, avances and spending', () => {
   assert.equal(stats.par_mode.Virement, 500);
   assert.deepEqual(stats.par_mois.map((m) => m.mois), ['2026-01', '2026-02']);
 });
+
+test('material charges remain distinct and count once in expenses and balances', () => {
+  const material = validateBon({
+    type: 'charge_materiel', date_bon: '2026-10-17',
+    items: [{ designation: 'Location matériel', quantite: 2, prix_unitaire: 125.25 }],
+  });
+  assert.equal(material.error, undefined);
+  const bons = [
+    { ...material.value, id: 3 },
+    { id: 1, type: 'charge', date_bon: '2026-10-17', montant_total: 100 },
+    { id: 2, type: 'products', date_bon: '2026-10-17', montant_total: 50 },
+  ];
+  const stats = buildStats({ devisTotal: 1000, avances: [], bons });
+  assert.equal(stats.total_charges_products, 100);
+  assert.equal(stats.total_charges_materiel, 250.5);
+  assert.equal(stats.total_charges, 350.5);
+  assert.equal(stats.total_depenses, 400.5);
+  assert.equal(stats.solde, -400.5);
+  assert.equal(stats.nb_bons_charge, 2);
+  assert.equal(stats.nb_bons_charge_products, 1);
+  assert.equal(stats.nb_bons_charge_materiel, 1);
+  assert.equal(stats.par_mois[0].charges_products, 100);
+  assert.equal(stats.par_mois[0].charges_materiel, 250.5);
+  assert.equal(stats.par_mois[0].charges, 350.5);
+  const rows = buildSituation([], bons);
+  assert.equal(rows.at(-1).solde, -400.5);
+  assert.equal(rows.at(-1).kind, 'charge_materiel');
+  assert.equal(rows.at(-1).reference, 'BCM-0003');
+});

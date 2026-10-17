@@ -6661,19 +6661,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     if (!product || variants.length === 0) {
                                       return <span className="text-xs text-gray-400">-</span>;
                                     }
-                                    return (
-                                      <select
-                                        className={`w-full px-1 py-1 text-sm border rounded ${isMissing ? 'border-red-500' : ''}`}
-                                        disabled={isQtyOnlyEdit}
-                                        value={values.items[index].variant_id || ''}
-                                        data-row={index}
-                                        data-col="variant"
-                                        onPointerDown={() => {
-                                          suppressPriceBlurRef.current = { row: index, ts: Date.now() };
-                                        }}
-                                        onChange={(e) => {
+                                    const handleVariantChange = (vId: string) => {
                                           if (isQtyOnlyEdit) return;
-                                          const vId = e.target.value;
                                           setFieldValue(`items.${index}.variant_id`, vId);
                                           const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
                                           const unitIdSel = values.items[index].unit_id;
@@ -6901,7 +6890,46 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           }
                                           setUnitPriceRaw((prev) => ({ ...prev, [index]: String(effectivePrice) }));
                                           setFieldValue(`items.${index}.total`, q * effectivePrice);
+                                    };
+                                    if (variants.length > 3) {
+                                      return (
+                                        <SearchableSelect
+                                          key={product.id}
+                                          options={[
+                                            { value: '', label: '--' },
+                                            ...variants.map((v: any) => ({ value: String(v.id), label: v.variant_name })),
+                                          ]}
+                                          value={String(values.items[index].variant_id || '')}
+                                          onChange={handleVariantChange}
+                                          placeholder="Sélectionner variante"
+                                          minSearchChars={0}
+                                          maxDisplayItems={variants.length + 1}
+                                          className="w-full text-sm"
+                                          disabled={isQtyOnlyEdit}
+                                          buttonProps={{
+                                            'data-row': index,
+                                            'data-col': 'variant',
+                                            'aria-label': 'Variante',
+                                            'aria-invalid': isMissing,
+                                            style: isMissing ? { borderColor: '#ef4444' } : undefined,
+                                            onPointerDown: () => {
+                                              suppressPriceBlurRef.current = { row: index, ts: Date.now() };
+                                            },
+                                          }}
+                                        />
+                                      );
+                                    }
+                                    return (
+                                      <select
+                                        className={`w-full px-1 py-1 text-sm border rounded ${isMissing ? 'border-red-500' : ''}`}
+                                        disabled={isQtyOnlyEdit}
+                                        value={values.items[index].variant_id || ''}
+                                        data-row={index}
+                                        data-col="variant"
+                                        onPointerDown={() => {
+                                          suppressPriceBlurRef.current = { row: index, ts: Date.now() };
                                         }}
+                                        onChange={(e) => handleVariantChange(e.target.value)}
                                       >
                                         <option value="">--</option>
                                         {variants.map((v: any) => (

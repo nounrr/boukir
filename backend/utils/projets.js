@@ -1,7 +1,7 @@
 // Logique pure du module Projets (validation + calculs), testable sans base.
 
 export const AVANCE_MODES = Object.freeze(['Espece', 'Virement', 'Cheque']);
-export const BON_TYPES = Object.freeze(['products', 'charge']);
+export const BON_TYPES = Object.freeze(['products', 'charge', 'charge_materiel']);
 const MAX_LINES = 500;
 const MAX_AMOUNT = 999_999_999;
 
@@ -147,7 +147,7 @@ export function validateBon(input) {
   };
 }
 
-export const bonReference = (bon) => `${bon.type === 'charge' ? 'BC' : 'BP'}-${String(bon.id).padStart(4, '0')}`;
+export const bonReference = (bon) => `${bon.type === 'charge_materiel' ? 'BCM' : bon.type === 'charge' ? 'BC' : 'BP'}-${String(bon.id).padStart(4, '0')}`;
 
 /**
  * Historique unifié : avances (entrées) et bons produits / charge (sorties),
@@ -167,11 +167,11 @@ export function buildSituation(avances, bons) {
       created_at: a.created_at,
     })),
     ...bons.map((b) => ({
-      kind: b.type === 'charge' ? 'charge' : 'products',
+      kind: b.type,
       id: b.id,
       date: b.date_bon,
       reference: bonReference(b),
-      libelle: b.observations || (b.type === 'charge' ? 'Bon charge' : 'Bon produits'),
+      libelle: b.observations || (b.type === 'charge_materiel' ? 'Charge matériel' : b.type === 'charge' ? 'Charge produit' : 'Bon produits'),
       mode_paiement: null,
       entree: 0,
       sortie: round2(b.montant_total),
@@ -195,7 +195,9 @@ export function buildStats({ devisTotal, avances, bons }) {
   const sum = (items, pick) => round2(items.reduce((acc, item) => acc + Number(pick(item) || 0), 0));
   const totalAvances = sum(avances, (a) => a.montant);
   const totalProducts = sum(bons.filter((b) => b.type === 'products'), (b) => b.montant_total);
-  const totalCharges = sum(bons.filter((b) => b.type === 'charge'), (b) => b.montant_total);
+  const totalChargeProducts = sum(bons.filter((b) => b.type === 'charge'), (b) => b.montant_total);
+  const totalChargeMateriel = sum(bons.filter((b) => b.type === 'charge_materiel'), (b) => b.montant_total);
+  const totalCharges = round2(totalChargeProducts + totalChargeMateriel);
   const totalDepenses = round2(totalProducts + totalCharges);
   const devis = round2(devisTotal);
 
@@ -206,14 +208,22 @@ export function buildStats({ devisTotal, avances, bons }) {
   const months = new Map();
   const bucket = (date) => {
     const key = String(date).slice(0, 7);
-    if (!months.has(key)) months.set(key, { mois: key, avances: 0, products: 0, charges: 0 });
+    if (!months.has(key)) months.set(key, { mois: key, avances: 0, products: 0, charges: 0, charges_products: 0, charges_materiel: 0 });
     return months.get(key);
   };
   for (const a of avances) bucket(a.date_avance).avances += Number(a.montant);
-  for (const b of bons) bucket(b.date_bon)[b.type === 'charge' ? 'charges' : 'products'] += Number(b.montant_total);
+  for (const b of bons) {
+    const month = bucket(b.date_bon);
+    const amount = Number(b.montant_total);
+    if (b.type === 'products') month.products += amount;
+    else {
+      month.charges += amount;
+      month[b.type === 'charge_materiel' ? 'charges_materiel' : 'charges_products'] += amount;
+    }
+  }
   const parMois = [...months.values()]
     .sort((a, b) => a.mois.localeCompare(b.mois))
-    .map((m) => ({ ...m, avances: round2(m.avances), products: round2(m.products), charges: round2(m.charges) }));
+    .map((m) => ({ ...m, avances: round2(m.avances), products: round2(m.products), charges: round2(m.charges), charges_products: round2(m.charges_products), charges_materiel: round2(m.charges_materiel) }));
 
   const pct = (part, whole) => (whole > 0 ? round2((part / whole) * 100) : 0);
   return {
@@ -221,6 +231,8 @@ export function buildStats({ devisTotal, avances, bons }) {
     total_avances: totalAvances,
     total_products: totalProducts,
     total_charges: totalCharges,
+    total_charges_products: totalChargeProducts,
+    total_charges_materiel: totalChargeMateriel,
     total_depenses: totalDepenses,
     solde: round2(totalAvances - totalDepenses),
     reste_a_encaisser: round2(devis - totalAvances),
@@ -229,7 +241,9 @@ export function buildStats({ devisTotal, avances, bons }) {
     taux_consommation: pct(totalDepenses, devis),
     nb_avances: avances.length,
     nb_bons_products: bons.filter((b) => b.type === 'products').length,
-    nb_bons_charge: bons.filter((b) => b.type === 'charge').length,
+    nb_bons_charge: bons.filter((b) => b.type !== 'products').length,
+    nb_bons_charge_products: bons.filter((b) => b.type === 'charge').length,
+    nb_bons_charge_materiel: bons.filter((b) => b.type === 'charge_materiel').length,
     par_mode: parMode,
     par_mois: parMois,
   };

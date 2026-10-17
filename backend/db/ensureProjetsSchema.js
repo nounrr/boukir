@@ -51,7 +51,7 @@ export const PROJETS_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS projet_bons (
     id INT NOT NULL AUTO_INCREMENT,
     projet_id INT NOT NULL,
-    type ENUM('products', 'charge') NOT NULL,
+    type ENUM('products', 'charge', 'charge_materiel') NOT NULL,
     date_bon DATE NOT NULL,
     observations TEXT NULL,
     montant_total DECIMAL(14,2) NOT NULL DEFAULT 0,
@@ -99,6 +99,10 @@ export const PROJET_BON_ITEM_PRICE_COLUMNS = [
 export async function ensureProjetsSchema() {
   for (const statement of PROJETS_SCHEMA_STATEMENTS) {
     await pool.query(statement);
+  }
+  const [bonColumns] = await pool.query("SHOW COLUMNS FROM projet_bons LIKE 'type'");
+  if (!bonColumns[0].Type.includes("'charge_materiel'")) {
+    await pool.query("ALTER TABLE projet_bons MODIFY COLUMN type ENUM('products', 'charge', 'charge_materiel') NOT NULL");
   }
   const [columns] = await pool.query('SHOW COLUMNS FROM projet_bon_items');
   const existing = new Set(columns.map((c) => c.Field));

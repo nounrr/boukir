@@ -52,7 +52,8 @@ const StatsTab: React.FC<{ stats: ProjetStats }> = ({ stats }) => {
           <Progress label="Consommation du devis" value={stats.taux_consommation} color={COLORS.charges} detail={`${formatMoney(stats.total_depenses)} dépensés`} />
           <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm">
             <div><p className="text-xs text-slate-500">Bons produits</p><p className="font-semibold tabular-nums" style={{ color: COLORS.products }}>{formatMoney(stats.total_products)}</p></div>
-            <div><p className="text-xs text-slate-500">Bons charge</p><p className="font-semibold tabular-nums" style={{ color: COLORS.charges }}>{formatMoney(stats.total_charges)}</p></div>
+            <div><p className="text-xs text-slate-500">Charges produit</p><p className="font-semibold tabular-nums" style={{ color: COLORS.charges }}>{formatMoney(stats.total_charges_products)}</p></div>
+            <div><p className="text-xs text-slate-500">Charges matériel</p><p className="font-semibold tabular-nums text-violet-700">{formatMoney(stats.total_charges_materiel)}</p></div>
           </div>
         </div>
 
@@ -83,7 +84,8 @@ const StatsTab: React.FC<{ stats: ProjetStats }> = ({ stats }) => {
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="avances" name="Avances" fill={COLORS.avances} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="products" name="Bons produits" fill={COLORS.products} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="charges" name="Bons charge" fill={COLORS.charges} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="charges_products" name="Charges produit" fill={COLORS.charges} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="charges_materiel" name="Charges matériel" fill="#7c3aed" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

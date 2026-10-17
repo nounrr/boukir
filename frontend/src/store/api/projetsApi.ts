@@ -8,7 +8,7 @@ export const hasProjetsUnlockToken = () => Boolean(unlockToken);
 const unlockHeaders = () => (unlockToken ? { 'X-Projets-Token': unlockToken } : undefined);
 
 export type AvanceMode = 'Espece' | 'Virement' | 'Cheque';
-export type ProjetBonType = 'products' | 'charge';
+export type ProjetBonType = 'products' | 'charge' | 'charge_materiel';
 
 export interface Projet {
   id: number;
@@ -65,7 +65,7 @@ export interface ProjetBon {
 }
 
 export interface ProjetSituationRow {
-  kind: 'avance' | 'products' | 'charge';
+  kind: 'avance' | 'products' | 'charge' | 'charge_materiel';
   id: number;
   date: string;
   reference: string;
@@ -81,6 +81,8 @@ export interface ProjetStats {
   total_avances: number;
   total_products: number;
   total_charges: number;
+  total_charges_products: number;
+  total_charges_materiel: number;
   total_depenses: number;
   solde: number;
   reste_a_encaisser: number;
@@ -90,8 +92,10 @@ export interface ProjetStats {
   nb_avances: number;
   nb_bons_products: number;
   nb_bons_charge: number;
+  nb_bons_charge_products: number;
+  nb_bons_charge_materiel: number;
   par_mode: Record<AvanceMode, number>;
-  par_mois: { mois: string; avances: number; products: number; charges: number }[];
+  par_mois: { mois: string; avances: number; products: number; charges: number; charges_products: number; charges_materiel: number }[];
 }
 
 export interface ProjetDetail {

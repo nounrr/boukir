@@ -15,12 +15,21 @@ const COPY: Record<ProjetBonType, { title: string; hint: string; single: string;
     modalTab: 'Sortie',
   },
   charge: {
-    title: 'Bons charge',
+    title: 'Charges produit',
     hint: 'Même saisie qu’un bon charge, sans client. Séparé de la caisse et des statistiques.',
-    single: 'bon charge',
+    single: 'bon charge produit',
     prefix: 'BC',
     icon: Receipt,
     empty: 'Créez un bon pour suivre les dépenses du projet.',
+    modalTab: 'Charge',
+  },
+  charge_materiel: {
+    title: 'Charges matériel',
+    hint: 'Dépenses de matériel du projet, séparées de la caisse et du stock.',
+    single: 'bon charge matériel',
+    prefix: 'BCM',
+    icon: Receipt,
+    empty: 'Créez un bon pour suivre les dépenses de matériel du projet.',
     modalTab: 'Charge',
   },
 };

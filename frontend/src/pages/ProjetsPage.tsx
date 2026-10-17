@@ -25,10 +25,11 @@ import {
   EmptyState, ErrorBanner, Modal, Spinner, errorMessage, formatDay, formatMoney, iconButton, inputClass, isLockedError, labelClass, primaryButton, secondaryButton,
 } from '../components/projets/shared';
 
-type TabKey = 'situation' | 'charge' | 'devis' | 'products' | 'avances' | 'stats';
+type TabKey = 'situation' | 'charge' | 'charge_materiel' | 'devis' | 'products' | 'avances' | 'stats';
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: 'situation', label: 'Situation complète', icon: History },
-  { key: 'charge', label: 'Charges', icon: Receipt },
+  { key: 'charge', label: 'Charges produit', icon: Receipt },
+  { key: 'charge_materiel', label: 'Charges matériel', icon: Receipt },
   { key: 'devis', label: 'Devis', icon: ClipboardList },
   { key: 'products', label: 'Produits', icon: Truck },
   { key: 'avances', label: 'Avances', icon: Wallet },
@@ -241,7 +242,8 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
   };
   const counts: Partial<Record<TabKey, number>> = {
     situation: data.situation.length,
-    charge: stats.nb_bons_charge,
+    charge: stats.nb_bons_charge_products,
+    charge_materiel: stats.nb_bons_charge_materiel,
     devis: data.devis.length,
     products: stats.nb_bons_products,
     avances: stats.nb_avances,
@@ -283,10 +285,11 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
       </div>
 
       <div role="tabpanel">
-        {tab === 'situation' && <SituationTab situation={data.situation} stats={stats} />}
-        {tab === 'charge' && <BonsTab projetId={projet.id} type="charge" bons={data.bons} />}
+        {tab === 'situation' && <SituationTab key={projet.id} situation={data.situation} stats={stats} bons={data.bons} />}
+        {tab === 'charge' && <BonsTab key="charge" projetId={projet.id} type="charge" bons={data.bons} />}
+        {tab === 'charge_materiel' && <BonsTab key="charge_materiel" projetId={projet.id} type="charge_materiel" bons={data.bons} />}
         {tab === 'devis' && <DevisTab projetId={projet.id} devis={data.devis} />}
-        {tab === 'products' && <BonsTab projetId={projet.id} type="products" bons={data.bons} />}
+        {tab === 'products' && <BonsTab key="products" projetId={projet.id} type="products" bons={data.bons} />}
         {tab === 'avances' && <AvancesTab projetId={projet.id} avances={data.avances} />}
         {tab === 'stats' && <StatsTab stats={stats} />}
       </div>
