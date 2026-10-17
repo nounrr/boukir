@@ -46,6 +46,9 @@ const ProjetsLockScreen: React.FC<{ onUnlocked: (token: string) => void; notice?
     );
   }
 
+  if (!data?.allowed) return <ErrorBanner message="Vous n’avez pas l’autorisation d’accéder à la page Projets." />;
+  if (!configured && !data.canManagePassword) return <ErrorBanner message="Le PDG doit d’abord définir le mot de passe de l’espace Projets." />;
+
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
       <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

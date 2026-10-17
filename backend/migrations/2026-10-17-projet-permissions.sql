@@ -1,0 +1,1 @@
+ALTER TABLE employees ADD COLUMN acces_projets TINYINT(1) NOT NULL DEFAULT 0;

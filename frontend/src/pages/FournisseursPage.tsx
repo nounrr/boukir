@@ -1,3 +1,4 @@
+import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -1942,25 +1943,23 @@ const FournisseursListPage: React.FC = () => {
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
 
+  const saveListScroll = useListScrollRestoration(FOURNISSEURS_SCROLL_KEY, !isLoading && !isFetching);
+  React.useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+  }, []);
   React.useEffect(() => {
-    if (isLoading || isFetching) return;
-    const saved = sessionStorage.getItem(FOURNISSEURS_SCROLL_KEY);
-    if (saved !== null) {
-      const y = Number(saved);
-      if (!isNaN(y)) {
-        requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'auto' }));
-      }
-      sessionStorage.removeItem(FOURNISSEURS_SCROLL_KEY);
-    }
-    sessionStorage.removeItem(FOURNISSEURS_STATE_KEY);
-  }, [isLoading, isFetching]);
+    try {
+      sessionStorage.setItem(FOURNISSEURS_STATE_KEY, JSON.stringify({ search, sortBy, sortDir, currentPage, itemsPerPage }));
+    } catch { /* La liste reste utilisable si le stockage est indisponible. */ }
+  }, [search, sortBy, sortDir, currentPage, itemsPerPage]);
 
   const handleRowClick = (id: number) => {
-    sessionStorage.setItem(FOURNISSEURS_SCROLL_KEY, String(window.scrollY));
+    saveListScroll();
     const stateToSave: FournisseursListSavedState = {
-      search, sortBy, sortDir, currentPage, itemsPerPage,
+      search, sortBy, sortDir, itemsPerPage,
+      currentPage: search === debouncedSearch ? currentPage : 1,
     };
-    sessionStorage.setItem(FOURNISSEURS_STATE_KEY, JSON.stringify(stateToSave));
+    try { sessionStorage.setItem(FOURNISSEURS_STATE_KEY, JSON.stringify(stateToSave)); } catch { /* Continuer la navigation. */ }
     navigate(`/fournisseurs/${id}`);
   };
 
@@ -2109,7 +2108,7 @@ const FournisseursListPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-contact-list-scroll>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>

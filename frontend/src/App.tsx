@@ -705,7 +705,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/projets"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck><ProjetsPage /></LayoutWithAccessCheck>
             </ProtectedRoute>
           }

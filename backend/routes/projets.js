@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { loadProjetAccess, requireProjetAccess } from '../utils/projetPermissions.js';
 import pool from '../db/pool.js';
 import { getJwtSecret, requireRole, verifyToken } from '../middleware/auth.js';
 import {
@@ -13,11 +14,11 @@ import {
   validateProjet,
 } from '../utils/projets.js';
 
-// Module Projets : réservé au PDG et protégé par un mot de passe dédié.
+// Module Projets : accès autorisé par le PDG et protégé par un mot de passe dédié.
 // Toutes les données vivent dans des tables propres (projets, projet_*) :
 // aucune route ici ne touche au stock, à la caisse ni aux statistiques.
 const router = Router();
-router.use(verifyToken, requireRole('PDG'));
+router.use(verifyToken);
 
 const UNLOCK_AUDIENCE = 'projets';
 const UNLOCK_TTL = '2h';
@@ -71,14 +72,17 @@ function validNewPassword(value) {
   return typeof value === 'string' && value.length >= MIN_PASSWORD_LENGTH && value.length <= 128;
 }
 
-router.get('/access', async (_req, res, next) => {
+router.get('/access', async (req, res, next) => {
   try {
     res.set('Cache-Control', 'no-store');
-    res.json({ configured: Boolean(await getPasswordHash()) });
+    const allowed = await loadProjetAccess(req.user);
+    res.json({ allowed, configured: allowed ? Boolean(await getPasswordHash()) : false, canManagePassword: allowed && req.user.role === 'PDG' });
   } catch (error) { next(error); }
 });
 
-router.post('/access/setup', async (req, res, next) => {
+router.use(requireProjetAccess);
+
+router.post('/access/setup', requireRole('PDG'), async (req, res, next) => {
   try {
     if (await getPasswordHash()) return res.status(409).json({ message: 'Le mot de passe est déjà défini.' });
     const password = req.body?.password;
@@ -114,7 +118,7 @@ router.post('/access/unlock', async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post('/access/change-password', requireUnlock, async (req, res, next) => {
+router.post('/access/change-password', requireRole('PDG'), requireUnlock, async (req, res, next) => {
   try {
     const hash = await getPasswordHash();
     const current = typeof req.body?.current_password === 'string' ? req.body.current_password : '';

@@ -1,3 +1,4 @@
+import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -2130,6 +2131,7 @@ const CLIENTS_SCROLL_KEY = 'clientsListScrollY';
 const CLIENTS_STATE_KEY = 'clientsListState';
 
 type ClientsListSavedState = {
+  expandedGroupKeys?: string[];
   search?: string;
   sortBy?: ContactsSortBy;
   sortDir?: SortDirection;
@@ -2177,7 +2179,7 @@ const ClientsListPage: React.FC = () => {
   const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
   const [dateFrom, setDateFrom] = useState(savedState.dateFrom ?? '');
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
-  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set(savedState.expandedGroupKeys ?? []));
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
   const clientsTableColspan = 13 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
 
@@ -2254,25 +2256,23 @@ const ClientsListPage: React.FC = () => {
     }
   }, [visibleClientIds, openCommentsClientId]);
 
+  const saveListScroll = useListScrollRestoration(CLIENTS_SCROLL_KEY, !isLoading && !isFetching && !permissionsLoading);
+  React.useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+  }, []);
   React.useEffect(() => {
-    if (isLoading || isFetching) return;
-    const saved = sessionStorage.getItem(CLIENTS_SCROLL_KEY);
-    if (saved !== null) {
-      const y = Number(saved);
-      if (!isNaN(y)) {
-        requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'auto' }));
-      }
-      sessionStorage.removeItem(CLIENTS_SCROLL_KEY);
-    }
-    sessionStorage.removeItem(CLIENTS_STATE_KEY);
-  }, [isLoading, isFetching]);
+    try {
+      sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify({ search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage, expandedGroupKeys: [...expandedGroupKeys] }));
+    } catch { /* La liste reste utilisable si le stockage est indisponible. */ }
+  }, [search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage, expandedGroupKeys]);
 
   const handleRowClick = (id: number) => {
-    sessionStorage.setItem(CLIENTS_SCROLL_KEY, String(window.scrollY));
+    saveListScroll();
     const stateToSave: ClientsListSavedState = {
-      search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage,
+      search, sortBy, sortDir, dateFrom, dateTo, itemsPerPage, expandedGroupKeys: [...expandedGroupKeys],
+      currentPage: search === debouncedSearch ? currentPage : 1,
     };
-    sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify(stateToSave));
+    try { sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify(stateToSave)); } catch { /* Continuer la navigation. */ }
     navigate(`/clients/${id}`);
   };
 
@@ -2795,7 +2795,7 @@ const ClientsListPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-contact-list-scroll>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>

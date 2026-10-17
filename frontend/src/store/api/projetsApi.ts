@@ -118,8 +118,9 @@ export interface BonInput {
 
 export const projetsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    getProjetsAccess: builder.query<{ configured: boolean }, void>({
+    getProjetsAccess: builder.query<{ configured: boolean; allowed: boolean; canManagePassword: boolean }, void>({
       query: () => '/projets/access',
+      providesTags: ['Auth'],
     }),
     setupProjetsPassword: builder.mutation<{ token: string }, { password: string }>({
       query: (body) => ({ url: '/projets/access/setup', method: 'POST', body }),

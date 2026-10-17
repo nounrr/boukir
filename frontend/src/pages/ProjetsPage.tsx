@@ -4,6 +4,7 @@ import {
   ArrowLeft, BarChart3, CalendarRange, ClipboardList, FolderKanban, History, KeyRound, Loader2, Lock, Pencil, Plus, Receipt, RefreshCw, Trash2, Truck, Wallet,
 } from 'lucide-react';
 import {
+  type ProjetBon,
   type ProjetInput,
   type ProjetListItem,
   hasProjetsUnlockToken,
@@ -13,11 +14,14 @@ import {
   useDeleteProjetMutation,
   useGetProjetQuery,
   useGetProjetsQuery,
+  useGetProjetsAccessQuery,
   useUpdateProjetMutation,
 } from '../store/api/projetsApi';
 import ProjetsLockScreen from '../components/projets/ProjetsLockScreen';
 import DevisTab from '../components/projets/DevisTab';
 import AvancesTab from '../components/projets/AvancesTab';
+import BonPrintModal from '../components/BonPrintModal';
+import { prepareProjetBonPrint } from '../utils/projetBonPrint';
 import BonsTab from '../components/projets/BonsTab';
 import SituationTab from '../components/projets/SituationTab';
 import StatsTab from '../components/projets/StatsTab';
@@ -219,6 +223,7 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
   const { data, isLoading, isFetching, error, refetch } = useGetProjetQuery(id, { refetchOnMountOrArgChange: true });
   const [deleteProjet, { isLoading: deleting }] = useDeleteProjetMutation();
   const [editing, setEditing] = useState(false);
+  const [printing, setPrinting] = useState<ProjetBon | null>(null);
   const [actionError, setActionError] = useState('');
 
   useEffect(() => { if (isLockedError(error)) onLocked(); }, [error, onLocked]);
@@ -285,15 +290,16 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
       </div>
 
       <div role="tabpanel">
-        {tab === 'situation' && <SituationTab key={projet.id} situation={data.situation} stats={stats} bons={data.bons} />}
-        {tab === 'charge' && <BonsTab key="charge" projetId={projet.id} type="charge" bons={data.bons} />}
-        {tab === 'charge_materiel' && <BonsTab key="charge_materiel" projetId={projet.id} type="charge_materiel" bons={data.bons} />}
+        {tab === 'situation' && <SituationTab key={projet.id} situation={data.situation} stats={stats} bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'charge' && <BonsTab key="charge" projetId={projet.id} type="charge" bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'charge_materiel' && <BonsTab key="charge_materiel" projetId={projet.id} type="charge_materiel" bons={data.bons} onPrint={setPrinting} />}
         {tab === 'devis' && <DevisTab projetId={projet.id} devis={data.devis} />}
-        {tab === 'products' && <BonsTab key="products" projetId={projet.id} type="products" bons={data.bons} />}
+        {tab === 'products' && <BonsTab key="products" projetId={projet.id} type="products" bons={data.bons} onPrint={setPrinting} />}
         {tab === 'avances' && <AvancesTab projetId={projet.id} avances={data.avances} />}
         {tab === 'stats' && <StatsTab stats={stats} />}
       </div>
 
+      {printing && <BonPrintModal key={printing.id} isOpen onClose={() => setPrinting(null)} {...prepareProjetBonPrint(printing, projet.nom)} />}
       {editing && (
         <ProjetFormModal
           initial={{ id: projet.id, nom: projet.nom, description: projet.description, date_debut: projet.date_debut, date_fin: projet.date_fin }}
@@ -308,6 +314,7 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
 
 // --- Page ------------------------------------------------------------------
 const ProjetsPage: React.FC = () => {
+  const { data: access, isLoading: checkingAccess, error: accessError } = useGetProjetsAccessQuery(undefined, { refetchOnMountOrArgChange: true, pollingInterval: 30000 });
   const [unlocked, setUnlocked] = useState(hasProjetsUnlockToken);
   const [notice, setNotice] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
@@ -325,6 +332,10 @@ const ProjetsPage: React.FC = () => {
   }, []);
   const onLocked = useCallback(() => lock('Session expirée : saisissez à nouveau le mot de passe.'), [lock]);
 
+  if (checkingAccess) return <Spinner />;
+  if (accessError) return <ErrorBanner message={errorMessage(accessError)} />;
+  if (!access?.allowed) return <ErrorBanner message="Vous n’avez pas l’autorisation d’accéder à la page Projets." />;
+
   if (!unlocked) {
     return (
       <ProjetsLockScreen
@@ -341,9 +352,9 @@ const ProjetsPage: React.FC = () => {
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
       <div className="mb-4 flex justify-end gap-2">
-        <button type="button" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => setChangingPassword(true)}>
+        {access.canManagePassword && <button type="button" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => setChangingPassword(true)}>
           <KeyRound className="h-3.5 w-3.5" /> Mot de passe
-        </button>
+        </button>}
         <button type="button" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => lock()}>
           <Lock className="h-3.5 w-3.5" /> Verrouiller
         </button>
@@ -351,7 +362,7 @@ const ProjetsPage: React.FC = () => {
       {projetId
         ? <ProjetDetailView key={projetId} id={projetId} tab={tab} onTab={(t) => openProjet(projetId, t)} onBack={() => openProjet(null)} onLocked={onLocked} />
         : <ProjetsList onOpen={(id) => openProjet(id)} onLocked={onLocked} />}
-      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} onLocked={onLocked} />}
+      {access.canManagePassword && changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} onLocked={onLocked} />}
     </div>
   );
 };

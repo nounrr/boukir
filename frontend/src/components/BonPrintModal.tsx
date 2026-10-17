@@ -4,6 +4,7 @@ import html2canvas from 'html2canvas';
 import { Printer, Download } from 'lucide-react';
 import BonPrintTemplate from './BonPrintTemplate';
 import { getBonNumeroDisplay } from '../utils/numero';
+import type { ProjetPrintContext } from '../utils/projetBonPrint';
 import type { Contact } from '../types';
 import { useGetComptantPaymentsQuery } from '../store/api/comptantApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
@@ -16,6 +17,7 @@ interface BonPrintModalProps {
   client?: Contact;
   fournisseur?: Contact;
   products?: any[];
+  projectContext?: ProjetPrintContext;
 }
 
 const BonPrintModal: React.FC<BonPrintModalProps> = ({
@@ -24,7 +26,8 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   bon,
   client,
   fournisseur,
-  products
+  products,
+  projectContext
 }) => {
   // Taille fixée à A4 par défaut
   const size = 'A4' as const;
@@ -35,9 +38,9 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
   // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).
   const { data: fetchedProducts = [] } = useGetProductsQuery(undefined, {
-    skip: !isOpen || (Array.isArray(products) && products.length > 0),
+    skip: !isOpen || Boolean(projectContext) || (Array.isArray(products) && products.length > 0),
   });
-  const effectiveProducts = (Array.isArray(products) && products.length > 0)
+  const effectiveProducts = projectContext ? [] : (Array.isArray(products) && products.length > 0)
     ? products
     : (fetchedProducts as any[]);
   const isUnpaidComptant = bon?.type === 'Comptant'
@@ -46,6 +49,8 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
     skip: !isOpen || !bon?.id || !isUnpaidComptant,
   });
 
+  const displayNumero = projectContext?.reference ?? getBonNumeroDisplay(bon);
+  const documentTitle = projectContext?.title ?? bon?.type;
   if (!isOpen) return null;
 
   // Fonction pour générer le PDF
@@ -97,8 +102,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'MEDIUM');
 
       // Télécharger le PDF
-  const displayNumero = getBonNumeroDisplay(bon);
-  const fileName = `${bon.type}_${displayNumero}_${new Date().toISOString().split('T')[0]}.pdf`;
+  const fileName = `${documentTitle}_${displayNumero}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (error) {
       console.error('Erreur lors de la génération du PDF:', error);
@@ -125,7 +129,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Impression ${bon.type} ${getBonNumeroDisplay(bon)}</title>
+          <title>Impression ${documentTitle} ${displayNumero}</title>
           <style>
             body { 
               margin: 0; 
@@ -177,20 +181,20 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
         <div className="flex justify-between items-center p-4 border-b bg-gray-50">
           <div className="flex items-center space-x-4">
             <h2 className="text-lg font-semibold">
-              Aperçu d'impression - {bon.type} {getBonNumeroDisplay(bon)}
+              Aperçu d'impression - {documentTitle} {displayNumero}
             </h2>
             
             {/* Format fixé à A4 */}
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">Format: A4 (210x297mm)</span>
-              <label className="ml-4 flex items-center space-x-2 text-sm text-gray-700">
+              {!projectContext && <label className="ml-4 flex items-center space-x-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
                   checked={usePromo}
                   onChange={(e) => setUsePromo(e.target.checked)}
                 />
                 <span>Utiliser promo</span>
-              </label>
+              </label>}
             </div>
           </div>
 
@@ -236,6 +240,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             >
               <BonPrintTemplate
                 bon={bon}
+                projectContext={projectContext}
                 client={client}
                 fournisseur={fournisseur}
                 products={effectiveProducts}

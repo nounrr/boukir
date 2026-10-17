@@ -1,5 +1,6 @@
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState } from 'react';
+import type { ProjetPrintContext } from '../utils/projetBonPrint';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
 import { getBonNumeroDisplay } from '../utils/numero';
@@ -15,6 +16,7 @@ import mpcCachet from './mpc_cachet.webp';
 
 interface BonPrintTemplateProps {
   bon: any;
+  projectContext?: ProjetPrintContext;
   internalPricesVisible?: boolean;
   client?: Contact;
   fournisseur?: Contact;
@@ -93,7 +95,8 @@ const CompanyFooter: React.FC<{
 };
 
 const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({ 
-  bon, 
+  bon,
+  projectContext,
   client, 
   fournisseur, 
   products = [],
@@ -201,7 +204,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     }
     return result;
   };
-  const items = mergeItems(rawItems);
+  const items = projectContext ? rawItems : mergeItems(rawItems);
 
   const sousTotal = items.reduce(
     (sum: number, item: any) => sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)),
@@ -482,7 +485,13 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       <div className="flex justify-between items-start mb-6 mt-6">
         {/* Contact / Infos (affiche aussi si seulement numéro ou adresse livraison) */}
         <div className="flex-1">
-          {hasContactOrInfo && (
+          {projectContext && (
+            <>
+              <h3 className={`${textSizes.header} font-semibold text-gray-800 ${spacing.margin}`}>Projet :</h3>
+              <div className={`bg-gray-50 ${spacing.padding} rounded border-l-4 border-orange-500 ${textSizes.normal}`}>{projectContext.projectName}</div>
+            </>
+          )}
+          {!projectContext && hasContactOrInfo && (
             <>
               <h3 className={`${textSizes.header} font-semibold text-gray-800 ${spacing.margin}`}>
                 {contact ? 'Contact :' : 'Informations :'}
@@ -520,11 +529,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
           <div className={`${spacing.padding} rounded border border-orange-200`}>
             <h2 className={`${textSizes.header} font-bold text-orange-700 ${spacing.margin}`}>
               {(() => {
+                if (projectContext) return projectContext.title;
                 const t = bon?.type;
                 if (t === 'AvoirCharge') return 'AVOIR CHARGE';
                 if (t === 'Charge') return 'BON CHARGE';
                 return 'BON DEVIS';
-              })()} {getBonNumeroDisplay(bon)}
+              })()} {projectContext?.reference ?? getBonNumeroDisplay(bon)}
             </h2>
             <div className={`space-y-2 ${textSizes.normal}`}>
               <div><span className="font-medium">Date:</span> {formatHeure(bon.date_creation)}</div>

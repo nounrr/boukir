@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { History } from 'lucide-react';
-import type { ProjetBon, ProjetSituationRow, ProjetStats } from '../../store/api/projetsApi';
-import { EmptyState, MODE_LABELS, formatDay, formatMoney, formatQty, inputClass, secondaryButton } from './shared';
+import { scopeProjetSituation } from '../../utils/projetSituation';
+import { History, Printer } from 'lucide-react';
+import type { ProjetBon, ProjetBonType, ProjetSituationRow, ProjetStats } from '../../store/api/projetsApi';
+import { EmptyState, MODE_LABELS, formatDay, formatMoney, formatQty, inputClass, secondaryButton, iconButton } from './shared';
 
 type Filter = 'all' | ProjetSituationRow['kind'];
 const FILTERS: { key: Filter; label: string }[] = [
@@ -26,7 +27,11 @@ const SummaryCard: React.FC<{ label: string; value: number; tone?: string; hint?
   </div>
 );
 
-const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats: ProjetStats; bons: ProjetBon[] }> = ({ situation, stats, bons }) => {
+const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats?: ProjetStats; bons: ProjetBon[]; scope?: ProjetBonType; onPrint?: (bon: ProjetBon) => void }> = ({ situation: allSituation, stats, bons, scope, onPrint }) => {
+  const situation = useMemo(() => scopeProjetSituation(allSituation, scope), [allSituation, scope]);
+  const totalEntree = situation.reduce((sum, row) => sum + row.entree, 0);
+  const totalSortie = situation.reduce((sum, row) => sum + row.sortie, 0);
+  const finalBalance = situation.at(-1)?.solde ?? 0;
   const [filter, setFilter] = useState<Filter>('all');
   const [detail, setDetail] = useState(true);
   const [search, setSearch] = useState('');
@@ -58,24 +63,24 @@ const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats: ProjetSta
 
   return (
     <section className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      {stats && !scope && <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <SummaryCard label="Devis" value={stats.total_devis} />
         <SummaryCard label="Avances" value={stats.total_avances} tone="text-emerald-700" hint={`${stats.taux_encaissement}% du devis`} />
         <SummaryCard label="Bons produits" value={stats.total_products} tone="text-amber-700" />
         <SummaryCard label="Charges produit" value={stats.total_charges_products} tone="text-rose-700" />
         <SummaryCard label="Charges matériel" value={stats.total_charges_materiel} tone="text-violet-700" />
         <SummaryCard label="Solde" value={stats.solde} tone={stats.solde < 0 ? 'text-rose-700' : 'text-sky-800'} hint="Avances − dépenses" />
-      </div>
+      </div>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">Situation du projet</h2>
-        <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="tablist" aria-label="Filtrer l’historique">
+        <h2 className="text-base font-semibold text-slate-900">{scope ? `Situation — ${KIND[scope].label}` : 'Situation du projet'}</h2>
+        {!scope && <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="tablist" aria-label="Filtrer l’historique">
           {FILTERS.map((f) => (
             <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} onClick={() => setFilter(f.key)} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${filter === f.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
               {f.label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -91,7 +96,7 @@ const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats: ProjetSta
         <button type="button" className={secondaryButton} aria-pressed={detail} onClick={() => setDetail(!detail)}>{detail ? 'Vue par bon' : 'Vue détaillée'}</button>
         {filtered && <button type="button" className={secondaryButton} onClick={() => { setFilter('all'); setSearch(''); setFrom(''); setTo(''); }}>Réinitialiser</button>}
       </div>
-      <p className="text-xs text-slate-500">{rows.length} ligne(s) · Ordre chronologique · Solde cumulé = avances − bons produits − charges produit − charges matériel. Les filtres ne recalculent pas le solde.</p>
+      <p className="text-xs text-slate-500">{rows.length} ligne(s) · Ordre chronologique · {scope ? 'Solde de ce type uniquement, à partir de zéro : chaque dépense est déduite. Les avances et les autres types sont exclus.' : 'Solde cumulé = avances − bons produits − charges produit − charges matériel.'} Les filtres ne recalculent pas le solde.</p>
 
       {!situation.length ? (
         <EmptyState icon={History} title="Aucun mouvement" hint="Les avances, bons produits et bons charge apparaîtront ici avec le solde cumulé." />
@@ -102,7 +107,7 @@ const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats: ProjetSta
               <tr>
                 <th className="px-4 py-2">Date</th>
                 <th className="px-4 py-2">Type</th>
-                <th className="px-4 py-2">Référence</th>
+                <th className="px-4 py-2">Référence / PDF</th>
                 <th className="px-4 py-2">{detail ? 'Désignation / Libellé' : 'Libellé'}</th>
                 {detail && <><th className="px-4 py-2">Unité</th><th className="px-4 py-2 text-right">Qté</th><th className="px-4 py-2 text-right">Prix unitaire</th></>}
                 <th className="px-4 py-2">Mode</th>
@@ -116,7 +121,7 @@ const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats: ProjetSta
                 <tr key={row.key} className="hover:bg-slate-50/60">
                   <td className="whitespace-nowrap px-4 py-2.5 text-slate-700">{formatDay(row.date)}</td>
                   <td className="px-4 py-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${KIND[row.kind].tone}`}>{KIND[row.kind].label}</span></td>
-                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-slate-600">{row.reference}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-slate-600">{row.reference}{row.kind !== 'avance' && onPrint && bonMap.has(row.id) && <button type="button" className={`${iconButton} ml-2`} onClick={() => onPrint(bonMap.get(row.id)!)} aria-label={`Imprimer PDF ${row.reference}`} title="Imprimer / Télécharger PDF"><Printer className="h-4 w-4" /></button>}</td>
                   <td className="px-4 py-2.5 text-slate-600">{row.item?.designation ?? row.libelle}{row.item && row.libelle !== KIND[row.kind].label && <p className="mt-1 text-xs text-slate-400">{row.libelle}</p>}</td>
                   {detail && <><td className="px-4 py-2.5">{row.item?.unite || '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{row.item ? formatQty(row.item.quantite) : '—'}</td><td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">{row.item ? formatMoney(row.item.prix_unitaire) : '—'}</td></>}
                   <td className="px-4 py-2.5">{row.mode_paiement ? MODE_LABELS[row.mode_paiement] : '—'}</td>
@@ -135,10 +140,10 @@ const SituationTab: React.FC<{ situation: ProjetSituationRow[]; stats: ProjetSta
                 <td className="px-4 py-3 text-right">—</td>
               </tr>}
               <tr className="bg-slate-50 font-semibold">
-                <td colSpan={detail ? 8 : 5} className="px-4 py-3 text-right text-slate-600">Totaux du projet / Solde final</td>
-                <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatMoney(stats.total_avances)}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-rose-700">{formatMoney(stats.total_depenses)}</td>
-                <td className={`px-4 py-3 text-right tabular-nums ${stats.solde < 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatMoney(stats.solde)}</td>
+                <td colSpan={detail ? 8 : 5} className="px-4 py-3 text-right text-slate-600">{scope ? 'Totaux de ce type / Solde final' : 'Totaux du projet / Solde final'}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatMoney(totalEntree)}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-rose-700">{formatMoney(totalSortie)}</td>
+                <td className={`px-4 py-3 text-right tabular-nums ${finalBalance < 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatMoney(finalBalance)}</td>
               </tr>
             </tfoot>
           </table>

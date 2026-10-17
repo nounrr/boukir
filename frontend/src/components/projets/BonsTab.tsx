@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Pencil, Plus, Receipt, Trash2, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, Plus, Printer, Receipt, Trash2, Truck } from 'lucide-react';
+import SituationTab from './SituationTab';
 import BonFormModal, { type ProjectBonSubmission } from '../BonFormModal';
-import { type ProjetBon, type ProjetBonType, useDeleteProjetBonMutation, useSaveProjetBonMutation } from '../../store/api/projetsApi';
-import { EmptyState, ErrorBanner, formatDay, formatMoney, formatQty, iconButton, primaryButton } from './shared';
+import { type ProjetBon, type ProjetBonType, type ProjetSituationRow, useDeleteProjetBonMutation, useSaveProjetBonMutation } from '../../store/api/projetsApi';
+import { EmptyState, ErrorBanner, formatDay, formatMoney, formatQty, iconButton, primaryButton, secondaryButton } from './shared';
 
 const COPY: Record<ProjetBonType, { title: string; hint: string; single: string; prefix: string; icon: React.ElementType; empty: string; modalTab: 'Sortie' | 'Charge' }> = {
   products: {
@@ -59,9 +60,13 @@ function toModalValues(bon: ProjetBon) {
   };
 }
 
-const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon[] }> = ({ projetId, type, bons }) => {
+const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon[]; onPrint: (bon: ProjetBon) => void }> = ({ projetId, type, bons, onPrint }) => {
   const copy = COPY[type];
+  const [view, setView] = useState<'situation' | 'bons'>('situation');
   const list = useMemo(() => bons.filter((b) => b.type === type), [bons, type]);
+  const situation = useMemo<ProjetSituationRow[]>(() => [...list]
+    .sort((a, b) => a.date_bon.localeCompare(b.date_bon) || a.id - b.id)
+    .map((bon) => ({ kind: bon.type, id: bon.id, date: bon.date_bon, reference: reference(bon), libelle: bon.observations || copy.title, mode_paiement: null, entree: 0, sortie: bon.montant_total, solde: 0 })), [list, copy.title]);
   const total = list.reduce((sum, b) => sum + b.montant_total, 0);
   const [save] = useSaveProjetBonMutation();
   const [remove, { isLoading: deleting }] = useDeleteProjetBonMutation();
@@ -96,7 +101,11 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
       </div>
       <ErrorBanner message={actionError} />
 
-      {!list.length ? (
+      <div className="flex gap-2" role="group" aria-label="Vue des bons">
+        <button type="button" className={view === 'situation' ? primaryButton : secondaryButton} aria-pressed={view === 'situation'} onClick={() => setView('situation')}>Situation</button>
+        <button type="button" className={view === 'bons' ? primaryButton : secondaryButton} aria-pressed={view === 'bons'} onClick={() => setView('bons')}>Gestion des bons</button>
+      </div>
+      {view === 'situation' ? <SituationTab key={type} situation={situation} bons={list} scope={type} onPrint={onPrint} /> : !list.length ? (
         <EmptyState icon={copy.icon} title={`Aucun ${copy.single}`} hint={copy.empty} />
       ) : (
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
@@ -113,6 +122,7 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
                   </button>
                   <span className="whitespace-nowrap font-semibold tabular-nums text-rose-700">{formatMoney(bon.montant_total)}</span>
                   <div className="flex shrink-0">
+                    <button type="button" className={iconButton} onClick={() => onPrint(bon)} aria-label={`Imprimer PDF ${reference(bon)}`} title="Imprimer / Télécharger PDF"><Printer className="h-4 w-4" /></button>
                     <button type="button" className={iconButton} onClick={() => setModal({ bon })} aria-label="Modifier"><Pencil className="h-4 w-4" /></button>
                     <button type="button" className={iconButton} onClick={() => onDelete(bon)} disabled={deleting} aria-label="Supprimer"><Trash2 className="h-4 w-4" /></button>
                   </div>

@@ -1,3 +1,4 @@
+import { useGetProjetsAccessQuery } from '../../store/api/projetsApi';
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
@@ -57,6 +58,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const { user } = useAuth();
+  const { data: projetAccess } = useGetProjetsAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
   const isChefChauffeur = user?.role === 'ChefChauffeur';
   const reviewRole = user?.role === 'Manager' || user?.role === 'ManagerPlus';
@@ -82,7 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
         { name: 'Notes & tâches PDG', href: '/pdg-board', icon: ListTodo, show: user?.role === 'PDG' },
-        { name: 'Projets', href: '/projets', icon: FolderKanban, show: user?.role === 'PDG' },
+        { name: 'Projets', href: '/projets', icon: FolderKanban, show: projetAccess?.allowed === true },
         { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
       ],
     },

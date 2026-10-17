@@ -1,3 +1,4 @@
+import { useGetProjetsAccessQuery } from '../../store/api/projetsApi';
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
@@ -26,6 +27,7 @@ interface MobileBottomNavProps {
 
 const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false }) => {
   const { user } = useAuth();
+  const { data: projetAccess } = useGetProjetsAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
   const navigate = useNavigate();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -48,6 +50,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'ops', label: 'Opérations', icon: FileText,
       items: [
         { name: 'Bons', to: '/bons', show: true },
+        { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
         { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
         { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
@@ -62,7 +65,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       items: [
         { name: 'Accueil', to: '/dashboard', show: true },
         { name: 'Notes & tâches PDG', to: '/pdg-board', show: user?.role === 'PDG' },
-        { name: 'Projets', to: '/projets', show: user?.role === 'PDG' },
+        { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
       ],
     },
     {
@@ -83,6 +86,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'bons', label: 'Bons', icon: FileText,
       items: [
         { name: 'Bons', to: '/bons', show: true },
+        { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
         { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
         { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
