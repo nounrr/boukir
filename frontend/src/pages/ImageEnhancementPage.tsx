@@ -59,7 +59,7 @@ const SiteFrame: React.FC<{ url: string; alt: string; onSize?: (size: { w: numbe
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-stone-400"><ImageOff className="h-6 w-6" /><span className="text-[11px]">Image introuvable</span></div>
       ) : (
         <img
-          src={toBackendUrl(url)} alt={alt} loading="lazy" decoding="async"
+          src={toBackendUrl(url)} alt={alt} loading="lazy" decoding="async" draggable={false}
           onLoad={(event) => onSize?.({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight })}
           onError={() => setFailed(true)}
           className="absolute inset-0 h-full w-full object-contain"
@@ -212,6 +212,7 @@ const ImageEnhancementPage: React.FC = () => {
   const [quality, setQuality] = useState<AiImageQuality>('low');
   const [selected, setSelected] = useState<Record<string, true>>({});
   const [draggingUrl, setDraggingUrl] = useState<string | null>(null);
+  const draggingUrlRef = useRef<string | null>(null);
   const [preview, setPreview] = useState<EnhancementImage | null>(null);
   const lastIndex = useRef<number | null>(null);
   const defaultsApplied = useRef(false);
@@ -250,8 +251,20 @@ const ImageEnhancementPage: React.FC = () => {
     setQuality(data.defaults.quality);
   }, [data?.defaults]);
 
-  useEffect(() => { setSelected({}); setDraggingUrl(null); lastIndex.current = null; }, [tab, page, limit, query, categoryId, resolution, resolutionThreshold]);
+  useEffect(() => { setSelected({}); setDraggingUrl(null); draggingUrlRef.current = null; lastIndex.current = null; }, [tab, page, limit, query, categoryId, resolution, resolutionThreshold]);
   useEffect(() => { setPage(1); }, [limit, categoryId, tab, resolution, resolutionThreshold]);
+
+  useEffect(() => {
+    const preventBrowserDrop = (event: DragEvent) => {
+      if (draggingUrlRef.current) event.preventDefault();
+    };
+    window.addEventListener('dragover', preventBrowserDrop, true);
+    window.addEventListener('drop', preventBrowserDrop, true);
+    return () => {
+      window.removeEventListener('dragover', preventBrowserDrop, true);
+      window.removeEventListener('drop', preventBrowserDrop, true);
+    };
+  }, []);
 
   const selectableImages = useMemo(() => images.filter((image) => image.status !== 'processing'), [images]);
   const selectedUrls = selectableImages.filter((image) => selected[image.url]).map((image) => image.url);
@@ -340,22 +353,31 @@ const ImageEnhancementPage: React.FC = () => {
 
   const dragStart = (event: React.DragEvent<HTMLDivElement>, url: string) => {
     if (tab !== 'queued' || busy || isFetching) { event.preventDefault(); return; }
+    event.dataTransfer.clearData();
     event.dataTransfer.setData('application/x-bpukir-image-url', url);
     event.dataTransfer.effectAllowed = 'copy';
+    draggingUrlRef.current = url;
     setDraggingUrl(url);
   };
 
+  const dragEnd = () => {
+    draggingUrlRef.current = null;
+    setDraggingUrl(null);
+  };
+
   const dragOver = (event: React.DragEvent<HTMLDivElement>, url: string) => {
-    if (tab !== 'queued' || !draggingUrl) return;
+    const sourceUrl = draggingUrlRef.current;
+    if (tab !== 'queued' || !sourceUrl) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = !busy && selected[url] && selectedUrls.some(selectedUrl => selectedUrl !== draggingUrl) ? 'copy' : 'none';
+    event.dataTransfer.dropEffect = !busy && selected[url] && selectedUrls.some(selectedUrl => selectedUrl !== sourceUrl) ? 'copy' : 'none';
   };
 
   const drop = async (event: React.DragEvent<HTMLDivElement>, url: string) => {
+    const activeSourceUrl = draggingUrlRef.current;
     const sourceUrl = event.dataTransfer.getData('application/x-bpukir-image-url');
-    if (draggingUrl) event.preventDefault();
-    setDraggingUrl(null);
-    if (tab !== 'queued' || busy || isFetching || !selected[url] || !sourceUrl || sourceUrl !== draggingUrl || !images.some(image => image.url === sourceUrl)) return;
+    if (activeSourceUrl) event.preventDefault();
+    dragEnd();
+    if (tab !== 'queued' || busy || isFetching || !selected[url] || !sourceUrl || sourceUrl !== activeSourceUrl || !images.some(image => image.url === sourceUrl)) return;
     const targetUrls = selectedUrls.filter(selectedUrl => selectedUrl !== sourceUrl);
     if (!targetUrls.length) return;
     const confirmation = await showConfirmation(
@@ -510,7 +532,7 @@ const ImageEnhancementPage: React.FC = () => {
                 key={image.url} image={image} tab={tab} selected={Boolean(selected[image.url])} busy={busy} resolutionThreshold={resolutionThreshold}
                 onToggle={toggle} onQuickToggleTreated={quickToggleTreated} onPreview={setPreview}
                 dropReady={tab === 'queued' && Boolean(draggingUrl) && Boolean(selected[image.url]) && selectedUrls.some(url => url !== draggingUrl)}
-                onDragStart={dragStart} onDragEnd={() => setDraggingUrl(null)} onDragOver={dragOver} onDrop={(event) => { void drop(event, image.url); }}
+                onDragStart={dragStart} onDragEnd={dragEnd} onDragOver={dragOver} onDrop={(event) => { void drop(event, image.url); }}
               />
             ))}
           </div>
