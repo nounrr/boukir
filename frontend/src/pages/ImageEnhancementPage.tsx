@@ -10,6 +10,7 @@ import {
   useQueueEnhancementImagesMutation,
   useGetEnhancementImagesQuery,
   useMarkImagesTreatedMutation,
+  useReplaceSelectedImagesMutation,
   useUnmarkImagesTreatedMutation,
 } from '../store/api/productImageEnhancementApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -77,7 +78,12 @@ const ImageTile = React.memo<{
   onToggle: (url: string, shiftKey: boolean) => void;
   onQuickToggleTreated: (image: EnhancementImage) => void;
   onPreview: (image: EnhancementImage) => void;
-}>(({ image, tab, selected, busy, resolutionThreshold, onToggle, onQuickToggleTreated, onPreview }) => {
+  dropReady: boolean;
+  onDragStart: (event: React.DragEvent<HTMLDivElement>, url: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (event: React.DragEvent<HTMLDivElement>, url: string) => void;
+  onDrop: (event: React.DragEvent<HTMLDivElement>, url: string) => void;
+}>(({ image, tab, selected, busy, resolutionThreshold, onToggle, onQuickToggleTreated, onPreview, dropReady, onDragStart, onDragEnd, onDragOver, onDrop }) => {
   const [loadedSize, setSize] = useState<{ w: number; h: number } | null>(null);
   const size = image.dimensions ? { w: image.dimensions.width, h: image.dimensions.height } : loadedSize;
   const main = image.usages[0];
@@ -86,7 +92,12 @@ const ImageTile = React.memo<{
   const extraUsages = image.usages.length - 1;
 
   return (
-    <div className={`group relative flex flex-col rounded-xl border bg-white p-2 shadow-sm transition ${selected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-stone-200 hover:border-stone-300 hover:shadow-md'}`}>
+    <div
+      draggable={tab === 'queued' && !processing && !busy}
+      onDragStart={(event) => onDragStart(event, image.url)} onDragEnd={onDragEnd}
+      onDragOver={(event) => onDragOver(event, image.url)} onDrop={(event) => onDrop(event, image.url)}
+      className={`group relative flex flex-col rounded-xl border bg-white p-2 shadow-sm transition ${dropReady ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300' : selected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-stone-200 hover:border-stone-300 hover:shadow-md'} ${tab === 'queued' && !processing ? 'cursor-grab active:cursor-grabbing' : ''}`}
+    >
       <div className="relative">
         <button type="button" onClick={(event) => (processing ? undefined : onToggle(image.url, event.shiftKey))} className="block w-full cursor-pointer text-left" aria-label={`Sélectionner l'image de ${main.designation}`}>
           <SiteFrame url={image.url} alt={main.designation} onSize={setSize} />
@@ -120,6 +131,7 @@ const ImageTile = React.memo<{
             <Loader2 className="h-6 w-6 animate-spin" /> Amélioration IA…
           </div>
         ) : null}
+        {dropReady ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-emerald-50/85 text-center text-xs font-bold text-emerald-800">Déposer pour remplacer la sélection</div> : null}
       </div>
 
       <div className="mt-2 min-w-0 px-0.5">
@@ -199,6 +211,7 @@ const ImageEnhancementPage: React.FC = () => {
   const [model, setModel] = useState<AiImageModel>('gpt-image-2');
   const [quality, setQuality] = useState<AiImageQuality>('low');
   const [selected, setSelected] = useState<Record<string, true>>({});
+  const [draggingUrl, setDraggingUrl] = useState<string | null>(null);
   const [preview, setPreview] = useState<EnhancementImage | null>(null);
   const lastIndex = useRef<number | null>(null);
   const defaultsApplied = useRef(false);
@@ -221,7 +234,8 @@ const ImageEnhancementPage: React.FC = () => {
   const [unmarkTreated, { isLoading: isUnmarking }] = useUnmarkImagesTreatedMutation();
   const [enhanceImages, { isLoading: isEnhancing }] = useEnhanceImagesMutation();
   const [queueImages, { isLoading: isQueueing }] = useQueueEnhancementImagesMutation();
-  const busy = isMarking || isUnmarking || isEnhancing || isQueueing;
+  const [replaceSelectedImages, { isLoading: isReplacing }] = useReplaceSelectedImagesMutation();
+  const busy = isMarking || isUnmarking || isEnhancing || isQueueing || isReplacing;
   const images = useMemo(() => data?.data ?? [], [data]);
   const counts = data?.counts;
   const meta = data?.meta;
@@ -236,7 +250,7 @@ const ImageEnhancementPage: React.FC = () => {
     setQuality(data.defaults.quality);
   }, [data?.defaults]);
 
-  useEffect(() => { setSelected({}); lastIndex.current = null; }, [tab, page, limit, query, categoryId, resolution, resolutionThreshold]);
+  useEffect(() => { setSelected({}); setDraggingUrl(null); lastIndex.current = null; }, [tab, page, limit, query, categoryId, resolution, resolutionThreshold]);
   useEffect(() => { setPage(1); }, [limit, categoryId, tab, resolution, resolutionThreshold]);
 
   const selectableImages = useMemo(() => images.filter((image) => image.status !== 'processing'), [images]);
@@ -323,6 +337,38 @@ const ImageEnhancementPage: React.FC = () => {
     else void runUnmark([image.url]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, busy, images]);
+
+  const dragStart = (event: React.DragEvent<HTMLDivElement>, url: string) => {
+    if (tab !== 'queued' || busy || isFetching) { event.preventDefault(); return; }
+    event.dataTransfer.setData('application/x-bpukir-image-url', url);
+    event.dataTransfer.effectAllowed = 'copy';
+    setDraggingUrl(url);
+  };
+
+  const dragOver = (event: React.DragEvent<HTMLDivElement>, url: string) => {
+    if (tab !== 'queued' || !draggingUrl) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = !busy && selected[url] && selectedUrls.some(selectedUrl => selectedUrl !== draggingUrl) ? 'copy' : 'none';
+  };
+
+  const drop = async (event: React.DragEvent<HTMLDivElement>, url: string) => {
+    const sourceUrl = event.dataTransfer.getData('application/x-bpukir-image-url');
+    if (draggingUrl) event.preventDefault();
+    setDraggingUrl(null);
+    if (tab !== 'queued' || busy || isFetching || !selected[url] || !sourceUrl || sourceUrl !== draggingUrl || !images.some(image => image.url === sourceUrl)) return;
+    const targetUrls = selectedUrls.filter(selectedUrl => selectedUrl !== sourceUrl);
+    if (!targetUrls.length) return;
+    const confirmation = await showConfirmation(
+      `L’image glissée remplacera ${targetUrls.length} image(s) sélectionnée(s) sur leurs produits et variantes. L’image source sera conservée et ces images seront marquées comme traitées.`,
+      'Remplacer les images sélectionnées ?'
+    );
+    if (!confirmation.isConfirmed) return;
+    try {
+      const result = await replaceSelectedImages({ sourceUrl, targetUrls }).unwrap();
+      setSelected({});
+      showSuccess(`${result.replaced} image(s) remplacée(s) par l’image glissée.`);
+    } catch (error) { showError(apiMessage(error, 'Impossible de remplacer les images sélectionnées.')); }
+  };
 
   const tilePx = TILE_SIZES.find((size) => size.id === tileSize)?.px ?? 260;
 
@@ -417,6 +463,7 @@ const ImageEnhancementPage: React.FC = () => {
               <span className="text-sm font-bold tabular-nums text-stone-900">{selectedUrls.length} sélectionnée(s)</span>
               {selectedUrls.length ? <button type="button" onClick={() => setSelected({})} className="text-xs font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">Désélectionner</button> : null}
               <span className="hidden text-[11px] text-stone-500 lg:inline">Maj + clic pour sélectionner une plage</span>
+              {tab === 'queued' && selectedUrls.length ? <span className="text-xs font-semibold text-emerald-700">Glissez l’image à réutiliser sur une image sélectionnée pour remplacer toute la sélection.</span> : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {tab === 'untreated' && <button type="button" onClick={() => void runQueue()} disabled={!selectedUrls.length || busy || isFetching} className="inline-flex h-10 items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50">
@@ -462,6 +509,8 @@ const ImageEnhancementPage: React.FC = () => {
               <ImageTile
                 key={image.url} image={image} tab={tab} selected={Boolean(selected[image.url])} busy={busy} resolutionThreshold={resolutionThreshold}
                 onToggle={toggle} onQuickToggleTreated={quickToggleTreated} onPreview={setPreview}
+                dropReady={tab === 'queued' && Boolean(draggingUrl) && Boolean(selected[image.url]) && selectedUrls.some(url => url !== draggingUrl)}
+                onDragStart={dragStart} onDragEnd={() => setDraggingUrl(null)} onDragOver={dragOver} onDrop={(event) => { void drop(event, image.url); }}
               />
             ))}
           </div>

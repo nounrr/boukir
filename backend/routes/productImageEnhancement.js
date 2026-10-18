@@ -267,6 +267,76 @@ async function replaceImageUrl(conn, fromUrl, toUrl) {
   return { updated, productIds: [...productIds] };
 }
 
+// POST /replace-selected { sourceUrl, targetUrls } — réutilise une image de la liste
+// pour toutes les images sélectionnées. Les références sont modifiées ensemble.
+router.post('/replace-selected', async (req, res, next) => {
+  const sourceUrl = String(req.body?.sourceUrl || '').trim();
+  const targetUrls = normalizeUrls(req.body?.targetUrls).filter(url => url !== sourceUrl);
+  if (!sourceUrl || sourceUrl.length > 255 || !targetUrls.length || targetUrls.length > MAX_URLS_PER_REQUEST) {
+    return res.status(400).json({ message: 'Sélectionnez une image source et de 1 à 100 images à remplacer.' });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    // Le glisser-déposer de cette page ne concerne que les images en attente.
+    const [queueRows] = await conn.query(
+      'SELECT source_url FROM product_image_enhancement_queue WHERE source_url IN (?) FOR UPDATE',
+      [[sourceUrl, ...targetUrls]]
+    );
+    const queued = new Set(queueRows.map(row => row.source_url));
+    if (!queued.has(sourceUrl) || targetUrls.some(url => !queued.has(url))) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'La sélection a changé. Actualisez la liste et réessayez.' });
+    }
+    const [processing] = await conn.query(
+      "SELECT id FROM product_image_enhancements WHERE source_url IN (?) AND status = 'processing' LIMIT 1 FOR UPDATE",
+      [[sourceUrl, ...targetUrls]]
+    );
+    if (processing.length) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Une image de la sélection est en cours de traitement IA.' });
+    }
+    const [sourceRows] = await conn.query('SELECT id FROM products WHERE image_url = ? LIMIT 1', [sourceUrl]);
+    let sourceExists = sourceRows.length > 0;
+    if (!sourceExists) {
+      for (const ref of IMAGE_REFERENCE_TABLES.slice(1)) {
+        const [rows] = await conn.query(`SELECT ${ref.idColumn} FROM ${ref.table} WHERE ${ref.column} = ? LIMIT 1`, [sourceUrl]);
+        if (rows.length) { sourceExists = true; break; }
+      }
+    }
+    if (!sourceExists) {
+      await conn.rollback();
+      return res.status(409).json({ message: "L'image source n'est plus disponible. Actualisez la liste." });
+    }
+
+    const touchedProducts = new Set();
+    for (const targetUrl of targetUrls) {
+      const { updated, productIds } = await replaceImageUrl(conn, targetUrl, sourceUrl);
+      if (!updated) {
+        await conn.rollback();
+        return res.status(409).json({ message: 'Une image à remplacer a changé. Actualisez la liste.' });
+      }
+      productIds.forEach(id => touchedProducts.add(id));
+    }
+    await conn.query('DELETE FROM product_image_enhancement_queue WHERE source_url IN (?)', [[sourceUrl, ...targetUrls]]);
+    await conn.query(
+      `INSERT INTO product_image_enhancements (source_url, result_url, method, status, created_by)
+       VALUES (?, ?, 'manual', 'treated', ?)`,
+      [sourceUrl, sourceUrl, req.user?.id || null]
+    );
+    await conn.commit();
+    revalidate([...touchedProducts]);
+    res.json({ success: true, replaced: targetUrls.length });
+  } catch (error) {
+    if (conn) try { await conn.rollback(); } catch { }
+    next(error);
+  } finally {
+    conn?.release();
+  }
+});
+
 const revalidate = (productIds) => {
   for (const id of new Set(productIds)) void revalidateEcommerceProduct(id);
 };

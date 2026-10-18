@@ -54,6 +54,10 @@ export const productImageEnhancementApi = api.injectEndpoints({
       query: (body) => ({ url: '/product-image-enhancement/mark', method: 'POST', body }),
       invalidatesTags: ['ImageEnhancement'],
     }),
+    replaceSelectedImages: builder.mutation<{ success: boolean; replaced: number }, { sourceUrl: string; targetUrls: string[] }>({
+      query: (body) => ({ url: '/product-image-enhancement/replace-selected', method: 'POST', body }),
+      invalidatesTags: ['ImageEnhancement', 'Product'],
+    }),
     unmarkImagesTreated: builder.mutation<
       { success: boolean; unmarked: number; restored: number; failed: Array<{ url: string; message: string }> },
       { urls: string[] }
@@ -75,6 +79,7 @@ export const {
   useQueueEnhancementImagesMutation,
   useGetEnhancementImagesQuery,
   useMarkImagesTreatedMutation,
+  useReplaceSelectedImagesMutation,
   useUnmarkImagesTreatedMutation,
   useEnhanceImagesMutation,
 } = productImageEnhancementApi;

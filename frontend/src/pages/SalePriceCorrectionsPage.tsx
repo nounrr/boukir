@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock, Eraser, ImageOff, Loader2, RefreshCw, RotateCcw, Search, Send, Sparkles, Wand2, X } from 'lucide-react';
 import { type HistoricalSalePrice, type SalePriceCorrectionRequest, type SalePriceCorrectionRow, type SalePriceSource, type WebPriceGroup, type WebSalePriceResult, type WebSearchContextSize, useDecideSalePriceCorrectionRequestsMutation, useGetSalePriceCorrectionAccessQuery, useGetSalePriceCorrectionRequestsQuery, useGetSalePriceCorrectionsQuery, useResearchSalePricesMutation, useResetSalePriceCorrectionsMutation, useUpdateSalePriceCorrectionsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -42,6 +43,37 @@ const PV2_KEYS = ['4', '5', '6'] as const;
 const Kbd: React.FC<{ children: React.ReactNode; muted?: boolean }> = ({ children, muted }) => (
   <kbd className={`inline-flex h-4 min-w-[1rem] items-center justify-center rounded border px-1 font-sans text-[10px] font-bold leading-none ${muted ? 'border-stone-300 bg-stone-100 text-stone-500' : 'border-stone-300 bg-white text-stone-600'}`}>{children}</kbd>
 );
+
+const ProductImageThumbnail: React.FC<{ url: string | null; alt: string; size: 'sm' | 'md' }> = ({ url, alt, size }) => {
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const imageUrl = url ? toBackendUrl(url) : null;
+  const maxW = 420;
+  const maxH = 320;
+  const pad = 16;
+  const left = pointer && typeof window !== 'undefined' ? Math.max(pad, Math.min(pointer.x + 18, window.innerWidth - maxW - pad)) : 0;
+  const top = pointer && typeof window !== 'undefined' ? Math.max(pad, Math.min(pointer.y + 18, window.innerHeight - maxH - pad)) : 0;
+
+  return (
+    <>
+      <div
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-100 ${size === 'md' ? 'h-12 w-12' : 'h-10 w-10'}`}
+        onMouseEnter={(event) => { if (imageUrl) setPointer({ x: event.clientX, y: event.clientY }); }}
+        onMouseMove={(event) => { if (imageUrl) setPointer({ x: event.clientX, y: event.clientY }); }}
+        onMouseLeave={() => setPointer(null)}
+      >
+        {imageUrl ? <img src={imageUrl} alt={alt} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <ImageOff className="h-5 w-5 text-stone-400" />}
+      </div>
+      {pointer && imageUrl && typeof document !== 'undefined' && createPortal(
+        <div className="pointer-events-none fixed z-[9999]" style={{ left, top, maxWidth: maxW, maxHeight: maxH }}>
+          <div className="h-fit w-fit max-h-[320px] max-w-[420px] overflow-hidden rounded-lg border border-gray-200 bg-white p-2 shadow-2xl">
+            <img src={imageUrl} alt={alt} className="block max-h-[304px] max-w-full bg-white object-contain" />
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
 
 const PriceCandidate = React.memo<{ candidate: HistoricalSalePrice; shortcut: string; selected: boolean; tone: Tone; disabled?: boolean; onSelect: () => void }>(({ candidate, shortcut, selected, tone, disabled, onSelect }) => {
   const active = tone === 'indigo' ? 'border-indigo-500 bg-indigo-50 text-indigo-950 ring-indigo-200' : 'border-amber-500 bg-amber-50 text-amber-950 ring-amber-200';
@@ -239,9 +271,7 @@ const CorrectionRow = React.memo<CorrectionRowProps>(({ row, index, decision, ap
               className="mt-4 h-4 w-4 shrink-0 cursor-pointer rounded border-stone-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
             />
           )}
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
-            {row.image_url ? <img src={toBackendUrl(row.image_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <ImageOff className="h-5 w-5 text-stone-400" />}
-          </div>
+          <ProductImageThumbnail url={row.image_url} alt={row.designation} size="md" />
           <div className="min-w-0">
             <p className="font-bold leading-5 text-stone-900">{row.designation}</p>
             {row.variant_name ? <p className="mt-0.5 text-sm font-semibold text-indigo-700">{row.variant_name}</p> : <p className="mt-0.5 text-xs text-stone-400">Produit de base</p>}
@@ -471,9 +501,7 @@ const ValidationPanel: React.FC<{ canValidate: boolean }> = ({ canValidate }) =>
                           className="mt-3 h-4 w-4 shrink-0 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
                         />
                       ) : null}
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
-                        {request.image_url ? <img src={toBackendUrl(request.image_url)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageOff className="h-4 w-4 text-stone-400" />}
-                      </div>
+                      <ProductImageThumbnail url={request.image_url} alt={request.designation} size="sm" />
                       <div className="min-w-0">
                         <p className="font-bold leading-5 text-stone-900">{request.designation}</p>
                         {request.variant_name ? <p className="text-sm font-semibold text-indigo-700">{request.variant_name}</p> : <p className="text-xs text-stone-400">Produit de base</p>}
