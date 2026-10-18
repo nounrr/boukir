@@ -3,11 +3,14 @@ import { queueEnhancementImages, enhancementImageTab } from '../utils/imageEnhan
 import { filterImagesByResolution, readImageResolution, resolutionOptions } from '../utils/imageResolution.js';
 import path from 'path';
 import fs from 'fs';
+import multer from 'multer';
+import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { toFile } from 'openai';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { revalidateEcommerceProduct } from '../utils/ecommerceProductRevalidation.js';
+import { detectBufferKind } from '../utils/uploadValidation.js';
 import {
   ALLOWED_IMAGE_MODELS,
   ALLOWED_IMAGE_QUALITIES,
@@ -21,9 +24,11 @@ import {
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const enhancedDir = path.join(__dirname, '..', 'uploads', 'products', 'enhanced');
+const replacementsDir = path.join(__dirname, '..', 'uploads', 'products', 'replacements');
 const DEFAULT_ENHANCE_QUALITY = 'low';
 const MAX_URLS_PER_REQUEST = 100;
 const PROCESSING_CONCURRENCY = 2;
+const uploadReplacement = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 1 } }).single('image');
 
 const ENHANCE_PROMPT =
   process.env.AI_IMAGE_ENHANCE_PROMPT ||
@@ -334,6 +339,84 @@ router.post('/replace-selected', async (req, res, next) => {
     next(error);
   } finally {
     conn?.release();
+  }
+});
+
+// POST /replace-selected-file — un fichier déposé remplace toutes les images sélectionnées.
+router.post('/replace-selected-file', (req, res, next) => {
+  uploadReplacement(req, res, (uploadError) => {
+    if (uploadError) return res.status(400).json({ message: 'Image invalide ou trop volumineuse (10 Mo maximum).' });
+    next();
+  });
+}, async (req, res, next) => {
+  let targetUrls;
+  try {
+    targetUrls = normalizeUrls(JSON.parse(req.body?.targetUrls || '[]'));
+  } catch {
+    return res.status(400).json({ message: 'Sélection d’images invalide.' });
+  }
+  if (!targetUrls.length || targetUrls.length > MAX_URLS_PER_REQUEST) {
+    return res.status(400).json({ message: 'Sélectionnez de 1 à 100 images à remplacer.' });
+  }
+  const kind = detectBufferKind(req.file?.buffer);
+  const mimeForKind = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+  if (!kind || req.file?.mimetype !== mimeForKind[kind]) {
+    return res.status(400).json({ message: 'Seules les images JPG, PNG et WebP sont acceptées.' });
+  }
+
+  const filename = `replacement-${randomUUID()}.${kind === 'jpeg' ? 'jpg' : kind}`;
+  const filePath = path.join(replacementsDir, filename);
+  const newUrl = path.posix.join('/uploads/products/replacements', filename);
+  let conn;
+  let committed = false;
+  try {
+    fs.mkdirSync(replacementsDir, { recursive: true });
+    fs.writeFileSync(filePath, req.file.buffer);
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [queueRows] = await conn.query(
+      'SELECT source_url FROM product_image_enhancement_queue WHERE source_url IN (?) FOR UPDATE',
+      [targetUrls]
+    );
+    const queued = new Set(queueRows.map(row => row.source_url));
+    if (targetUrls.some(url => !queued.has(url))) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'La sélection a changé. Actualisez la liste et réessayez.' });
+    }
+    const [processing] = await conn.query(
+      "SELECT id FROM product_image_enhancements WHERE source_url IN (?) AND status = 'processing' LIMIT 1 FOR UPDATE",
+      [targetUrls]
+    );
+    if (processing.length) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Une image sélectionnée est en cours de traitement IA.' });
+    }
+
+    const touchedProducts = new Set();
+    for (const targetUrl of targetUrls) {
+      const { updated, productIds } = await replaceImageUrl(conn, targetUrl, newUrl);
+      if (!updated) {
+        await conn.rollback();
+        return res.status(409).json({ message: 'Une image à remplacer a changé. Actualisez la liste.' });
+      }
+      productIds.forEach(id => touchedProducts.add(id));
+    }
+    await conn.query('DELETE FROM product_image_enhancement_queue WHERE source_url IN (?)', [targetUrls]);
+    await conn.query(
+      `INSERT INTO product_image_enhancements (source_url, result_url, method, status, created_by)
+       VALUES (?, ?, 'manual', 'treated', ?)`,
+      [newUrl, newUrl, req.user?.id || null]
+    );
+    await conn.commit();
+    committed = true;
+    revalidate([...touchedProducts]);
+    res.json({ success: true, replaced: targetUrls.length });
+  } catch (error) {
+    if (conn) try { await conn.rollback(); } catch { }
+    next(error);
+  } finally {
+    conn?.release();
+    if (!committed) try { fs.unlinkSync(filePath); } catch { }
   }
 });
 

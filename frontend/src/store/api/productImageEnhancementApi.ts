@@ -58,6 +58,15 @@ export const productImageEnhancementApi = api.injectEndpoints({
       query: (body) => ({ url: '/product-image-enhancement/replace-selected', method: 'POST', body }),
       invalidatesTags: ['ImageEnhancement', 'Product'],
     }),
+    replaceSelectedImagesFromFile: builder.mutation<{ success: boolean; replaced: number }, { file: File; targetUrls: string[] }>({
+      query: ({ file, targetUrls }) => {
+        const body = new FormData();
+        body.append('image', file);
+        body.append('targetUrls', JSON.stringify(targetUrls));
+        return { url: '/product-image-enhancement/replace-selected-file', method: 'POST', body };
+      },
+      invalidatesTags: ['ImageEnhancement', 'Product'],
+    }),
     unmarkImagesTreated: builder.mutation<
       { success: boolean; unmarked: number; restored: number; failed: Array<{ url: string; message: string }> },
       { urls: string[] }
@@ -80,6 +89,7 @@ export const {
   useGetEnhancementImagesQuery,
   useMarkImagesTreatedMutation,
   useReplaceSelectedImagesMutation,
+  useReplaceSelectedImagesFromFileMutation,
   useUnmarkImagesTreatedMutation,
   useEnhanceImagesMutation,
 } = productImageEnhancementApi;
