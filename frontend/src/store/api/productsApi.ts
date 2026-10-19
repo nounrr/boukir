@@ -109,6 +109,11 @@ const productsApi = api.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'Product', id }],
     }),
 
+    getProductBaseUnits: builder.query<Array<{ id: number; base_unit: string }>, string>({
+      query: (ids) => ({ url: '/products/base-units', params: { ids } }),
+      providesTags: ['Product'],
+    }),
+
     createProduct: builder.mutation<Product, CreateProductData & { created_by: number }>({
       query: (body) => ({
         url: '/products',
@@ -420,6 +425,7 @@ export const {
   useGetProductsPaginatedQuery,
   useSearchBonProductsQuery,
   useGetProductQuery,
+  useGetProductBaseUnitsQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,

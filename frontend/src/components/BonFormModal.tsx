@@ -16,7 +16,7 @@ import {
   useGetEmployeesQueryServer as useGetEmployeesQueryServer,
   useGetMyBonAuthorizationsQueryServer,
 } from '../store/api/employeesApi.server';
-import { useCorrectBonProductPricesMutation, useGetProductsQuery, useGetProductsWithSnapshotsQuery, useRestoreProductMutation, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
+import { useCorrectBonProductPricesMutation, useGetProductBaseUnitsQuery, useGetProductsQuery, useGetProductsWithSnapshotsQuery, useRestoreProductMutation, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetComptantPaymentsQuery, useUpdateComptantPaymentMutation } from '../store/api/comptantApi';
@@ -1430,6 +1430,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     return Array.from(map.values());
   };
 
+  const editProductIds = useMemo(() => initialLineProducts.map((p: any) => p.id).join(','), [initialLineProducts]);
+  const { data: currentBaseUnits = [] } = useGetProductBaseUnitsQuery(editProductIds, {
+    skip: !isEditMode || !editProductIds,
+  });
   const { data: allProducts = [] } = useGetProductsQuery(undefined, { skip: !heavyDataReady });
   // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
@@ -1449,8 +1453,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const products = heavyDataReady
     ? allProducts
     : mergeProductsById(
-        mergeProductsById(initialLineProducts, Object.values(selectedProductCache)),
-        searchedProductsResponse?.data || []
+        mergeProductsById(
+          mergeProductsById(initialLineProducts, Object.values(selectedProductCache)),
+          searchedProductsResponse?.data || []
+        ),
+        currentBaseUnits
       );
   const snapshotProducts = heavyDataReady ? allSnapshotProducts : searchedSnapshotProducts;
   const productSelectLoading = !heavyDataReady && remoteProductSearchEnabled && (

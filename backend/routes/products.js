@@ -1552,6 +1552,23 @@ router.get('/stock-pdf', async (req, res, next) => {
   }
 });
 
+// Lightweight lookup for existing bon lines; their saved unit label can be stale.
+router.get('/base-units', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const ids = [...new Set(String(req.query.ids || '').split(',').map(Number)
+      .filter(id => Number.isInteger(id) && id > 0))].slice(0, 200);
+    if (!ids.length) return res.json([]);
+    const [rows] = await pool.query(
+      'SELECT id, base_unit FROM products WHERE id IN (?)',
+      [ids]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /products/with-snapshots — returns products with snapshot entries expanded
 // Each snapshot becomes a separate selectable entry (including qty <= 0)
 // Used by BonFormModal for Sortie/Comptant/Avoir to select snapshot-based stock

@@ -239,7 +239,7 @@ const BonsPage = () => {
   const [newComptantPaymentAmount, setNewComptantPaymentAmount] = useState('');
   const [newComptantPaymentDate, setNewComptantPaymentDate] = useState('');
   const [newComptantPaymentNote, setNewComptantPaymentNote] = useState('');
-  // État pour la modal de duplication AWATEF
+  // État pour la modal de duplication
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
   const [selectedBonForDuplicate, setSelectedBonForDuplicate] = useState<any>(null);
   const [duplicateType, setDuplicateType] = useState<'fournisseur' | 'client' | 'comptant' | 'avoirClient' | 'avoirFournisseur' | 'avoirComptant'>('client');
@@ -282,6 +282,30 @@ const BonsPage = () => {
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
+  const canDuplicateBon = (bon: any) =>
+    (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || isManager) && bon.statut !== 'Annulé';
+  const openDuplicateModal = (bon: any) => {
+    const sourceType = bon.type || effectiveCurrentTab;
+    const targetBySource: Record<string, typeof duplicateType> = {
+      Commande: 'fournisseur',
+      Sortie: 'client',
+      Comptant: 'comptant',
+      Avoir: 'avoirClient',
+      AvoirFournisseur: 'avoirFournisseur',
+      AvoirComptant: 'avoirComptant',
+    };
+    const targetType = targetBySource[sourceType] || 'client';
+    setDuplicateType(targetType);
+    const contactId = targetType === 'fournisseur' || targetType === 'avoirFournisseur'
+      ? bon.fournisseur_id || bon.contact_id
+      : bon.client_id || bon.contact_id;
+    setSelectedContactForDuplicate(String(contactId || ''));
+    setComptantClientName(bon.client_nom || '');
+    setIsDuplicationComplete(true);
+    setSelectedArticlesForDuplicate([]);
+    setSelectedBonForDuplicate(bon);
+    setIsDuplicateModalOpen(true);
+  };
   // Employé ID 26: accès complet sur le tab Commande (créer, modifier, changer statut)
   const isEmployee26CommandeOverride = isEmployee && currentUser?.id === 26 && currentTab === 'Commande';
   // ManagerPlus role value (not needed here currently)
@@ -3694,6 +3718,19 @@ const BonsPage = () => {
                             </button>
                           )}
 
+                          {/* Duplication directe pour les managers */}
+                          {(isManager || currentUser?.role === 'ManagerPlus') && canDuplicateBon(bon) && (
+                            <button
+                              type="button"
+                              onClick={() => openDuplicateModal(bon)}
+                              className="text-pink-600 hover:text-pink-800"
+                              title="Dupliquer le bon"
+                              aria-label="Dupliquer le bon"
+                            >
+                              <Copy size={ACTION_ICON_SIZE} />
+                            </button>
+                          )}
+
                           {/* 3-dot menu for other actions */}
                           <div className="relative" ref={openMenuBonId === String(bon.id) ? menuRef : null}>
                             <button
@@ -4003,15 +4040,14 @@ const BonsPage = () => {
                                     )}
                                     
                                     {/* Duplicate - Only for non-cancelled bons */}
-                                    {((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'))) && bon.statut !== 'Annulé' && (
+                                    {currentUser?.role === 'PDG' && canDuplicateBon(bon) && (
                                       <button
                                         onClick={() => {
-                                          setSelectedBonForDuplicate(bon);
-                                          setIsDuplicateModalOpen(true);
+                                          openDuplicateModal(bon);
                                           setOpenMenuBonId(null);
                                         }}
                                         className="p-2 text-pink-600 hover:bg-pink-50 hover:text-pink-800 rounded"
-                                        title="Dupliquer AWATEF"
+                                        title="Dupliquer le bon"
                                       >
                                         <Copy size={16} />
                                       </button>
@@ -5195,7 +5231,7 @@ const BonsPage = () => {
           />
         )}
 
-        {/* Modal de duplication AWATEF */}
+        {/* Modal de duplication */}
         {isDuplicateModalOpen && selectedBonForDuplicate && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
