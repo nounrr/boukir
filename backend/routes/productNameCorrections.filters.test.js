@@ -74,6 +74,17 @@ test('new filters compose with review and all text searches using AND semantics'
   ]);
 });
 
+test('reference search matches product and variant references within each review tab', () => {
+  for (const review_status of ['initial', 'correct', 'false']) {
+    const result = buildCorrectionFilters({ review_status, q_ref: 'ABC-12' });
+    assert.equal(
+      compact(result.whereSql),
+      'WHERE pnc.review_status = ? AND (pnc.reference LIKE ? OR pnc.ref_variant LIKE ?)'
+    );
+    assert.deepEqual(result.params, [review_status, '%ABC-12%', '%ABC-12%']);
+  }
+});
+
 test('unknown optional match and image values fall back to no filter', () => {
   assert.deepEqual(
     buildCorrectionFilters({ status: 'matched OR 1=1', image: 'sometimes' }),

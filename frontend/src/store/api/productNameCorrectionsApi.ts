@@ -76,6 +76,7 @@ export interface ReplaceProductNameCorrectionNamesPayload {
   replace: string;
   review_status: 'initial' | 'correct' | 'false';
   ids?: number[];
+  q_ref?: string;
   q_ancienne?: string;
   q_fr?: string;
   q_ar?: string;
@@ -122,6 +123,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         status?: ProductNameCorrectionMatchFilter;
         image?: ProductNameCorrectionImageFilter;
         review_status?: string;
+        q_ref?: string;
         q_ancienne?: string;
         q_fr?: string;
         q_ar?: string;

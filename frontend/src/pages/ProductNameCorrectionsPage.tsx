@@ -277,6 +277,7 @@ const ProductCorrectionImages: React.FC<{ row: ProductNameCorrectionRow }> = ({ 
 const ProductNameCorrectionsPage: React.FC = () => {
   const authToken = useSelector((state: any) => state.auth?.token);
   const [activeTab, setActiveTab] = useState<TabKey>('initial');
+  const [qRef, setQRef] = useState('');
   const [qAncienne, setQAncienne] = useState('');
   const [qFr, setQFr] = useState('');
   const [qAr, setQAr] = useState('');
@@ -304,6 +305,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
     status: matchFilter,
     image: imageFilter,
     review_status: activeTab,
+    q_ref: qRef || undefined,
     q_ancienne: qAncienne || undefined,
     q_fr: qFr || undefined,
     q_ar: qAr || undefined,
@@ -332,7 +334,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const summary = data?.summary;
   const meta = data?.meta;
   const hasActiveListFilters = matchFilter !== 'all' || imageFilter !== 'all';
-  const hasAnyVisibleFilter = hasActiveListFilters || Boolean(qAncienne.trim() || qFr.trim() || qAr.trim());
+  const hasAnyVisibleFilter = hasActiveListFilters || Boolean(qRef.trim() || qAncienne.trim() || qFr.trim() || qAr.trim());
 
   const visibleRows = useMemo(
     () => activeTab === 'initial' ? rows.filter((row) => !transitionedIds.has(row.id)) : rows,
@@ -358,13 +360,14 @@ const ProductNameCorrectionsPage: React.FC = () => {
   );
 
   const handleSearchChange = (
-    field: 'ancienne' | 'fr' | 'ar',
+    field: 'ref' | 'ancienne' | 'fr' | 'ar',
     value: string
   ) => {
     setPage(1);
     setSelectedIds(new Set());
 
-    if (field === 'ancienne') setQAncienne(value);
+    if (field === 'ref') setQRef(value);
+    else if (field === 'ancienne') setQAncienne(value);
     else if (field === 'fr') setQFr(value);
     else setQAr(value);
   };
@@ -482,6 +485,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
         review_status: reviewStatus,
         status: matchFilter,
         image: imageFilter,
+        q_ref: qRef,
         q_ancienne: qAncienne,
         q_fr: qFr,
         q_ar: qAr,
@@ -593,6 +597,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
         replace: replacementText,
         review_status: activeTab,
         ids: ids.length ? ids : undefined,
+        q_ref: replaceScope === 'tab' ? qRef || undefined : undefined,
         q_ancienne: replaceScope === 'tab' ? qAncienne || undefined : undefined,
         q_fr: replaceScope === 'tab' ? qFr || undefined : undefined,
         q_ar: replaceScope === 'tab' ? qAr || undefined : undefined,
@@ -1051,7 +1056,24 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 </span>
               </span>
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-700">
+                  <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500">
+                    REF
+                  </span>
+                  Référence produit ou variante
+                </span>
+                <span className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    value={qRef}
+                    onChange={(event) => handleSearchChange('ref', event.target.value)}
+                    placeholder="Rechercher une référence"
+                    className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </span>
+              </label>
               <label className="block">
                 <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-700">
                   <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500">

@@ -563,6 +563,7 @@ export function buildCorrectionFilters(query, options = {}) {
   const status = clean(query.status);
   const image = clean(query.image);
   const reviewStatus = reviewStatusOverride ?? clean(query.review_status);
+  const qRef = clean(query.q_ref);
   const qAncienne = clean(query.q_ancienne);
   const qFr = clean(query.q_fr);
   const qAr = clean(query.q_ar);
@@ -586,6 +587,11 @@ export function buildCorrectionFilters(query, options = {}) {
   if (reviewStatus && reviewStatus !== 'all') {
     where.push('pnc.review_status = ?');
     params.push(reviewStatus);
+  }
+
+  if (qRef) {
+    where.push('(pnc.reference LIKE ? OR pnc.ref_variant LIKE ?)');
+    params.push(`%${qRef}%`, `%${qRef}%`);
   }
 
   if (qAncienne) {
@@ -629,6 +635,7 @@ function buildNameReplacementFilters({
   ids,
   status,
   image,
+  qRef,
   qAncienne,
   qFr,
   qAr,
@@ -640,6 +647,7 @@ function buildNameReplacementFilters({
     review_status: reviewStatus,
     status: ids?.length ? undefined : status,
     image: ids?.length ? undefined : image,
+    q_ref: ids?.length ? undefined : qRef,
     q_ancienne: ids?.length ? undefined : qAncienne,
     q_fr: ids?.length ? undefined : qFr,
     q_ar: ids?.length ? undefined : qAr,
@@ -956,6 +964,7 @@ router.patch('/bulk/replace-names', async (req, res, next) => {
       ids,
       status: req.body?.status,
       image: req.body?.image,
+      qRef: req.body?.q_ref,
       qAncienne: req.body?.q_ancienne,
       qFr: req.body?.q_fr,
       qAr: req.body?.q_ar,
@@ -1002,6 +1011,7 @@ router.patch('/bulk/replace-names', async (req, res, next) => {
         ids,
         status: req.body?.status,
         image: req.body?.image,
+        qRef: req.body?.q_ref,
         qAncienne: req.body?.q_ancienne,
         qFr: req.body?.q_fr,
         qAr: req.body?.q_ar,
