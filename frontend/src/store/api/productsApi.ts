@@ -242,6 +242,10 @@ const productsApi = api.injectEndpoints({
     }),
 
     // archived (soft-deleted) products
+    getArchivedProductsAccess: builder.query<{ allowed: boolean }, void>({
+      query: () => ({ url: '/products/archived/access' }),
+      providesTags: ['Product'],
+    }),
     getArchivedProducts: builder.query<Partial<Product>[], void>({
       query: () => ({ url: '/products/archived/list' }),
       providesTags: ['Product'],
@@ -436,6 +440,7 @@ export const {
   useUpdateStockMutation,
   useChangeProductBaseUnitMutation,
   useGetArchivedProductsQuery,
+  useGetArchivedProductsAccessQuery,
   useRestoreProductMutation,
   useTranslateProductsMutation,
   useGenerateSpecsMutation,

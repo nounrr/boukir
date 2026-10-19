@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
 import { createStockPdfStream } from '../utils/stockPdf.js';
 import { canViewInternalPrices } from '../utils/internalPricePermissions.js';
+import { loadArchivedProductsAccess, requireArchivedProductsAccess } from '../utils/archivedProductPermissions.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import {
   PRODUCT_IMAGE_TARGETS,
@@ -2164,8 +2165,15 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.get('/archived/access', async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ allowed: await loadArchivedProductsAccess(req.user) });
+  } catch (err) { next(err); }
+});
+
 // List soft-deleted products
-router.get('/archived/list', async (_req, res, next) => {
+router.get('/archived/list', requireArchivedProductsAccess, async (_req, res, next) => {
   try {
     await ensureProductsColumns();
     const [rows] = await pool.query(
@@ -2857,7 +2865,7 @@ router.patch('/bulk-attachment', async (req, res, next) => {
 });
 
 // Restore a soft-deleted product
-router.post('/:id/restore', async (req, res, next) => {
+router.post('/:id/restore', requireArchivedProductsAccess, async (req, res, next) => {
   try {
     await ensureProductsColumns();
     const id = Number(req.params.id);

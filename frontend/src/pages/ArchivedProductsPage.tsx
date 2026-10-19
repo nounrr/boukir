@@ -1,10 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { useGetArchivedProductsQuery, useRestoreProductMutation } from '../store/api/productsApi';
+import { useGetArchivedProductsAccessQuery, useGetArchivedProductsQuery, useRestoreProductMutation } from '../store/api/productsApi';
 import { Search, RotateCcw } from 'lucide-react';
 import { showError, showSuccess } from '../utils/notifications';
 
 const ArchivedProductsPage: React.FC = () => {
-  const { data: archived = [], isLoading, refetch } = useGetArchivedProductsQuery();
+  const { data: access, isLoading: isLoadingAccess } = useGetArchivedProductsAccessQuery(undefined, {
+    pollingInterval: 30000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+  });
+  const { data: archived = [], isLoading, refetch } = useGetArchivedProductsQuery(undefined, { skip: !access?.allowed });
   const [restore] = useRestoreProductMutation();
   const [search, setSearch] = useState('');
 
@@ -16,7 +21,8 @@ const ArchivedProductsPage: React.FC = () => {
     );
   }, [archived, search]);
 
-  if (isLoading) return <div className="p-6">Chargement...</div>;
+  if (isLoadingAccess || (access?.allowed && isLoading)) return <div className="p-6">Chargement...</div>;
+  if (!access?.allowed) return <div className="p-6 text-red-700">Accès aux produits archivés non autorisé.</div>;
 
   return (
     <div className="p-6">

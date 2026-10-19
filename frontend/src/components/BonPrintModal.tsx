@@ -9,6 +9,7 @@ import type { Contact } from '../types';
 import { useGetComptantPaymentsQuery } from '../store/api/comptantApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import type { DesignationLang } from '../utils/designationLang';
+import { waitForPrintImages } from '../utils/waitForPrintImages';
 
 interface BonPrintModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const [usePromo, setUsePromo] = useState(false);
+  const [includeProductImages, setIncludeProductImages] = useState(false);
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
   // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
   // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).
@@ -66,11 +68,13 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       previousDisplay = hiddenEls.map(el => el.style.display);
       hiddenEls.forEach(el => { el.style.display = 'none'; });
 
+      await waitForPrintImages(printRef.current);
+
       // Capture avec moins de scale pour fichiers plus légers
       const canvas = await html2canvas(printRef.current, {
         scale: 1.5, // Réduit de 2 à 1.5
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         backgroundColor: '#ffffff'
       });
 
@@ -118,7 +122,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   };
 
   // Fonction pour imprimer directement
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!printRef.current) return;
 
     // Créer une nouvelle fenêtre pour l'impression
@@ -166,12 +170,13 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
 
     printWindow.document.close();
     
-    // Attendre que le contenu se charge puis imprimer
-    setTimeout(() => {
+    // Attendre les photos avant d'ouvrir le dialogue d'impression.
+    await waitForPrintImages(printWindow.document.body);
+    if (!printWindow.closed) {
       printWindow.focus();
       printWindow.print();
       printWindow.close();
-    }, 1000);
+    }
   };
 
   return (
@@ -179,13 +184,13 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* En-tête modal */}
         <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold">
               Aperçu d'impression - {documentTitle} {displayNumero}
             </h2>
             
             {/* Format fixé à A4 */}
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-gray-600">Format: A4 (210x297mm)</span>
               {!projectContext && <label className="ml-4 flex items-center space-x-2 text-sm text-gray-700">
                 <input
@@ -195,6 +200,19 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 />
                 <span>Utiliser promo</span>
               </label>}
+              <label htmlFor="bon-images-select" className="ml-4 flex items-center gap-2 text-sm text-gray-700">
+                Images produit :
+                <select
+                  id="bon-images-select"
+                  value={includeProductImages ? 'with' : 'without'}
+                  disabled={isGenerating}
+                  onChange={event => setIncludeProductImages(event.target.value === 'with')}
+                  className="rounded border px-2 py-1 text-sm"
+                >
+                  <option value="without">Sans images</option>
+                  <option value="with">Avec images</option>
+                </select>
+              </label>
             </div>
           </div>
 
@@ -249,6 +267,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 paymentHistory={comptantPayments as any[]}
                 designationLang={designationLang}
                 onDesignationLangChange={setDesignationLang}
+                includeProductImages={includeProductImages}
               />
             </div>
           </div>

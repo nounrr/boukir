@@ -10,7 +10,7 @@ import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemRevi
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
-import { useGetSalePriceCorrectionAccessQuery } from '../../store/api/productsApi';
+import { useGetArchivedProductsAccessQuery, useGetSalePriceCorrectionAccessQuery } from '../../store/api/productsApi';
 import {
   Users,
   Package,
@@ -76,6 +76,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
     refetchOnFocus: true,
   });
   const canViewSalePriceCorrections = user?.role === 'PDG' || salePriceCorrectionAccess?.allowed === true;
+  const { data: archivedProductsAccess } = useGetArchivedProductsAccessQuery(undefined, {
+    skip: !user?.role,
+    pollingInterval: 30000,
+    refetchOnFocus: true,
+  });
+  const canViewArchivedProducts = user?.role === 'PDG' || archivedProductsAccess?.allowed === true;
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
@@ -107,7 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: !isChefChauffeur && user?.role !== undefined },
         { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
         { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },
-        { name: 'Produits archivés', href: '/products/archived', icon: Package, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Produits archivés', href: '/products/archived', icon: Package, show: canViewArchivedProducts },
       ],
     },
     {

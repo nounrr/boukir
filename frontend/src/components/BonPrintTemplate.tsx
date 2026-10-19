@@ -13,6 +13,7 @@ import {
 } from '../utils/designationLang';
 import boukirCachet from './boukir_cachet.webp';
 import mpcCachet from './mpc_cachet.webp';
+import { toBackendUrl } from '../utils/url';
 
 interface BonPrintTemplateProps {
   bon: any;
@@ -29,6 +30,7 @@ interface BonPrintTemplateProps {
   designationLang?: DesignationLang;
   onDesignationLangChange?: (lang: DesignationLang) => void;
   showDesignationLangSelect?: boolean;
+  includeProductImages?: boolean;
 }
 
 // Pied de page adaptatif selon le nombre d'articles et le format A4/A5
@@ -108,6 +110,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   onDesignationLangChange,
   showDesignationLangSelect = true,
   internalPricesVisible,
+  includeProductImages = false,
 }) => {
   const canViewInternalPrices = useCanViewInternalPrices();
   const showInternalPrices = internalPricesVisible ?? canViewInternalPrices;
@@ -555,6 +558,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
           <thead>
             <tr className="bg-orange-500 text-white">
               <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-left font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>CODE</th>
+              {includeProductImages && <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center font-semibold ${textSizes.tableHeader}`} style={{ width: '52px' }}>Image</th>}
               <th className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-left font-semibold ${textSizes.tableHeader}`}>Article</th>
               <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>Unité</th>
               {printMode !== 'PRODUCTS_ONLY' && (
@@ -613,6 +617,11 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               const designationText = localizedVariantName
                 ? `${baseDesignation} - ${localizedVariantName}`
                 : baseDesignation;
+              const imageUrl = includeProductImages ? toBackendUrl(
+                (vIdRaw ? variantRow?.image_url || item?.variant_image_url || item?.variant?.image_url : '') ||
+                item?.product_image_url || item?.image_url || item?.product?.image_url || item?.produit?.image_url ||
+                rowProduct?.image_url
+              ) : '';
               // Resolve unit name
               const itemUnitId = item?.unit_id ?? item?.unite_id ?? item?.uniteId;
               const itemProduct = findProductById(productId);
@@ -629,6 +638,9 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                   <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
+                  {includeProductImages && <td className="border border-gray-300 text-center" style={{ width: '52px', padding: '4px' }}>
+                    {imageUrl ? <img src={imageUrl} alt={designationText} loading="eager" style={{ width: '44px', height: '44px', objectFit: 'contain', display: 'block', margin: '0 auto' }} onError={event => { event.currentTarget.style.display = 'none'; }} /> : '—'}
+                  </td>}
                   <td className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'}`}>
                     <div
                       className={`font-medium ${textSizes.tableCell}`}

@@ -5,6 +5,7 @@ import { ensureFondCaissePermissionSchema } from './fondCaissePermissions.js';
 import { ensureStatsDetailsPermissionSchema } from './statsDetailsPermissions.js';
 import { ensureSalePriceCorrectionPermissionSchema } from './salePriceCorrectionPermissions.js';
 import { ensureInternalPricePermissionSchema } from './internalPricePermissions.js';
+import { ensureArchivedProductPermissionSchema } from './archivedProductPermissions.js';
 import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmployeePagePermissions } from './employeePagePermissions.js';
 
 /**
@@ -154,6 +155,19 @@ export const PAGE_PERMISSION_GROUPS = Object.freeze([
         description: 'Saisir le montant, le mode et la date du fond initial de la caisse.',
       },
     ],
+  },
+  {
+    key: 'archived_products',
+    label: 'Produits archivés',
+    page: 'Produits archivés',
+    href: '/products/archived',
+    description: 'Consulter les produits archivés et les restaurer.',
+    permissions: [{
+      key: 'access',
+      column: 'acces_produits_archives',
+      label: 'Accéder et restaurer',
+      description: 'Ouvrir la page des produits archivés et restaurer des produits.',
+    }],
   },
   {
     key: 'sale_price_corrections',
@@ -318,6 +332,7 @@ export async function ensurePagePermissionSchema(db = pool) {
   await ensureProjetPermissionSchema(db);
   await ensureEmployeePagePermissionSchema(db);
   await ensureInternalPricePermissionSchema(db);
+  await ensureArchivedProductPermissionSchema(db);
   await ensureFondCaissePermissionSchema(db);
   await ensureStatsDetailsPermissionSchema(db);
   await ensureSalePriceCorrectionPermissionSchema(db);

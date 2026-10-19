@@ -44,6 +44,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     const allowed =
       location.pathname === '/bons' ||
       location.pathname === '/projets' || // La page vérifie sa permission dédiée côté serveur.
+      location.pathname === '/products/archived' || // Accès vérifié par la page et l'API.
       location.pathname === '/vehicules' ||
       location.pathname === '/livraisons' ||
       location.pathname === '/livraisons/statistiques' ||

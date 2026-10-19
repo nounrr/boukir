@@ -18,7 +18,7 @@ import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
-import { useGetSalePriceCorrectionAccessQuery } from '../../store/api/productsApi';
+import { useGetArchivedProductsAccessQuery, useGetSalePriceCorrectionAccessQuery } from '../../store/api/productsApi';
 
 // Bottom navigation bar (mobile). Groups pages: one icon per group; tap shows group's pages.
 interface MobileBottomNavProps {
@@ -44,12 +44,19 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
     refetchOnFocus: true,
   });
   const canViewSalePriceCorrections = user?.role === 'PDG' || salePriceCorrectionAccess?.allowed === true;
+  const { data: archivedProductsAccess } = useGetArchivedProductsAccessQuery(undefined, {
+    skip: !user?.role,
+    pollingInterval: 30000,
+    refetchOnFocus: true,
+  });
+  const canViewArchivedProducts = user?.role === 'PDG' || archivedProductsAccess?.allowed === true;
 
   const groups = isChefChauffeur ? [
     {
       key: 'ops', label: 'Opérations', icon: FileText,
       items: [
         { name: 'Bons', to: '/bons', show: true },
+        { name: 'Produits archivés', to: '/products/archived', show: canViewArchivedProducts },
         { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
         { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
         { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
@@ -77,7 +84,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Qualité images', to: '/products/image-enhancement', show: !isChefChauffeur },
         { name: 'Produits Translate', to: '/products/translate', show: true },
         { name: 'Catégories', to: '/categories', show: true },
-        { name: 'Produits archivés', to: '/products/archived', show: user?.role === 'PDG' },
+        { name: 'Produits archivés', to: '/products/archived', show: canViewArchivedProducts },
         { name: 'Solver prix achat', to: '/solver-prix-achat', show: user?.role === 'PDG' },
         { name: 'Correction prix ventes', to: '/products/sale-price-corrections', show: canViewSalePriceCorrections },
       ],
