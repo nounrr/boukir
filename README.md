@@ -322,3 +322,9 @@ async function demo() {
 
 Si 500 avec message clé manquante, vérifiez `OPENAI_API_KEY`.
 
+## Application mobile (PWA)
+
+Le frontend peut être installé depuis le bouton « Installer l’app » dans l’en-tête. Sur iPhone et iPad, ouvrir le site dans Safari puis utiliser Partager → Sur l’écran d’accueil. Le site doit être servi en HTTPS (ou sur `localhost`).
+
+Chaque `npm run build` produit `frontend/dist/version.json` avec un identifiant de version unique. L’application vérifie ce fichier au démarrage, au retour au premier plan et toutes les minutes ; si une nouvelle version est publiée, elle recharge automatiquement la page. Déployer ensemble tout le contenu de `frontend/dist` et servir `index.html`, `version.json` et `sw.js` sans cache persistant. Le service worker ne met pas en cache les données de l’API ; hors connexion, il affiche une page hors connexion.
+

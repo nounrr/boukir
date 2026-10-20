@@ -35,7 +35,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const [usePromo, setUsePromo] = useState(false);
-  const [includeProductImages, setIncludeProductImages] = useState(false);
+  const [includeProductImages, setIncludeProductImages] = useState(true);
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
   // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
   // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).

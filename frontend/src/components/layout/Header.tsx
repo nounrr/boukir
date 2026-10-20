@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { showConfirmation, showSuccess } from '../../utils/notifications';
 import NotificationBell from '../NotificationBell';
 import CashRegisterBell from '../CashRegisterBell';
+import PwaInstallButton from '../PwaInstallButton';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -59,6 +60,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
 
         {/* Informations utilisateur - Version mobile optimisée */}
         <div className="flex items-center space-x-2 md:space-x-4">
+          <PwaInstallButton />
           {/* Version mobile compacte */}
           <div className="sm:hidden flex items-center space-x-1">
             <CashRegisterBell />

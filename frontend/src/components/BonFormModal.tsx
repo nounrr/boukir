@@ -2814,7 +2814,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   statut: 'En attente',
   phone: '',
       client_id: '',
-      client_nom: '',
+      client_nom: currentTab === 'AvoirComptant' ? 'client' : '',
       client_adresse: '',
       client_societe: '',
       fournisseur_id: '',

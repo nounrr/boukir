@@ -6,6 +6,7 @@ import { store, persistor } from './store'
 import './index.css'
 import App from './App.tsx'
 import { ToastProvider } from './components/ui/use-toast'
+import { registerPwa } from './utils/pwa'
 
 // One-time cleanup: remove any persisted fake data for products/categories
 try {
@@ -28,3 +29,5 @@ createRoot(document.getElementById('root')!).render(
     </Provider>
   </StrictMode>,
 )
+
+registerPwa()
