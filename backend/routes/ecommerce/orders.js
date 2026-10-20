@@ -11,6 +11,8 @@ import {
 import { getContactSoldeCumule, phone9Sql } from '../../utils/soldeCumule.js';
 import { calculateEcommerceShipping } from '../../utils/ecommerceShipping.js';
 import { getStoreLocation, haversineDistanceKm, normalizeLatLng } from '../../utils/geo.js';
+import { isCmiConfigured } from '../../utils/cmiPayment.js';
+import { cmiOrderToken, createCmiPaymentForOrder } from './cmiPayments.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -901,6 +903,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
 
       // Order details
       payment_method = 'cash_on_delivery', // 'cash_on_delivery', 'card', 'solde', 'pay_in_store'
+      payment_locale, // langue de la page de paiement CMI (fr | ar | en)
       customer_notes,
       // Optional promo code
       promo_code,
@@ -963,6 +966,15 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
         message: 'Méthode de paiement invalide',
         field: 'payment_method',
         allowed: Array.from(allowedPaymentMethods),
+      });
+    }
+
+    // Card payments go through Chaabi Payment (CMI): refuse before reserving stock if it's not configured.
+    if (normalizedPaymentMethod === 'card' && !isCmiConfigured()) {
+      await connection.rollback();
+      return res.status(503).json({
+        message: 'Le paiement par carte est momentanément indisponible',
+        error_type: 'CMI_NOT_CONFIGURED',
       });
     }
 
@@ -1893,7 +1905,32 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
 
     await connection.commit();
 
+    // Card payment: return the signed form the browser must POST to the CMI payment page.
+    let cmiPayment = null;
+    if (normalizedPaymentMethod === 'card' && remainingToPay > 0) {
+      try {
+        const payment = await createCmiPaymentForOrder(pool, {
+          id: orderId,
+          order_number: orderNumber,
+          customer_name,
+          customer_email,
+          customer_phone,
+          shipping_address_line1: effectiveShippingLine1,
+          shipping_city: effectiveShippingCity,
+          shipping_postal_code: effectiveShippingPostalCode,
+          total_amount: totalAmount,
+          remise_used_amount: remiseUsedAmount,
+        }, { locale: payment_locale });
+        cmiPayment = { url: payment.url, fields: payment.fields, token: payment.token };
+      } catch (paymentErr) {
+        // The order exists: the customer can retry the payment from the result page.
+        console.error('CMI: impossible de préparer le paiement', paymentErr);
+        cmiPayment = { url: null, fields: null, token: cmiOrderToken(orderNumber) };
+      }
+    }
+
     res.status(201).json({
+      cmi_payment: cmiPayment,
       message: 'Commande créée avec succès',
       order: {
         id: orderId,

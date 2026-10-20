@@ -47,6 +47,7 @@ import ecommerceOrdersRouter, {
 } from './routes/ecommerce/orders.js';
 import ecommercePromoRouter from './routes/ecommerce/promo.js';
 import ecommercePickupLocationsRouter from './routes/ecommerce/pickupLocations.js';
+import ecommerceCmiPaymentsRouter, { cmiGatewayRouter } from './routes/ecommerce/cmiPayments.js';
 import promoCodesRouter from './routes/promoCodes.js';
 import heroSlidesRouter from './routes/heroSlides.js';
 import heroSlidesAdminRouter from './routes/heroSlidesAdmin.js';
@@ -173,6 +174,13 @@ const corsOptions = {
   credentials: true,
 };
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+// Retours de la plateforme Chaabi Payment / CMI (callback serveur + redirections navigateur depuis le
+// domaine CMI) : montés avant CORS et l'authentification, sécurisés par la vérification du HASH.
+app.use(
+  '/api/ecommerce/payments/cmi',
+  express.urlencoded({ extended: false, limit: '1mb' }),
+  cmiGatewayRouter
+);
 app.use(cors(corsOptions));
 // Handle preflight requests for all routes
 app.options('*', cors(corsOptions));
@@ -244,6 +252,7 @@ const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/search',
   '/api/ecommerce/promo',
   '/api/ecommerce/pickup-locations',
+  '/api/ecommerce/payments/cmi',
 ];
 
 // Public read-only resources (no token required for GET)
@@ -396,6 +405,7 @@ app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocation
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
 app.use('/api/ecommerce/orders', optionalAuth, ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
+app.use('/api/ecommerce/payments/cmi', optionalAuth, ecommerceCmiPaymentsRouter); // Paiement carte CMI (propriétaire ou jeton)
 
 // E-commerce homepage hero slides
 app.use('/api/hero-slides', optionalAuth, heroSlidesRouter); // Public (with optional auth)
