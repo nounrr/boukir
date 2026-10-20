@@ -303,6 +303,29 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
   );
 };
 
+const MobileBonCards: React.FC<Pick<BonTableProps, 'bons' | 'detail' | 'products' | 'prefix'>> = ({ bons, detail, products = [], prefix }) => (
+  <div className="space-y-3 p-3 md:hidden">
+    {bons.map(b => {
+      const items: any[] = Array.isArray(b.items) ? b.items.filter((i: any) => i && i.id) : [];
+      return <article key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0"><p className="font-mono text-sm font-bold text-blue-700">{b.numero ?? `${prefix}${String(b.id).padStart(2, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(b.date_creation)}</p></div>
+          <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
+        </div>
+        <div className="mt-3 flex items-end justify-between gap-3 border-t border-gray-100 pt-3"><span className="text-xs text-gray-500">Montant</span><strong className="text-base text-gray-900">{fmt(getBonTableTotal(prefix, b))}</strong></div>
+        {detail && items.length > 0 && <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">{groupDisplayItems(items).map(({ item, sourceIndices }) => <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs">
+          <p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p>
+          <p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p>
+          <div className="mt-2 flex justify-between gap-2"><span>Qté {Number(item.quantite ?? 0)} × {fmt(Number(item.prix_unitaire ?? 0))}</span><strong>{fmt(Number(item.total ?? (Number(item.quantite ?? 0) * Number(item.prix_unitaire ?? 0))))}</strong></div>
+        </div>)}</div>}
+        {detail && b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}
+        {detail && b.code_reglement && <p className="mt-1 text-xs text-gray-500">Code règlement : {b.code_reglement}</p>}
+      </article>;
+    })}
+    <div className="rounded-lg bg-blue-50 px-4 py-3 text-right text-sm font-bold text-blue-900">Total : {fmt(bons.reduce((sum, b) => sum + getBonTableTotal(prefix, b), 0))}</div>
+  </div>
+);
+
 // ─── Solde cumulé client ──────────────────────────────────────────────────────
 // Convention Client (miroir de calculateContactSoldeHistory / soldeCalculator.ts) :
 //   solde initial  → base de départ
@@ -1204,6 +1227,41 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
   );
 };
 
+const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, showInitialRow = true, selectedIds, onToggleSelect, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
+  const balances = detail ? buildSoldeCumuleDetail(rows, soldeInitial) : buildSoldeCumule(rows, soldeInitial);
+  const displayed = rows.filter(row => !visibleIds || visibleIds.has(`${row.kind}-${row.data.id}`));
+  const dragIndexForRow = (rowIndex: number) => displayed.slice(0, rowIndex).reduce((count, row) => {
+    if (!detail || row.kind === 'paiement') return count + 1;
+    const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((item: any) => item && item.id) : [];
+    return count + Math.max(1, groupDisplayItems(items).length);
+  }, 0);
+  const movePayment = (from: number, to: number) => {
+    if (!onCompletDragEnd || to < 0 || to >= displayed.length) return;
+    onCompletDragEnd({ source: { index: dragIndexForRow(from), droppableId: 'client-complet-history' }, destination: { index: dragIndexForRow(to), droppableId: 'client-complet-history' }, draggableId: `paiement-${displayed[from].data.id}`, reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult);
+  };
+  return <div className="space-y-3 p-3 md:hidden">
+    {showInitialRow && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Solde initial</p><p className="mt-1 text-lg font-bold text-gray-900">{fmt(soldeInitial)}</p></div>}
+    {displayed.map((row, rowIndex) => {
+      const id = `${row.kind}-${row.data.id}`;
+      const payment = row.kind === 'paiement';
+      const meta = payment ? null : BON_META[row.kind];
+      const b = row.data;
+      const items: any[] = payment ? [] : Array.isArray(b.items) ? b.items.filter((item: any) => item && item.id) : [];
+      const lastKey = detail && items.length ? `${id}-item-${items.length - 1}` : detail && !payment ? `${id}-item-0` : id;
+      const amount = payment ? getPaymentLineTotal(b) : getBonTotalForSolde(row.kind, b);
+      return <article key={id} className={`rounded-xl border p-4 shadow-sm ${payment ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-200 bg-white'}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0"><span className={`rounded-md px-2 py-1 text-xs font-bold ${payment ? 'bg-emerald-100 text-emerald-800' : meta?.badgeClass}`}>{payment ? 'Paiement' : meta?.label}</span><p className="mt-2 font-mono text-sm font-bold text-gray-900">{b.numero ?? `${payment ? 'PAY' : meta?.prefix}${String(b.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(payment ? b.date_paiement : b.date_creation)}</p></div>
+          {onToggleSelect && <label className="flex min-h-9 items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedIds?.has(id) ?? false} onChange={() => onToggleSelect(id)} className="h-4 w-4 accent-blue-600" /> Bon</label>}
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-200 pt-3"><div><p className="text-xs text-gray-500">Montant</p><p className="font-bold text-gray-900">{fmt(amount)}</p></div><div className="text-right"><p className="text-xs text-gray-500">Solde cumulé</p><p className={`font-bold ${(balances.get(lastKey) ?? 0) > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{fmt(balances.get(lastKey) ?? 0)}</p></div></div>
+        {payment ? <div className="mt-3 space-y-1 text-xs text-gray-600"><p>Mode : {b.mode_paiement ?? '—'}</p><p>RIB / Réf : {b.code_reglement || b.reference_virement || b.reference || '—'}</p><p>Montant ignoré : {fmt(Number(b.montant_ignorer ?? 0))}</p>{b.date_echeance && <p>Échéance : {fmtDate(b.date_echeance)}</p>}</div> : <><p className="mt-3 text-xs text-gray-600">Statut : <span className={`rounded px-2 py-0.5 ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span></p>{detail && <div className="mt-3 space-y-2">{items.length === 0 ? <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedItemIds?.has(`${id}-item-0`) ?? false} onChange={() => onToggleItem?.(`${id}-item-0`)} className="h-4 w-4 accent-purple-600" /> Ligne sans produit</label> : groupDisplayItems(items).map(({ item, sourceIndices, sourceItems }) => { const head = sourceItems[0]; const eligibleId = `${row.kind}-${b.id}-item-${head?.id}`; const totalQte = sourceItems.reduce((sum, src) => sum + (Number(src.quantite ?? 0) || 0), 0); const price = remiseEditor?.remisePrices[eligibleId] ?? ''; const totalRem = (Number(price) || 0) * totalQte; return <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs"><div className="flex items-start gap-2"><input type="checkbox" checked={sourceIndices.every(i => selectedItemIds?.has(`${id}-item-${i}`))} onChange={() => onToggleAllItems?.(sourceIndices.map(i => `${id}-item-${i}`))} className="mt-0.5 h-4 w-4 shrink-0 accent-purple-600" aria-label="Sélectionner cette ligne pour impression" /><div className="min-w-0 flex-1"><p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p><p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p><p className="mt-2">Qté {Number(item.quantite ?? 0)} × {fmt(Number(item.prix_unitaire ?? 0))}</p><p className="mt-1 font-bold text-gray-900">{fmt(Number(item.total ?? 0))}</p>{remiseEditor?.showRemiseMode && row.kind === 'sortie' && head?.id && <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2"><label className="text-xs font-semibold text-orange-800">Prix Remise<input type="number" step="0.001" min="0" placeholder="0.000" value={price === '' ? '' : String(price)} onChange={e => remiseEditor.setItemPrice(eligibleId, parseFloat(e.target.value) || 0)} className="mt-1 w-full rounded border border-orange-300 bg-white px-2 py-2 text-right text-sm focus:ring-2 focus:ring-orange-500" /></label><div className="text-right"><p className="text-xs font-semibold text-orange-800">Total Remise</p><p className="mt-2 font-bold text-emerald-700">{totalRem > 0 ? `${totalRem.toFixed(3)} DH` : '—'}</p></div></div>}</div></div></div>; })}</div>}{b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}</>}
+        {payment && onCompletDragEnd && <div className="mt-3 flex gap-2 border-t border-emerald-100 pt-3"><button type="button" disabled={rowIndex === 0} onClick={() => movePayment(rowIndex, rowIndex - 1)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs font-medium text-emerald-800 disabled:opacity-40">Monter</button><button type="button" disabled={rowIndex === displayed.length - 1} onClick={() => movePayment(rowIndex, rowIndex + 1)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs font-medium text-emerald-800 disabled:opacity-40">Descendre</button></div>}
+      </article>;
+    })}
+  </div>;
+};
+
 // ─── Client detail page ───────────────────────────────────────────────────────
 
 type PageTab = 'complet' | 'sorties' | 'avoirs' | 'paiements';
@@ -1514,7 +1572,7 @@ const ClientDetailPage: React.FC = () => {
       if (row.kind === 'avoir') continue;
       if (visibleIds && !visibleIds.has(`${row.kind}-${row.data.id}`)) continue;
       const bonId = Number(row.data.id);
-      const bonType: 'Sortie' = 'Sortie';
+      const bonType = 'Sortie' as const;
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
       const groups = groupDisplayItems(items);
       for (const { item: groupItem, sourceItems } of groups) {
@@ -1770,7 +1828,7 @@ const ClientDetailPage: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Back + header */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => navigate('/clients')}
           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
@@ -1780,31 +1838,31 @@ const ClientDetailPage: React.FC = () => {
         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
           <span className="text-sm font-bold text-blue-600">{initial}</span>
         </div>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold text-gray-900">{nomDisplay}</h1>
           {contact?.societe && contact?.nom_complet && (
             <p className="text-sm text-gray-500">{contact.societe}</p>
           )}
         </div>
-        <div className="text-right">
+        <div className="w-[calc(50%-0.375rem)] rounded-lg bg-gray-50 p-2 text-left sm:w-auto sm:bg-transparent sm:p-0 sm:text-right">
           <p className="text-xs text-gray-400">Solde</p>
           <p className={`font-bold text-base ${solde < 0 ? 'text-red-600' : solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(solde)}
           </p>
         </div>
-        <div className="text-right px-3 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200">
+        <div className="w-[calc(50%-0.375rem)] text-left sm:w-auto sm:text-right px-3 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200">
           <p className="text-xs text-gray-400">Total cumulé</p>
           <p className={`font-bold text-base ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(totalCumule)}
           </p>
         </div>
-        <div className="text-right px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200">
+        <div className="w-[calc(50%-0.375rem)] text-left sm:w-auto sm:text-right px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200">
           <p className="text-xs text-gray-400">Mouvement total</p>
           <p className={`font-bold text-base ${totalBenefice > 0 ? 'text-green-600' : totalBenefice < 0 ? 'text-red-600' : 'text-gray-500'}`}>
             {fmt(totalBenefice)}
           </p>
         </div>
-        <div className="text-right px-3 py-1.5 rounded-lg bg-orange-50 border border-orange-200">
+        <div className="w-[calc(50%-0.375rem)] text-left sm:w-auto sm:text-right px-3 py-1.5 rounded-lg bg-orange-50 border border-orange-200">
           <p className="text-xs text-gray-400">Montant ignoré</p>
           <p className="font-bold text-base text-orange-700">
             {fmt(totalMontantIgnorerPaiements)}
@@ -1887,8 +1945,8 @@ const ClientDetailPage: React.FC = () => {
 
       {/* Tabs + checkbox détail */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
-        <div className="flex items-center border-b border-gray-200 overflow-x-auto sticky top-0 z-20 bg-white">
-          <div className="flex flex-1">
+        <div className="flex flex-wrap items-center border-b border-gray-200 sticky top-0 z-20 bg-white">
+          <div className="flex w-full overflow-x-auto md:w-auto md:flex-1">
             {tabs.map(t => (
               <button
                 key={t.id}
@@ -1910,7 +1968,7 @@ const ClientDetailPage: React.FC = () => {
           </div>
 
           {/* Filtre date */}
-          <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+          <div className="flex w-full flex-wrap items-center gap-1.5 px-3 py-2 md:w-auto md:flex-nowrap md:border-l border-gray-100">
             <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input
               type="date"
@@ -1935,14 +1993,14 @@ const ClientDetailPage: React.FC = () => {
 
           {/* Checkbox détail — uniquement sur sortie / comptant / avoir */}
           {showDetail && (
-            <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+            <div className="flex w-full items-center gap-2 px-3 py-2 md:w-auto border-l border-gray-100">
               <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
               <input
                 type="text"
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 placeholder="Produit, variante, référence"
-                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-[220px]"
+                className="min-w-0 flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 md:w-[220px] md:flex-none"
               />
               {productSearch && (
                 <button
@@ -1975,13 +2033,13 @@ const ClientDetailPage: React.FC = () => {
         )}
 
         {/* Content */}
-        <div ref={scrollRef} className="overflow-auto max-h-[calc(100vh-220px)] relative">
+        <div ref={scrollRef} className="md:overflow-auto md:max-h-[calc(100vh-220px)] relative">
 
           {/* ── Complet ── */}
           {tab === 'complet' && (
             completRows.length === 0
               ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucune opération"} />
-              : <CompletTable
+              : <><div className="hidden md:block overflow-x-auto"><CompletTable
                   rows={completRows}
                   detail={detailEnabled}
                   soldeInitial={contact?.solde ?? 0}
@@ -1997,21 +2055,21 @@ const ClientDetailPage: React.FC = () => {
                   onToggleAllItems={toggleAllItems}
                   onCompletDragEnd={handleCompletDragEnd}
                   remiseEditor={remiseEditor}
-                />
+                /></div><MobileCompletCards rows={completRows} detail={detailEnabled} soldeInitial={contact?.solde ?? 0} products={products} remises={history?.remises ?? []} visibleIds={visibleIds} showInitialRow={!hasDateFilter} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onToggleAllItems={toggleAllItems} onCompletDragEnd={handleCompletDragEnd} remiseEditor={remiseEditor} /></>
           )}
 
           {/* ── Bons Sortie ── */}
           {tab === 'sorties' && (
             filteredSorties.length === 0
               ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun bon sortie"} />
-              : <BonTable bons={filteredSorties} detail={detailEnabled} products={products} prefix="SOR" accentClass="text-blue-700" hoverClass="hover:bg-blue-50" />
+              : <><div className="hidden md:block overflow-x-auto"><BonTable bons={filteredSorties} detail={detailEnabled} products={products} prefix="SOR" accentClass="text-blue-700" hoverClass="hover:bg-blue-50" /></div><MobileBonCards bons={filteredSorties} detail={detailEnabled} products={products} prefix="SOR" /></>
           )}
 
           {/* ── Avoirs Client ── */}
           {tab === 'avoirs' && (
             filteredAvoirs.length === 0
               ? <Empty icon={<RotateCcw />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun avoir client"} />
-              : <BonTable bons={filteredAvoirs} detail={detailEnabled} products={products} prefix="AVC" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" />
+              : <><div className="hidden md:block overflow-x-auto"><BonTable bons={filteredAvoirs} detail={detailEnabled} products={products} prefix="AVC" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" /></div><MobileBonCards bons={filteredAvoirs} detail={detailEnabled} products={products} prefix="AVC" /></>
           )}
 
           {/* ── Paiements ── */}
@@ -2019,7 +2077,7 @@ const ClientDetailPage: React.FC = () => {
             paiements.length === 0
               ? <Empty icon={<CreditCard />} label="Aucun paiement" />
               : (
-                <DragDropContext onDragEnd={handlePayDragEnd}>
+                <><div className="hidden md:block overflow-x-auto"><DragDropContext onDragEnd={handlePayDragEnd}>
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
@@ -2093,7 +2151,7 @@ const ClientDetailPage: React.FC = () => {
                     </tr>
                   </tfoot>
                 </table>
-                </DragDropContext>
+                </DragDropContext></div><div className="space-y-3 p-3 md:hidden">{paiements.map((p: any, index: number) => <article key={p.id} className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-2"><div><p className="font-mono text-sm font-bold text-emerald-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(p.date_paiement)}</p></div><span className={`rounded px-2 py-1 text-xs font-semibold ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '—'}</span></div><p className="mt-3 text-lg font-bold text-gray-900">{fmt(getPaymentLineTotal(p))}</p><div className="mt-2 space-y-1 text-xs text-gray-600"><p>RIB / Réf : {p.code_reglement || p.reference_virement || p.reference || '—'}</p><p>Montant ignoré : {fmt(Number(p.montant_ignorer ?? 0))}</p>{p.date_echeance && <p>Échéance : {fmtDate(p.date_echeance)}</p>}</div><div className="mt-3 flex gap-2 border-t border-gray-100 pt-3"><button type="button" disabled={index === 0} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-client' }, destination: { index: index - 1, droppableId: 'paiements-client' }, draggableId: String(p.id), reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs text-emerald-800 disabled:opacity-40">Monter</button><button type="button" disabled={index === paiements.length - 1} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-client' }, destination: { index: index + 1, droppableId: 'paiements-client' }, draggableId: String(p.id), reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs text-emerald-800 disabled:opacity-40">Descendre</button></div></article>)}<div className="rounded-lg bg-emerald-50 p-3 text-right text-sm font-bold text-emerald-800">Total : {fmt(paiements.reduce((sum: number, p: any) => sum + getPaymentLineTotal(p), 0))}</div></div></>
               )
           )}
 
@@ -2726,6 +2784,31 @@ const ClientsListPage: React.FC = () => {
     );
   };
 
+  const renderMobileClient = (client: Contact, key: string) => {
+    const id = Number(client.id);
+    const blocked = Boolean(Number(client.bloque ?? 0));
+    const commentsOpen = openCommentsClientId === id;
+    const commentCount = commentCounts[id]?.total ?? 0;
+    return <article key={key} className={`rounded-xl border p-4 shadow-sm ${blocked ? 'border-red-200 bg-red-50/60' : 'border-gray-200 bg-white'}`}>
+      <div className="flex items-start gap-3"><input type="checkbox" checked={selectedListIds.has(id)} onChange={() => toggleListRowSelection(id)} aria-label={`Sélectionner ${client.nom_complet || client.societe || id} pour impression`} className="mt-1 h-5 w-5 shrink-0 accent-blue-600" /><div className="min-w-0 flex-1"><button type="button" onClick={() => handleRowClick(client.id)} className="text-left text-base font-bold leading-tight text-gray-900 underline-offset-2 hover:underline">{client.nom_complet || client.societe || `Client #${id}`}</button><p className="mt-1 font-mono text-xs text-gray-500">ID {id}{client.reference && ` · Réf ${client.reference}`}</p></div>{blocked && <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Bloqué</span>}</div>
+      {client.societe && <p className="mt-3 flex items-start gap-2 text-sm text-gray-700"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />{client.societe}</p>}
+      <div className="mt-3 space-y-1.5 text-xs text-gray-600">{client.telephone && <a href={`tel:${client.telephone}`} className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-gray-400" />{client.telephone}</a>}{client.email && <a href={`mailto:${client.email}`} className="flex items-center gap-2 break-all"><Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />{client.email}</a>}{client.adresse && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />{client.adresse}</p>}</div>
+      <div className="mt-4 rounded-lg bg-blue-50 p-3"><p className="text-xs font-medium text-blue-800">Solde cumulé</p><p className={`text-lg font-bold ${Number(client.total_cumule ?? 0) > 0 ? 'text-red-700' : Number(client.total_cumule ?? 0) < 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{fmt(Number(client.total_cumule ?? 0))}</p><div className="mt-2 grid grid-cols-3 gap-2 border-t border-blue-100 pt-2 text-xs"><div><p className="text-gray-500">Solde</p><strong>{fmt(Number(client.solde ?? 0))}</strong></div><div><p className="text-gray-500">Plafond</p><strong>{client.plafond != null ? fmt(Number(client.plafond)) : '—'}</strong></div><div><p className="text-gray-500">Garantie</p><strong>{client.montant_garantie != null ? fmt(Number(client.montant_garantie)) : '—'}</strong></div></div></div>
+      {canUseComments && commentCounts[id]?.dernier_contenu && <p className="mt-3 line-clamp-2 text-xs text-gray-600"><MessageSquare className="mr-1 inline h-3.5 w-3.5 text-indigo-500" />{commentCounts[id].dernier_contenu}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">{canUseReminders && <button type="button" onClick={() => setReminderClient(client)} className="min-h-9 rounded-lg border border-amber-200 px-2 text-xs text-amber-800">{client.rappel_date ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} /> : 'Définir rappel'}</button>}{canUseComments && <button type="button" onClick={() => setOpenCommentsClientId(prev => prev === id ? null : id)} className="min-h-9 rounded-lg border border-indigo-200 px-3 text-xs font-medium text-indigo-700">Commentaires {commentCount > 0 && `(${commentCount})`}</button>}<button type="button" onClick={() => handleRowClick(client.id)} className="min-h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Voir détails</button><button type="button" onClick={() => handleEdit(client)} className="min-h-9 rounded-lg border border-blue-200 px-3 text-xs font-medium text-blue-700">Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(client)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-700">Supprimer</button>}</div>
+      <label className="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={blocked} onChange={() => handleToggleClientBloque(client)} className="h-4 w-4 accent-orange-600" />Client bloqué</label>
+      {canUseComments && commentsOpen && <div className="mt-3 border-t border-indigo-100 pt-3"><ContactCommentsSection contactId={id} /></div>}
+    </article>;
+  };
+
+  const renderMobileRow = (row: ClientsAccordionRow) => {
+    if (row.kind === 'client') return renderMobileClient(row.client, `mobile-client-${row.client.id}`);
+    const key = `clients:${row.groupId}`;
+    const open = expandedGroupKeys.has(key);
+    const allSelected = row.members.length > 0 && row.members.every(member => selectedListIds.has(Number(member.id)));
+    return <section key={`mobile-group-${row.groupId}`} className="space-y-2"><div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><div className="flex items-start gap-3"><input type="checkbox" checked={allSelected} onChange={() => setSelectedListIds(prev => { const next = new Set(prev); row.members.forEach(member => { const id = Number(member.id); if (allSelected) next.delete(id); else next.add(id); }); return next; })} aria-label="Sélectionner le groupe pour impression" className="mt-1 h-5 w-5 accent-blue-600" /><button type="button" onClick={() => toggleGroupExpanded(row.groupId)} className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"><span><strong className="text-sm text-blue-950">{row.groupName.trim() || `Groupe #${row.groupId}`}</strong><span className="mt-1 block text-xs text-blue-700">G{row.groupId} · {row.members.length} clients</span></span>{open ? <ChevronDown className="h-5 w-5 shrink-0 text-blue-700" /> : <ChevronRight className="h-5 w-5 shrink-0 text-blue-700" />}</button></div><div className="mt-3 grid grid-cols-2 gap-2 border-t border-blue-100 pt-3 text-xs"><p>Solde <strong className="block">{fmt(row.members.reduce((s, m) => s + Number(m.solde || 0), 0))}</strong></p><p>Total cumulé <strong className="block">{fmt(row.members.reduce((s, m) => s + Number(m.total_cumule || 0), 0))}</strong></p></div></div>{open && <div className="space-y-2 border-l-2 border-blue-100 pl-2">{row.members.map(client => renderMobileClient(client, `mobile-group-${row.groupId}-${client.id}`))}</div>}</section>;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -2794,7 +2877,11 @@ const ClientsListPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="md:hidden space-y-3">
+        <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700"><input type="checkbox" checked={clients.length > 0 && clients.every((client: Contact) => selectedListIds.has(Number(client.id)))} onChange={toggleAllListSelection} className="h-4 w-4 accent-blue-600" />Sélectionner les clients affichés pour impression</label>
+        {isLoading || isFetching ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-44 animate-pulse rounded-xl bg-gray-100" />) : visibleAccordionRows.length === 0 ? <Empty icon={<Users />} label="Aucun client trouvé" /> : visibleAccordionRows.map(renderMobileRow)}
+      </div>
+      <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto" data-contact-list-scroll>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">

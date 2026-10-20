@@ -160,6 +160,8 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
   };
   const styleConfig = getUiLineConfig(uiSettings, styleKeyByPrefix[prefix] ?? '');
   return (
+    <>
+    <div className="hidden md:block overflow-x-auto">
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
         <tr>
@@ -288,6 +290,35 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
         </tr>
       </tfoot>}
     </table>
+    </div>
+    <div className="md:hidden space-y-3 p-3">
+      {bons.map(b => {
+        const items: any[] = Array.isArray(b.items) ? b.items.filter((i: any) => i && i.id) : [];
+        const bonNum = b.numero ?? `${prefix}${String(b.id).padStart(2, '0')}`;
+        return <article key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm" style={getUiRowStyle(styleConfig)}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0"><p className={`font-mono text-sm font-bold ${accentClass}`}>{bonNum}</p><p className="mt-1 flex items-center gap-1 text-xs text-gray-500"><Calendar className="h-3.5 w-3.5" />{fmtDate(b.date_creation)}</p></div>
+            <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '-'}</span>
+          </div>
+          <div className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-right"><p className="text-xs text-gray-500">Montant</p><p className="font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</p></div>
+          {detail && <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+            {items.length === 0 ? <p className="text-xs italic text-gray-400">Aucune ligne produit</p> : groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }) => {
+              const qte = Number(item.quantite ?? 0);
+              const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
+              const total = Number(item.total ?? qte * pu);
+              const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products, prefix === 'CMD' ? 'Commande' : undefined) ?? 0), 0);
+              return <div key={sourceIndices.join('-')} className={`border-l-2 ${itemBorderClass} bg-gray-50 px-3 py-2 text-xs`}>
+                <p className="font-semibold text-gray-900 break-words">{item.designation ?? item.product_designation ?? '-'}</p>
+                <p className="mt-1 text-gray-500">{item.reference ?? item.product_reference ?? '-'} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p>
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1"><span>Qté : {qte}</span><span className="text-right">Total : <strong>{fmt(total)}</strong></span>{showInternalPrices && <span>Prix unit. : {fmt(pu)}</span>}{benefice != null && <span className="text-right">Mouvement : {fmt(benefice)}</span>}</div>
+              </div>;
+            })}
+            {(b.adresse_livraison || b.code_reglement) && <p className="break-words text-xs text-gray-500">{b.adresse_livraison && `Adr. livraison : ${b.adresse_livraison}`} {b.code_reglement && ` · Code régl. : ${b.code_reglement}`}</p>}
+          </div>}
+        </article>;
+      })}
+    </div>
+    </>
   );
 };
 
@@ -643,7 +674,11 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
   const fmtRemise = (v: number) =>
     `${(Number.isFinite(v) ? v : 0).toFixed(3)} MAD`;
 
+  const mobileRows = rows.filter(row => !visibleIds || visibleIds.has(`${row.kind}-${row.data.id}`));
+
   return (
+    <>
+    <div className="hidden md:block overflow-x-auto">
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
         <tr>
@@ -1021,6 +1056,54 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
         </tr>
       </tfoot>}
     </table>
+    </div>
+    <div className="md:hidden space-y-3 p-3">
+      {showInitialRow && <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Solde initial</p><p className="mt-1 text-lg font-bold text-gray-900">{fmt(soldeInitial)}</p></div>}
+      {selectionMode && <div className="flex flex-wrap gap-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={allVisibleSelected} onChange={() => onToggleAll?.(visibleRowIds)} /> Tous les bons</label>
+        {detail && <label className="flex items-center gap-2"><input type="checkbox" checked={allItemsSelected} onChange={() => onToggleAllItems?.(visibleItemKeys)} /> Toutes les lignes</label>}
+      </div>}
+      {mobileRows.map((row, idx) => {
+        const rowId = `${row.kind}-${row.data.id}`;
+        const isPayment = row.kind === 'paiement';
+        const b = row.data;
+        const isSupplierFoPayment = isPayment && Number(b.payment ?? 0) === 1;
+        const meta = isPayment ? null : BON_META[row.kind];
+        const metaStyleConfig = getUiLineConfig(uiSettings, isPayment ? (Number(b.payment ?? 0) === 1 ? 'payment_supplier_fo' : 'payment_standard') : meta?.styleKey ?? '');
+        const items: any[] = !isPayment && Array.isArray(b.items) ? b.items.filter((i: any) => i && i.id) : [];
+        const number = isPayment ? (b.numero ?? `PAY${String(b.id).padStart(3, '0')}`) : (b.numero ?? `${meta?.prefix}${String(b.id).padStart(2, '0')}`);
+        const amount = isPayment ? getPaymentLineTotal(b) : b.montant_total ?? 0;
+        const balanceKey = detail && !isPayment && items.length ? `${rowId}-item-${items.length - 1}` : detail && !isPayment ? `${rowId}-item-0` : rowId;
+        const dragIndex = mobileRows.slice(0, idx).reduce((sum, preceding) => {
+          if (!detail || preceding.kind === 'paiement') return sum + 1;
+          const precedingItems: any[] = Array.isArray(preceding.data.items) ? preceding.data.items.filter((i: any) => i && i.id) : [];
+          return sum + Math.max(1, groupDisplayItems(precedingItems).length);
+        }, 0);
+        return <article key={rowId} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm" style={getUiRowStyle(metaStyleConfig)}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${isPayment ? (isSupplierFoPayment ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700') : meta?.badgeClass ?? ''}`}>{isPayment ? (isSupplierFoPayment ? 'Paiement FO' : 'Paiement') : meta?.label}</span><p className={`mt-2 font-mono text-sm font-semibold ${isPayment ? (isSupplierFoPayment ? 'text-purple-700' : 'text-green-700') : meta?.accentClass ?? ''}`}>{number}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(isPayment ? b.date_paiement : b.date_creation)}</p></div>
+            <div className="text-right"><p className="text-xs text-gray-500">Montant</p><p className="font-bold text-gray-900">{fmt(amount)}</p>{!isPayment && <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs ${statutColor(b.statut ?? '')}`}>{b.statut ?? '-'}</span>}</div>
+          </div>
+          {selectionMode && <label className="mt-3 flex min-h-10 items-center gap-2 border-t border-gray-100 pt-2 text-xs text-gray-600"><input type="checkbox" checked={selectedIds?.has(rowId) ?? false} onChange={() => onToggleSelect?.(rowId)} /> Sélectionner {isPayment ? 'ce paiement' : 'ce bon'}</label>}
+          {isPayment ? <div className="mt-2 space-y-1 text-xs text-gray-600"><p>Mode : {b.mode_paiement ?? '-'}</p>{b.date_echeance && <p>Échéance : {fmtDate(b.date_echeance)}</p>}<p className="break-all">RIB / Réf. : {b.code_reglement || b.reference_virement || b.reference || '-'}</p></div> : detail && <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">{items.length === 0 ? <div className="flex items-center gap-2 text-xs italic text-gray-400">{selectionMode && <input type="checkbox" aria-label="Sélectionner la ligne vide" checked={selectedItemIds?.has(`${rowId}-item-0`) ?? false} onChange={() => onToggleItem?.(`${rowId}-item-0`)} />}Aucune ligne produit</div> : groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }) => {
+            const keys = sourceIndices.map(i => `${rowId}-item-${i}`);
+            const qty = Number(item.quantite ?? 0);
+            const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
+            const total = Number(item.total ?? qty * pu);
+            const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products, row.kind === 'commande' ? 'Commande' : undefined) ?? 0), 0);
+            const remiseAbonne = sourceItems.reduce((sum, src) => sum + Number(src.remise_abonne ?? 0), 0);
+            const remiseClient = sourceItems.reduce((sum, src) => sum + Number(src.remise_client ?? 0), 0);
+            return <div key={keys.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs">
+              <div className="flex items-start gap-2">{selectionMode && <input type="checkbox" aria-label="Sélectionner la ligne" checked={keys.every(k => selectedItemIds?.has(k))} onChange={() => keys.forEach(k => onToggleItem?.(k))} />}<div className="min-w-0 flex-1"><p className="font-semibold text-gray-900 break-words">{item.designation ?? item.product_designation ?? '-'}</p><p className="mt-1 break-words text-gray-500">{item.reference ?? item.product_reference ?? '-'} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p></div></div>
+              <div className="mt-2 grid grid-cols-2 gap-1 text-gray-600"><span>Qté : {qty}</span><span className="text-right font-semibold text-gray-900">{fmt(total)}</span>{showInternalPrices && <span>Prix unit. : {fmt(pu)}</span>}{benefice != null && <span className="text-right">Mouvement : {fmt(benefice)}</span>}{remiseAbonne > 0 && <span>Remise abonné : {fmtRemise(remiseAbonne)}</span>}{remiseClient > 0 && <span>Remise client : {fmtRemise(remiseClient)}</span>}</div>
+            </div>;
+          })}{(b.adresse_livraison || b.code_reglement) && <p className="break-words text-xs text-gray-500">{b.adresse_livraison && `Adr. livraison : ${b.adresse_livraison}`} {b.code_reglement && ` · Code régl. : ${b.code_reglement}`}</p>}</div>}
+          <div className="mt-3 flex items-center justify-between rounded-lg bg-yellow-50 px-3 py-2 text-xs"><span className="text-yellow-800">Solde cumulé</span><span className="font-bold text-gray-900">{fmt(soldeCumuleMap.get(balanceKey) ?? 0)}</span></div>
+          {isPayment && onCompletDragEnd && <div className="mt-2 flex justify-end gap-2"><button type="button" disabled={idx === 0} onClick={() => onCompletDragEnd({ source: { index: dragIndex, droppableId: 'fournisseur-complet-history' }, destination: { index: dragIndex - 1, droppableId: 'fournisseur-complet-history' } } as DropResult)} className="rounded border border-gray-200 p-2 disabled:opacity-40" aria-label="Monter le paiement"><ArrowUp className="h-4 w-4" /></button><button type="button" disabled={idx === mobileRows.length - 1} onClick={() => onCompletDragEnd({ source: { index: dragIndex, droppableId: 'fournisseur-complet-history' }, destination: { index: dragIndex + 1, droppableId: 'fournisseur-complet-history' } } as DropResult)} className="rounded border border-gray-200 p-2 disabled:opacity-40" aria-label="Descendre le paiement"><ArrowDown className="h-4 w-4" /></button></div>}
+        </article>;
+      })}
+    </div>
+    </>
   );
 };
 
@@ -1563,7 +1646,7 @@ const FournisseurDetailPage: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Back + header */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
         <button
           onClick={() => navigate('/fournisseurs')}
           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
@@ -1573,19 +1656,19 @@ const FournisseurDetailPage: React.FC = () => {
         <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
           <span className="text-sm font-bold text-violet-600">{initial}</span>
         </div>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">{nomDisplay}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-xl font-bold text-gray-900">{nomDisplay}</h1>
           {contact?.societe && contact?.nom_complet && (
             <p className="text-sm text-gray-500">{contact.societe}</p>
           )}
         </div>
-        <div className="text-right">
+        <div className="order-2 w-[calc(50%-0.375rem)] rounded-lg bg-gray-50 px-3 py-2 text-left sm:order-none sm:w-auto sm:bg-transparent sm:px-0 sm:py-0 sm:text-right">
           <p className="text-xs text-gray-400">Solde</p>
           <p className={`font-bold text-base ${solde < 0 ? 'text-red-600' : solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(solde)}
           </p>
         </div>
-        <div className="text-right px-3 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200">
+        <div className="order-2 w-[calc(50%-0.375rem)] text-left px-3 py-2 rounded-lg bg-yellow-50 border border-yellow-200 sm:order-none sm:w-auto sm:text-right">
           <p className="text-xs text-gray-400">Total cumulé</p>
           <p className={`font-bold text-base ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(totalCumule)}
@@ -1595,7 +1678,7 @@ const FournisseurDetailPage: React.FC = () => {
           type="button"
           onClick={scrollToTop}
           title="Aller en haut"
-          className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
+          className="order-3 flex h-9 w-9 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm transition-colors hover:bg-violet-700 sm:order-none"
         >
           <ChevronUp className="w-3.5 h-3.5" />
         </button>
@@ -1603,14 +1686,14 @@ const FournisseurDetailPage: React.FC = () => {
           type="button"
           onClick={scrollToBottom}
           title="Aller en bas"
-          className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
+          className="order-3 flex h-9 w-9 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm transition-colors hover:bg-violet-700 sm:order-none"
         >
           <ChevronDown className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={() => setPrintOpen(true)}
           disabled={isLoading || !history}
-          className="flex items-center gap-2 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+          className="order-3 flex min-h-9 items-center gap-2 rounded-md bg-purple-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50 sm:order-none"
         >
           <Printer className="w-4 h-4" />
           {selectedItemIds.size > 0
@@ -1630,8 +1713,8 @@ const FournisseurDetailPage: React.FC = () => {
 
       {/* Tabs + filtre date + checkbox dÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tail */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
-        <div className="flex items-center border-b border-gray-200 overflow-x-auto sticky top-0 z-20 bg-white">
-          <div className="flex flex-1">
+        <div className="sticky top-0 z-20 border-b border-gray-200 bg-white">
+          <div className="flex overflow-x-auto border-b border-gray-100 md:border-b-0">
             {tabs.map(t => (
               <button
                 key={t.id}
@@ -1652,8 +1735,9 @@ const FournisseurDetailPage: React.FC = () => {
             ))}
           </div>
 
+          <div className="flex flex-wrap items-center gap-1 border-t border-gray-100 p-2 md:border-t-0">
           {/* Filtre date */}
-          <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+          <div className="flex flex-wrap items-center gap-1.5 px-2 py-1 flex-shrink-0">
             <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input
               type="date"
@@ -1677,14 +1761,14 @@ const FournisseurDetailPage: React.FC = () => {
           </div>
 
           {showDetail && (
-            <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+             <div className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1">
               <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
               <input
                 type="text"
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 placeholder="Produit, variante, reference"
-                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 w-[220px]"
+                 className="min-w-0 flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 md:max-w-[220px]"
               />
               {productSearch && (
                 <button
@@ -1696,7 +1780,7 @@ const FournisseurDetailPage: React.FC = () => {
           )}
 
           {showDetail && (
-            <label className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none flex-shrink-0 border-l border-gray-100">
+             <label className="flex items-center gap-2 px-2 py-2 cursor-pointer select-none flex-shrink-0">
               <input
                 type="checkbox"
                 checked={detailEnabled}
@@ -1707,9 +1791,10 @@ const FournisseurDetailPage: React.FC = () => {
               <span className="text-sm font-medium text-gray-600">Detail</span>
             </label>
           )}
+          </div>
         </div>
 
-        <div ref={scrollRef} className="overflow-auto max-h-[calc(100vh-220px)] relative">
+        <div ref={scrollRef} className="relative md:max-h-[calc(100vh-220px)] md:overflow-auto">
 
           {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Complet ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
           {tab === 'complet' && (
@@ -1762,9 +1847,11 @@ const FournisseurDetailPage: React.FC = () => {
           {tab === 'paiements' && (
             paiements.length === 0
               ? <Empty icon={<CreditCard />} label="Aucun paiement" />
-              : (
-                <DragDropContext onDragEnd={handlePayDragEnd}>
-                <table className="w-full text-sm">
+               : (
+                 <>
+                 <div className="hidden md:block overflow-x-auto">
+                 <DragDropContext onDragEnd={handlePayDragEnd}>
+                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="w-6 px-2 py-3" />
@@ -1830,7 +1917,18 @@ const FournisseurDetailPage: React.FC = () => {
                     </tr>
                   </tfoot>
                 </table>
-                </DragDropContext>
+                 </DragDropContext>
+                 </div>
+                 <div className="space-y-3 p-3 md:hidden">
+                   <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600"><span>Trier :</span><button type="button" onClick={() => togglePaySort('date')} className="rounded-lg border border-gray-200 px-3 py-2">Date <PaySortIcon col="date" /></button><button type="button" onClick={() => togglePaySort('rib')} className="rounded-lg border border-gray-200 px-3 py-2">RIB / Réf. <PaySortIcon col="rib" /></button><button type="button" onClick={() => togglePaySort('montant')} className="rounded-lg border border-gray-200 px-3 py-2">Montant <PaySortIcon col="montant" /></button></div>
+                   <div className="rounded-lg bg-green-50 px-3 py-2 text-right text-sm font-bold text-green-700">Total : {fmt(paiements.reduce((s: number, p: any) => s + getPaymentLineTotal(p), 0))}</div>
+                   {paiements.map((p: any, index: number) => <article key={p.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                     <div className="flex items-start justify-between gap-2"><div><p className="font-mono text-sm font-semibold text-green-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(p.date_paiement)}</p></div><p className="text-base font-bold text-gray-900">{fmt(getPaymentLineTotal(p))}</p></div>
+                     <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs text-gray-600"><p><span className={`rounded-full px-2 py-1 font-medium ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '-'}</span></p>{p.date_echeance && <p>Échéance : {fmtDate(p.date_echeance)}</p>}<p className="break-all">RIB / Réf. : {p.code_reglement || p.reference_virement || p.reference || '-'}</p></div>
+                     <div className="mt-3 flex justify-end gap-2"><button type="button" disabled={index === 0} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-fournisseur' }, destination: { index: index - 1, droppableId: 'paiements-fournisseur' } } as DropResult)} className="rounded-lg border border-gray-200 p-2 disabled:opacity-40" aria-label="Monter le paiement"><ArrowUp className="h-4 w-4" /></button><button type="button" disabled={index === paiements.length - 1} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-fournisseur' }, destination: { index: index + 1, droppableId: 'paiements-fournisseur' } } as DropResult)} className="rounded-lg border border-gray-200 p-2 disabled:opacity-40" aria-label="Descendre le paiement"><ArrowDown className="h-4 w-4" /></button></div>
+                   </article>)}
+                 </div>
+                 </>
               )
           )}
 
@@ -2067,7 +2165,7 @@ const FournisseursListPage: React.FC = () => {
         <button
           type="button"
           onClick={handleCreate}
-          className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors"
+          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-white transition-colors hover:bg-violet-700 sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           Nouveau Fournisseur
@@ -2082,7 +2180,7 @@ const FournisseursListPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap gap-3 items-center justify-between">
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
+        <div className="relative w-full flex-1 min-w-0 sm:min-w-[220px] sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input type="text" value={search} onChange={e => handleSearchChange(e.target.value)}
             placeholder="Rechercher par nom, societe, tel..."
@@ -2094,6 +2192,13 @@ const FournisseursListPage: React.FC = () => {
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
             {ITEMS_PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n === 0 ? 'Tous' : n}</option>)}
           </select>
+        </div>
+        <div className="flex w-full items-center gap-2 text-sm text-gray-600 md:hidden">
+          <label htmlFor="fournisseurs-mobile-sort">Trier :</label>
+          <select id="fournisseurs-mobile-sort" value={sortBy} onChange={e => handleSort(e.target.value as ContactsSortBy)} className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-2 focus:ring-2 focus:ring-violet-500">
+            <option value="nom">Nom</option><option value="societe">Société</option><option value="solde">Solde</option><option value="total_cumule">Total cumulé</option>
+          </select>
+          <button type="button" onClick={() => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-gray-300" aria-label={sortDir === 'asc' ? 'Tri croissant' : 'Tri décroissant'}>{sortDir === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</button>
         </div>
         <button
           type="button"
@@ -2107,7 +2212,24 @@ const FournisseursListPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="md:hidden space-y-3">
+        <label className="flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-medium text-violet-800">
+          <input type="checkbox" checked={fournisseurs.length > 0 && fournisseurs.every((f: Contact) => selectedListIds.has(Number(f.id)))} onChange={toggleAllListSelection} className="h-4 w-4 rounded border-gray-300 text-violet-600" />
+          Sélectionner les fournisseurs affichés pour l'impression
+        </label>
+        {isLoading || isFetching ? Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-40 animate-pulse rounded-xl border border-gray-200 bg-white p-4"><div className="h-4 w-1/2 rounded bg-gray-200" /><div className="mt-5 h-12 rounded bg-gray-100" /></div>)
+          : fournisseurs.length === 0 ? <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">Aucun fournisseur trouvé</div>
+          : fournisseurs.map((f: Contact, idx: number) => <article key={f.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start gap-3"><input type="checkbox" aria-label={`Sélectionner ${f.nom_complet || f.societe || f.id} pour impression`} checked={selectedListIds.has(Number(f.id))} onChange={() => toggleListRowSelection(Number(f.id))} className="mt-1 h-5 w-5 shrink-0 rounded border-gray-300 text-violet-600" />
+              <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold text-gray-900">{f.nom_complet || f.societe || `Fournisseur #${f.id}`}</h2><p className="mt-0.5 text-xs text-gray-500">#{(currentPage - 1) * itemsPerPage + idx + 1} · ID {f.id}{f.reference ? ` · Réf. ${f.reference}` : ''}</p></div><span className="shrink-0 rounded-lg bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">FO</span></div>
+                {f.societe && f.nom_complet && <p className="mt-2 flex items-center gap-1.5 break-words text-sm text-gray-700"><Building2 className="h-4 w-4 shrink-0 text-gray-400" />{f.societe}</p>}
+                <div className="mt-3 space-y-1 text-xs text-gray-600">{f.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />{f.telephone}</p>}{f.email && <p className="flex items-center gap-1.5 break-all"><Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />{f.email}</p>}{f.adresse && <p className="flex items-start gap-1.5 break-words"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />{f.adresse}</p>}</div>
+              </div></div>
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-3 text-xs"><div><p className="text-gray-500">Solde</p><p className={`mt-1 font-bold ${f.solde < 0 ? 'text-red-600' : f.solde > 0 ? 'text-green-600' : 'text-gray-700'}`}>{fmt(f.solde)}</p></div><div><p className="text-gray-500">Total cumulé</p><p className={`mt-1 font-bold ${(f as any).total_cumule > 0 ? 'text-red-600' : (f as any).total_cumule < 0 ? 'text-green-600' : 'text-gray-700'}`}>{fmt((f as any).total_cumule ?? 0)}</p></div><div><p className="text-gray-500">Plafond</p><p className="mt-1 font-semibold text-gray-700">{f.plafond != null ? fmt(f.plafond) : '—'}</p></div><div><p className="text-gray-500">Garantie</p><p className="mt-1 font-semibold text-emerald-700">{f.montant_garantie != null ? fmt(f.montant_garantie) : '—'}</p></div></div>
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3"><button type="button" onClick={() => handleRowClick(f.id)} className="min-h-10 flex-1 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">Voir détail</button><button type="button" onClick={() => handleEdit(f)} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="h-4 w-4" />Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="h-4 w-4" />Supprimer</button>}</div>
+          </article>)}
+      </div>
+      <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto" data-contact-list-scroll>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -2266,7 +2388,7 @@ const FournisseursListPage: React.FC = () => {
           <p className="text-sm text-gray-500">
             Affichage {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, total)} sur {total}
           </p>
-          <div className="flex items-center gap-1">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto pb-1">
             <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
               className="p-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
               <ChevronLeft className="w-4 h-4" />

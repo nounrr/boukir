@@ -160,6 +160,8 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
   };
   const styleConfig = getUiLineConfig(uiSettings, styleKeyByPrefix[prefix] ?? '');
   return (
+    <>
+    <div className="hidden md:block overflow-x-auto">
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
         <tr>
@@ -288,6 +290,53 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
         </tr>
       </tfoot>}
     </table>
+    </div>
+    <div className="md:hidden space-y-3 p-3">
+      {bons.map((b: any) => {
+        const items: any[] = Array.isArray(b.items) ? b.items.filter((item: any) => item && item.id) : [];
+        const bonNum = b.numero ?? `${prefix}${String(b.id).padStart(2, '0')}`;
+        return (
+          <article key={b.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden" style={getUiRowStyle(styleConfig)}>
+            <div className="flex items-start justify-between gap-3 p-3 border-l-4 border-violet-300">
+              <div className="min-w-0">
+                <p className={`font-mono text-sm font-bold ${accentClass}`}>{bonNum}</p>
+                <p className="mt-1 flex items-center gap-1 text-xs text-gray-600"><Calendar className="w-3.5 h-3.5" />{fmtDate(b.date_creation)}</p>
+              </div>
+              <span className={`shrink-0 text-xs px-2 py-1 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '-'}</span>
+            </div>
+            <div className="flex items-end justify-between gap-3 px-4 pb-3">
+              <span className="text-xs text-gray-500">Montant du bon</span>
+              <strong className="text-base text-gray-900 tabular-nums">{fmt(Number(b.montant_total ?? 0))}</strong>
+            </div>
+            {detail && (
+              <div className="border-t border-gray-100 bg-gray-50/70 p-3 space-y-2">
+                {items.length === 0 && <p className="text-xs text-gray-500 italic">Aucune ligne produit</p>}
+                {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }) => {
+                  const qte = Number(item.quantite ?? 0);
+                  const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
+                  const total = Number(item.total ?? qte * pu);
+                  const mouvement = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
+                  return (
+                    <div key={sourceIndices.join('-')} className="rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="font-medium text-sm text-gray-900 break-words">{item.designation ?? item.product_designation ?? '-'}</p>
+                      <p className="mt-1 text-xs text-gray-500 break-all">Réf. {item.reference ?? item.product_reference ?? '-'}</p>
+                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
+                        <span>Variante : {getHistoryVariantLabel(item, products)}</span><span>Unité : {getHistoryUnitLabel(item, products)}</span>
+                        <span>Qté : {qte}</span><span>Prix unit. : {showInternalPrices ? fmt(pu) : '—'}</span>
+                        <span>Livraison : {b.adresse_livraison ?? '-'}</span><span>Code régl. : {b.code_reglement ?? '-'}</span>
+                        <span>Mouvement : {fmt(mouvement)}</span><strong className="text-right text-gray-900">{fmt(total)}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </article>
+        );
+      })}
+      {!detail && <div className="flex justify-between rounded-lg bg-violet-50 px-4 py-3 text-sm font-semibold"><span>Total</span><span>{fmt(bons.reduce((sum: number, b: any) => sum + Number(b.montant_total ?? 0), 0))}</span></div>}
+    </div>
+    </>
   );
 };
 
@@ -606,7 +655,16 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
   const fmtRemise = (v: number) =>
     `${(Number.isFinite(v) ? v : 0).toFixed(3)} MAD`;
 
+  const mobileRows = rows.filter(row => !visibleIds || visibleIds.has(`${row.kind}-${row.data.id}`));
+  const mobileDragRows = mobileRows.flatMap(row => {
+    if (row.kind === 'paiement' || !detail) return [row];
+    const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((item: any) => item && item.id) : [];
+    return Array.from({ length: Math.max(1, groupDisplayItems(items).length) }, () => row);
+  });
+
   return (
+    <>
+    <div className="hidden md:block overflow-x-auto">
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
         <tr>
@@ -982,6 +1040,72 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
         </tr>
       </tfoot>}
     </table>
+    </div>
+    <div className="md:hidden space-y-3 p-3">
+      {selectionMode && (
+        <div className="flex flex-wrap gap-4 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={allVisibleSelected} onChange={() => onToggleAll?.(visibleRowIds)} className="w-4 h-4 accent-violet-600" />Tous les bons</label>
+          {detail && <label className="flex items-center gap-2"><input type="checkbox" checked={allItemsSelected} onChange={() => onToggleAllItems?.(visibleItemKeys)} className="w-4 h-4 accent-violet-600" />Toutes les lignes</label>}
+        </div>
+      )}
+      {showInitialRow && <div className="flex items-center justify-between rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3"><span className="text-sm font-semibold text-yellow-900">Solde initial</span><strong>{fmtSolde(soldeInitial)}</strong></div>}
+      {mobileRows.map((row) => {
+        const rowId = `${row.kind}-${row.data.id}`;
+        const data = row.data;
+        const isPayment = row.kind === 'paiement';
+        const meta = isPayment ? null : BON_META[row.kind];
+        const items: any[] = !isPayment && Array.isArray(data.items) ? data.items.filter((item: any) => item && item.id) : [];
+        const groups = groupDisplayItems(items);
+        const balanceKey = detail && !isPayment ? `${rowId}-item-${Math.max(0, items.length - 1)}` : rowId;
+        const number = data.numero ?? (isPayment ? `PAY${String(data.id).padStart(3, '0')}` : `${meta?.prefix}${String(data.id).padStart(2, '0')}`);
+        const dragIndex = mobileDragRows.findIndex(candidate => candidate === row);
+        const canMove = isPayment && !!onCompletDragEnd;
+        const move = (offset: number) => {
+          const destination = dragIndex + offset;
+          if (destination < 0 || destination >= mobileDragRows.length) return;
+          onCompletDragEnd?.({ source: { droppableId: 'charge-complet-history', index: dragIndex }, destination: { droppableId: 'charge-complet-history', index: destination } } as DropResult);
+        };
+        return (
+          <article key={rowId} className={`rounded-xl border shadow-sm overflow-hidden ${isPayment ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-white'}`}>
+            <div className="flex items-start justify-between gap-3 p-3">
+              <div className="min-w-0">
+                <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${isPayment ? 'bg-green-100 text-green-800' : meta?.badgeClass}`}>{isPayment ? 'Paiement' : meta?.label}</span>
+                <p className="mt-2 font-mono text-sm font-semibold text-gray-900">{number}</p>
+                <p className="mt-1 flex items-center gap-1 text-xs text-gray-600"><Calendar className="w-3 h-3" />{fmtDate(isPayment ? data.date_paiement : data.date_creation)}</p>
+              </div>
+              <div className="text-right shrink-0"><span className="block text-xs text-gray-500">Montant</span><strong className="text-sm text-gray-900 tabular-nums">{fmt(Number(data.montant_total ?? data.montant ?? 0))}</strong></div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-3 py-2 text-xs">
+              <span className="text-gray-600">Solde cumulé : {fmtSolde(soldeCumuleMap.get(balanceKey) ?? 0)}</span>
+              <span className={`rounded-full px-2 py-0.5 ${isPayment ? modeColor(data.mode_paiement ?? '') : statutColor(data.statut ?? '')}`}>{isPayment ? data.mode_paiement ?? '-' : data.statut ?? '-'}</span>
+            </div>
+            {isPayment && <div className="px-3 pb-2 text-xs text-gray-600 break-all">{data.code_reglement || data.reference_virement || data.reference || 'Aucune référence'}{data.date_echeance && ` · Échéance ${fmtDate(data.date_echeance)}`}</div>}
+            {detail && !isPayment && <div className="space-y-2 bg-gray-50 p-3 border-t border-gray-100">
+              {groups.length === 0 && <p className="text-xs italic text-gray-500">Aucune ligne produit</p>}
+              {groups.map(({ item, sourceItems, sourceIndices }) => {
+                const keys = sourceIndices.map(sourceIdx => `${rowId}-item-${sourceIdx}`);
+                const lastKey = keys[keys.length - 1];
+                const qte = Number(item.quantite ?? 0);
+                const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
+                const remiseAbonne = sourceItems.reduce((sum, src) => sum + Number(src.remise_abonne ?? 0), 0);
+                const remiseClient = sourceItems.reduce((sum, src) => sum + Number(src.remise_client ?? 0), 0);
+                return <div key={lastKey} className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
+                  <div className="flex items-start gap-2">{selectionMode && <input aria-label="Sélectionner cette ligne" type="checkbox" checked={keys.every(key => selectedItemIds?.has(key))} onChange={() => keys.forEach(key => onToggleItem?.(key))} className="mt-0.5 w-4 h-4 accent-violet-600" />}<div className="min-w-0 flex-1"><p className="font-semibold text-sm text-gray-900 break-words">{item.designation ?? item.product_designation ?? '-'}</p><p className="text-gray-500 break-all">Réf. {item.reference ?? item.product_reference ?? '-'}</p></div><strong className="text-gray-900 tabular-nums">{fmt(Number(item.total ?? qte * pu))}</strong></div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-gray-600"><span>Variante : {getHistoryVariantLabel(item, products)}</span><span>Unité : {getHistoryUnitLabel(item, products)}</span><span>Qté : {qte}</span><span>Prix unit. : {showInternalPrices ? fmt(pu) : '—'}</span><span>Remise abonné : {fmtRemise(remiseAbonne)}</span><span>Remise client : {fmtRemise(remiseClient)}</span><span>Remise cumulée : {fmtRemise(remiseCumuleMap.get(lastKey) ?? 0)}</span><span>Solde : {fmtSolde(soldeCumuleMap.get(lastKey) ?? 0)}</span><span>Livraison : {data.adresse_livraison ?? '-'}</span><span>Code régl. : {data.code_reglement ?? '-'}</span><span>Mouvement : {fmt(sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0))}</span></div>
+                </div>;
+              })}
+              {groups.length === 0 && selectionMode && <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedItemIds?.has(`${rowId}-item-0`) ?? false} onChange={() => onToggleItem?.(`${rowId}-item-0`)} className="w-4 h-4 accent-violet-600" />Sélectionner la ligne vide</label>}
+            </div>}
+            {(selectionMode || canMove) && <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3 py-2">
+              {selectionMode ? <label className="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" checked={selectedIds?.has(rowId) ?? false} onChange={() => onToggleSelect?.(rowId)} className="w-4 h-4 accent-violet-600" />Sélectionner le bon</label> : <span />}
+              {canMove && <div className="flex gap-1"><button type="button" onClick={() => move(-1)} disabled={dragIndex <= 0} aria-label="Monter le paiement" className="p-2 rounded border border-gray-200 disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button><button type="button" onClick={() => move(1)} disabled={dragIndex >= mobileDragRows.length - 1} aria-label="Descendre le paiement" className="p-2 rounded border border-gray-200 disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button></div>}
+            </div>}
+          </article>
+        );
+      })}
+      {!detail && <div className="flex justify-between rounded-lg bg-violet-50 px-4 py-3 text-sm font-semibold"><span>Total</span><span>{fmt(rows.reduce((sum, row) => sum + Number(row.data.montant_total ?? 0), 0))}</span></div>}
+    </div>
+    </>
   );
 };
 
@@ -1507,7 +1631,7 @@ const ChargeDetailPage: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Back + header */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => navigate('/charges')}
           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
@@ -1517,19 +1641,19 @@ const ChargeDetailPage: React.FC = () => {
         <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
           <span className="text-sm font-bold text-violet-600">{initial}</span>
         </div>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">{nomDisplay}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold text-gray-900 break-words">{nomDisplay}</h1>
           {contact?.societe && contact?.nom_complet && (
             <p className="text-sm text-gray-500">{contact.societe}</p>
           )}
         </div>
-        <div className="text-right">
+        <div className="text-right min-w-[110px]">
           <p className="text-xs text-gray-400">Solde</p>
           <p className={`font-bold text-base ${solde < 0 ? 'text-red-600' : solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(solde)}
           </p>
         </div>
-        <div className="text-right px-3 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200">
+        <div className="text-right px-3 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 min-w-[120px]">
           <p className="text-xs text-gray-400">Total cumulé</p>
           <p className={`font-bold text-base ${totalCumuleCard > 0 ? 'text-red-600' : totalCumuleCard < 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(totalCumuleCard)}
@@ -1539,7 +1663,7 @@ const ChargeDetailPage: React.FC = () => {
           type="button"
           onClick={scrollToTop}
           title="Aller en haut"
-          className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
+          className="w-9 h-9 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
         >
           <ChevronUp className="w-3.5 h-3.5" />
         </button>
@@ -1547,7 +1671,7 @@ const ChargeDetailPage: React.FC = () => {
           type="button"
           onClick={scrollToBottom}
           title="Aller en bas"
-          className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
+          className="w-9 h-9 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
         >
           <ChevronDown className="w-3.5 h-3.5" />
         </button>
@@ -1574,8 +1698,8 @@ const ChargeDetailPage: React.FC = () => {
 
       {/* Tabs + filtre date + checkbox dÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tail */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
-        <div className="flex items-center border-b border-gray-200 overflow-x-auto sticky top-0 z-20 bg-white">
-          <div className="flex flex-1">
+        <div className="border-b border-gray-200 sticky top-0 z-20 bg-white">
+          <div className="flex overflow-x-auto md:border-b-0">
             {tabs.map(t => (
               <button
                 key={t.id}
@@ -1596,8 +1720,9 @@ const ChargeDetailPage: React.FC = () => {
             ))}
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 md:border-t-0">
           {/* Filtre date */}
-          <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+          <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-l border-gray-100">
             <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input
               type="date"
@@ -1621,14 +1746,14 @@ const ChargeDetailPage: React.FC = () => {
           </div>
 
           {showDetail && (
-            <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+            <div className="flex items-center gap-2 px-3 py-2 flex-1 min-w-[210px] border-l border-gray-100">
               <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
               <input
                 type="text"
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 placeholder="Produit, variante, reference"
-                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 w-[220px]"
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 min-w-0 flex-1"
               />
               {productSearch && (
                 <button
@@ -1651,9 +1776,10 @@ const ChargeDetailPage: React.FC = () => {
               <span className="text-sm font-medium text-gray-600">Detail</span>
             </label>
           )}
+          </div>
         </div>
 
-        <div ref={scrollRef} className="overflow-auto max-h-[calc(100vh-220px)] relative">
+        <div ref={scrollRef} className="md:overflow-auto md:max-h-[calc(100vh-220px)] relative">
 
           {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Complet ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
           {tab === 'complet' && (
@@ -1707,6 +1833,8 @@ const ChargeDetailPage: React.FC = () => {
             paiements.length === 0
               ? <Empty icon={<CreditCard />} label="Aucun paiement" />
               : (
+                <>
+                <div className="hidden md:block overflow-x-auto">
                 <DragDropContext onDragEnd={handlePayDragEnd}>
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
@@ -1775,6 +1903,23 @@ const ChargeDetailPage: React.FC = () => {
                   </tfoot>
                 </table>
                 </DragDropContext>
+                </div>
+                <div className="md:hidden space-y-3 p-3">
+                  <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+                    <button type="button" onClick={() => togglePaySort('date')} className="rounded-lg border border-gray-200 px-3 py-2">Trier par date <PaySortIcon col="date" /></button>
+                    <button type="button" onClick={() => togglePaySort('montant')} className="rounded-lg border border-gray-200 px-3 py-2">Montant <PaySortIcon col="montant" /></button>
+                    <button type="button" onClick={() => togglePaySort('rib')} className="rounded-lg border border-gray-200 px-3 py-2">Référence <PaySortIcon col="rib" /></button>
+                  </div>
+                  {paiements.map((p: any, index: number) => (
+                    <article key={p.id} className="rounded-xl border border-green-200 bg-white shadow-sm overflow-hidden">
+                      <div className="flex items-start justify-between gap-2 p-3"><div><p className="font-mono text-sm font-semibold text-green-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-600">{fmtDate(p.date_paiement)}</p></div><strong className="text-sm tabular-nums text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</strong></div>
+                      <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-3 py-2 text-xs text-gray-600"><span className={`w-fit rounded-full px-2 py-0.5 ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '-'}</span><span className="text-right break-all">{p.code_reglement || p.reference_virement || p.reference || '-'}</span>{p.date_echeance && <span className="col-span-2">Échéance : {fmtDate(p.date_echeance)}</span>}</div>
+                      <div className="flex justify-end gap-1 border-t border-gray-100 px-3 py-2"><button type="button" onClick={() => handlePayDragEnd({ source: { droppableId: 'paiements-charge', index }, destination: { droppableId: 'paiements-charge', index: index - 1 } } as DropResult)} disabled={index === 0} aria-label="Monter le paiement" className="p-2 rounded border border-gray-200 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button><button type="button" onClick={() => handlePayDragEnd({ source: { droppableId: 'paiements-charge', index }, destination: { droppableId: 'paiements-charge', index: index + 1 } } as DropResult)} disabled={index === paiements.length - 1} aria-label="Descendre le paiement" className="p-2 rounded border border-gray-200 disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button></div>
+                    </article>
+                  ))}
+                  <div className="flex justify-between rounded-lg bg-green-50 px-4 py-3 text-sm font-semibold"><span>Total</span><span className="text-green-700">{fmt(paiements.reduce((sum: number, p: any) => sum + Number(p.montant_total ?? p.montant ?? 0), 0))}</span></div>
+                </div>
+                </>
               )
           )}
 
@@ -2032,6 +2177,13 @@ const ChargesListPage: React.FC = () => {
             placeholder="Rechercher par nom, societe, tel..."
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
         </div>
+        <div className="flex items-center gap-2 md:hidden text-sm text-gray-600">
+          <label htmlFor="charges-mobile-sort">Trier :</label>
+          <select id="charges-mobile-sort" value={sortBy} onChange={e => handleSort(e.target.value as ContactsSortBy)} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm">
+            <option value="nom">Nom</option><option value="societe">Société</option><option value="solde">Solde</option><option value="total_cumule">Total cumulé</option>
+          </select>
+          <button type="button" onClick={() => setSortDir(direction => direction === 'asc' ? 'desc' : 'asc')} aria-label={sortDir === 'asc' ? 'Ordre décroissant' : 'Ordre croissant'} className="rounded-md border border-gray-300 p-2">{sortDir === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</button>
+        </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span>Par page :</span>
           <select value={itemsPerPage} onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
@@ -2052,7 +2204,7 @@ const ChargesListPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto" data-contact-list-scroll>
+        <div className="hidden md:block overflow-x-auto" data-contact-list-scroll>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -2202,6 +2354,35 @@ const ChargesListPage: React.FC = () => {
               }
             </tbody>
           </table>
+        </div>
+        <div className="md:hidden space-y-3 p-3">
+          <label className="flex items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-xs font-medium text-violet-800">
+            <input type="checkbox" checked={charges.length > 0 && charges.every((f: Contact) => selectedListIds.has(Number(f.id)))} onChange={toggleAllListSelection} className="h-4 w-4 accent-violet-600" />Sélectionner les charges affichées pour l’impression
+          </label>
+          {isLoading || isFetching ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-40 animate-pulse rounded-xl bg-gray-100" />)
+            : charges.length === 0 ? <div className="py-10 text-center text-sm text-gray-500">Aucune charge trouvée</div>
+              : charges.map((f: Contact) => (
+                <article key={f.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  <div className="flex items-start gap-3 p-4">
+                    <input aria-label={`Sélectionner ${f.nom_complet || f.societe || f.id} pour l’impression`} type="checkbox" checked={selectedListIds.has(Number(f.id))} onChange={() => toggleListRowSelection(Number(f.id))} className="mt-1 h-4 w-4 shrink-0 accent-violet-600" />
+                    <div className="min-w-0 flex-1"><h2 className="font-semibold text-gray-900 break-words">{f.nom_complet || f.societe || `Charge #${f.id}`}</h2><p className="mt-0.5 text-xs font-mono text-gray-500">ID {f.id}{f.reference && ` · Réf. ${f.reference}`}</p></div>
+                  </div>
+                  <div className="border-y border-yellow-100 bg-yellow-50/70 px-4 py-3 flex items-end justify-between gap-3"><span className="text-xs font-medium text-gray-600">Total cumulé</span><strong className={`text-lg tabular-nums ${(f as any).total_cumule > 0 ? 'text-red-600' : (f as any).total_cumule < 0 ? 'text-green-600' : 'text-gray-700'}`}>{fmt(Number((f as any).total_cumule ?? 0))}</strong></div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-4 py-3 text-xs text-gray-600">
+                    {f.societe && <p className="col-span-2 break-words"><Building2 className="inline h-3.5 w-3.5 mr-1 text-gray-400" />{f.societe}</p>}
+                    {f.telephone && <p className="break-all"><Phone className="inline h-3.5 w-3.5 mr-1 text-gray-400" />{f.telephone}</p>}
+                    {f.email && <p className="break-all"><Mail className="inline h-3.5 w-3.5 mr-1 text-gray-400" />{f.email}</p>}
+                    {f.adresse && <p className="col-span-2 break-words"><MapPin className="inline h-3.5 w-3.5 mr-1 text-gray-400" />{f.adresse}</p>}
+                    <p>Solde : <strong className="text-gray-800">{fmt(f.solde)}</strong></p><p>Plafond : <strong className="text-gray-800">{f.plafond != null ? fmt(f.plafond) : '-'}</strong></p>
+                    <p>Garantie : <strong className="text-gray-800">{f.montant_garantie != null ? fmt(f.montant_garantie) : '-'}</strong></p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 border-t border-gray-100 p-3">
+                    <button type="button" onClick={() => handleRowClick(f.id)} className="flex-1 min-w-[90px] rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Voir détails</button>
+                    <button type="button" onClick={() => handleEdit(f)} className="rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="inline h-4 w-4 mr-1" />Modifier</button>
+                    {currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="inline h-4 w-4 mr-1" />Supprimer</button>}
+                  </div>
+                </article>
+              ))}
         </div>
       </div>
 
