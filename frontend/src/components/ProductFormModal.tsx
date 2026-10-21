@@ -212,10 +212,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [createProduct] = useCreateProductMutation();
   const [enrichProductDraft, { isLoading: isEnrichingDraft }] = useEnrichProductDraftMutation();
   const [aiPrompt, setAiPrompt] = useState('');
-  const [autoEnrich, setAutoEnrich] = useState(true);
   const [aiSourceUrl, setAiSourceUrl] = useState<string | null>(null);
   const [aiSuggestedPv1, setAiSuggestedPv1] = useState<number | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const lastEnrichedKey = React.useRef('');
+  const enrichmentPromiseRef = React.useRef<Promise<boolean> | null>(null);
+  const [submitAfterEnrichment, setSubmitAfterEnrichment] = useState(false);
   const [updateProductMutation] = useUpdateProductMutation();
   const [updateSnapshots] = useUpdateSnapshotsMutation();
 
@@ -1097,18 +1099,20 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   }, [variantPrixVenteLock.lock, variantPrixVenteLock.forcedPrixVente, formik.values.variants.length]);
 
   // When opening in "new" mode, hard-reset all states to ensure empty form
-  const runDraftEnrichment = async (automatic = false) => {
-    if (editingProduct || isEnrichingDraft) return;
+  const runDraftEnrichment = (force = false): Promise<boolean> => {
+    if (editingProduct) return Promise.resolve(true);
+    if (enrichmentPromiseRef.current) return enrichmentPromiseRef.current;
     const designation = String(formik.values.designation || '').trim();
-    if (designation.length < 3) return;
+    if (designation.length < 3) return Promise.resolve(false);
     const key = `${designation}|${formik.values.reference_2 || ''}|${aiPrompt}`;
-    if (automatic && (!autoEnrich || lastEnrichedKey.current === key)) return;
-    lastEnrichedKey.current = key;
-    try {
+    if (!force && lastEnrichedKey.current === key) return Promise.resolve(true);
+    const task = (async () => {
+     try {
+      setAiError(null);
       const response = await enrichProductDraft({ designation, reference: formik.values.reference_2, prompt: aiPrompt }).unwrap();
       const draft = response.data;
       const fields = ['designation_ar', 'designation_en', 'designation_zh', 'description', 'description_ar', 'description_en', 'description_zh'] as const;
-      void formik.setValues((current) => {
+      await formik.setValues((current: typeof formik.values) => {
         const next = { ...current };
         for (const field of fields) {
           const candidate = draft[field];
@@ -1134,20 +1138,31 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           setPriceRaw((previous) => ({ ...previous, prix_vente: formatNumber(suggestedPv1) }));
         }
       }
-      showSuccess('Propositions IA ajoutées au formulaire. Vérifiez les informations avant de sauvegarder.');
+      lastEnrichedKey.current = key;
+      return true;
     } catch (error: any) {
       lastEnrichedKey.current = '';
-      showError(error?.data?.message || 'Recherche IA indisponible. Vous pouvez continuer la saisie manuellement.');
+      const message = error?.data?.message || 'Recherche IA indisponible. Vous pouvez continuer la saisie manuellement.';
+      setAiError(message);
+      showError(message);
+      return false;
+    } finally {
+      enrichmentPromiseRef.current = null;
     }
+    })();
+    enrichmentPromiseRef.current = task;
+    return task;
   };
 
   useEffect(() => {
     if (isOpen && !editingProduct) {
       lastEnrichedKey.current = '';
+      enrichmentPromiseRef.current = null;
+      setSubmitAfterEnrichment(false);
       setAiSourceUrl(null);
       setAiSuggestedPv1(null);
+      setAiError(null);
       setAiPrompt('');
-      setAutoEnrich(true);
       formik.resetForm({ values: { ...initialValues, non_stockable: defaultNonStockable } as any });
       setSelectedFile(null);
       setDeleteMainImage(false);
@@ -1310,7 +1325,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const hasCostRuleViolation = costRuleViolations.length > 0;
 
-  const handlePrimarySubmit = async () => {
+  const handlePrimarySubmit = async (enrichmentComplete = false) => {
+    if (!editingProduct && !enrichmentComplete) {
+      if (String(formik.values.designation || '').trim().length < 3) {
+        setSubmitErrorMessages([{ path: 'designation', message: 'Saisissez un nom de produit de trois caractères minimum.' }]);
+        return;
+      }
+      const enriched = await runDraftEnrichment();
+      if (!enriched) return;
+      setSubmitAfterEnrichment(true);
+      return;
+    }
     if (hasCostRuleViolation) {
       setSubmitErrorMessages(costRuleViolations.map((message) => ({ path: null, message })));
       return;
@@ -1335,6 +1360,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       return;
     }
   };
+
+  useEffect(() => {
+    if (!submitAfterEnrichment || !isOpen) return;
+    setSubmitAfterEnrichment(false);
+    void handlePrimarySubmit(true);
+  }, [submitAfterEnrichment, isOpen]);
 
   if (!isOpen) return null;
 
@@ -1397,17 +1428,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="flex items-center gap-2 font-semibold text-violet-900"><Sparkles size={18} /> Aide IA pour le nouveau produit</h3>
-                  <p className="text-xs text-violet-700">À partir de la désignation : traductions AR, EN et chinois, description, fiche technique, catégorie et marque existantes, prix PV1 trouvé au Maroc.</p>
+                  <p className="text-xs text-violet-700">Saisissez seulement le nom puis cliquez « Ajouter avec l’IA » : traductions AR, EN et chinois, description, fiche technique, catégorie et marque existantes, prix PV1 trouvé au Maroc.</p>
                 </div>
-                <button type="button" onClick={() => void runDraftEnrichment()} disabled={isEnrichingDraft || String(formik.values.designation || '').trim().length < 3} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                <button type="button" onClick={() => void runDraftEnrichment(true)} disabled={isEnrichingDraft || String(formik.values.designation || '').trim().length < 3} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {isEnrichingDraft ? 'Recherche en cours…' : 'Rechercher avec l’IA'}
                 </button>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-violet-900"><input type="checkbox" checked={autoEnrich} onChange={(event) => setAutoEnrich(event.target.checked)} /> Recherche automatique après saisie du nom</label>
                 <input type="text" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1500} placeholder="Précisions pour l’IA : modèle, dimensions, usage…" aria-label="Précisions pour l’IA" className="min-w-[240px] flex-1 rounded-lg border border-violet-200 px-3 py-2 text-sm" />
               </div>
               {aiSuggestedPv1 && aiSourceUrl && <p className="mt-2 text-xs text-violet-800">PV1 trouvé : {formatNumber(aiSuggestedPv1)} DH · <a href={aiSourceUrl} target="_blank" rel="noopener noreferrer" className="underline">voir l’offre</a> <button type="button" onClick={() => setPriceRaw((previous) => ({ ...previous, prix_vente: formatNumber(aiSuggestedPv1) }))} className="ml-2 font-semibold underline">Appliquer au PV1</button></p>}
+              {aiError && <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><p>{aiError}</p><button type="button" onClick={() => void handlePrimarySubmit(true)} className="mt-1 font-semibold underline">Ajouter sans IA</button></div>}
             </section>
           )}
 
@@ -1464,10 +1495,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   name="designation"
                   value={formik.values.designation}
                   onChange={formik.handleChange}
-                  onBlur={(event) => { formik.handleBlur(event); void runDraftEnrichment(true); }}
+                  onBlur={formik.handleBlur}
                   className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                   placeholder="Ex: Ordinateur portable"
                 />
+              )}
+              {!editingProduct && activeLang === 'fr' && (
+                <button type="button" onClick={() => void handlePrimarySubmit()} disabled={formik.isSubmitting || submitAfterEnrichment || String(formik.values.designation || '').trim().length < 3} className="mt-2 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  <Sparkles size={16} /> {isEnrichingDraft ? 'Recherche IA en cours…' : 'Ajouter avec l’IA'}
+                </button>
               )}
               {activeLang === 'ar' && (
                 <input
@@ -3519,7 +3555,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all"
               title={hasCostRuleViolation ? costRuleViolations[0] : undefined}
             >
-              {formik.isSubmitting ? (editingProduct ? 'Mise à jour...' : 'Ajout...') : savingSnapshots ? 'Enregistrement...' : (editingProduct ? 'Mettre à jour' : 'Ajouter')}
+              {formik.isSubmitting ? (editingProduct ? 'Mise à jour...' : 'Ajout...') : submitAfterEnrichment ? 'Enregistrement...' : isEnrichingDraft && !editingProduct ? 'Recherche IA…' : savingSnapshots ? 'Enregistrement...' : (editingProduct ? 'Mettre à jour' : 'Ajouter')}
             </button>
           </div>
         </form>

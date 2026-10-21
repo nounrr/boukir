@@ -751,7 +751,7 @@ router.post('/products/enrich-draft', async (req, res) => {
     if (designation.length < 3) return res.status(400).json({ message: 'Saisissez une désignation de produit.' });
 
     const [[categories], [brands]] = await Promise.all([
-      pool.query('SELECT id, nom FROM categories ORDER BY id'),
+      pool.query('SELECT c.id, c.nom FROM categories c WHERE NOT EXISTS (SELECT 1 FROM categories child WHERE child.parent_id = c.id) ORDER BY c.id'),
       pool.query('SELECT id, nom FROM brands ORDER BY id'),
     ]);
     const allowedCategories = new Set(categories.map((row) => Number(row.id)));
