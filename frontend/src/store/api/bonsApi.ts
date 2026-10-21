@@ -549,6 +549,19 @@ export const bonsApi = api.injectEndpoints({
       },
     }),
 
+    updateComptantImprime: builder.mutation<{ id: number; imprime: boolean }, { id: number; imprime: boolean }>({
+      query: ({ id, imprime }) => ({
+        url: `/bons/Comptant/${id}/imprime`,
+        method: 'PATCH',
+        body: { imprime },
+      }),
+      invalidatesTags: (_result, error, { id }) => error ? [] : [
+        { type: 'Comptant', id },
+        { type: 'Comptant', id: 'LIST' },
+        { type: 'Bon', id: 'LIST' },
+      ],
+    }),
+
     updateBonLivre: builder.mutation<
       { id: number; type: AnyBonType; livre: boolean },
       { id: number; type: PagedBonType; livre: boolean }
@@ -846,6 +859,7 @@ export const {
   useUpdateBonMutation,
   useDeleteBonMutation,
   useUpdateBonLivreMutation,
+  useUpdateComptantImprimeMutation,
   useUpdateBonStatusMutation,
   useTransformDevisMutation,
   useMarkBonAsAvoirMutation,

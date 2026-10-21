@@ -1085,6 +1085,26 @@ router.get('/paged/:type', async (req, res) => {
   }
 });
 
+// Manual print tracking is independent of payment and delivery status.
+router.patch('/Comptant/:id/imprime', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+    return res.status(400).json({ message: 'Identifiant de bon invalide' });
+  }
+  if (typeof req.body?.imprime !== 'boolean') {
+    return res.status(400).json({ message: 'Le champ imprime doit être un booléen' });
+  }
+  try {
+    await pool.query('UPDATE bons_comptant SET imprime = ? WHERE id = ?', [req.body.imprime ? 1 : 0, id]);
+    const [rows] = await pool.query('SELECT id, imprime FROM bons_comptant WHERE id = ? LIMIT 1', [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Bon introuvable' });
+    return res.json({ id, imprime: Number(rows[0].imprime) === 1 });
+  } catch (error) {
+    console.error('PATCH /bons/Comptant/:id/imprime error:', error);
+    return res.status(500).json({ message: "Impossible de mémoriser l’état d’impression" });
+  }
+});
+
 router.patch('/:type/:id/livre', async (req, res) => {
   try {
     const { type, id: rawId } = req.params;

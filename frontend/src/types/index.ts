@@ -588,6 +588,7 @@ export interface Bon {
   montant_total: number;
   montant_ignorer?: number;
   livre?: boolean | 0 | 1;
+  imprime?: boolean | 0 | 1;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
   // Ecommerce (optional)
   customer_email?: string;

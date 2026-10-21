@@ -13,6 +13,10 @@ interface ThermalPrintModalProps {
   contact?: any;
   items?: any[];
   products?: any[];
+  embedded?: boolean;
+  company?: 'DIAMOND' | 'MPC';
+  withPrices?: boolean;
+  promo?: boolean;
 }
 
 const normalizeDateInput = (raw: string) => {
@@ -129,7 +133,7 @@ function injectBase64IntoHtml(containerHtml: string, originalUrl: string, base64
   return containerHtml.replace(re1, `src="${base64Url}"`);
 }
 
-const getPrintCss = () => `
+export const getThermalPrintCss = () => `
   /* --- Ton CSS initial, conservé --- */
   html, body { height: 100%; }
   body { 
@@ -197,11 +201,18 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   contact,
   items = [],
   products = [],
+  embedded = false,
+  company,
+  withPrices,
+  promo,
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
-  const [companyType, setCompanyType] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
-  const [priceMode, setPriceMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES'>('WITH_PRICES');
-  const [usePromo, setUsePromo] = useState<boolean>(false);
+  const [localCompanyType, setCompanyType] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
+  const [localPriceMode, setPriceMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES'>('WITH_PRICES');
+  const [localUsePromo, setUsePromo] = useState<boolean>(false);
+  const companyType = company ?? localCompanyType;
+  const priceMode = withPrices === undefined ? localPriceMode : withPrices ? 'WITH_PRICES' : 'WITHOUT_PRICES';
+  const usePromo = promo ?? localUsePromo;
 
   const logoCurrent = companyType === 'MPC' ? logo1 : logo;
 
@@ -388,7 +399,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   const handlePrint = async () => {
     if (!printRef.current) return;
 
-    const printCss = getPrintCss();
+    const printCss = getThermalPrintCss();
     const printContent = printRef.current.innerHTML;
 
     // --- AJOUT: injecter la version base64 du logo dans le HTML imprimé ---
@@ -437,62 +448,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">Impression Thermique</h2>
-          <div className="flex gap-2">
-            <button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
-              <Printer className="w-4 h-4" />
-              Imprimer
-            </button>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="bg-gray-50 p-3 rounded mb-4 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label htmlFor="companyTypeSelect" className="text-sm text-gray-700">Société</label>
-              <select
-                id="companyTypeSelect"
-                value={companyType}
-                onChange={(e) => setCompanyType(e.target.value as 'DIAMOND' | 'MPC')}
-                className="border rounded px-2 py-1 text-sm"
-              >
-                <option value="DIAMOND">BOUKIR DIAMOND</option>
-                <option value="MPC">BOUKIR MPC</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label htmlFor="priceModeSelect" className="text-sm text-gray-700">Prix</label>
-              <select
-                id="priceModeSelect"
-                value={priceMode}
-                onChange={(e) => setPriceMode(e.target.value as 'WITH_PRICES' | 'WITHOUT_PRICES')}
-                className="border rounded px-2 py-1 text-sm"
-              >
-                <option value="WITH_PRICES">Avec prix</option>
-                <option value="WITHOUT_PRICES">Sans prix</option>
-              </select>
-            </div>
-            {priceMode === 'WITH_PRICES' && (
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={usePromo}
-                  onChange={(e) => setUsePromo(e.target.checked)}
-                />
-                Utiliser promo
-              </label>
-            )}
-            <p className="text-xs text-gray-500 ml-auto">Aperçu (largeur 80mm)</p>
-          </div>
-
-          {/* Aperçu thermique — Ton design conservé */}
+  const preview = (
           <div
             ref={printRef}
             className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white"
@@ -662,6 +618,66 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               </div>
             </div>
           </div>
+  );
+  if (embedded) return preview;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-lg font-semibold">Impression Thermique</h2>
+          <div className="flex gap-2">
+            <button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
+              <Printer className="w-4 h-4" />
+              Imprimer
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <div className="bg-gray-50 p-3 rounded mb-4 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label htmlFor="companyTypeSelect" className="text-sm text-gray-700">Société</label>
+              <select
+                id="companyTypeSelect"
+                value={companyType}
+                onChange={(e) => setCompanyType(e.target.value as 'DIAMOND' | 'MPC')}
+                className="border rounded px-2 py-1 text-sm"
+              >
+                <option value="DIAMOND">BOUKIR DIAMOND</option>
+                <option value="MPC">BOUKIR MPC</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="priceModeSelect" className="text-sm text-gray-700">Prix</label>
+              <select
+                id="priceModeSelect"
+                value={priceMode}
+                onChange={(e) => setPriceMode(e.target.value as 'WITH_PRICES' | 'WITHOUT_PRICES')}
+                className="border rounded px-2 py-1 text-sm"
+              >
+                <option value="WITH_PRICES">Avec prix</option>
+                <option value="WITHOUT_PRICES">Sans prix</option>
+              </select>
+            </div>
+            {priceMode === 'WITH_PRICES' && (
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={usePromo}
+                  onChange={(e) => setUsePromo(e.target.checked)}
+                />
+                Utiliser promo
+              </label>
+            )}
+            <p className="text-xs text-gray-500 ml-auto">Aperçu (largeur 80mm)</p>
+          </div>
+
+          {/* Aperçu thermique — Ton design conservé */}
+          {preview}
         </div>
       </div>
     </div>

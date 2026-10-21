@@ -2,7 +2,7 @@ import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
 import { api } from '../store/api/apiSlice';
@@ -15,11 +15,13 @@ import { api } from '../store/api/apiSlice';
   import AvoirFormModal from '../components/AvoirFormModal';
   import ThermalPrintModal from '../components/ThermalPrintModal';
   import BonPrintModal from '../components/BonPrintModal';
+  import ComptantBatchPrintModal from '../components/ComptantBatchPrintModal';
   import SearchableSelect from '../components/SearchableSelect';
   import { 
     useGetBonsByTypePagedQuery,
     useDeleteBonMutation, 
     useUpdateBonLivreMutation,
+    useUpdateComptantImprimeMutation,
     useUpdateBonStatusMutation,
     useUpdateEcommerceOrderStatusMutation,
     useUpdateEcommerceOrderRemisesMutation,
@@ -234,6 +236,15 @@ const BonsPage = () => {
   const [selectedBonForPrint, setSelectedBonForPrint] = useState<any>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedBonForPDFPrint, setSelectedBonForPDFPrint] = useState<any>(null);
+  const [batchPrintBons, setBatchPrintBons] = useState<Map<number, any>>(new Map());
+  const [batchPrintMode, setBatchPrintMode] = useState<'thermal' | 'pdf' | null>(null);
+  const [updatingPrintIds, setUpdatingPrintIds] = useState<Set<number>>(new Set());
+  const printUpdateRef = useRef<Set<number>>(new Set());
+  const [printOverrides, setPrintOverrides] = useState<Record<number, boolean>>({});
+  useEffect(() => {
+    setBatchPrintBons(new Map());
+    setBatchPrintMode(null);
+  }, [currentTab]);
   const [isComptantPaymentsModalOpen, setIsComptantPaymentsModalOpen] = useState(false);
   const [selectedComptantForPayments, setSelectedComptantForPayments] = useState<any>(null);
   const [newComptantPaymentAmount, setNewComptantPaymentAmount] = useState('');
@@ -318,7 +329,7 @@ const BonsPage = () => {
     isNewClientModalOpen || isNewSupplierModalOpen || isNewVehicleModalOpen ||
     isCreateAvoirModalOpen || isCreateAvoirClientModalOpen || isProductModalOpen ||
     isDevisTransformModalOpen || isThermalPrintModalOpen || isPrintModalOpen || isDuplicateModalOpen ||
-    isComptantPaymentsModalOpen;
+    isComptantPaymentsModalOpen || batchPrintMode !== null;
   useEffect(() => {
     if (anyModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -442,6 +453,23 @@ const BonsPage = () => {
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !needsReferenceData });
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonLivre] = useUpdateBonLivreMutation();
+  const [updateComptantImprime] = useUpdateComptantImprimeMutation();
+  const toggleComptantImprime = async (bon: any) => {
+    const id = Number(bon.id);
+    if (printUpdateRef.current.has(id)) return;
+    printUpdateRef.current.add(id);
+    setUpdatingPrintIds(new Set(printUpdateRef.current));
+    const imprime = !(printOverrides[id] ?? (bon.imprime === true || Number(bon.imprime) === 1));
+    try {
+      await updateComptantImprime({ id, imprime }).unwrap();
+      setPrintOverrides(previous => ({ ...previous, [id]: imprime }));
+    } catch (error: any) {
+      showError(error?.data?.message || "Impossible de mémoriser l’état d’impression.");
+    } finally {
+      printUpdateRef.current.delete(id);
+      setUpdatingPrintIds(new Set(printUpdateRef.current));
+    }
+  };
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
   const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
@@ -1533,6 +1561,38 @@ const BonsPage = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedBons = sortedBons;
+  useEffect(() => {
+    setPrintOverrides(previous => {
+      const next = { ...previous };
+      let changed = false;
+      for (const bon of paginatedBons) {
+        const id = Number(bon.id);
+        if (id in next && next[id] === (bon.imprime === true || Number(bon.imprime) === 1)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+    setBatchPrintBons(previous => {
+      let changed = false;
+      const next = new Map(previous);
+      for (const bon of paginatedBons) {
+        const id = Number(bon.id);
+        if (next.has(id) && next.get(id) !== bon) { next.set(id, bon); changed = true; }
+      }
+      return changed ? next : previous;
+    });
+  }, [paginatedBons]);
+  const allVisibleBonsSelected = paginatedBons.length > 0 && paginatedBons.every(bon => batchPrintBons.has(Number(bon.id)));
+  const someVisibleBonsSelected = paginatedBons.some(bon => batchPrintBons.has(Number(bon.id)));
+  const togglePrintSelection = (bon: any, checked: boolean) => {
+    setBatchPrintBons(previous => {
+      const next = new Map(previous);
+      if (checked) next.set(Number(bon.id), bon); else next.delete(Number(bon.id));
+      return next;
+    });
+  };
 
   const getCurrentListState = useCallback(() => {
     const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
@@ -2888,6 +2948,20 @@ const BonsPage = () => {
 
   {/* Table */}
         <div className="bg-white rounded-lg shadow">
+          {isUnpaidComptantTab && (
+            <div className="p-3 border-b flex flex-wrap items-center gap-3">
+              <span className="text-sm text-gray-700" role="status">{batchPrintBons.size} bon(s) sélectionné(s)</span>
+              <button type="button" disabled={!batchPrintBons.size || bonsLoading} onClick={() => setBatchPrintMode('thermal')}
+                className="flex items-center gap-2 px-3 py-2 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                <Printer size={18} />Impression thermique
+              </button>
+              <button type="button" disabled={!batchPrintBons.size || bonsLoading} onClick={() => setBatchPrintMode('pdf')}
+                className="flex items-center gap-2 px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                <Printer size={18} />Impression PDF
+              </button>
+              {batchPrintBons.size > 0 && <button type="button" onClick={() => setBatchPrintBons(new Map())} className="text-sm text-gray-600 underline">Effacer la sélection</button>}
+            </div>
+          )}
           <div className="responsive-table-container">
             <table
               className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
@@ -2895,12 +2969,29 @@ const BonsPage = () => {
             >
               {/* colgroup driven by colWidths so headers/cols can be resized */}
               <colgroup>
+                {isUnpaidComptantTab && <><col style={{ width: 48 }} /><col style={{ width: 80 }} /></>}
                 {colWidths.map((w, idx) => (
                   <col key={idx} style={{ width: w }} />
                 ))}
               </colgroup>
               <thead className="bg-gray-50">
                 <tr>
+                  {isUnpaidComptantTab && <>
+                    <th className="px-3 py-3 text-center">
+                      <input type="checkbox" aria-label="Sélectionner tous les bons de cette page" title="Sélectionner tous les bons de cette page"
+                        checked={allVisibleBonsSelected} disabled={!paginatedBons.length || bonsLoading}
+                        ref={element => { if (element) element.indeterminate = someVisibleBonsSelected && !allVisibleBonsSelected; }}
+                        onChange={event => {
+                          const checked = event.target.checked;
+                          setBatchPrintBons(previous => {
+                            const next = new Map(previous);
+                            paginatedBons.forEach(bon => { if (checked) next.set(Number(bon.id), bon); else next.delete(Number(bon.id)); });
+                            return next;
+                          });
+                        }} />
+                    </th>
+                    <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase">Imprimé</th>
+                  </>}
                   <th 
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                     onClick={() => handleSort('numero')}
@@ -3100,7 +3191,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={(showAuditCols ? 15 : 13) + contactRefColOffset - (showInternalPrices ? 0 : 1)} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={(showAuditCols ? 15 : 13) + contactRefColOffset - (showInternalPrices ? 0 : 1) + (isUnpaidComptantTab ? 2 : 0)} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTabLabel}
                     </td>
                   </tr>
@@ -3110,6 +3201,20 @@ const BonsPage = () => {
                       key={bon.id}
                       className={`hover:bg-gray-50 transition-colors ${bon.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.08)]' : ''}`}
                     >
+                      {isUnpaidComptantTab && <>
+                        <td className="px-3 py-2 text-center"><input type="checkbox"
+                          aria-label={`Sélectionner le bon ${getDisplayNumero(bon)} pour impression`}
+                          checked={batchPrintBons.has(Number(bon.id))} onChange={event => togglePrintSelection(bon, event.target.checked)} /></td>
+                        <td className="px-2 py-2 text-center">{(() => {
+                          const imprime = printOverrides[Number(bon.id)] ?? (bon.imprime === true || Number(bon.imprime) === 1);
+                          const label = imprime ? 'Déjà imprimé — décocher' : 'Marquer comme déjà imprimé';
+                          return <button type="button" role="checkbox" aria-checked={imprime} aria-label={`${getDisplayNumero(bon)} : ${label}`} title={label}
+                            disabled={updatingPrintIds.has(Number(bon.id))} onClick={() => toggleComptantImprime(bon)}
+                            className={`rounded p-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${imprime ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
+                            {imprime ? <FileCheck2 size={ACTION_ICON_SIZE} /> : <File size={ACTION_ICON_SIZE} />}
+                          </button>;
+                        })()}</td>
+                      </>}
                       <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at || bon.date_creation)}</div>
@@ -5118,6 +5223,9 @@ const BonsPage = () => {
         )}
 
         {/* Modal Impression Thermique */}
+        {isUnpaidComptantTab && batchPrintMode && batchPrintBons.size > 0 && (
+          <ComptantBatchPrintModal mode={batchPrintMode} bons={Array.from(batchPrintBons.values())} onClose={() => setBatchPrintMode(null)} />
+        )}
         {isThermalPrintModalOpen && (
           <ThermalPrintModal
             isOpen={isThermalPrintModalOpen}
