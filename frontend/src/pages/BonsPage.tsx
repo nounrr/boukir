@@ -3210,7 +3210,7 @@ const BonsPage = () => {
                           const label = imprime ? 'Déjà imprimé — décocher' : 'Marquer comme déjà imprimé';
                           return <button type="button" role="checkbox" aria-checked={imprime} aria-label={`${getDisplayNumero(bon)} : ${label}`} title={label}
                             disabled={updatingPrintIds.has(Number(bon.id))} onClick={() => toggleComptantImprime(bon)}
-                            className={`rounded p-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${imprime ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
+                            className={`rounded p-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${imprime ? 'text-orange-600 bg-orange-50 hover:bg-orange-100' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
                             {imprime ? <FileCheck2 size={ACTION_ICON_SIZE} /> : <File size={ACTION_ICON_SIZE} />}
                           </button>;
                         })()}</td>

@@ -441,6 +441,9 @@ export interface Contact {
   total_cumule?: number | null;
   total_ventes?: number;
   total_paiements?: number;
+  dernier_paiement_id?: number | null;
+  dernier_paiement_montant?: number | null;
+  dernier_paiement_date?: string | null;
   total_avoirs?: number;
   remise_account_id?: number | null;
   remise_gagnee_ancien?: number;

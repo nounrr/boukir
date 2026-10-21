@@ -2239,7 +2239,7 @@ const ClientsListPage: React.FC = () => {
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set(savedState.expandedGroupKeys ?? []));
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
-  const clientsTableColspan = 13 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
+  const clientsTableColspan = 14 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -2592,6 +2592,12 @@ const ClientsListPage: React.FC = () => {
             </div>
           : <span className="text-gray-300 text-xs">—</span>}
       </td>}
+      <td className="px-4 py-3 text-right whitespace-nowrap">
+        {client.dernier_paiement_id != null ? <>
+          <p className="font-semibold text-emerald-700">{fmt(Number(client.dernier_paiement_montant ?? 0))}</p>
+          <p className="mt-0.5 text-xs text-gray-500">{fmtDate(client.dernier_paiement_date)}</p>
+        </> : <span className="text-xs text-gray-400">Aucun paiement</span>}
+      </td>
       <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -2760,6 +2766,7 @@ const ClientsListPage: React.FC = () => {
                 </span>
               : <span className="text-gray-300 text-xs">—</span>}
           </td>}
+          <td className="px-4 py-3 text-right text-gray-400 text-xs">—</td>
           <td className="px-4 py-3 text-gray-400 text-xs text-center">-</td>
           <td className="px-4 py-3 text-right">
             <span className={`font-semibold text-sm ${groupSolde < 0 ? 'text-red-600' : groupSolde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -2794,6 +2801,13 @@ const ClientsListPage: React.FC = () => {
       {client.societe && <p className="mt-3 flex items-start gap-2 text-sm text-gray-700"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />{client.societe}</p>}
       <div className="mt-3 space-y-1.5 text-xs text-gray-600">{client.telephone && <a href={`tel:${client.telephone}`} className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-gray-400" />{client.telephone}</a>}{client.email && <a href={`mailto:${client.email}`} className="flex items-center gap-2 break-all"><Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />{client.email}</a>}{client.adresse && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />{client.adresse}</p>}</div>
       <div className="mt-4 rounded-lg bg-blue-50 p-3"><p className="text-xs font-medium text-blue-800">Solde cumulé</p><p className={`text-lg font-bold ${Number(client.total_cumule ?? 0) > 0 ? 'text-red-700' : Number(client.total_cumule ?? 0) < 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{fmt(Number(client.total_cumule ?? 0))}</p><div className="mt-2 grid grid-cols-3 gap-2 border-t border-blue-100 pt-2 text-xs"><div><p className="text-gray-500">Solde</p><strong>{fmt(Number(client.solde ?? 0))}</strong></div><div><p className="text-gray-500">Plafond</p><strong>{client.plafond != null ? fmt(Number(client.plafond)) : '—'}</strong></div><div><p className="text-gray-500">Garantie</p><strong>{client.montant_garantie != null ? fmt(Number(client.montant_garantie)) : '—'}</strong></div></div></div>
+      <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+        <span className="text-gray-500">Dernier paiement</span>
+        {client.dernier_paiement_id != null ? <div className="text-right">
+          <p className="font-semibold text-emerald-700">{fmt(Number(client.dernier_paiement_montant ?? 0))}</p>
+          <p className="mt-0.5 text-xs text-gray-500">{fmtDate(client.dernier_paiement_date)}</p>
+        </div> : <span className="text-xs text-gray-400">Aucun paiement</span>}
+      </div>
       {canUseComments && commentCounts[id]?.dernier_contenu && <p className="mt-3 line-clamp-2 text-xs text-gray-600"><MessageSquare className="mr-1 inline h-3.5 w-3.5 text-indigo-500" />{commentCounts[id].dernier_contenu}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">{canUseReminders && <button type="button" onClick={() => setReminderClient(client)} className="min-h-9 rounded-lg border border-amber-200 px-2 text-xs text-amber-800">{client.rappel_date ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} /> : 'Définir rappel'}</button>}{canUseComments && <button type="button" onClick={() => setOpenCommentsClientId(prev => prev === id ? null : id)} className="min-h-9 rounded-lg border border-indigo-200 px-3 text-xs font-medium text-indigo-700">Commentaires {commentCount > 0 && `(${commentCount})`}</button>}<button type="button" onClick={() => handleRowClick(client.id)} className="min-h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Voir détails</button><button type="button" onClick={() => handleEdit(client)} className="min-h-9 rounded-lg border border-blue-200 px-3 text-xs font-medium text-blue-700">Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(client)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-700">Supprimer</button>}</div>
       <label className="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={blocked} onChange={() => handleToggleClientBloque(client)} className="h-4 w-4 accent-orange-600" />Client bloqué</label>
@@ -2916,6 +2930,7 @@ const ClientsListPage: React.FC = () => {
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Contact</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Adresse</th>
                 {canUseComments && <th className="text-left px-4 py-3 font-semibold text-gray-600 w-52">Commentaires</th>}
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Dernier paiement</th>
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Bloque</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />

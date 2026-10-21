@@ -5,6 +5,7 @@ import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
 import { parseReminderDays } from '../utils/contactReminder.js';
 import { requireClientRemindersAccess } from '../middleware/clientCollaborationPermissions.js';
 import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
+import { CLIENT_LAST_PAYMENT_JOIN_SQL } from '../utils/clientLastPayment.js';
 
 const router = express.Router();
 
@@ -381,6 +382,9 @@ router.get('/', async (req, res) => {
     let query = `
       SELECT
         c.*,
+        dernier_paiement.id AS dernier_paiement_id,
+        dernier_paiement.montant_total AS dernier_paiement_montant,
+        COALESCE(dernier_paiement.date_paiement, dernier_paiement.created_at) AS dernier_paiement_date,
         DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants,
         cg.name AS group_name,
         ${BALANCE_EXPR} AS solde_cumule,
@@ -405,6 +409,8 @@ router.get('/', async (req, res) => {
       FROM contacts c
 
       LEFT JOIN contact_groups cg ON cg.id = c.group_id
+
+      ${CLIENT_LAST_PAYMENT_JOIN_SQL}
 
       -- Ventes client = bons_sortie
       LEFT JOIN (
@@ -571,6 +577,7 @@ router.get('/', async (req, res) => {
       total_ventes: Number(row.total_ventes || 0),
       total_paiements: Number(row.total_paiements || 0),
       total_avoirs: Number(row.total_avoirs || 0),
+      dernier_paiement_montant: row.dernier_paiement_id == null ? null : Number(row.dernier_paiement_montant || 0),
     }, req.user));
 
     processedRows.forEach((contact, index) => {
