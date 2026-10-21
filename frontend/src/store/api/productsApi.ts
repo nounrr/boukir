@@ -123,6 +123,15 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    enrichProductDraft: builder.mutation<{ ok: boolean; data: Record<string, string | number | null> }, { designation: string; reference?: string; prompt?: string }>({
+      query: (body) => ({ url: '/ai/products/enrich-draft', method: 'POST', body }),
+    }),
+
+    setProductVerification: builder.mutation<{ id: number; is_verified: boolean }, { id: number; verified: boolean }>({
+      query: ({ id, verified }) => ({ url: `/products/${id}/verification`, method: 'PATCH', body: { verified } }),
+      invalidatesTags: ['Product'],
+    }),
+
     updateProduct: builder.mutation<Product, { id: number; data: FormData | (Partial<Product> & { updated_by: number }) }>({
       query: ({ id, data }) => ({
         url: `/products/${id}`,
@@ -431,6 +440,8 @@ export const {
   useGetProductQuery,
   useGetProductBaseUnitsQuery,
   useCreateProductMutation,
+  useEnrichProductDraftMutation,
+  useSetProductVerificationMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,
   useBulkAttachProductsMutation,

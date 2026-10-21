@@ -316,6 +316,7 @@ export interface SaveServiceData {
 // Types pour les produits (stock)
 export interface Product {
   id: number;
+  is_verified?: boolean | number;
   // reference is now id as string (derived from backend); keep optional for compatibility
   reference?: string;
   reference_2?: string | null;

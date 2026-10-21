@@ -245,6 +245,12 @@ async function loadAverageSnapshotCoutRevient(productIds) {
 
 // Ensure soft-delete and image_url columns exist
 const ensureProductsColumns = initializeOnce(async () => {
+  const [verifiedColumns] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'is_verified'`
+  );
+  if (!verifiedColumns.length) {
+    await pool.query('ALTER TABLE products ADD COLUMN is_verified TINYINT(1) NOT NULL DEFAULT 0');
+  }
 
   // Ensure product_units has prix_vente column (nullable override; when NULL => auto compute from factor)
   try {
@@ -1488,6 +1494,22 @@ router.get('/search', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.patch('/:id/verification', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0 || typeof req.body?.verified !== 'boolean') {
+      return res.status(400).json({ message: 'Produit ou état de vérification invalide' });
+    }
+    const [result] = await pool.query(
+      'UPDATE products SET is_verified = ?, updated_by = ?, updated_at = NOW() WHERE id = ? AND COALESCE(is_deleted, 0) = 0',
+      [req.body.verified ? 1 : 0, req.user?.id ?? null, id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Produit introuvable' });
+    res.json({ id, is_verified: req.body.verified });
+  } catch (error) { next(error); }
 });
 
 // GET /products/stock-pdf — server-generated stock listing PDF (snapshot-aware,

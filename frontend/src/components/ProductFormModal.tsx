@@ -6,9 +6,9 @@ import type { RootState } from '../store';
 import type { Product, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, X, Save, ChevronDown, ChevronRight, Package, Tag, Coins, Percent, Languages, Image as ImageIcon, History, ChevronsDownUp, ChevronsUpDown, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, X, Save, ChevronDown, ChevronRight, Package, Tag, Coins, Percent, Languages, Image as ImageIcon, History, ChevronsDownUp, ChevronsUpDown, AlertCircle, Sparkles } from 'lucide-react';
 // Switch to backend mutations
-import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUpdateSnapshotsMutation } from '../store/api/productsApi';
+import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUpdateSnapshotsMutation, useEnrichProductDraftMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { showError, showSuccess } from '../utils/notifications';
@@ -210,6 +210,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const showInternalPrices = useCanViewInternalPrices();
 
   const [createProduct] = useCreateProductMutation();
+  const [enrichProductDraft, { isLoading: isEnrichingDraft }] = useEnrichProductDraftMutation();
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [autoEnrich, setAutoEnrich] = useState(true);
+  const [aiSourceUrl, setAiSourceUrl] = useState<string | null>(null);
+  const [aiSuggestedPv1, setAiSuggestedPv1] = useState<number | null>(null);
+  const lastEnrichedKey = React.useRef('');
   const [updateProductMutation] = useUpdateProductMutation();
   const [updateSnapshots] = useUpdateSnapshotsMutation();
 
@@ -1091,8 +1097,57 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   }, [variantPrixVenteLock.lock, variantPrixVenteLock.forcedPrixVente, formik.values.variants.length]);
 
   // When opening in "new" mode, hard-reset all states to ensure empty form
+  const runDraftEnrichment = async (automatic = false) => {
+    if (editingProduct || isEnrichingDraft) return;
+    const designation = String(formik.values.designation || '').trim();
+    if (designation.length < 3) return;
+    const key = `${designation}|${formik.values.reference_2 || ''}|${aiPrompt}`;
+    if (automatic && (!autoEnrich || lastEnrichedKey.current === key)) return;
+    lastEnrichedKey.current = key;
+    try {
+      const response = await enrichProductDraft({ designation, reference: formik.values.reference_2, prompt: aiPrompt }).unwrap();
+      const draft = response.data;
+      const fields = ['designation_ar', 'designation_en', 'designation_zh', 'description', 'description_ar', 'description_en', 'description_zh'] as const;
+      void formik.setValues((current) => {
+        const next = { ...current };
+        for (const field of fields) {
+          const candidate = draft[field];
+          if (!String(current[field] || '').trim() && typeof candidate === 'string') {
+            next[field] = candidate;
+          }
+        }
+        const categoryId = Number(draft.categorie_id);
+        const brandId = Number(draft.brand_id);
+        if (!current.categorie_id && categories.some((category) => category.id === categoryId)) next.categorie_id = categoryId;
+        if (!current.brand_id && brands.some((brand) => brand.id === brandId)) next.brand_id = brandId;
+        return next;
+      }, false);
+      if (!ficheFr && typeof draft.fiche_technique === 'string') setFicheFr(draft.fiche_technique);
+      if (!ficheAr && typeof draft.fiche_technique_ar === 'string') setFicheAr(draft.fiche_technique_ar);
+      if (!ficheEn && typeof draft.fiche_technique_en === 'string') setFicheEn(draft.fiche_technique_en);
+      if (!ficheZh && typeof draft.fiche_technique_zh === 'string') setFicheZh(draft.fiche_technique_zh);
+      const suggestedPv1 = Number(draft.pv1);
+      if (suggestedPv1 > 0) {
+        setAiSuggestedPv1(suggestedPv1);
+        setAiSourceUrl(typeof draft.pv1_url === 'string' ? draft.pv1_url : null);
+        if (!toNum(priceRaw.prix_vente)) {
+          setPriceRaw((previous) => ({ ...previous, prix_vente: formatNumber(suggestedPv1) }));
+        }
+      }
+      showSuccess('Propositions IA ajoutées au formulaire. Vérifiez les informations avant de sauvegarder.');
+    } catch (error: any) {
+      lastEnrichedKey.current = '';
+      showError(error?.data?.message || 'Recherche IA indisponible. Vous pouvez continuer la saisie manuellement.');
+    }
+  };
+
   useEffect(() => {
     if (isOpen && !editingProduct) {
+      lastEnrichedKey.current = '';
+      setAiSourceUrl(null);
+      setAiSuggestedPv1(null);
+      setAiPrompt('');
+      setAutoEnrich(true);
       formik.resetForm({ values: { ...initialValues, non_stockable: defaultNonStockable } as any });
       setSelectedFile(null);
       setDeleteMainImage(false);
@@ -1337,6 +1392,25 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
           )}
 
+          {!editingProduct && (
+            <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 font-semibold text-violet-900"><Sparkles size={18} /> Aide IA pour le nouveau produit</h3>
+                  <p className="text-xs text-violet-700">À partir de la désignation : traductions AR, EN et chinois, description, fiche technique, catégorie et marque existantes, prix PV1 trouvé au Maroc.</p>
+                </div>
+                <button type="button" onClick={() => void runDraftEnrichment()} disabled={isEnrichingDraft || String(formik.values.designation || '').trim().length < 3} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {isEnrichingDraft ? 'Recherche en cours…' : 'Rechercher avec l’IA'}
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-violet-900"><input type="checkbox" checked={autoEnrich} onChange={(event) => setAutoEnrich(event.target.checked)} /> Recherche automatique après saisie du nom</label>
+                <input type="text" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1500} placeholder="Précisions pour l’IA : modèle, dimensions, usage…" aria-label="Précisions pour l’IA" className="min-w-[240px] flex-1 rounded-lg border border-violet-200 px-3 py-2 text-sm" />
+              </div>
+              {aiSuggestedPv1 && aiSourceUrl && <p className="mt-2 text-xs text-violet-800">PV1 trouvé : {formatNumber(aiSuggestedPv1)} DH · <a href={aiSourceUrl} target="_blank" rel="noopener noreferrer" className="underline">voir l’offre</a> <button type="button" onClick={() => setPriceRaw((previous) => ({ ...previous, prix_vente: formatNumber(aiSuggestedPv1) }))} className="ml-2 font-semibold underline">Appliquer au PV1</button></p>}
+            </section>
+          )}
+
           {/* Language Tabs */}
           <div className="flex space-x-1 mb-0 border-b-2 border-gray-200 pb-0 overflow-x-auto">
             <button
@@ -1390,7 +1464,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   name="designation"
                   value={formik.values.designation}
                   onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
+                  onBlur={(event) => { formik.handleBlur(event); void runDraftEnrichment(true); }}
                   className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                   placeholder="Ex: Ordinateur portable"
                 />

@@ -3,12 +3,12 @@ import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category, ProductImageTarget } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, LoaderCircle, ImagePlus, Link2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, LoaderCircle, ImagePlus, Link2, BadgeCheck } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
-import { useGetProductsPaginatedQuery, useDeleteProductMutation, useBulkAttachProductsMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation, useChangeProductBaseUnitMutation } from '../store/api/productsApi';
+import { useGetProductsPaginatedQuery, useDeleteProductMutation, useBulkAttachProductsMutation, useConvertProductsToVariantsMutation, useCloneProductPhotosMutation, useUploadProductMainAndGalleryImageMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation, useChangeProductBaseUnitMutation, useSetProductVerificationMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryProductOrderModal from '../components/CategoryProductOrderModal';
@@ -155,6 +155,29 @@ const StockPage: React.FC = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteProductMutation] = useDeleteProductMutation();
+  const [setProductVerification] = useSetProductVerificationMutation();
+  const [verifyingProductId, setVerifyingProductId] = useState<number | null>(null);
+  const handleVerification = async (product: Product) => {
+    const verified = Boolean(product.is_verified);
+    const answer = await Swal.fire({
+      title: verified ? 'Produit vérifié' : 'Vérifier ce produit',
+      text: `${product.designation} — ${verified ? 'retirer la vérification ?' : 'marquer comme vérifié ?'}`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: verified ? 'Retirer la vérification' : 'Marquer comme vérifié',
+      cancelButtonText: 'Annuler',
+    });
+    if (!answer.isConfirmed) return;
+    try {
+      setVerifyingProductId(product.id);
+      await setProductVerification({ id: product.id, verified: !verified }).unwrap();
+      showSuccess(verified ? 'Vérification retirée' : 'Produit marqué comme vérifié');
+    } catch (error: any) {
+      showError(error?.data?.message || 'Impossible de mettre à jour la vérification');
+    } finally {
+      setVerifyingProductId(null);
+    }
+  };
   const [changeProductBaseUnit, { isLoading: isChangingBaseUnit }] = useChangeProductBaseUnitMutation();
   const [bulkAttachProducts, { isLoading: isBulkAttaching }] = useBulkAttachProductsMutation();
   const [convertProductsToVariants] = useConvertProductsToVariantsMutation();
@@ -1936,6 +1959,18 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex gap-2">
+                      {!product.isVariantRow && (
+                        <button
+                          type="button"
+                          onClick={() => void handleVerification(product)}
+                          disabled={verifyingProductId === product.id}
+                          className={product.is_verified ? 'text-emerald-600 hover:text-emerald-800' : 'text-gray-400 hover:text-emerald-600'}
+                          title={product.is_verified ? 'Produit vérifié — modifier' : 'Marquer comme vérifié'}
+                          aria-label={product.is_verified ? `Modifier la vérification de ${product.designation}` : `Vérifier ${product.designation}`}
+                        >
+                          <BadgeCheck size={18} fill={product.is_verified ? 'currentColor' : 'none'} className={product.is_verified ? 'text-emerald-600 stroke-white' : ''} />
+                        </button>
+                      )}
                       <button
                         onClick={() => printProductTicket({
                           name: String(product.isVariantRow ? (product.parent_designation || product.designation || '') : product.designation || ''),

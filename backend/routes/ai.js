@@ -742,6 +742,51 @@ const requireKey = (res) => {
 // ----------------------------
 // /chat (kept as utility)
 // ----------------------------
+router.post('/products/enrich-draft', async (req, res) => {
+  try {
+    if (!requireKey(res)) return;
+    const designation = String(req.body?.designation || '').trim().slice(0, 255);
+    const reference = String(req.body?.reference || '').trim().slice(0, 255);
+    const extraPrompt = String(req.body?.prompt || '').trim().slice(0, 1500);
+    if (designation.length < 3) return res.status(400).json({ message: 'Saisissez une désignation de produit.' });
+
+    const [[categories], [brands]] = await Promise.all([
+      pool.query('SELECT id, nom FROM categories ORDER BY id'),
+      pool.query('SELECT id, nom FROM brands ORDER BY id'),
+    ]);
+    const allowedCategories = new Set(categories.map((row) => Number(row.id)));
+    const allowedBrands = new Set(brands.map((row) => Number(row.id)));
+    const response = await getClient().responses.create({
+      model: process.env.AI_PRODUCT_ENRICH_MODEL || CLEAN_MODEL,
+      tools: [{ type: 'web_search', search_context_size: 'medium', user_location: { type: 'approximate', country: 'MA' } }],
+      tool_choice: 'required',
+      include: ['web_search_call.action.sources'],
+      store: false,
+      max_tool_calls: 2,
+      input: [
+        { role: 'system', content: `Tu aides un magasin marocain de bricolage à créer une fiche produit. Recherche le produit exact sur le web avec sa référence. Ne devine aucune caractéristique ni prix. Le nom, les descriptions et les fiches techniques doivent être traduits en français, arabe, anglais et chinois simplifié. Choisis seulement des IDs présents dans les listes de catégories et marques fournies; mets null si incertain. Pour le prix PV1, accepte seulement une offre en MAD d'une page produit exacte consultée, avec même référence et même unité. Réponds uniquement avec un objet JSON contenant designation_ar, designation_en, designation_zh, description, description_ar, description_en, description_zh, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, categorie_id, brand_id, pv1, pv1_url. Une valeur inconnue est null. N'inclus pas de blocs Markdown.` },
+        { role: 'user', content: JSON.stringify({ designation, reference, instructions: extraPrompt, categories, brands }) },
+      ],
+    });
+    const raw = String(response.output_text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+    const parsed = JSON.parse(raw);
+    const fields = ['designation_ar', 'designation_en', 'designation_zh', 'description', 'description_ar', 'description_en', 'description_zh', 'fiche_technique', 'fiche_technique_ar', 'fiche_technique_en', 'fiche_technique_zh'];
+    const result = Object.fromEntries(fields.map((field) => [field, typeof parsed[field] === 'string' ? parsed[field].trim().slice(0, field.startsWith('designation') ? 255 : 10000) : '']));
+    result.categorie_id = allowedCategories.has(Number(parsed.categorie_id)) ? Number(parsed.categorie_id) : null;
+    result.brand_id = allowedBrands.has(Number(parsed.brand_id)) ? Number(parsed.brand_id) : null;
+    const sourceUrls = new Set((response.output || []).flatMap((entry) => entry.type === 'web_search_call' ? (entry.action?.sources || []).map((source) => source.url) : []));
+    const pv1 = Number(parsed.pv1);
+    const pv1Url = String(parsed.pv1_url || '').trim();
+    const isWebPage = /^https?:\/\//i.test(pv1Url);
+    result.pv1 = Number.isFinite(pv1) && pv1 > 0 && isWebPage && sourceUrls.has(pv1Url) ? Math.round(pv1 * 100) / 100 : null;
+    result.pv1_url = result.pv1 === null ? null : pv1Url;
+    res.json({ ok: true, data: result });
+  } catch (error) {
+    console.error('[AI] Draft product enrichment error:', error);
+    res.status(502).json({ message: 'Enrichissement IA indisponible. Réessayez plus tard.' });
+  }
+});
+
 router.post('/chat', async (req, res) => {
   try {
     if (!requireKey(res)) return;
