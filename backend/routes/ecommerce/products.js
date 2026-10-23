@@ -335,6 +335,7 @@ router.get('/', async (req, res, next) => {
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.image_url,
         ${anyStockExpr} as stock_qty,
         p.has_variants,
@@ -438,6 +439,7 @@ router.get('/', async (req, res, next) => {
               ), pv.prix_vente) as prix_vente,
               pv.remise_client,
               pv.remise_artisan,
+              pv.remise_promoteur,
               COALESCE((
                 SELECT COALESCE(SUM(ps.quantite), 0)
                 FROM product_snapshot ps
@@ -459,6 +461,7 @@ router.get('/', async (req, res, next) => {
               prix_vente,
               remise_client,
               remise_artisan,
+              remise_promoteur,
               stock_quantity,
               image_url
             FROM product_variants
@@ -479,6 +482,7 @@ router.get('/', async (req, res, next) => {
             prix_vente: Number(v.prix_vente),
             remise_client: Number(v.remise_client || 0),
             remise_artisan: Number(v.remise_artisan || 0),
+            remise_promoteur: Number(v.remise_promoteur || 0),
             stock_quantity: Number(v.stock_quantity || 0),
             available: isInStock(v.stock_quantity),
             image_url: v.image_url
@@ -548,6 +552,7 @@ router.get('/', async (req, res, next) => {
         pourcentage_promo: promoPercentage,
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
+        remise_promoteur: Number(r.remise_promoteur || 0),
         has_promo: promoPercentage > 0,
         image_url: Number(r.is_obligatoire_variant || 0) === 1 && variants[0]?.image_url ? variants[0].image_url : r.image_url,
         gallery: galleryImages.map(img => ({
@@ -896,6 +901,7 @@ router.get('/:id', async (req, res, next) => {
             ), pv.prix_vente) as prix_vente,
             pv.remise_client,
             pv.remise_artisan,
+            pv.remise_promoteur,
             COALESCE((
               SELECT COALESCE(SUM(ps.quantite), 0)
               FROM product_snapshot ps
@@ -918,6 +924,7 @@ router.get('/:id', async (req, res, next) => {
             prix_vente,
             remise_client,
             remise_artisan,
+            remise_promoteur,
             stock_quantity,
             image_url
           FROM product_variants
@@ -946,6 +953,7 @@ router.get('/:id', async (req, res, next) => {
           prix_vente: Number(v.prix_vente),
           remise_client: Number(v.remise_client || 0),
           remise_artisan: Number(v.remise_artisan || 0),
+          remise_promoteur: Number(v.remise_promoteur || 0),
           available: isInStock(v.stock_quantity),
           image_url: v.image_url,
           gallery: variantImages.map(img => ({
@@ -1017,6 +1025,7 @@ router.get('/:id', async (req, res, next) => {
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
+          p.remise_promoteur,
           p.image_url,
           ${snapshotEnabled
           ? `(
@@ -1112,6 +1121,7 @@ router.get('/:id', async (req, res, next) => {
           pourcentage_promo: spPromoPercentage,
           remise_client: Number(sp.remise_client || 0),
           remise_artisan: Number(sp.remise_artisan || 0),
+          remise_promoteur: Number(sp.remise_promoteur || 0),
           has_promo: spPromoPercentage > 0,
           image_url: firstVariant?.image_url || sp.image_url,
           gallery: galleryImages.map(img => ({
@@ -1165,6 +1175,7 @@ router.get('/:id', async (req, res, next) => {
       pourcentage_promo: promoPercentage,
       remise_client: Number(r.remise_client || 0),
       remise_artisan: Number(r.remise_artisan || 0),
+      remise_promoteur: Number(r.remise_promoteur || 0),
       has_promo: promoPercentage > 0,
       
       // Stock
@@ -1278,6 +1289,7 @@ router.get('/featured/promo', async (req, res, next) => {
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.image_url,
         ${anyStockExpr} as stock_qty,
         p.has_variants,
@@ -1338,6 +1350,7 @@ router.get('/featured/promo', async (req, res, next) => {
         pourcentage_promo: promoPercentage,
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
+        remise_promoteur: Number(r.remise_promoteur || 0),
         in_stock: isInStock(firstVariant ? firstVariant.stock_quantity : r.stock_qty),
         purchase_limit: PURCHASE_LIMIT,
         image_url: firstVariant?.image_url || r.image_url,
@@ -1403,6 +1416,7 @@ router.get('/featured/new', async (req, res, next) => {
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.image_url,
         ${anyStockExpr} as stock_qty,
         p.has_variants,
@@ -1464,6 +1478,7 @@ router.get('/featured/new', async (req, res, next) => {
         pourcentage_promo: promoPercentage,
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
+        remise_promoteur: Number(r.remise_promoteur || 0),
         has_promo: promoPercentage > 0,
         in_stock: isInStock(firstVariant ? firstVariant.stock_quantity : r.stock_qty),
         purchase_limit: PURCHASE_LIMIT,

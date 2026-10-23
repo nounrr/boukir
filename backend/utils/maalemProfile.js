@@ -51,7 +51,7 @@ function isTruthyDatabaseFlag(value) {
 }
 
 export function isArtisanAccount(user) {
-  return user?.type_compte === 'Artisan/Promoteur' || isTruthyDatabaseFlag(user?.artisan_approuve);
+  return ['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(user?.type_compte) || isTruthyDatabaseFlag(user?.artisan_approuve);
 }
 
 function optionalTrimmedText(value) {

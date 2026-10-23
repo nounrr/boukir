@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, X } from 'lucide-react';
 import BonPrintTemplate from './BonPrintTemplate';
 import { getBonNumeroDisplay } from '../utils/numero';
 import type { ProjetPrintContext } from '../utils/projetBonPrint';
@@ -37,6 +37,24 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [usePromo, setUsePromo] = useState(false);
   const [includeProductImages, setIncludeProductImages] = useState(true);
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewWidth, setPreviewWidth] = useState(794);
+  const [previewHeight, setPreviewHeight] = useState(1123);
+  useEffect(() => {
+    if (!isOpen) return;
+    const updatePreview = () => {
+      const page = printRef.current;
+      if (!page) return;
+      setPreviewWidth(page.offsetWidth);
+      setPreviewScale(window.innerWidth < 640 ? Math.min(1, (window.innerWidth - 32) / page.offsetWidth) : 1);
+      setPreviewHeight(Math.max(page.scrollHeight, page.offsetHeight));
+    };
+    updatePreview();
+    const observer = new ResizeObserver(updatePreview);
+    if (printRef.current) observer.observe(printRef.current);
+    window.addEventListener('resize', updatePreview);
+    return () => { observer.disconnect(); window.removeEventListener('resize', updatePreview); };
+  }, [isOpen]);
   // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
   // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).
   const { data: fetchedProducts = [] } = useGetProductsQuery(undefined, {
@@ -70,12 +88,28 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
 
       await waitForPrintImages(printRef.current);
 
-      // Capture avec moins de scale pour fichiers plus légers
-      const canvas = await html2canvas(printRef.current, {
-        scale: 1.5, // Réduit de 2 à 1.5
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#ffffff'
+      // Capturer la taille A4 réelle, indépendamment de l'aperçu réduit sur téléphone.
+      const page = printRef.current;
+      const safeScale = Math.min(1.5, 16000 / Math.max(page.scrollHeight, page.offsetHeight));
+      const canvas = await html2canvas(page, {
+          scale: safeScale,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          logging: false,
+          onclone: clonedDocument => {
+            const clonedPage = clonedDocument.querySelector<HTMLElement>('[data-bon-pdf-page]');
+            if (!clonedPage) return;
+            clonedPage.style.transform = 'none';
+            let ancestor = clonedPage.parentElement;
+            while (ancestor) {
+              ancestor.style.overflow = 'visible';
+              ancestor.style.overflowX = 'visible';
+              ancestor.style.overflowY = 'visible';
+              ancestor.scrollTop = 0;
+              ancestor = ancestor.parentElement;
+            }
+          },
       });
 
       // Créer le PDF avec compression
@@ -92,18 +126,15 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
 
-      // Calculer le ratio pour ajuster l'image
-      const ratio = Math.min(pdfWidth / canvasWidth, pdfHeight / canvasHeight);
-      const imgWidth = canvasWidth * ratio;
-      const imgHeight = canvasHeight * ratio;
-
-      // Centrer l'image
-      const x = (pdfWidth - imgWidth) / 2;
-      const y = (pdfHeight - imgHeight) / 2;
-
-      // Ajouter l'image au PDF en JPEG compressé au lieu de PNG
-      const imgData = canvas.toDataURL('image/jpeg', 0.75); // JPEG qualité 75%
-      pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'MEDIUM');
+      // Garder la largeur A4 et répartir les longs bons sur plusieurs pages.
+      const imgWidth = pdfWidth;
+      const imgHeight = canvasHeight * imgWidth / canvasWidth;
+      const imgData = canvas.toDataURL('image/jpeg', 0.8);
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'MEDIUM');
+      for (let offset = pdfHeight; offset < imgHeight - 1; offset += pdfHeight) {
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -offset, imgWidth, imgHeight, undefined, 'MEDIUM');
+      }
 
       // Télécharger le PDF
   const fileName = `${documentTitle}_${displayNumero}_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -180,19 +211,30 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60">
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[95vh] sm:max-w-6xl sm:rounded-xl">
         {/* En-tête modal */}
-        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-semibold">
-              Aperçu d'impression - {documentTitle} {displayNumero}
-            </h2>
+        <div className="shrink-0 border-b border-slate-200 bg-white p-4 sm:bg-slate-50">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 sm:hidden">Document PDF · A4</p>
+              <h2 className="truncate text-lg font-semibold text-slate-900 sm:whitespace-normal">
+                <span className="sm:hidden">{documentTitle} {displayNumero}</span>
+                <span className="hidden sm:inline">Aperçu d'impression - {documentTitle} {displayNumero}</span>
+              </h2>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Fermer l'aperçu" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 sm:hidden"><X size={20} /></button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <button onClick={handlePrint} disabled={isGenerating} className="flex items-center rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50"><Printer size={16} className="mr-1" />Imprimer</button>
+              <button onClick={generatePDF} disabled={isGenerating} className="flex items-center rounded-lg border border-blue-600 px-3 py-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50"><Download size={16} className="mr-1" />{isGenerating ? 'Génération...' : 'PDF'}</button>
+              <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-2 text-slate-700 hover:bg-slate-100">Fermer</button>
+            </div>
+          </div>
             
             {/* Format fixé à A4 */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-gray-600">Format: A4 (210x297mm)</span>
-              {!projectContext && <label className="ml-4 flex items-center space-x-2 text-sm text-gray-700">
+            <div className="mt-3 flex flex-wrap items-center gap-3 sm:mt-2">
+              <span className="hidden text-sm text-gray-600 sm:inline">Format: A4 (210x297mm)</span>
+              {!projectContext && <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={usePromo}
@@ -200,60 +242,34 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 />
                 <span>Utiliser promo</span>
               </label>}
-              <label htmlFor="bon-images-select" className="ml-4 flex items-center gap-2 text-sm text-gray-700">
+              <label htmlFor="bon-images-select" className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
                 Images produit :
                 <select
                   id="bon-images-select"
                   value={includeProductImages ? 'with' : 'without'}
                   disabled={isGenerating}
                   onChange={event => setIncludeProductImages(event.target.value === 'with')}
-                  className="rounded border px-2 py-1 text-sm"
+                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                 >
                   <option value="without">Sans images</option>
                   <option value="with">Avec images</option>
                 </select>
               </label>
             </div>
-          </div>
-
-          {/* Boutons d'action */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handlePrint}
-              disabled={isGenerating}
-              className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              <Printer size={16} className="mr-1" />
-              Imprimer
-            </button>
-            
-            <button
-              onClick={generatePDF}
-              disabled={isGenerating}
-              className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-            >
-              <Download size={16} className="mr-1" />
-              {isGenerating ? 'Génération...' : 'PDF'}
-            </button>
-            
-            <button
-              onClick={onClose}
-              className="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
-            >
-              Fermer
-            </button>
-          </div>
         </div>
 
         {/* Zone d'aperçu */}
-        <div className="flex-1 overflow-auto bg-gray-100 p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4">
           <div className="flex justify-center">
+            <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
             <div 
               ref={printRef}
-              className="bg-white shadow-lg"
+              data-bon-pdf-page
+              className="origin-top-left bg-white shadow-lg"
               style={{
                 width: '210mm',
-                minHeight: '297mm'
+                minHeight: '297mm',
+                transform: `scale(${previewScale})`,
               }}
             >
               <BonPrintTemplate
@@ -270,11 +286,14 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 includeProductImages={includeProductImages}
               />
             </div>
+            </div>
           </div>
         </div>
 
-        {/* Informations en bas */}
-        <div className="p-2 border-t bg-gray-50 text-xs text-gray-600 text-center">
+        <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:hidden">
+          <button type="button" onClick={generatePDF} disabled={isGenerating} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 font-semibold text-white shadow-sm active:bg-blue-700 disabled:opacity-50"><Download size={18} />{isGenerating ? 'Génération du PDF...' : 'Télécharger PDF'}</button>
+        </div>
+        <div className="hidden border-t bg-gray-50 p-2 text-center text-xs text-gray-600 sm:block">
           Aperçu d'impression - Les couleurs peuvent différer de l'impression finale
         </div>
       </div>

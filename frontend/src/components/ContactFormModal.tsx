@@ -126,9 +126,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               const actorId = currentUser?.id ?? 1;
 
               // Préparer les données du contact
-              const typeCompte: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null =
-                values.type_compte === 'Client' || values.type_compte === 'Artisan/Promoteur' || values.type_compte === 'Fournisseur'
-                  ? (values.type_compte as 'Client' | 'Artisan/Promoteur' | 'Fournisseur')
+              const typeCompte: 'Client' | 'Artisan' | 'Promoteur' | 'Artisan/Promoteur' | 'Fournisseur' | null =
+                ['Client', 'Artisan', 'Promoteur', 'Artisan/Promoteur', 'Fournisseur'].includes(values.type_compte || '')
+                  ? (values.type_compte as 'Client' | 'Artisan' | 'Promoteur' | 'Artisan/Promoteur' | 'Fournisseur')
                   : null;
               const contactData = {
                 // Pour Fournisseur, le nom peut être vide; on envoie une chaîne vide pour rester compatible DB
@@ -351,7 +351,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   >
                     <option value="">Sélectionner...</option>
                     <option value="Client">Client</option>
-                    <option value="Artisan/Promoteur">Artisan/Promoteur</option>
+                    <option value="Artisan">Artisan</option>
+                    <option value="Promoteur">Promoteur</option>
+                    {values.type_compte === 'Artisan/Promoteur' && <option value="Artisan/Promoteur">Artisan/Promoteur (ancien)</option>}
                   </Field>
                 </div>
               )}

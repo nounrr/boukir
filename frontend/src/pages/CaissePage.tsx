@@ -40,13 +40,15 @@ import { canModifyPayments } from '../utils/permissions';
 import { formatDatabaseDateTimeLiteral, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
-import { paymentsApi, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import { paymentsApi, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useCreateMultiClientChequeMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import type { MultiClientChequeData } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
 import PaymentGroupPrintModal from '../components/PaymentGroupPrintModal';
 import PaymentPhoneCaptureDialog from '../components/PaymentPhoneCaptureDialog';
+import MultiClientChequeModal from '../components/MultiClientChequeModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 
 const DIRECT_CONTACT_OFFSET = 10_000_000;
@@ -81,6 +83,7 @@ const CaissePage = () => {
   
   // État local
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isMultiClientChequeOpen, setIsMultiClientChequeOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -134,6 +137,7 @@ const CaissePage = () => {
   const payments = paymentsPagedResponse?.data || [];
   const paymentsForHistory = needsAllPayments ? allPaymentsForHistory : payments;
   const [createPayment] = useCreatePaymentMutation();
+  const [createMultiClientCheque] = useCreateMultiClientChequeMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
   const [deletePaymentApi] = useDeletePaymentMutation();
   const [changePaymentStatusApi] = useChangePaymentStatusMutation();
@@ -657,9 +661,9 @@ const CaissePage = () => {
         map.get(gid)!.push(p);
       }
     }
-    // Un groupe doit contenir au moins 2 paiements visibles pour être traité comme groupe
+    // Les chèques répartis entre clients restent visibles ligne par ligne.
     for (const [gid, arr] of Array.from(map.entries())) {
-      if (arr.length < 2) map.delete(gid);
+      if (arr.length < 2 || new Set(arr.map((payment) => Number(payment.contact_id))).size > 1) map.delete(gid);
     }
     return map;
   }, [paginatedPayments]);
@@ -680,6 +684,13 @@ const CaissePage = () => {
 
   const handlePrintGroup = (gid: string) => {
     setGroupPrintId(gid);
+  };
+
+  const handleMultiClientChequeSave = async (data: MultiClientChequeData) => {
+    await createMultiClientCheque(data).unwrap();
+    setIsMultiClientChequeOpen(false);
+    setCurrentPage(1);
+    showSuccess('Chèque réparti et enregistré pour chaque client.');
   };
 
   const groupPaymentsToPrint = useMemo(() => {
@@ -1804,6 +1815,13 @@ const paymentValidationSchema = Yup.object({
             <span className="whitespace-nowrap">Nouveau Paiement</span>
           </button>
           <button
+            onClick={() => setIsMultiClientChequeOpen(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded-md transition-colors text-sm"
+          >
+            <Receipt size={18} className="shrink-0" />
+            <span className="whitespace-nowrap">Chèque multi-clients</span>
+          </button>
+          <button
             onClick={handleLogout}
             className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-2 py-1 rounded-md transition-colors text-sm"
           >
@@ -2347,6 +2365,7 @@ const paymentValidationSchema = Yup.object({
                   <p className="text-gray-500 text-xs truncate">{societe}</p>
                   <p className="mt-1 text-gray-700 font-semibold">{getPaymentPaidAmount(payment)} DH</p>
                   <p className="text-xs font-semibold text-orange-700">Montant ignoré: {Number(payment.montant_ignorer ?? 0)} DH</p>
+                  {payment.code_reglement && <p className="text-xs text-gray-600">Réf. chèque : {payment.code_reglement}</p>}
                   {payment.date_echeance && (
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
                   )}
@@ -2465,6 +2484,14 @@ const paymentValidationSchema = Yup.object({
             </div>
           </div>
         </div>
+      )}
+
+      {isMultiClientChequeOpen && (
+        <MultiClientChequeModal
+          clients={clients}
+          onClose={() => setIsMultiClientChequeOpen(false)}
+          onSave={handleMultiClientChequeSave}
+        />
       )}
 
       {/* Modal de création/édition */}

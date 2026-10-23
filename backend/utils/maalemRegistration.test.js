@@ -22,6 +22,14 @@ test('préserve le parcours Client et le parcours Artisan existant par défaut',
   });
 });
 
+test('les inscriptions Artisan et Promoteur créent deux demandes distinctes', () => {
+  for (const type_compte of ['Artisan', 'Promoteur']) {
+    const intent = parseMaalemRegistrationIntent({ type_compte });
+    assert.equal(intent.valid, true);
+    assert.equal(intent.is_artisan_request, true);
+  }
+});
+
 test('normalise une inscription Maalem sans inventer un rôle', () => {
   assert.deepEqual(parseMaalemRegistrationIntent({
     type_compte: 'Artisan/Promoteur',

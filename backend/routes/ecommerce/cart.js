@@ -82,6 +82,7 @@ router.get('/', async (req, res, next) => {
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.image_url,
         p.stock_partage_ecom_qty,
         (
@@ -112,6 +113,7 @@ router.get('/', async (req, res, next) => {
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
         pv.remise_artisan as variant_remise_artisan,
+        pv.remise_promoteur as variant_remise_promoteur,
         COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
         pu.conversion_factor
       FROM cart_items ci
@@ -139,6 +141,7 @@ router.get('/', async (req, res, next) => {
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.image_url,
         p.stock_partage_ecom_qty,
         p.has_variants,
@@ -149,6 +152,7 @@ router.get('/', async (req, res, next) => {
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
         pv.remise_artisan as variant_remise_artisan,
+        pv.remise_promoteur as variant_remise_promoteur,
         COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
         pu.conversion_factor
       FROM cart_items ci
@@ -173,6 +177,7 @@ router.get('/', async (req, res, next) => {
         : toSafeNumber(item.base_price);
       let effectiveRemiseClient = toSafeNumber(item.remise_client);
       let effectiveRemiseArtisan = toSafeNumber(item.remise_artisan);
+      let effectiveRemisePromoteur = toSafeNumber(item.remise_promoteur);
       
       // If variant is selected, use variant price
       if (item.variant_id && item.variant_price !== null) {
@@ -181,6 +186,7 @@ router.get('/', async (req, res, next) => {
           : toSafeNumber(item.variant_price);
         effectiveRemiseClient = toSafeNumber(item.variant_remise_client);
         effectiveRemiseArtisan = toSafeNumber(item.variant_remise_artisan);
+        effectiveRemisePromoteur = toSafeNumber(item.variant_remise_promoteur);
       }
 
       // If unit is selected, adjust price by conversion factor
@@ -245,6 +251,7 @@ router.get('/', async (req, res, next) => {
           price_after_promo: priceAfterPromo,
           remise_client: effectiveRemiseClient,
           remise_artisan: effectiveRemiseArtisan,
+          remise_promoteur: effectiveRemisePromoteur,
           has_promo: promoPercentage > 0,
           subtotal: subtotal
         },
@@ -817,6 +824,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
+          p.remise_promoteur,
           p.image_url,
           ${anyStockExpr} as stock_qty,
           p.has_variants,
@@ -878,6 +886,7 @@ router.get('/suggestions', async (req, res, next) => {
           pourcentage_promo: promoPercentage,
           remise_client: Number(p.remise_client || 0),
           remise_artisan: Number(p.remise_artisan || 0),
+          remise_promoteur: Number(p.remise_promoteur || 0),
           has_promo: promoPercentage > 0,
           image_url: p.image_url,
           gallery: galleryImages.map(img => ({
@@ -917,6 +926,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
+          p.remise_promoteur,
           p.image_url,
           ${anyStockExpr} as stock_qty,
           p.has_variants,
@@ -965,6 +975,7 @@ router.get('/suggestions', async (req, res, next) => {
           pourcentage_promo: promoPercentage,
           remise_client: Number(p.remise_client || 0),
           remise_artisan: Number(p.remise_artisan || 0),
+          remise_promoteur: Number(p.remise_promoteur || 0),
           has_promo: promoPercentage > 0,
           image_url: p.image_url,
           gallery: galleryImages.map(img => ({

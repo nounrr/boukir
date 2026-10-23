@@ -122,6 +122,7 @@ const validationSchema = Yup.object({
   prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   remise_client: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
   remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
+  remise_promoteur: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
   pourcentage_promo: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage promo ne peut pas être négatif').optional(),
   est_service: Yup.boolean(),
   rappel_non_calcule: Yup.boolean(),
@@ -164,6 +165,7 @@ const validationSchema = Yup.object({
       stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').min(0, 'Quantité >= 0').required('Quantité requise'),
       remise_client: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
       remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
+      remise_promoteur: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
     })
   ).optional(),
   units: Yup.array().of(
@@ -632,6 +634,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     non_stockable: defaultNonStockable,
     remise_client: 0,
     remise_artisan: 0,
+    remise_promoteur: 0,
     description: '',
     description_ar: '',
     description_en: '',
@@ -688,6 +691,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           stock_quantity: toNonNegativeNum(variant?.stock_quantity),
           remise_client: toNonNegativeNum(variant?.remise_client ?? 0),
           remise_artisan: toNonNegativeNum(variant?.remise_artisan ?? 0),
+          remise_promoteur: toNonNegativeNum(variant?.remise_promoteur ?? 0),
         };
       })
     : [];
@@ -728,6 +732,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           non_stockable: (baseEdit as any).non_stockable ?? false,
           remise_client: toNonNegativeNum((baseEdit as any).remise_client ?? 0),
           remise_artisan: toNonNegativeNum((baseEdit as any).remise_artisan ?? 0),
+          remise_promoteur: toNonNegativeNum((baseEdit as any).remise_promoteur ?? 0),
           description: (baseEdit as any).description ?? '',
           description_ar: (baseEdit as any).description_ar ?? '',
           description_en: (baseEdit as any).description_en ?? '',
@@ -825,6 +830,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               stock_quantity: toNonNegativeNum(v.stock_quantity),
               remise_client: toNonNegativeNum(v.remise_client ?? 0),
               remise_artisan: toNonNegativeNum(v.remise_artisan ?? 0),
+              remise_promoteur: toNonNegativeNum(v.remise_promoteur ?? 0),
             };
           })
         : variantsNormalized;
@@ -848,6 +854,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         stock_partage_ecom_qty: toNonNegativeNum(values.stock_partage_ecom_qty ?? 0),
         remise_client: toNonNegativeNum((values as any)?.remise_client ?? 0),
         remise_artisan: toNonNegativeNum((values as any)?.remise_artisan ?? 0),
+        remise_promoteur: toNonNegativeNum((values as any)?.remise_promoteur ?? 0),
         variants: variantsSanitized as any,
         units: values.units,
         base_unit: values.base_unit,
@@ -882,6 +889,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
           formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
+          formData.append('remise_promoteur', String((productData as any).remise_promoteur ?? 0));
           formData.append('description', productData.description || '');
           formData.append('description_ar', productData.description_ar || '');
           formData.append('description_en', productData.description_en || '');
@@ -975,6 +983,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
           formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
+          formData.append('remise_promoteur', String((productData as any).remise_promoteur ?? 0));
           formData.append('description', productData.description || '');
           formData.append('description_ar', productData.description_ar || '');
           formData.append('description_en', productData.description_en || '');
@@ -1265,6 +1274,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               ...v,
               remise_client: Number(updated.remise_client ?? 0),
               remise_artisan: Number(updated.remise_artisan ?? 0),
+              remise_promoteur: Number(updated.remise_promoteur ?? 0),
             };
           }
           return v;
@@ -1272,7 +1282,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       }
       return updated;
     });
-  }, [ (formik.values as any)?.remise_client, (formik.values as any)?.remise_artisan, variantUseProductRemise ]);
+  }, [ (formik.values as any)?.remise_client, (formik.values as any)?.remise_artisan, (formik.values as any)?.remise_promoteur, variantUseProductRemise ]);
 
   const costRuleViolations = useMemo(() => {
     const messages: string[] = [];
@@ -1738,6 +1748,24 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   }}
                   onBlur={() => {
                     void commitNonNegativeFieldValue('remise_artisan', (formik.values as any).remise_artisan, 0);
+                  }}
+                  className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Remise promoteur (montant)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  name="remise_promoteur"
+                  value={(formik.values as any).remise_promoteur as any}
+                  onChange={(e) => {
+                    void setNonNegativeFieldValue('remise_promoteur', e.target.value);
+                  }}
+                  onBlur={() => {
+                    void commitNonNegativeFieldValue('remise_promoteur', (formik.values as any).remise_promoteur, 0);
                   }}
                   className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                   placeholder="0.00"
@@ -3285,6 +3313,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                     if (e.target.checked) {
                                       formik.setFieldValue(`variants.${index}.remise_client`, Number((formik.values as any).remise_client ?? 0));
                                       formik.setFieldValue(`variants.${index}.remise_artisan`, Number((formik.values as any).remise_artisan ?? 0));
+                                      formik.setFieldValue(`variants.${index}.remise_promoteur`, Number((formik.values as any).remise_promoteur ?? 0));
                                     }
                                   }}
                                   className="w-3 h-3"
@@ -3325,6 +3354,24 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 }}
                                 onBlur={() => {
                                   void commitNonNegativeFieldValue(`variants.${index}.remise_artisan`, (formik.values.variants?.[index] as any)?.remise_artisan, 0);
+                                }}
+                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                disabled={variantUseProductRemise[(variant.id as number) ?? index]}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Remise promoteur (montant)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                name={`variants.${index}.remise_promoteur`}
+                                value={(variant as any).remise_promoteur ?? 0}
+                                onChange={(e) => {
+                                  if (!setNonNegativeFieldValue(`variants.${index}.remise_promoteur`, e.target.value)) return;
+                                }}
+                                onBlur={() => {
+                                  void commitNonNegativeFieldValue(`variants.${index}.remise_promoteur`, (formik.values.variants?.[index] as any)?.remise_promoteur, 0);
                                 }}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 disabled={variantUseProductRemise[(variant.id as number) ?? index]}

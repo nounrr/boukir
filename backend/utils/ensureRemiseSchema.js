@@ -67,6 +67,9 @@ export async function ensureProductRemiseColumns(db = pool) {
     if (!(await columnExists(connection, 'products', 'remise_artisan'))) {
       await execDdlWithRetry(connection, `ALTER TABLE products ADD COLUMN remise_artisan DECIMAL(5,2) NOT NULL DEFAULT 0`);
     }
+    if (!(await columnExists(connection, 'products', 'remise_promoteur'))) {
+      await execDdlWithRetry(connection, `ALTER TABLE products ADD COLUMN remise_promoteur DECIMAL(5,2) NOT NULL DEFAULT 0`);
+    }
   });
 }
 
@@ -224,22 +227,21 @@ function roundMoney(n) {
 }
 
 export async function computeOrderItemRemiseBreakdown(db, orderId, typeCompte) {
-  const isArtisan = typeCompte === 'Artisan/Promoteur';
+  const remiseColumn = typeCompte === 'Promoteur' ? 'remise_promoteur'
+    : (typeCompte === 'Artisan' || typeCompte === 'Artisan/Promoteur' ? 'remise_artisan' : 'remise_client');
 
   const [rows] = await db.execute(
     `SELECT
        oi.id AS order_item_id,
        oi.unit_price,
        oi.quantity,
-       CASE
-         WHEN ? = 1 THEN COALESCE(p.remise_artisan, 0)
-         ELSE COALESCE(p.remise_client, 0)
-       END AS remise_amount_per_unit
+       COALESCE(pv.${remiseColumn}, p.${remiseColumn}, 0) AS remise_amount_per_unit
      FROM ecommerce_order_items oi
      INNER JOIN products p ON oi.product_id = p.id
+     LEFT JOIN product_variants pv ON oi.variant_id = pv.id
      WHERE oi.order_id = ?
      ORDER BY oi.id ASC`,
-    [isArtisan ? 1 : 0, orderId]
+    [orderId]
   );
 
   const items = rows.map((r) => {
@@ -260,22 +262,19 @@ export async function computeOrderItemRemiseBreakdown(db, orderId, typeCompte) {
 }
 
 export async function computeOrderEarnedRemiseAmount(db, orderId, typeCompte) {
-  const isArtisan = typeCompte === 'Artisan/Promoteur';
+  const remiseColumn = typeCompte === 'Promoteur' ? 'remise_promoteur'
+    : (typeCompte === 'Artisan' || typeCompte === 'Artisan/Promoteur' ? 'remise_artisan' : 'remise_client');
 
   const [rows] = await db.execute(
     `SELECT
        COALESCE(SUM(
-         (oi.quantity * (
-           CASE
-             WHEN ? = 1 THEN COALESCE(p.remise_artisan, 0)
-             ELSE COALESCE(p.remise_client, 0)
-           END
-         ))
+         (oi.quantity * COALESCE(pv.${remiseColumn}, p.${remiseColumn}, 0))
        ), 0) AS earned
      FROM ecommerce_order_items oi
      INNER JOIN products p ON oi.product_id = p.id
+     LEFT JOIN product_variants pv ON oi.variant_id = pv.id
      WHERE oi.order_id = ?`,
-    [isArtisan ? 1 : 0, orderId]
+    [orderId]
   );
 
   const earned = Number(rows?.[0]?.earned || 0);

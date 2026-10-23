@@ -222,6 +222,7 @@ export interface ProductVariant {
   }>;
   remise_client?: number;
   remise_artisan?: number;
+  remise_promoteur?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -343,6 +344,7 @@ export interface Product {
   image_url?: string | null;
   remise_client?: number;
   remise_artisan?: number;
+  remise_promoteur?: number;
   
   // Gallery images
   gallery?: Array<{
@@ -400,6 +402,7 @@ export interface CreateProductData {
   non_stockable?: boolean;
   remise_client?: number;
   remise_artisan?: number;
+  remise_promoteur?: number;
   description?: string;
   pourcentage_promo?: number;
   ecom_published?: boolean;
@@ -429,7 +432,7 @@ export interface Contact {
   prenom?: string | null;
   nom?: string | null;
   type: 'Client' | 'Fournisseur';
-  type_compte?: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null;
+  type_compte?: 'Client' | 'Artisan' | 'Promoteur' | 'Artisan/Promoteur' | 'Fournisseur' | null;
   telephone?: string | null;
   email?: string | null;
   password?: string;
@@ -494,7 +497,7 @@ export interface CreateContactData {
   prenom?: string | null;
   nom?: string | null;
   type: 'Client' | 'Fournisseur';
-  type_compte?: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null;
+  type_compte?: 'Client' | 'Artisan' | 'Promoteur' | 'Artisan/Promoteur' | 'Fournisseur' | null;
   telephone?: string | null;
   email?: string | null;
   password?: string;

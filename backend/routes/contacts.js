@@ -2098,7 +2098,7 @@ router.post('/', async (req, res) => {
         : String(numero_garantie).trim();
 
     // Auto-approve if type_compte is Artisan/Promoteur (backoffice creation)
-    const isArtisan = type_compte === 'Artisan/Promoteur';
+    const isArtisan = ['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(type_compte);
     const effectiveDemandeArtisan = isArtisan ? 0 : (demande_artisan ?? 0);
     const effectiveArtisanApprouve = isArtisan ? 1 : (artisan_approuve ?? 0);
     const effectiveArtisanApprouvePar = isArtisan ? (created_by || null) : (artisan_approuve_par ?? null);
@@ -2241,7 +2241,7 @@ router.put('/:id', async (req, res) => {
     if (type_compte !== undefined) {
       updates.push('type_compte = ?');
       params.push(type_compte);
-      if (type_compte === 'Artisan/Promoteur') {
+      if (['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(type_compte)) {
         updates.push('artisan_approuve = TRUE');
         updates.push('demande_artisan = FALSE');
         updates.push('artisan_approuve_le = NOW()');

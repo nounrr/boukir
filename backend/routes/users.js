@@ -117,7 +117,7 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    if (type_compte && !['Client', 'Artisan/Promoteur'].includes(type_compte)) {
+    if (type_compte && !['Client', 'Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(type_compte)) {
       return res.status(400).json({
         message: 'Type de compte invalide',
         field: 'type_compte',
@@ -243,10 +243,10 @@ router.post('/register', async (req, res, next) => {
     const [result] = await connection.query(
       `INSERT INTO contacts 
        (nom_complet, prenom, nom, email, telephone, type, type_compte, 
-        demande_artisan, artisan_approuve, password, auth_provider, 
+        demande_artisan, type_compte_demande, artisan_approuve, password, auth_provider,
         email_verified, is_active, source,
         societe, ice, is_company)
-       VALUES (?, ?, ?, ?, ?, 'Client', ?, ?, FALSE, ?, 'local', FALSE, TRUE, 'ecommerce', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, 'Client', ?, ?, ?, FALSE, ?, 'local', FALSE, TRUE, 'ecommerce', ?, ?, ?)`,
       [
         nomComplet,
         prenom.trim(),
@@ -255,6 +255,7 @@ router.post('/register', async (req, res, next) => {
         normalizedTelephone,
         effectiveTypeCompte,
         demandeArtisan,
+        isArtisanRequest ? (type_compte === 'Promoteur' ? 'Promoteur' : 'Artisan') : null,
         hashedPassword,
         isCompanyProfile ? companyNameValue : null,
         isCompanyProfile ? iceValue : null,
@@ -330,7 +331,7 @@ router.post('/register', async (req, res, next) => {
     // Prepare response message
     let message = 'Compte créé avec succès';
     if (user.demande_artisan && !user.artisan_approuve) {
-      message = 'Compte créé avec succès. Votre demande pour devenir Artisan/Promoteur est en attente d\'approbation par un administrateur.';
+      message = `Compte créé avec succès. Votre demande pour devenir ${type_compte === 'Promoteur' ? 'Promoteur' : 'Artisan'} est en attente d'approbation par un administrateur.`;
     }
 
     if (maalemProfile) {
@@ -617,7 +618,7 @@ router.post('/request-artisan', async (req, res, next) => {
     }
 
     // If already artisan
-    const isArtisan = user.type_compte === 'Artisan/Promoteur' || !!user.artisan_approuve;
+    const isArtisan = ['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(user.type_compte) || !!user.artisan_approuve;
     if (isArtisan) {
       await connection.rollback();
       return res.status(400).json({ message: 'Vous êtes déjà Artisan/Promoteur', status: 'already_artisan' });
@@ -642,6 +643,7 @@ router.post('/request-artisan', async (req, res, next) => {
     await connection.query(
       `UPDATE contacts
        SET demande_artisan = TRUE,
+           type_compte_demande = 'Artisan',
            artisan_approuve = FALSE,
            updated_at = NOW()
        WHERE id = ?`,
@@ -849,8 +851,8 @@ router.post('/google', async (req, res, next) => {
         `INSERT INTO contacts
          (nom_complet, prenom, nom, email, type, type_compte, auth_provider, google_id,
           avatar_url, email_verified, locale, is_active, last_login_at, last_login_ip,
-          provider_access_token, source, demande_artisan, artisan_approuve)
-         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?, 'ecommerce', ?, FALSE)`,
+          provider_access_token, source, demande_artisan, type_compte_demande, artisan_approuve)
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?, 'ecommerce', ?, ?, FALSE)`,
         [
           nomComplet,
           prenomValue,
@@ -862,6 +864,7 @@ router.post('/google', async (req, res, next) => {
           clientIp,
           access_token || null,
           registrationIntent.is_artisan_request ? 1 : 0,
+          registrationIntent.is_artisan_request ? (type_compte === 'Promoteur' ? 'Promoteur' : 'Artisan') : null,
         ]
       );
 
@@ -967,7 +970,10 @@ router.post('/google', async (req, res, next) => {
 router.post('/facebook', async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
-    const { accessToken, userID } = req.body;
+    const { accessToken, userID, type_compte } = req.body;
+    if (type_compte && !['Client', 'Artisan', 'Promoteur'].includes(type_compte)) {
+      return res.status(400).json({ message: 'Type de compte invalide', field: 'type_compte' });
+    }
     const clientIp = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
 
     if (!accessToken || !userID) {
@@ -1091,8 +1097,8 @@ router.post('/facebook', async (req, res, next) => {
         `INSERT INTO contacts
          (nom_complet, prenom, nom, email, type, type_compte, auth_provider, facebook_id,
           avatar_url, email_verified, is_active, last_login_at, last_login_ip,
-          provider_access_token, source)
-         VALUES (?, ?, ?, ?, 'Client', 'Client', 'facebook', ?, ?, TRUE, TRUE, NOW(), ?, ?, 'ecommerce')`,
+          provider_access_token, source, demande_artisan, type_compte_demande, artisan_approuve)
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'facebook', ?, ?, TRUE, TRUE, NOW(), ?, ?, 'ecommerce', ?, ?, FALSE)`,
         [
           nomComplet,
           prenomValue,
@@ -1102,6 +1108,8 @@ router.post('/facebook', async (req, res, next) => {
           avatar_url,
           clientIp,
           accessToken,
+          type_compte === 'Artisan' || type_compte === 'Promoteur' ? 1 : 0,
+          type_compte === 'Artisan' || type_compte === 'Promoteur' ? type_compte : null,
         ]
       );
 

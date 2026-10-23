@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import pool from '../db/pool.js';
 import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
 import { ensurePaymentRemiseColumns, getRemisePaymentAccounts, getDirectContactRemiseInfo } from '../utils/remisePaymentAccounts.js';
@@ -728,6 +729,115 @@ router.get('/:id', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('GET /payments/:id error:', err);
     res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+  }
+});
+
+// One cheque is recorded as one payment per client, in a single transaction.
+// The same balance convention is used by the clients list (total_cumule > 0 is due).
+async function getClientAmountDue(connection, contactId) {
+  const [rows] = await connection.query(`
+    SELECT COALESCE(c.solde, 0)
+      + COALESCE((SELECT SUM(b.montant_total) FROM bons_sortie b WHERE b.client_id = c.id
+          AND LOWER(TRIM(b.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+      + COALESCE((SELECT SUM(o.total_amount) FROM ecommerce_orders o WHERE o.user_id = c.id
+          AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered')), 0)
+      + COALESCE((SELECT SUM(b.montant_total) FROM bons_charge b WHERE b.client_id = c.id
+          AND LOWER(TRIM(b.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+      - COALESCE((SELECT SUM(p.montant_total) FROM payments p WHERE p.contact_id = c.id
+          AND p.type_paiement = 'Client' AND LOWER(TRIM(p.statut)) NOT LIKE 'annul%'
+          AND LOWER(TRIM(p.statut)) NOT IN ('supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+      - COALESCE((SELECT SUM(a.montant_total) FROM avoirs_client a WHERE a.client_id = c.id
+          AND a.statut IN ('En attente','Validé','Appliqué')), 0)
+      - COALESCE((SELECT SUM(a.montant_total) FROM avoirs_charge a WHERE a.client_id = c.id
+          AND LOWER(TRIM(a.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+      AS amount_due
+    FROM contacts c WHERE c.id = ? AND c.type = 'Client' AND c.deleted_at IS NULL
+  `, [contactId]);
+  return rows.length ? Math.round(Number(rows[0].amount_due) * 100) : null;
+}
+
+const chequeAmountCents = (value) => {
+  const amount = Number(value);
+  const scaled = amount * 100;
+  const rounded = Math.round(scaled);
+  return Number.isFinite(amount) && Number.isSafeInteger(rounded) &&
+    Math.abs(scaled - rounded) < 0.000001 ? rounded : NaN;
+};
+
+router.post('/multi-client-cheque', verifyToken, async (req, res) => {
+  const { montant_total, allocations, code_reglement, date_paiement, date_echeance,
+    banque, personnel, designation, image_url } = req.body || {};
+  const totalCents = chequeAmountCents(montant_total);
+  const reference = String(code_reglement || '').trim();
+  const paymentDate = toYMDTime(date_paiement, true);
+  const dueDate = date_echeance ? toYMD(date_echeance) : null;
+  if (!Array.isArray(allocations) || allocations.length < 2 || allocations.length > 100 ||
+      !reference || reference.length > 100 || !paymentDate || (date_echeance && !dueDate) ||
+      String(banque || '').length > 100 || String(personnel || '').length > 100 ||
+      String(designation || '').length > 255 ||
+      !Number.isSafeInteger(totalCents) || totalCents <= 0) {
+    return res.status(400).json({ message: 'Chèque, date, référence et au moins deux clients valides requis' });
+  }
+  const lines = allocations.map((line) => ({
+    contactId: Number(line?.contact_id),
+    amountCents: chequeAmountCents(line?.montant),
+  }));
+  if (lines.some((line) => !Number.isSafeInteger(line.contactId) || line.contactId <= 0 ||
+      !Number.isSafeInteger(line.amountCents) || line.amountCents <= 0) ||
+      new Set(lines.map((line) => line.contactId)).size !== lines.length ||
+      lines.reduce((sum, line) => sum + line.amountCents, 0) !== totalCents) {
+    return res.status(400).json({ message: 'La répartition doit correspondre exactement au montant du chèque' });
+  }
+
+  let connection;
+  try {
+    await ensurePaymentRemiseColumns();
+    await ensurePaymentMontantIgnorerColumn();
+    await ensurePaymentFlagColumn();
+    await ensurePaymentGroupColumn();
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const ids = lines.map((line) => line.contactId).sort((a, b) => a - b);
+    const [contacts] = await connection.query(
+      `SELECT id FROM contacts WHERE id IN (${ids.map(() => '?').join(',')})
+       AND type = 'Client' AND deleted_at IS NULL ORDER BY id FOR UPDATE`, ids);
+    if (contacts.length !== ids.length) {
+      const error = new Error('Un client sélectionné est introuvable');
+      error.statusCode = 400;
+      throw error;
+    }
+    for (const line of lines) {
+      const dueCents = await getClientAmountDue(connection, line.contactId);
+      if (dueCents === null || line.amountCents > dueCents) {
+        const error = new Error(`Le montant attribué au client ${line.contactId} dépasse son solde à payer`);
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+    const groupId = randomUUID();
+    const created = [];
+    for (const line of lines) {
+      const [result] = await connection.query(`
+        INSERT INTO payments
+          (numero, payment_group_id, type_paiement, contact_id, montant_total, montant_ignorer,
+           remise, mode_paiement, date_paiement, designation, date_echeance, banque, personnel,
+           code_reglement, image_url, payment, statut, created_by, created_at, date_ajout_reelle)
+        VALUES ('', ?, 'Client', ?, ?, 0, 0, 'Chèque', ?, ?, ?, ?, ?, ?, ?, 0, 'En attente', ?, ?, ?)
+      `, [groupId, line.contactId, line.amountCents / 100, paymentDate,
+        designation || null, dueDate, banque || null, personnel || null, reference,
+        image_url || null, req.user.id, paymentDate, paymentDate]);
+      await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
+      created.push(result.insertId);
+    }
+    const [payments] = await connection.query(
+      `SELECT * FROM payments WHERE id IN (${created.map(() => '?').join(',')}) ORDER BY id`, created);
+    await connection.commit();
+    res.status(201).json({ payment_group_id: groupId, payments: payments.map(toPayment) });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    res.status(error.statusCode || 500).json({ message: error.statusCode ? error.message : 'Erreur lors de la répartition du chèque' });
+  } finally {
+    connection?.release();
   }
 });
 

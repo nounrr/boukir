@@ -831,7 +831,7 @@ selfRouter.delete('/me/documents/:id', async (req, res, next) => {
        WHERE mpd.id = ? AND mpd.profile_id = ? AND mpd.deleted_at IS NULL
          AND mp.deleted_at IS NULL AND mp.status IN ('draft', 'rejected')
          AND mp.contact_id = ? AND c.deleted_at IS NULL
-         AND (c.type_compte = 'Artisan/Promoteur' OR c.artisan_approuve = 1 OR c.demande_artisan = 1)`,
+         AND (c.type_compte IN ('Artisan', 'Promoteur', 'Artisan/Promoteur') OR c.artisan_approuve = 1 OR c.demande_artisan = 1)`,
       [id, owned.profile.id, req.user.id]
     );
     if (!result.affectedRows) return res.status(404).json({ message: 'Document introuvable' });
@@ -942,7 +942,7 @@ adminRouter.post('/team-create', async (req, res, next) => {
             demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le,
             password, auth_provider, email_verified, is_active, source,
             shipping_city, reset_token, reset_token_expires_at, created_by, updated_by, locale)
-         VALUES (?, ?, ?, ?, ?, 'Client', 'Artisan/Promoteur',
+         VALUES (?, ?, ?, ?, ?, 'Client', 'Artisan',
                  1, 1, ?, CURRENT_TIMESTAMP,
                  ?, 'local', 0, 1, 'ecommerce',
                  ?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 48 HOUR), ?, ?, ?)`,

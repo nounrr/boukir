@@ -17,6 +17,7 @@ interface ArtisanRequest {
   telephone?: string;
   avatar_url?: string;
   created_at: string;
+  type_compte_demande?: 'Artisan' | 'Promoteur' | null;
 }
 
 const NotificationBell: React.FC = () => {
@@ -29,6 +30,7 @@ const NotificationBell: React.FC = () => {
     type: 'approve' | 'reject';
     requestId: number;
     userName: string;
+    accountType?: 'Artisan' | 'Promoteur';
   }>({
     isOpen: false,
     type: 'approve',
@@ -66,12 +68,13 @@ const NotificationBell: React.FC = () => {
     setShowDropdown(!showDropdown);
   };
 
-  const handleApprove = (id: number, userName: string) => {
+  const handleApprove = (id: number, userName: string, accountType: 'Artisan' | 'Promoteur') => {
     setConfirmModal({
       isOpen: true,
       type: 'approve',
       requestId: id,
       userName,
+      accountType,
     });
   };
 
@@ -105,7 +108,7 @@ const NotificationBell: React.FC = () => {
         
         // Show success message
         setTimeout(() => {
-          alert(`✓ ${userName} a été approuvé comme Artisan/Promoteur!\n\nL'utilisateur peut maintenant profiter de tous les avantages artisans.`);
+          alert(`✓ ${userName} a été approuvé comme ${confirmModal.accountType || 'Artisan'} !`);
         }, 100);
       } else {
         await axios.post(
@@ -163,10 +166,10 @@ const NotificationBell: React.FC = () => {
         isOpen={confirmModal.isOpen}
         onClose={handleCloseModal}
         onConfirm={handleConfirm}
-        title={confirmModal.type === 'approve' ? 'Approuver la demande Artisan' : 'Rejeter la demande Artisan'}
+        title={confirmModal.type === 'approve' ? `Approuver la demande ${confirmModal.accountType || 'Artisan'}` : 'Rejeter la demande'}
         message={
           confirmModal.type === 'approve'
-            ? `Voulez-vous approuver ${confirmModal.userName} comme Artisan/Promoteur?`
+            ? `Voulez-vous approuver ${confirmModal.userName} comme ${confirmModal.accountType || 'Artisan'} ?`
             : `Êtes-vous sûr de vouloir rejeter la demande de ${confirmModal.userName}?`
         }
         confirmText={confirmModal.type === 'approve' ? 'Approuver' : 'Rejeter'}
@@ -259,6 +262,9 @@ const NotificationBell: React.FC = () => {
                             <p className="text-xs text-gray-500 truncate">
                               {request.email}
                             </p>
+                            <p className="text-xs font-medium text-blue-700">
+                              Demande : {request.type_compte_demande || 'Artisan'}
+                            </p>
                             {request.telephone && (
                               <p className="text-xs text-gray-500">
                                 {request.telephone}
@@ -280,7 +286,7 @@ const NotificationBell: React.FC = () => {
                         {/* Action Buttons */}
                         <div className="flex gap-2 ml-13">
                           <button
-                            onClick={() => handleApprove(request.id, request.nom_complet || `${request.prenom} ${request.nom}`)}
+                            onClick={() => handleApprove(request.id, request.nom_complet || `${request.prenom} ${request.nom}`, request.type_compte_demande || 'Artisan')}
                             className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded transition-colors"
                           >
                             Approuver

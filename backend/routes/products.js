@@ -449,6 +449,13 @@ const ensureProductsColumns = initializeOnce(async () => {
   if (!colsRemiseArtisanProd.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN remise_artisan DECIMAL(5,2) NOT NULL DEFAULT 0`);
   }
+  const [colsRemisePromoteurProd] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'remise_promoteur'`
+  );
+  if (!colsRemisePromoteurProd.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN remise_promoteur DECIMAL(5,2) NOT NULL DEFAULT 0`);
+  }
 
   // Check est_service
   const [colsService] = await pool.query(
@@ -731,6 +738,13 @@ const ensureProductsColumns = initializeOnce(async () => {
   );
   if (!colsRemiseArtisanVar.length) {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN remise_artisan DECIMAL(5,2) NOT NULL DEFAULT 0`);
+  }
+  const [colsRemisePromoteurVar] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'remise_promoteur'`
+  );
+  if (!colsRemisePromoteurVar.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN remise_promoteur DECIMAL(5,2) NOT NULL DEFAULT 0`);
   }
 
   // Create variant_images table
@@ -1067,6 +1081,7 @@ async function runProductSearch(query) {
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
+        'remise_promoteur', pv.remise_promoteur,
         'stock_quantity', pv.stock_quantity,
         'snapshot_quantite_total', (SELECT CASE WHEN COUNT(*) > 0 THEN SUM(psv.quantite) ELSE NULL END
            FROM product_snapshot psv
@@ -1133,6 +1148,7 @@ async function runProductSearch(query) {
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
+        'remise_promoteur', pv.remise_promoteur,
         'stock_quantity', pv.stock_quantity
       )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
@@ -1199,6 +1215,7 @@ async function runProductSearch(query) {
         image_url: r.image_url,
         remise_client: Number(r.remise_client ?? 0),
         remise_artisan: Number(r.remise_artisan ?? 0),
+        remise_promoteur: Number(r.remise_promoteur ?? 0),
         gallery,
         fiche_technique: r.fiche_technique,
         fiche_technique_ar: r.fiche_technique_ar,
@@ -1636,7 +1653,7 @@ router.get('/with-snapshots', async (req, res, next) => {
                 p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
                 p.prix_vente_pourcentage, p.quantite, p.est_service, p.rappel_non_calcule, p.non_stockable, p.image_url,
                 p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
-                p.remise_client, p.remise_artisan
+                p.remise_client, p.remise_artisan, p.remise_promoteur
          FROM products p WHERE COALESCE(p.is_deleted, 0) = 0${productSearch.sql} ORDER BY p.id DESC ${limitSql}`,
         [...productSearch.params, ...limitParams]
       );
@@ -1701,6 +1718,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         p.is_obligatoire_variant,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.prix_vente AS product_prix_vente,
         p.prix_vente_2 AS product_prix_vente_2,
         p.sale_price_corrected_at AS product_sale_price_corrected_at,
@@ -1728,7 +1746,7 @@ router.get('/with-snapshots', async (req, res, next) => {
              p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
              p.prix_vente_pourcentage, p.quantite, p.est_service, p.rappel_non_calcule, p.non_stockable, p.image_url,
              p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
-             p.remise_client, p.remise_artisan,
+             p.remise_client, p.remise_artisan, p.remise_promoteur,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                'id', pv2.id, 'variant_name', pv2.variant_name, 'color_name', pv2.color_name,
                'prix_achat', pv2.prix_achat, 'cout_revient', pv2.cout_revient,
@@ -1834,6 +1852,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         isObligatoireVariant: !!snap.is_obligatoire_variant,
         remise_client: Number(snap.remise_client ?? 0),
         remise_artisan: Number(snap.remise_artisan ?? 0),
+        remise_promoteur: Number(snap.remise_promoteur ?? 0),
         variants: [],
         units: [],
       });
@@ -1880,6 +1899,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         isObligatoireVariant: !!p.is_obligatoire_variant,
         remise_client: Number(p.remise_client ?? 0),
         remise_artisan: Number(p.remise_artisan ?? 0),
+        remise_promoteur: Number(p.remise_promoteur ?? 0),
         variants: Array.isArray(variants) ? variants : [],
         units: Array.isArray(units) ? units : [],
       });
@@ -1945,6 +1965,7 @@ router.get('/', async (req, res, next) => {
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
+        'remise_promoteur', pv.remise_promoteur,
         'stock_quantity', pv.stock_quantity,
         'snapshot_quantite_total', (SELECT CASE WHEN COUNT(*) > 0 THEN SUM(psv.quantite) ELSE NULL END
            FROM product_snapshot psv
@@ -2010,6 +2031,7 @@ router.get('/', async (req, res, next) => {
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
+        'remise_promoteur', pv.remise_promoteur,
         'stock_quantity', pv.stock_quantity
       )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
@@ -2073,6 +2095,7 @@ router.get('/', async (req, res, next) => {
         image_url: r.image_url,
         remise_client: Number(r.remise_client ?? 0),
         remise_artisan: Number(r.remise_artisan ?? 0),
+        remise_promoteur: Number(r.remise_promoteur ?? 0),
         gallery: gallery,
         fiche_technique: r.fiche_technique,
         fiche_technique_ar: r.fiche_technique_ar,
@@ -2490,9 +2513,9 @@ router.post('/convert-to-variants', async (req, res, next) => {
            prix_achat, cout_revient, cout_revient_pourcentage,
            prix_gros, prix_gros_pourcentage,
            prix_vente_pourcentage, prix_vente, prix_vente_2,
-           remise_client, remise_artisan, stock_quantity,
+           remise_client, remise_artisan, remise_promoteur, stock_quantity,
            image_url, is_deleted, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, 'Autre', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, 'Autre', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
         [
           originalProduct.id,
           source.designation,
@@ -2510,6 +2533,7 @@ router.post('/convert-to-variants', async (req, res, next) => {
           source.prix_vente_2,
           source.remise_client,
           source.remise_artisan,
+          source.remise_promoteur,
           snapshotStockByProductId.has(Number(source.id))
             ? snapshotStockByProductId.get(Number(source.id))
             : source.quantite,
@@ -3183,6 +3207,7 @@ router.get('/:id(\\d+)', async (req, res, next) => {
       gallery: gallery,
       remise_client: Number(r.remise_client ?? 0),
       remise_artisan: Number(r.remise_artisan ?? 0),
+      remise_promoteur: Number(r.remise_promoteur ?? 0),
       fiche_technique: r.fiche_technique,
       fiche_technique_ar: r.fiche_technique_ar,
       fiche_technique_en: r.fiche_technique_en,
@@ -3214,6 +3239,7 @@ router.get('/:id(\\d+)', async (req, res, next) => {
         image_url: v.image_url,
         remise_client: Number(v.remise_client ?? 0),
         remise_artisan: Number(v.remise_artisan ?? 0),
+        remise_promoteur: Number(v.remise_promoteur ?? 0),
         snapshot_quantite_total: useSnapshot && variantSnapshotTotalById[v.id] !== null && variantSnapshotTotalById[v.id] !== undefined ? Number(variantSnapshotTotalById[v.id]) : null,
         snapshot_finance: useSnapshot ? (variantSnapshotFinanceById[v.id] || null) : null,
         snapshot_rows: useSnapshot ? (variantSnapshotRowsById[v.id] || []) : null,
@@ -3255,6 +3281,7 @@ router.post('/', upload.fields([
       prix_vente_2,
       remise_client,
       remise_artisan,
+      remise_promoteur,
       est_service,
       rappel_non_calcule,
       non_stockable,
@@ -3356,8 +3383,8 @@ router.post('/', upload.fields([
 
     const [result] = await pool.query(
       `INSERT INTO products
-      (designation, reference_2, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, est_service, rappel_non_calcule, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (designation, reference_2, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, remise_promoteur, est_service, rappel_non_calcule, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         normalizedReference2,
@@ -3378,6 +3405,7 @@ router.post('/', upload.fields([
         Number.isFinite(pv2) ? pv2 : 0,
         Number(remise_client ?? 0),
         Number(remise_artisan ?? 0),
+        Number(remise_promoteur ?? 0),
         isService ? 1 : 0,
         isRappelNonCalcule ? 1 : 0,
         isNonStockable ? 1 : 0,
@@ -3453,10 +3481,10 @@ router.post('/', upload.fields([
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
                   prix_vente_pourcentage, prix_vente, prix_vente_2,
-                  remise_client, remise_artisan, stock_quantity,
+                  remise_client, remise_artisan, remise_promoteur, stock_quantity,
                   created_at, updated_at
                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               id,
               v.variant_name,
@@ -3476,6 +3504,7 @@ router.post('/', upload.fields([
               variantPrixVente2,
               Number(v.remise_client ?? 0),
               Number(v.remise_artisan ?? 0),
+              Number(v.remise_promoteur ?? 0),
               Number(v.stock_quantity ?? 0),
               now,
               now,
@@ -3540,6 +3569,7 @@ router.post('/', upload.fields([
       gallery,
       remise_client: Number(r.remise_client ?? 0),
       remise_artisan: Number(r.remise_artisan ?? 0),
+      remise_promoteur: Number(r.remise_promoteur ?? 0),
       fiche_technique: r.fiche_technique,
       fiche_technique_ar: r.fiche_technique_ar,
       fiche_technique_en: r.fiche_technique_en,
@@ -3569,6 +3599,7 @@ router.post('/', upload.fields([
         stock_quantity: Number(v.stock_quantity),
         remise_client: Number(v.remise_client ?? 0),
         remise_artisan: Number(v.remise_artisan ?? 0),
+        remise_promoteur: Number(v.remise_promoteur ?? 0),
       })),
       units: unts.map(u => ({
         ...u,
@@ -3617,6 +3648,7 @@ router.put('/:id', upload.fields([
       prix_vente_2,
       remise_client,
       remise_artisan,
+      remise_promoteur,
       est_service,
       rappel_non_calcule,
       non_stockable,
@@ -3799,6 +3831,7 @@ router.put('/:id', upload.fields([
       prix_vente_2: Number.isFinite(pv2) ? pv2 : 0,
       remise_client: (remise_client !== undefined && remise_client !== null && remise_client !== '') ? Number(remise_client) : Number(existing.remise_client ?? 0),
       remise_artisan: (remise_artisan !== undefined && remise_artisan !== null && remise_artisan !== '') ? Number(remise_artisan) : Number(existing.remise_artisan ?? 0),
+      remise_promoteur: (remise_promoteur !== undefined && remise_promoteur !== null && remise_promoteur !== '') ? Number(remise_promoteur) : Number(existing.remise_promoteur ?? 0),
       est_service: isService ? 1 : 0,
       rappel_non_calcule: isRappelNonCalcule ? 1 : 0,
       non_stockable: isNonStockable ? 1 : 0,
@@ -3933,6 +3966,7 @@ router.put('/:id', upload.fields([
               variantPrixVente2,
               Number(v?.remise_client ?? 0),
               Number(v?.remise_artisan ?? 0),
+              Number(v?.remise_promoteur ?? 0),
               Number(v?.stock_quantity ?? 0),
             ];
 
@@ -3944,7 +3978,7 @@ router.put('/:id', upload.fields([
                      prix_achat = ?, cout_revient = ?, cout_revient_pourcentage = ?,
                      prix_gros = ?, prix_gros_pourcentage = ?,
                      prix_vente_pourcentage = ?, prix_vente = ?, prix_vente_2 = ?,
-                     remise_client = ?, remise_artisan = ?, stock_quantity = ?,
+                     remise_client = ?, remise_artisan = ?, remise_promoteur = ?, stock_quantity = ?,
                      is_deleted = 0,
                      updated_at = ?
                  WHERE id = ? AND product_id = ?`,
@@ -3961,9 +3995,9 @@ router.put('/:id', upload.fields([
                     prix_achat, cout_revient, cout_revient_pourcentage,
                     prix_gros, prix_gros_pourcentage,
                     prix_vente_pourcentage, prix_vente, prix_vente_2,
-                    remise_client, remise_artisan, stock_quantity,
+                    remise_client, remise_artisan, remise_promoteur, stock_quantity,
                     is_deleted, created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                   [id, ...payloadVals, now, now]
                 );
               }
@@ -3976,9 +4010,9 @@ router.put('/:id', upload.fields([
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
                   prix_vente_pourcentage, prix_vente, prix_vente_2,
-                  remise_client, remise_artisan, stock_quantity,
+                  remise_client, remise_artisan, remise_promoteur, stock_quantity,
                   is_deleted, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                 [id, ...payloadVals, now, now]
               );
             }
@@ -4127,6 +4161,7 @@ router.put('/:id', upload.fields([
       gallery: gallery,
       remise_client: Number(r.remise_client ?? 0),
       remise_artisan: Number(r.remise_artisan ?? 0),
+      remise_promoteur: Number(r.remise_promoteur ?? 0),
       fiche_technique: r.fiche_technique,
       fiche_technique_ar: r.fiche_technique_ar,
       fiche_technique_en: r.fiche_technique_en,
@@ -4155,6 +4190,7 @@ router.put('/:id', upload.fields([
         image_url: v.image_url,
         remise_client: Number(v.remise_client ?? 0),
         remise_artisan: Number(v.remise_artisan ?? 0),
+        remise_promoteur: Number(v.remise_promoteur ?? 0),
         gallery: variantGalleriesById[v.id] || []
       })),
       units: units.map(u => ({

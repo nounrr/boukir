@@ -102,7 +102,7 @@ const RegisterPage = () => {
       const result = await fetch(`${API_URL}/api/users/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
+        body: JSON.stringify({ credential: response.credential, type_compte: formData.type_compte }),
       });
 
       const data = await result.json();
@@ -138,6 +138,7 @@ const RegisterPage = () => {
               body: JSON.stringify({
                 accessToken: response.authResponse.accessToken,
                 userID: response.authResponse.userID,
+                type_compte: formData.type_compte,
               }),
             });
 
@@ -267,7 +268,8 @@ const RegisterPage = () => {
               className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
             >
               <option value="Client">Client</option>
-              <option value="Artisan/Promoteur">Artisan/Promoteur</option>
+              <option value="Artisan">Artisan</option>
+              <option value="Promoteur">Promoteur</option>
             </select>
           </div>
 

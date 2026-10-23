@@ -35,6 +35,7 @@ router.get('/', async (req, res, next) => {
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
+        p.remise_promoteur,
         p.image_url,
         p.stock_partage_ecom_qty,
         (SELECT COALESCE(SUM(ps.quantite), 0)
@@ -63,7 +64,8 @@ router.get('/', async (req, res, next) => {
            AND COALESCE(ps.en_validation, 0) <> 0) AS snapshot_variant_stock,
         pv.image_url as variant_image_url,
         pv.remise_client as variant_remise_client,
-        pv.remise_artisan as variant_remise_artisan
+        pv.remise_artisan as variant_remise_artisan,
+        pv.remise_promoteur as variant_remise_promoteur
       FROM wishlist_items w
       INNER JOIN products p ON w.product_id = p.id
       LEFT JOIN product_variants pv ON w.variant_id = pv.id
@@ -84,12 +86,14 @@ router.get('/', async (req, res, next) => {
       let effectivePrice = Number(item.snapshot_base_price);
       let effectiveRemiseClient = Number(item.remise_client || 0);
       let effectiveRemiseArtisan = Number(item.remise_artisan || 0);
+      let effectiveRemisePromoteur = Number(item.remise_promoteur || 0);
       
       // If variant is selected, use variant price
       if (item.variant_id && item.snapshot_variant_price !== null) {
         effectivePrice = Number(item.snapshot_variant_price);
         effectiveRemiseClient = Number(item.variant_remise_client || 0);
         effectiveRemiseArtisan = Number(item.variant_remise_artisan || 0);
+        effectiveRemisePromoteur = Number(item.variant_remise_promoteur || 0);
       }
 
       // Apply promo
@@ -135,6 +139,7 @@ router.get('/', async (req, res, next) => {
           price_after_promo: priceAfterPromo,
           remise_client: effectiveRemiseClient,
           remise_artisan: effectiveRemiseArtisan,
+          remise_promoteur: effectiveRemisePromoteur,
           has_promo: promoPercentage > 0
         },
         stock: {
@@ -239,6 +244,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
+          p.remise_promoteur,
           p.image_url,
           (SELECT COALESCE(SUM(ps.quantite), 0)
            FROM product_snapshot ps
@@ -306,6 +312,7 @@ router.get('/suggestions', async (req, res, next) => {
           pourcentage_promo: promoPercentage,
           remise_client: Number(p.remise_client || 0),
           remise_artisan: Number(p.remise_artisan || 0),
+          remise_promoteur: Number(p.remise_promoteur || 0),
           has_promo: promoPercentage > 0,
           image_url: p.image_url,
           gallery: galleryImages.map(img => ({
@@ -351,6 +358,7 @@ router.get('/suggestions', async (req, res, next) => {
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
+          p.remise_promoteur,
           p.image_url,
           (SELECT COALESCE(SUM(ps.quantite), 0)
            FROM product_snapshot ps
@@ -405,6 +413,7 @@ router.get('/suggestions', async (req, res, next) => {
           pourcentage_promo: promoPercentage,
           remise_client: Number(p.remise_client || 0),
           remise_artisan: Number(p.remise_artisan || 0),
+          remise_promoteur: Number(p.remise_promoteur || 0),
           has_promo: promoPercentage > 0,
           image_url: p.image_url,
           gallery: galleryImages.map(img => ({

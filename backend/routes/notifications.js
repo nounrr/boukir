@@ -85,7 +85,7 @@ router.get('/artisan-requests', async (req, res, next) => {
 
     const [requests] = await pool.query(
       `SELECT 
-        id, nom_complet, prenom, nom, email, telephone, avatar_url, created_at
+        id, nom_complet, prenom, nom, email, telephone, avatar_url, created_at, type_compte_demande
        FROM contacts 
        WHERE demande_artisan = TRUE 
          AND artisan_approuve = FALSE 
@@ -112,7 +112,7 @@ router.post('/artisan-requests/:id/approve', async (req, res, next) => {
     await connection.beginTransaction();
 
     const [contacts] = await connection.query(
-      `SELECT id, nom_complet, email, demande_artisan, artisan_approuve 
+      `SELECT id, nom_complet, email, demande_artisan, artisan_approuve, type_compte_demande
        FROM contacts WHERE id = ? AND deleted_at IS NULL`,
       [id]
     );
@@ -132,7 +132,8 @@ router.post('/artisan-requests/:id/approve', async (req, res, next) => {
        SET artisan_approuve = TRUE,
            artisan_approuve_le = NOW(),
            artisan_note_admin = ?,
-           type_compte = 'Artisan/Promoteur',
+           type_compte = COALESCE(type_compte_demande, 'Artisan'),
+           type_compte_demande = NULL,
            updated_at = NOW()
        WHERE id = ?`,
       [note || null, id]

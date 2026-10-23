@@ -6,7 +6,7 @@ function isPositiveInteger(value) {
 
 export function parseMaalemRegistrationIntent(body) {
   const value = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-  const isArtisanRequest = value.type_compte === 'Artisan/Promoteur';
+  const isArtisanRequest = ['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(value.type_compte);
   const rawPath = value.artisan_path;
   const hasCategory = value.maalem_category_id !== undefined
     && value.maalem_category_id !== null
@@ -48,7 +48,7 @@ export function parseMaalemRegistrationIntent(body) {
 }
 
 export function canManagePendingMaalemApplication(contact, profile) {
-  const isApprovedArtisan = contact?.type_compte === 'Artisan/Promoteur'
+  const isApprovedArtisan = ['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(contact?.type_compte)
     || contact?.artisan_approuve === true
     || contact?.artisan_approuve === 1
     || contact?.artisan_approuve === '1';

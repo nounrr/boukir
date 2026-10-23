@@ -1,7 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Download, Printer } from 'lucide-react';
+import { Download, Printer, X } from 'lucide-react';
 import type { Contact } from '../types';
 import ContactPrintTemplate, { type CompanyType, type ContactPrintMode, type PriceMode } from './ContactPrintTemplate';
 import { useGetProductsQuery } from '../store/api/productsApi';
@@ -36,12 +36,30 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
-  const [includeProductImages, setIncludeProductImages] = useState(false);
+  const [includeProductImages, setIncludeProductImages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewWidth, setPreviewWidth] = useState(794);
+  const [previewHeight, setPreviewHeight] = useState(1123);
+  useEffect(() => {
+    if (!isOpen) return;
+    const updatePreview = () => {
+      const page = printRef.current;
+      if (!page) return;
+      setPreviewWidth(page.offsetWidth);
+      setPreviewScale(window.innerWidth < 640 ? Math.min(1, (window.innerWidth - 32) / page.offsetWidth) : 1);
+      setPreviewHeight(Math.max(page.scrollHeight, page.offsetHeight));
+    };
+    updatePreview();
+    const observer = new ResizeObserver(updatePreview);
+    if (printRef.current) observer.observe(printRef.current);
+    window.addEventListener('resize', updatePreview);
+    return () => { observer.disconnect(); window.removeEventListener('resize', updatePreview); };
+  }, [isOpen]);
   // Catalogue produits pour les désignations traduites (cache RTK Query partagé)
   const { data: products = [] } = useGetProductsQuery(undefined, {
-    skip: !isOpen || designationLang === 'fr',
+    skip: !isOpen || (designationLang === 'fr' && (mode !== 'products' || !includeProductImages)),
   });
 
   if (!isOpen) return null;
@@ -57,14 +75,26 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
       const baseScale = 1.5;
       const MAX_CANVAS_PX = 16384; // conservative (varies by browser/GPU)
       const elHeight = Math.max(el.scrollHeight, el.offsetHeight);
-      const safeScale = Math.max(0.6, Math.min(baseScale, MAX_CANVAS_PX / Math.max(1, elHeight)));
-
+      const safeScale = Math.min(baseScale, MAX_CANVAS_PX / Math.max(1, elHeight));
       const canvas = await html2canvas(el, {
-        scale: safeScale,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
+          scale: safeScale,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          onclone: clonedDocument => {
+            const clonedPage = clonedDocument.querySelector<HTMLElement>('[data-contact-pdf-page]');
+            if (!clonedPage) return;
+            clonedPage.style.transform = 'none';
+            let ancestor = clonedPage.parentElement;
+            while (ancestor) {
+              ancestor.style.overflow = 'visible';
+              ancestor.style.overflowX = 'visible';
+              ancestor.style.overflowY = 'visible';
+              ancestor.scrollTop = 0;
+              ancestor = ancestor.parentElement;
+            }
+          },
       });
 
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: size.toLowerCase() as 'a4' | 'a5', compress: true });
@@ -123,59 +153,41 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-semibold">Aperçu - {contact?.nom_complet} ({mode === 'transactions' ? 'Transactions' : 'Produits'})</h2>
-            <div className="flex items-center gap-2">
-          <label htmlFor="contact-company-select" className="text-sm">Société:</label>
-          <select id="contact-company-select" value={company} onChange={(e) => setCompany(e.target.value as CompanyType)} className="px-2 py-1 border rounded text-sm">
-                <option value="DIAMOND">BOUKIR DIAMOND</option>
-                <option value="MPC">BOUKIR MPC</option>
-              </select>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60">
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[95vh] sm:max-w-6xl sm:rounded-xl">
+        <div className="shrink-0 border-b border-slate-200 bg-white p-4 sm:bg-slate-50">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 sm:hidden">Document PDF · A4</p>
+              <h2 className="truncate text-lg font-semibold text-slate-900 sm:whitespace-normal"><span className="sm:hidden">{contact?.nom_complet}</span><span className="hidden sm:inline">Aperçu - {contact?.nom_complet} ({mode === 'transactions' ? 'Transactions' : 'Produits'})</span></h2>
+              <p className="text-sm text-slate-500 sm:hidden">{mode === 'transactions' ? 'Détail des transactions' : 'Détail des produits'}</p>
             </div>
-            <div className="flex items-center gap-2">
-          <label htmlFor="contact-price-select" className="text-base md:text-lg font-medium">Prix:</label>
-          <select id="contact-price-select" value={priceMode} onChange={(e) => setPriceMode(e.target.value as PriceMode)} className="px-3 py-2 border rounded text-base md:text-lg">
-                <option value="WITH_PRICES">Avec prix</option>
-                <option value="WITHOUT_PRICES">Sans prix</option>
-              </select>
+            <button type="button" onClick={onClose} aria-label="Fermer l'aperçu" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 sm:hidden"><X size={20} /></button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <button onClick={handlePrint} disabled={isGenerating} className="flex items-center rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-50"><Printer size={16} className="mr-1" />Imprimer</button>
+              <button onClick={generatePDF} disabled={isGenerating} className="flex items-center rounded-lg border border-blue-600 px-3 py-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50"><Download size={16} className="mr-1" />{isGenerating ? 'Génération...' : 'PDF'}</button>
+              <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-2 text-slate-700 hover:bg-slate-100">Fermer</button>
             </div>
-            <div className="flex items-center gap-2">
-              <label htmlFor="contact-designation-lang" className="text-sm">Langue désignation:</label>
-              <select
-                id="contact-designation-lang"
-                value={designationLang}
-                onChange={(e) => setDesignationLang(e.target.value as DesignationLang)}
-                className="px-2 py-1 border rounded text-sm"
-              >
-                {DESIGNATION_LANG_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            {mode === 'products' && <div className="flex items-center gap-2">
-              <label htmlFor="contact-images-select" className="text-sm">Images produit :</label>
-              <select id="contact-images-select" value={includeProductImages ? 'with' : 'without'} disabled={isGenerating} onChange={event => setIncludeProductImages(event.target.value === 'with')} className="px-2 py-1 border rounded text-sm">
-                <option value="without">Sans images</option>
-                <option value="with">Avec images</option>
-              </select>
-            </div>}
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handlePrint} disabled={isGenerating} className="flex items-center px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-              <Printer size={16} className="mr-1" /> Imprimer
-            </button>
-            <button onClick={generatePDF} disabled={isGenerating} className="flex items-center px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
-              <Download size={16} className="mr-1" /> {isGenerating ? 'Génération...' : 'PDF'}
-            </button>
-            <button onClick={onClose} className="px-3 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Fermer</button>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">Société
+              <select id="contact-company-select" value={company} onChange={(e) => setCompany(e.target.value as CompanyType)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value="DIAMOND">BOUKIR DIAMOND</option><option value="MPC">BOUKIR MPC</option></select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">Prix
+              <select id="contact-price-select" value={priceMode} onChange={(e) => setPriceMode(e.target.value as PriceMode)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value="WITH_PRICES">Avec prix</option><option value="WITHOUT_PRICES">Sans prix</option></select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">Langue désignation
+              <select id="contact-designation-lang" value={designationLang} onChange={(e) => setDesignationLang(e.target.value as DesignationLang)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900">{DESIGNATION_LANG_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
+            </label>
+            {mode === 'products' && <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">Images produit
+              <select id="contact-images-select" value={includeProductImages ? 'with' : 'without'} disabled={isGenerating} onChange={event => setIncludeProductImages(event.target.value === 'with')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value="with">Avec images</option><option value="without">Sans images</option></select>
+            </label>}
           </div>
         </div>
-        <div className="flex-1 overflow-auto bg-gray-100 p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4">
           <div className="flex justify-center">
-            <div ref={printRef} className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
+            <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
+            <div ref={printRef} data-contact-pdf-page className="origin-top-left bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm', transform: `scale(${previewScale})` }}>
               <ContactPrintTemplate
                 contact={contact}
                 mode={mode}
@@ -199,9 +211,13 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 includeProductImages={includeProductImages}
               />
             </div>
+            </div>
           </div>
         </div>
-        <div className="p-2 border-t bg-gray-50 text-xs text-gray-600 text-center">Aperçu d'impression</div>
+        <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:hidden">
+          <button type="button" onClick={generatePDF} disabled={isGenerating} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 font-semibold text-white shadow-sm active:bg-blue-700 disabled:opacity-50"><Download size={18} />{isGenerating ? 'Génération du PDF...' : 'Télécharger PDF'}</button>
+        </div>
+        <div className="hidden border-t bg-gray-50 p-2 text-center text-xs text-gray-600 sm:block">Aperçu d'impression</div>
       </div>
     </div>
   );

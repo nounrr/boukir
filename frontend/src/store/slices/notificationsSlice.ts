@@ -10,6 +10,7 @@ interface ArtisanRequest {
   telephone?: string;
   avatar_url?: string;
   created_at: string;
+  type_compte_demande?: 'Artisan' | 'Promoteur' | null;
 }
 
 interface NotificationsState {

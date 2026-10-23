@@ -24,6 +24,8 @@ test('un Maalem reste éligible par son compte Artisan existant, quel que soit s
     }), true);
   }
   assert.equal(isArtisanAccount({ type_compte: 'Client', artisan_approuve: 1 }), true);
+  assert.equal(isArtisanAccount({ type_compte: 'Artisan' }), true);
+  assert.equal(isArtisanAccount({ type_compte: 'Promoteur' }), true);
   assert.equal(isArtisanAccount({ type_compte: 'Client', artisan_approuve: 0 }), false);
   assert.equal(isArtisanAccount({ type_compte: 'Maalem' }), false);
 });
@@ -183,13 +185,18 @@ test('normalise le profil sans avatar : avatar_url reste null plutôt qu’undef
 test('les remises restent pilotées par le type Artisan existant, pas par un rôle Maalem', async () => {
   const calls = [];
   const db = {
-    async execute(_sql, params) {
-      calls.push(params);
+    async execute(sql, params) {
+      calls.push({ sql, params });
       return [[{ earned: 25 }]];
     },
   };
   assert.equal(await computeOrderEarnedRemiseAmount(db, 91, 'Artisan/Promoteur'), 25);
-  assert.deepEqual(calls[0], [1, 91]);
+  assert.deepEqual(calls[0].params, [91]);
+  assert.match(calls[0].sql, /pv\.remise_artisan/);
   assert.equal(await computeOrderEarnedRemiseAmount(db, 92, 'Client'), 25);
-  assert.deepEqual(calls[1], [0, 92]);
+  assert.deepEqual(calls[1].params, [92]);
+  assert.match(calls[1].sql, /pv\.remise_client/);
+  assert.equal(await computeOrderEarnedRemiseAmount(db, 93, 'Promoteur'), 25);
+  assert.deepEqual(calls[2].params, [93]);
+  assert.match(calls[2].sql, /pv\.remise_promoteur/);
 });

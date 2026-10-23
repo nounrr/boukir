@@ -338,7 +338,6 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
 
     const rawUserId = req.user?.id || null;
     const role = req.user?.role != null ? String(req.user.role).trim() : '';
-    const allowBackorder = false;
     const isEmployeeToken = role.length > 0 && req.user?.cin != null && req.user?.type_compte == null;
     const userId = isEmployeeToken ? null : rawUserId;
 
@@ -691,23 +690,6 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
       const priceError = validateCalculatedPrice(priceAfterPromo, item);
       if (priceError) return res.status(400).json(priceError);
 
-      // Stock validation (quote should match checkout validations)
-      const availableStock = item.variant_id
-        ? (snapshotEnabled
-          ? Number(item.snapshot_variant_stock ?? item.variant_stock ?? 0)
-          : Number(item.variant_stock || 0))
-        : (snapshotEnabled
-          ? Number(item.snapshot_stock ?? item.stock_partage_ecom_qty ?? 0)
-          : Number(item.stock_partage_ecom_qty || 0));
-
-      if (!allowBackorder && stockQuantityBase > availableStock) {
-        return res.status(400).json({
-          message: `Stock insuffisant pour ${item.designation}`,
-          available: availableStock,
-          requested: stockQuantityBase
-        });
-      }
-
       const itemSubtotal = priceAfterPromo * Number(item.quantity);
       const discountAmount = promoPercentage > 0
         ? (unitPrice - priceAfterPromo) * Number(item.quantity)
@@ -924,7 +906,6 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
 
     const rawUserId = req.user?.id || null; // NULL for guest orders
     const role = req.user?.role != null ? String(req.user.role).trim() : '';
-    const allowBackorder = false;
     const isEmployeeToken = role.length > 0 && req.user?.cin != null && req.user?.type_compte == null;
     const userId = isEmployeeToken ? null : rawUserId;
 
@@ -1435,14 +1416,6 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           : Number(item.stock_partage_ecom_qty || 0));
 
       const isIndisponible = stockQuantityBase > availableStock;
-      if (!allowBackorder && isIndisponible) {
-        await connection.rollback();
-        return res.status(400).json({ 
-          message: `Stock insuffisant pour ${item.designation}`,
-          available: availableStock,
-          requested: stockQuantityBase
-        });
-      }
 
       const itemSubtotal = priceAfterPromo * Number(item.quantity);
       const discountAmount = promoPercentage > 0 
@@ -1468,7 +1441,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
         discount_percentage: promoPercentage,
         discount_amount: discountAmount,
 
-        is_indisponible: false,
+        is_indisponible: isIndisponible,
 
         // Fields for profit/marge calculation (aligned with backoffice mouvementCalc)
         prix_unitaire: priceAfterPromo,

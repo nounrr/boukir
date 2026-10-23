@@ -39,6 +39,17 @@ export type PaymentPrintBalance = {
   soldeApres: number;
 };
 
+export type MultiClientChequeData = {
+  montant_total: number;
+  allocations: Array<{ contact_id: number; montant: number }>;
+  code_reglement: string;
+  date_paiement: string;
+  date_echeance?: string | null;
+  banque?: string;
+  personnel?: string;
+  designation?: string;
+};
+
 export const paymentsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPayments: builder.query<Payment[], void>({
@@ -69,6 +80,11 @@ export const paymentsApi = api.injectEndpoints({
         { type: 'Remise' as const, id: 'LIST' },
         ...(body?.contact_id ? [{ type: 'Contact' as const, id: body.contact_id }] : []),
       ],
+    }),
+
+    createMultiClientCheque: builder.mutation<{ payment_group_id: string; payments: Payment[] }, MultiClientChequeData>({
+      query: (body) => ({ url: '/payments/multi-client-cheque', method: 'POST', body }),
+      invalidatesTags: ['Payment', 'Contact'],
     }),
 
     updatePayment: builder.mutation<Payment, Partial<Payment> & { id: number; updated_by: number }>({
@@ -139,6 +155,7 @@ export const {
   useGetPaymentQuery,
   useGetPaymentPrintBalanceQuery,
   useCreatePaymentMutation,
+  useCreateMultiClientChequeMutation,
   useUpdatePaymentMutation,
   useChangePaymentStatusMutation,
   useDeletePaymentMutation,
