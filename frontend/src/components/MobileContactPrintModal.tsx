@@ -39,26 +39,33 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
   const [includeProductImages, setIncludeProductImages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState<'list' | 'pdf'>('list');
+  const contentRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewWidth, setPreviewWidth] = useState(794);
   const [previewHeight, setPreviewHeight] = useState(1123);
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || activeTab !== 'pdf') return;
     const updatePreview = () => {
       const page = printRef.current;
-      if (!page) return;
+      const container = previewContainerRef.current;
+      if (!page || !container) return;
       const contentWidth = Math.max(page.scrollWidth, page.offsetWidth);
       setPreviewWidth(contentWidth);
-      setPreviewScale(window.innerWidth < 640 ? Math.min(1, (window.innerWidth - 32) / contentWidth) : 1);
+      setPreviewScale(Math.min(1, container.clientWidth / contentWidth));
       setPreviewHeight(Math.max(page.scrollHeight, page.offsetHeight));
     };
     updatePreview();
     const observer = new ResizeObserver(updatePreview);
     if (printRef.current) observer.observe(printRef.current);
+    if (previewContainerRef.current) observer.observe(previewContainerRef.current);
     window.addEventListener('resize', updatePreview);
     return () => { observer.disconnect(); window.removeEventListener('resize', updatePreview); };
-  }, [isOpen]);
+  }, [isOpen, activeTab]);
+  useEffect(() => { if (isOpen) setActiveTab('list'); }, [isOpen]);
+  useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [activeTab]);
   // Catalogue produits pour les désignations traduites (cache RTK Query partagé)
   const { data: products = [] } = useGetProductsQuery(undefined, {
     skip: !isOpen || (designationLang === 'fr' && (mode !== 'products' || !includeProductImages)),
@@ -161,11 +168,16 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
               Quantité totale : <strong className="text-slate-900">{totalQty.toLocaleString('fr-FR')}</strong>
             </p>
           )}
+          <div role="tablist" aria-label="Mode d'aperçu" className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+            <button type="button" role="tab" aria-selected={activeTab === 'list'} disabled={isGenerating} onClick={() => setActiveTab('list')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'list' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>Liste</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'pdf'} disabled={isGenerating} onClick={() => setActiveTab('pdf')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'pdf' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>PDF A4</button>
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-4">
-          <MobileContactReader contact={contact} mode={mode} productHistory={productHistory} transactions={transactions} products={products as any[]} designationLang={designationLang} includeProductImages={includeProductImages} priceMode={priceMode} totalQty={totalQty} totalAmount={totalAmount} finalSolde={finalSolde} totalDebit={totalDebit} totalCredit={totalCredit} dateFrom={dateFrom} dateTo={dateTo} />
-          <p className="mb-3 mt-8 text-sm font-semibold text-slate-600">Aperçu du PDF A4</p>
-          <div className="flex justify-center">
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {activeTab === 'list' ? (
+            <MobileContactReader contact={contact} mode={mode} productHistory={productHistory} transactions={transactions} products={products as any[]} designationLang={designationLang} includeProductImages={includeProductImages} priceMode={priceMode} totalQty={totalQty} totalAmount={totalAmount} finalSolde={finalSolde} totalDebit={totalDebit} totalCredit={totalCredit} dateFrom={dateFrom} dateTo={dateTo} />
+          ) : (
+          <div ref={previewContainerRef} className="flex w-full justify-center">
             <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
             <div ref={printRef} data-contact-pdf-page className="origin-top-left bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm', transform: `scale(${previewScale})` }}>
               <ContactPrintTemplate
@@ -193,10 +205,11 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
             </div>
             </div>
           </div>
+          )}
         </div>
-        <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        {activeTab === 'pdf' && <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <button type="button" onClick={generatePDF} disabled={isGenerating} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 font-semibold text-white shadow-sm active:bg-blue-700 disabled:opacity-50"><Download size={18} />{isGenerating ? 'Génération du PDF...' : 'Télécharger PDF'}</button>
-        </div>
+        </div>}
       </div>
     </div>
   );

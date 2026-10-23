@@ -34,7 +34,10 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   // Taille fixée à A4 par défaut
   const size = 'A4' as const;
   const [isGenerating, setIsGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState<'list' | 'pdf'>('list');
+  const contentRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
   const [usePromo, setUsePromo] = useState(false);
   const [includeProductImages, setIncludeProductImages] = useState(true);
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
@@ -42,20 +45,25 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [previewWidth, setPreviewWidth] = useState(794);
   const [previewHeight, setPreviewHeight] = useState(1123);
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || activeTab !== 'pdf') return;
     const updatePreview = () => {
       const page = printRef.current;
-      if (!page) return;
-      setPreviewWidth(page.offsetWidth);
-      setPreviewScale(window.innerWidth < 640 ? Math.min(1, (window.innerWidth - 32) / page.offsetWidth) : 1);
+      const container = previewContainerRef.current;
+      if (!page || !container) return;
+      const contentWidth = Math.max(page.scrollWidth, page.offsetWidth);
+      setPreviewWidth(contentWidth);
+      setPreviewScale(Math.min(1, container.clientWidth / contentWidth));
       setPreviewHeight(Math.max(page.scrollHeight, page.offsetHeight));
     };
     updatePreview();
     const observer = new ResizeObserver(updatePreview);
     if (printRef.current) observer.observe(printRef.current);
+    if (previewContainerRef.current) observer.observe(previewContainerRef.current);
     window.addEventListener('resize', updatePreview);
     return () => { observer.disconnect(); window.removeEventListener('resize', updatePreview); };
-  }, [isOpen]);
+  }, [isOpen, activeTab]);
+  useEffect(() => { if (isOpen) setActiveTab('list'); }, [isOpen]);
+  useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [activeTab]);
   // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
   // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).
   const { data: fetchedProducts = [] } = useGetProductsQuery(undefined, {
@@ -190,13 +198,18 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 </select>
               </label>
             </div>
+            <div role="tablist" aria-label="Mode d'aperçu" className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+              <button type="button" role="tab" aria-selected={activeTab === 'list'} disabled={isGenerating} onClick={() => setActiveTab('list')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'list' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>Liste</button>
+              <button type="button" role="tab" aria-selected={activeTab === 'pdf'} disabled={isGenerating} onClick={() => setActiveTab('pdf')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'pdf' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>PDF A4</button>
+            </div>
         </div>
 
-        {/* Lecture mobile, suivie de l'aperçu A4 utilisé pour le téléchargement. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4">
-          <MobileBonReader bon={bon} client={client} fournisseur={fournisseur} products={effectiveProducts} designationLang={designationLang} includeProductImages={includeProductImages} title={documentTitle} reference={displayNumero} />
-          <p className="mb-3 mt-8 text-sm font-semibold text-slate-600">Aperçu du PDF A4</p>
-          <div className="flex justify-center">
+        {/* Choix entre la lecture mobile et l'aperçu A4 utilisé pour le téléchargement. */}
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {activeTab === 'list' ? (
+            <MobileBonReader bon={bon} client={client} fournisseur={fournisseur} products={effectiveProducts} designationLang={designationLang} includeProductImages={includeProductImages} title={documentTitle} reference={displayNumero} />
+          ) : (
+          <div ref={previewContainerRef} className="flex w-full justify-center">
             <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
             <div 
               ref={printRef}
@@ -224,11 +237,12 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             </div>
             </div>
           </div>
+          )}
         </div>
 
-        <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        {activeTab === 'pdf' && <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <button type="button" onClick={generatePDF} disabled={isGenerating} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 font-semibold text-white shadow-sm active:bg-blue-700 disabled:opacity-50"><Download size={18} />{isGenerating ? 'Génération du PDF...' : 'Télécharger PDF'}</button>
-        </div>
+        </div>}
       </div>
     </div>
   );
