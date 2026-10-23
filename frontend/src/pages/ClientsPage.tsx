@@ -15,6 +15,7 @@ import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactFormModal from '../components/ContactFormModal';
+import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import { useRemiseEditor, type RemiseEligibleItem } from '../hooks/useRemiseEditor';
 import RemiseEditorBar from '../components/RemiseEditorBar';
@@ -2239,6 +2240,7 @@ const ClientsListPage: React.FC = () => {
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set(savedState.expandedGroupKeys ?? []));
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
+  const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false);
   const clientsTableColspan = 14 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2833,6 +2835,8 @@ const ClientsListPage: React.FC = () => {
             <p className="text-sm text-gray-500">{total} client{total !== 1 ? 's' : ''} au total</p>
           </div>
         </div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        <button type="button" onClick={() => setIsGroupCreateOpen(true)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-4 py-2 font-medium text-blue-700 hover:bg-blue-50 sm:flex-none"><Plus className="h-4 w-4" />Créer un groupe</button>
         <button
           type="button"
           onClick={handleCreate}
@@ -2841,6 +2845,7 @@ const ClientsListPage: React.FC = () => {
           <Plus className="w-4 h-4" />
           Nouveau Client
         </button>
+        </div>
       </div>
 
       {/* Stats globales */}
@@ -3055,6 +3060,7 @@ const ClientsListPage: React.FC = () => {
         <ReminderModal contact={activeReminderClient} onClose={() => setReminderClient(null)} />
       )}
 
+      <ContactGroupCreateModal isOpen={isGroupCreateOpen} onClose={() => setIsGroupCreateOpen(false)} selectedIds={[...selectedListIds]} contactLabel="client" onCreated={() => setSelectedListIds(new Set())} />
       <ContactFormModal
         isOpen={isContactModalOpen}
         onClose={() => {

@@ -16,6 +16,7 @@ import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactFormModal from '../components/ContactFormModal';
+import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 import { getUiBadgeStyle, getUiDraggableRowStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
@@ -2004,6 +2005,7 @@ const ChargesListPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'total_cumule');
   const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
+  const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false);
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -2153,6 +2155,8 @@ const ChargesListPage: React.FC = () => {
             <p className="text-sm text-gray-500">{total} charge{total !== 1 ? 's' : ''} au total</p>
           </div>
         </div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        <button type="button" onClick={() => setIsGroupCreateOpen(true)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-violet-300 bg-white px-4 py-2 font-medium text-violet-700 hover:bg-violet-50 sm:flex-none"><Plus className="h-4 w-4" />Créer un groupe</button>
         <button
           type="button"
           onClick={handleCreate}
@@ -2161,6 +2165,7 @@ const ChargesListPage: React.FC = () => {
           <Plus className="w-4 h-4" />
           Nouveau Charge
         </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3">
@@ -2278,6 +2283,7 @@ const ChargesListPage: React.FC = () => {
                             </div>
                             <div>
                               <p className="font-medium text-gray-900 leading-tight">{f.nom_complet}</p>
+                              {(f as any).group_name && <p className="text-xs font-semibold text-violet-700">Groupe : {(f as any).group_name}</p>}
                               {f.reference && <p className="text-xs text-gray-400">Ref: {f.reference}</p>}
                             </div>
                           </div>
@@ -2365,7 +2371,7 @@ const ChargesListPage: React.FC = () => {
                 <article key={f.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                   <div className="flex items-start gap-3 p-4">
                     <input aria-label={`Sélectionner ${f.nom_complet || f.societe || f.id} pour l’impression`} type="checkbox" checked={selectedListIds.has(Number(f.id))} onChange={() => toggleListRowSelection(Number(f.id))} className="mt-1 h-4 w-4 shrink-0 accent-violet-600" />
-                    <div className="min-w-0 flex-1"><h2 className="font-semibold text-gray-900 break-words">{f.nom_complet || f.societe || `Charge #${f.id}`}</h2><p className="mt-0.5 text-xs font-mono text-gray-500">ID {f.id}{f.reference && ` · Réf. ${f.reference}`}</p></div>
+                    <div className="min-w-0 flex-1"><h2 className="font-semibold text-gray-900 break-words">{f.nom_complet || f.societe || `Charge #${f.id}`}</h2><p className="mt-0.5 text-xs font-mono text-gray-500">ID {f.id}{f.reference && ` · Réf. ${f.reference}`}</p>{(f as any).group_name && <p className="mt-1 text-xs font-semibold text-violet-700">Groupe : {(f as any).group_name}</p>}</div>
                   </div>
                   <div className="border-y border-yellow-100 bg-yellow-50/70 px-4 py-3 flex items-end justify-between gap-3"><span className="text-xs font-medium text-gray-600">Total cumulé</span><strong className={`text-lg tabular-nums ${(f as any).total_cumule > 0 ? 'text-red-600' : (f as any).total_cumule < 0 ? 'text-green-600' : 'text-gray-700'}`}>{fmt(Number((f as any).total_cumule ?? 0))}</strong></div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-4 py-3 text-xs text-gray-600">
@@ -2412,6 +2418,7 @@ const ChargesListPage: React.FC = () => {
         </div>
       )}
 
+      <ContactGroupCreateModal isOpen={isGroupCreateOpen} onClose={() => setIsGroupCreateOpen(false)} selectedIds={[...selectedListIds]} contactLabel="charge" onCreated={() => setSelectedListIds(new Set())} />
       <ContactFormModal
         isOpen={isContactModalOpen}
         onClose={() => {
