@@ -17,6 +17,7 @@ import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
+import ContactGroupManageModal from '../components/ContactGroupManageModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 import { getUiBadgeStyle, getUiDraggableRowStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
@@ -2015,6 +2016,7 @@ const FournisseursListPage: React.FC = () => {
   const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false);
+  const [managedGroupId, setManagedGroupId] = useState<number | null>(null);
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -2166,6 +2168,7 @@ const FournisseursListPage: React.FC = () => {
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
         <button type="button" onClick={() => setIsGroupCreateOpen(true)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-violet-300 bg-white px-4 py-2 font-medium text-violet-700 hover:bg-violet-50 sm:flex-none"><Plus className="h-4 w-4" />Créer un groupe</button>
+        <button type="button" onClick={() => setManagedGroupId(0)} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-violet-300 bg-white px-4 py-2 font-medium text-violet-700 hover:bg-violet-50 sm:flex-none">Gérer les membres</button>
         <button
           type="button"
           onClick={handleCreate}
@@ -2415,7 +2418,8 @@ const FournisseursListPage: React.FC = () => {
         </div>
       )}
 
-      <ContactGroupCreateModal isOpen={isGroupCreateOpen} onClose={() => setIsGroupCreateOpen(false)} selectedIds={[...selectedListIds]} contactLabel="fournisseur" onCreated={() => setSelectedListIds(new Set())} />
+      <ContactGroupCreateModal isOpen={isGroupCreateOpen} onClose={() => setIsGroupCreateOpen(false)} selectedIds={[...selectedListIds]} contactLabel="fournisseur" onCreated={groupId => { setSelectedListIds(new Set()); setManagedGroupId(groupId); }} />
+      <ContactGroupManageModal isOpen={managedGroupId !== null} onClose={() => setManagedGroupId(null)} contactKind="fournisseur" initialGroupId={managedGroupId} />
       <ContactFormModal
         isOpen={isContactModalOpen}
         onClose={() => {

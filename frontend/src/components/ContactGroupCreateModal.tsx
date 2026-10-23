@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void;
   selectedIds: number[];
   contactLabel: string;
-  onCreated: () => void;
+  onCreated: (groupId: number) => void;
 }
 
 const ContactGroupCreateModal: React.FC<Props> = ({ isOpen, onClose, selectedIds, contactLabel, onCreated }) => {
@@ -29,13 +29,13 @@ const ContactGroupCreateModal: React.FC<Props> = ({ isOpen, onClose, selectedIds
           await assignContacts({ groupId: group.id, contactIds: selectedIds }).unwrap();
         } catch (error: any) {
           showError(error?.data?.error || 'Le groupe a été créé, mais les contacts n’ont pas pu être ajoutés.');
-          onCreated();
+          onCreated(group.id);
           onClose();
           return;
         }
       }
       showSuccess(selectedIds.length ? `Groupe créé avec ${selectedIds.length} ${contactLabel}(s)` : 'Groupe créé');
-      onCreated();
+      onCreated(group.id);
       onClose();
     } catch (error: any) {
       showError(error?.data?.error || 'Impossible de créer le groupe');
@@ -45,7 +45,7 @@ const ContactGroupCreateModal: React.FC<Props> = ({ isOpen, onClose, selectedIds
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4" role="presentation" onMouseDown={onClose}>
     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="create-contact-group-title" onMouseDown={event => event.stopPropagation()}>
       <div className="flex items-start justify-between gap-3">
-        <div><h2 id="create-contact-group-title" className="text-lg font-bold text-slate-900">Créer un groupe</h2><p className="mt-1 text-sm text-slate-600">{selectedIds.length ? `${selectedIds.length} ${contactLabel}(s) sélectionné(s) seront ajoutés.` : `Créez le groupe, puis ajoutez des ${contactLabel}s depuis leur fiche.`}</p></div>
+        <div><h2 id="create-contact-group-title" className="text-lg font-bold text-slate-900">Créer un groupe</h2><p className="mt-1 text-sm text-slate-600">{selectedIds.length ? `${selectedIds.length} ${contactLabel}(s) sélectionné(s) seront ajoutés.` : `Après création, choisissez les membres du groupe.`}</p></div>
         <button type="button" onClick={onClose} aria-label="Fermer" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"><X size={20} /></button>
       </div>
       <form onSubmit={submit} className="mt-5 space-y-4">
