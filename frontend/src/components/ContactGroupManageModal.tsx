@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
-import type { Contact } from '../types';
+import type { Contact, ContactGroup } from '../types';
 import { useGetAllChargeClientsQuery, useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
 import { useAssignContactsToGroupMutation, useGetContactGroupsQuery, useUnassignContactsFromGroupMutation } from '../store/api/contactGroupsApi';
 import { showError, showSuccess } from '../utils/notifications';
 
 type ContactKind = 'client' | 'fournisseur' | 'charge';
 const EMPTY_CONTACTS: Contact[] = [];
+const EMPTY_GROUPS: ContactGroup[] = [];
 
 interface Props {
   isOpen: boolean;
@@ -16,7 +17,7 @@ interface Props {
 }
 
 const ContactGroupManageModal: React.FC<Props> = ({ isOpen, onClose, contactKind, initialGroupId }) => {
-  const { data: groups = [], isLoading: groupsLoading } = useGetContactGroupsQuery(undefined, { skip: !isOpen });
+  const { data: groups = EMPTY_GROUPS, isLoading: groupsLoading } = useGetContactGroupsQuery(undefined, { skip: !isOpen });
   const { data: clientsData, isLoading: clientsLoading } = useGetAllClientsQuery(undefined, { skip: !isOpen || contactKind !== 'client' });
   const { data: fournisseursData, isLoading: fournisseursLoading } = useGetAllFournisseursQuery(undefined, { skip: !isOpen || contactKind !== 'fournisseur' });
   const { data: chargesData, isLoading: chargesLoading } = useGetAllChargeClientsQuery(undefined, { skip: !isOpen || contactKind !== 'charge' });
@@ -32,14 +33,22 @@ const ContactGroupManageModal: React.FC<Props> = ({ isOpen, onClose, contactKind
   const loading = groupsLoading || (contactKind === 'client' ? clientsLoading : contactKind === 'fournisseur' ? fournisseursLoading : chargesLoading);
 
   useEffect(() => {
-    if (!isOpen) { setGroupId(null); setSelectedIds(new Set()); setSearch(''); return; }
+    if (isOpen) return;
+    // Réinitialiser à la fermeture, pas à chaque rendu d'une requête ignorée.
+    setGroupId(null);
+    setSelectedIds(prev => prev.size === 0 ? prev : new Set());
+    setSearch('');
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     if (groups.length && groupId === null) setGroupId(groups.some(group => group.id === initialGroupId) ? initialGroupId! : groups[0].id);
   }, [isOpen, groups, groupId, initialGroupId]);
 
   useEffect(() => {
-    if (groupId === null) return;
+    if (!isOpen || groupId === null) return;
     setSelectedIds(new Set(contacts.filter(contact => Number(contact.group_id) === groupId).map(contact => Number(contact.id))));
-  }, [groupId, clients, fournisseurs, charges, contactKind]);
+  }, [isOpen, groupId, contacts]);
 
   const shownContacts = useMemo(() => contacts.filter(contact => `${contact.nom_complet} ${contact.societe || ''} ${contact.reference || ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [contacts, search]);
   if (!isOpen) return null;
