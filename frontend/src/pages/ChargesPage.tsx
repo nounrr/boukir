@@ -1,7 +1,7 @@
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
@@ -2386,7 +2386,7 @@ const ChargesListPage: React.FC = () => {
                     <p>Garantie : <strong className="text-gray-800">{f.montant_garantie != null ? fmt(f.montant_garantie) : '-'}</strong></p>
                   </div>
                   <div className="flex flex-wrap gap-2 border-t border-gray-100 p-3">
-                    <a href={`/charges/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 min-w-[90px] items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Voir détails</a>
+                    <Link to={`/charges/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 min-w-[90px] items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Voir détails</Link>
                     <button type="button" onClick={() => handleEdit(f)} className="rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="inline h-4 w-4 mr-1" />Modifier</button>
                     {currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="inline h-4 w-4 mr-1" />Supprimer</button>}
                   </div>

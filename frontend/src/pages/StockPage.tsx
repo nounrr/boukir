@@ -63,8 +63,10 @@ const StockPage: React.FC = () => {
   const showInternalPrices = useCanViewInternalPrices();
   const [searchInput, setSearchInput] = useState('');
   const [searchInput2, setSearchInput2] = useState('');
+  const [priceInput, setPriceInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchTerm2, setSearchTerm2] = useState('');
+  const [priceTerm, setPriceTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [orderingCategory, setOrderingCategory] = useState<number | null>(null);
   const [missingImageOnly, setMissingImageOnly] = useState(false);
@@ -88,6 +90,7 @@ const StockPage: React.FC = () => {
     limit: itemsPerPage,
     q: searchTerm || undefined,
     q2: searchTerm2 || undefined,
+    price: priceTerm || undefined,
     category_id: filterCategory || undefined,
     missing_image: missingImageOnly || undefined,
     missing_category: missingCategoryOnly || undefined,
@@ -594,6 +597,7 @@ const StockPage: React.FC = () => {
       params.set('type', productType);
       if (searchTerm) params.set('q', searchTerm);
       if (searchTerm2) params.set('q2', searchTerm2);
+      if (priceTerm) params.set('price', priceTerm);
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (missingImageOnly) params.set('missing_image', 'true');
       if (missingCategoryOnly) params.set('missing_category', 'true');
@@ -638,6 +642,7 @@ const StockPage: React.FC = () => {
       params.set('type', productType);
       if (searchTerm) params.set('q', searchTerm);
       if (searchTerm2) params.set('q2', searchTerm2);
+      if (priceTerm) params.set('price', priceTerm);
       if (filterCategory) params.set('category_id', String(filterCategory));
       if (missingImageOnly) params.set('missing_image', 'true');
       if (missingCategoryOnly) params.set('missing_category', 'true');
@@ -677,12 +682,13 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, searchTerm2, filterCategory, missingImageOnly, missingCategoryOnly, missingBrandOnly, activeTab, itemsPerPage, sortMode]);
+  }, [searchTerm, searchTerm2, priceTerm, filterCategory, missingImageOnly, missingCategoryOnly, missingBrandOnly, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput.trim());
     setSearchTerm2(searchInput2.trim());
+    setPriceTerm(priceInput.trim().replace(',', '.'));
   };
 
   const handleProductImageDrop = async (
@@ -1324,7 +1330,7 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(180px,0.7fr)_minmax(170px,0.65fr)_auto_auto_auto]">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_minmax(160px,0.5fr)_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -1357,6 +1363,18 @@ const StockPage: React.FC = () => {
             className="w-full py-2 pl-20 pr-4 border border-violet-300 rounded-md focus:ring-2 focus:ring-violet-500 focus:border-violet-500 xl:pl-10"
           />
         </div>
+        <input
+          type="text"
+          inputMode="decimal"
+          aria-label="Rechercher par prix de vente"
+          placeholder="Prix de vente (DH)"
+          value={priceInput}
+          onChange={(event) => setPriceInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') handleSearch();
+          }}
+          className="min-w-40 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+        />
         <button
           type="button"
           onClick={handleSearch}

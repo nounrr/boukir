@@ -877,6 +877,29 @@ async function runProductSearch(query) {
       conditions.push(`(${searchClauses.join(' OR ')})`);
     }
 
+    const rawPrice = String(query.price ?? '').trim().replace(',', '.');
+    if (rawPrice && /^\d+(?:\.\d{1,2})?$/.test(rawPrice)) {
+      const price = Number(rawPrice);
+      conditions.push(`(
+        p.prix_vente = ? OR p.prix_vente_2 = ?
+        OR EXISTS (
+          SELECT 1 FROM product_variants pv_price
+          WHERE pv_price.product_id = p.id
+            AND COALESCE(pv_price.is_deleted, 0) = 0
+            AND (pv_price.prix_vente = ? OR pv_price.prix_vente_2 = ?)
+        )
+        ${useSnapshot ? `OR EXISTS (
+          SELECT 1 FROM product_snapshot ps_price
+          WHERE ps_price.product_id = p.id
+            AND (ps_price.prix_vente = ? OR ps_price.prix_vente_2 = ?)
+        )` : ''}
+      )`);
+      params.push(price, price, price, price);
+      if (useSnapshot) params.push(price, price);
+    } else if (rawPrice) {
+      conditions.push('1 = 0');
+    }
+
     if (category_id) {
       const rootCategoryId = Number(category_id);
       if (Number.isFinite(rootCategoryId)) {
@@ -1566,6 +1589,7 @@ router.get('/stock-pdf', async (req, res, next) => {
 
     const filterParts = [];
     if (req.query.q) filterParts.push(`Recherche: ${req.query.q}`);
+    if (req.query.price) filterParts.push(`Prix vente: ${req.query.price} DH`);
     if (req.query.category_label) filterParts.push(`Categorie: ${req.query.category_label}`);
     filterParts.push(`Elements: ${allProducts.length}`);
 
