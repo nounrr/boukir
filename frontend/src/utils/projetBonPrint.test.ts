@@ -4,7 +4,7 @@ import { prepareProjetBonPrint } from './projetBonPrint.ts';
 import type { ProjetBon } from '../store/api/projetsApi';
 
 test('project PDFs preserve references, saved prices, units and free-text lines for every type', () => {
-  for (const [type, prefix, title] of [['products', 'BP', 'BON PRODUITS'], ['charge', 'BC', 'BON CHARGE PRODUIT'], ['charge_materiel', 'BCM', 'BON CHARGE MATÉRIEL']] as const) {
+  for (const [type, prefix, title] of [['products', 'BP', 'BON PRODUITS'], ['charge', 'BC', 'BON CHARGE PRODUIT'], ['charge_materiel', 'BCM', 'BON CHARGE MATÉRIEL'], ['chef_oeuvre', 'BCO', 'BON CHEF D’ŒUVRE']] as const) {
     const source: ProjetBon = { id: 42, type, date_bon: '2026-10-17', observations: 'Chantier étage 2', montant_total: 125.5, items: [{ product_id: null, variant_id: null, unit_id: null, designation: 'Location matériel', unite: 'jour', quantite: 2, prix_unitaire: 62.75, total: 125.5 }] };
     const result = prepareProjetBonPrint(source, 'Villa Tanger');
     assert.equal(result.projectContext.reference, `${prefix}-0042`);

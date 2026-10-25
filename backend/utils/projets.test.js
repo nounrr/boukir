@@ -99,3 +99,20 @@ test('material charges remain distinct and count once in expenses and balances',
   assert.equal(rows.at(-1).kind, 'charge_materiel');
   assert.equal(rows.at(-1).reference, 'BCM-0003');
 });
+
+test('chef d’œuvre uses charge calculations with its own totals and reference', () => {
+  const bon = validateBon({ type: 'chef_oeuvre', date_bon: '2026-10-25', items: [{ designation: 'Main d’œuvre', quantite: 3, prix_unitaire: 120 }] });
+  assert.equal(bon.error, undefined);
+  assert.equal(bon.value.montant_total, 360);
+  const stats = buildStats({ devisTotal: 1000, avances: [{ id: 1, date_avance: '2026-10-24', montant: 500, mode_paiement: 'Espece' }], bons: [{ ...bon.value, id: 4 }] });
+  assert.equal(stats.total_chef_oeuvre, 360);
+  assert.equal(stats.total_charges, 360);
+  assert.equal(stats.total_depenses, 360);
+  assert.equal(stats.solde, 140);
+  assert.equal(stats.nb_bons_chef_oeuvre, 1);
+  assert.equal(stats.par_mois[0].chef_oeuvre, 360);
+  const rows = buildSituation([], [{ ...bon.value, id: 4 }]);
+  assert.equal(rows[0].reference, 'BCO-0004');
+  assert.equal(rows[0].kind, 'chef_oeuvre');
+  assert.equal(rows[0].solde, -360);
+});

@@ -34,6 +34,15 @@ const COPY: Record<ProjetBonType, { title: string; hint: string; single: string;
     empty: 'Créez un bon pour suivre les dépenses de matériel du projet.',
     modalTab: 'Charge',
   },
+  chef_oeuvre: {
+    title: 'Chef d’œuvre',
+    hint: 'Même saisie et mêmes calculs qu’une charge du projet.',
+    single: 'bon chef d’œuvre',
+    prefix: 'BCO',
+    icon: Receipt,
+    empty: 'Créez un bon pour suivre les dépenses du chef d’œuvre.',
+    modalTab: 'Charge',
+  },
 };
 
 const reference = (bon: ProjetBon) => `${COPY[bon.type].prefix}-${String(bon.id).padStart(4, '0')}`;

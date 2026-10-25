@@ -171,7 +171,7 @@ router.get('/', async (_req, res, next) => {
         COALESCE((SELECT SUM(d.total) FROM projet_devis_lignes d WHERE d.projet_id = p.id), 0) AS total_devis,
         COALESCE((SELECT SUM(a.montant) FROM projet_avances a WHERE a.projet_id = p.id), 0) AS total_avances,
         COALESCE((SELECT SUM(b.montant_total) FROM projet_bons b WHERE b.projet_id = p.id AND b.type = 'products'), 0) AS total_products,
-        COALESCE((SELECT SUM(b.montant_total) FROM projet_bons b WHERE b.projet_id = p.id AND b.type IN ('charge', 'charge_materiel')), 0) AS total_charges
+        COALESCE((SELECT SUM(b.montant_total) FROM projet_bons b WHERE b.projet_id = p.id AND b.type IN ('charge', 'charge_materiel', 'chef_oeuvre')), 0) AS total_charges
       FROM projets p
       ORDER BY COALESCE(p.date_debut, DATE(p.created_at)) DESC, p.id DESC
     `);

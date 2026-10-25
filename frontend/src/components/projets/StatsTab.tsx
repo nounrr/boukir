@@ -48,7 +48,7 @@ const StatsTab: React.FC<{ projetNom: string; stats: ProjetStats }> = ({ projetN
               rows: [
                 ['Montant du devis', formatMoney(stats.total_devis)], ['Avances reçues', formatMoney(stats.total_avances)],
                 ['Bons produits', formatMoney(stats.total_products)], ['Charges produit', formatMoney(stats.total_charges_products)],
-                ['Charges matériel', formatMoney(stats.total_charges_materiel)], ['Total dépensé', formatMoney(stats.total_depenses)],
+                ['Charges matériel', formatMoney(stats.total_charges_materiel)], ['Chef d’œuvre', formatMoney(stats.total_chef_oeuvre)], ['Total dépensé', formatMoney(stats.total_depenses)],
                 ['Solde (avances − dépenses)', formatMoney(stats.solde)], ['Reste à encaisser (devis − avances)', formatMoney(stats.reste_a_encaisser)],
                 ['Résultat prévisionnel (devis − dépenses)', formatMoney(stats.resultat_previsionnel)],
                 ['Encaissement', `${stats.taux_encaissement}%`], ['Consommation du devis', `${stats.taux_consommation}%`],
@@ -62,8 +62,8 @@ const StatsTab: React.FC<{ projetNom: string; stats: ProjetStats }> = ({ projetN
             },
             {
               title: 'Évolution mensuelle',
-              columns: [{ label: 'Mois' }, { label: 'Avances', numeric: true }, { label: 'Bons produits', numeric: true }, { label: 'Charges produit', numeric: true }, { label: 'Charges matériel', numeric: true }],
-              rows: monthly.map(month => [month.label, formatMoney(month.avances), formatMoney(month.products), formatMoney(month.charges_products), formatMoney(month.charges_materiel)]),
+              columns: [{ label: 'Mois' }, { label: 'Avances', numeric: true }, { label: 'Bons produits', numeric: true }, { label: 'Charges produit', numeric: true }, { label: 'Charges matériel', numeric: true }, { label: 'Chef d’œuvre', numeric: true }],
+              rows: monthly.map(month => [month.label, formatMoney(month.avances), formatMoney(month.products), formatMoney(month.charges_products), formatMoney(month.charges_materiel), formatMoney(month.chef_oeuvre)]),
             },
           ],
         }} />
@@ -84,6 +84,7 @@ const StatsTab: React.FC<{ projetNom: string; stats: ProjetStats }> = ({ projetN
             <div><p className="text-xs text-slate-500">Bons produits</p><p className="font-semibold tabular-nums" style={{ color: COLORS.products }}>{formatMoney(stats.total_products)}</p></div>
             <div><p className="text-xs text-slate-500">Charges produit</p><p className="font-semibold tabular-nums" style={{ color: COLORS.charges }}>{formatMoney(stats.total_charges_products)}</p></div>
             <div><p className="text-xs text-slate-500">Charges matériel</p><p className="font-semibold tabular-nums text-violet-700">{formatMoney(stats.total_charges_materiel)}</p></div>
+            <div><p className="text-xs text-slate-500">Chef d’œuvre</p><p className="font-semibold tabular-nums text-pink-700">{formatMoney(stats.total_chef_oeuvre)}</p></div>
           </div>
         </div>
 
@@ -116,6 +117,7 @@ const StatsTab: React.FC<{ projetNom: string; stats: ProjetStats }> = ({ projetN
                 <Bar dataKey="products" name="Bons produits" fill={COLORS.products} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="charges_products" name="Charges produit" fill={COLORS.charges} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="charges_materiel" name="Charges matériel" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="chef_oeuvre" name="Chef d’œuvre" fill="#be185d" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

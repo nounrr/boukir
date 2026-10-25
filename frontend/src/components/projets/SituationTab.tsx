@@ -12,11 +12,13 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'products', label: 'Produits' },
   { key: 'charge', label: 'Charges produit' },
   { key: 'charge_materiel', label: 'Charges matériel' },
+  { key: 'chef_oeuvre', label: 'Chef d’œuvre' },
 ];
 const KIND: Record<ProjetSituationRow['kind'], { label: string; tone: string; rowClass: string }> = {
   avance: { label: 'Avance', tone: 'bg-emerald-100 text-emerald-800', rowClass: 'bg-green-100 hover:bg-green-200/70' },
   products: { label: 'Bon produits', tone: 'bg-blue-100 text-blue-700', rowClass: 'bg-blue-100 hover:bg-blue-200/70' },
   charge_materiel: { label: 'Charge matériel', tone: 'bg-violet-100 text-violet-800', rowClass: 'bg-violet-100 hover:bg-violet-200/70' },
+  chef_oeuvre: { label: 'Chef d’œuvre', tone: 'bg-pink-100 text-pink-800', rowClass: 'bg-pink-100 hover:bg-pink-200/70' },
   charge: { label: 'Charge produit', tone: 'bg-orange-100 text-orange-800', rowClass: 'bg-orange-100 hover:bg-orange-200/70' },
 };
 
@@ -69,7 +71,7 @@ const SituationTab: React.FC<{ projetNom: string; situation: ProjetSituationRow[
   const counts = useMemo(() => situation.reduce((result, row) => {
     result[row.kind]++;
     return result;
-  }, { avance: 0, products: 0, charge: 0, charge_materiel: 0 }), [situation]);
+  }, { avance: 0, products: 0, charge: 0, charge_materiel: 0, chef_oeuvre: 0 }), [situation]);
   const mobileGroups = useMemo(() => {
     const groups = new Map<string, { key: string; rows: typeof rows }>();
     rows.forEach(row => {
@@ -99,13 +101,14 @@ const SituationTab: React.FC<{ projetNom: string; situation: ProjetSituationRow[
 
   return (
     <section className="min-w-0 space-y-4" aria-label={scope ? `Situation — ${KIND[scope].label}` : 'Situation complète du projet'}>
-      <div className={`grid grid-cols-2 gap-2 ${stats && !scope ? 'xl:grid-cols-6' : 'sm:grid-cols-3'}`}>
+      <div className={`grid grid-cols-2 gap-2 ${stats && !scope ? 'xl:grid-cols-7' : 'sm:grid-cols-3'}`}>
         {stats && !scope ? <>
           <SummaryCard label="Devis" value={stats.total_devis} />
           <SummaryCard label="Avances" value={stats.total_avances} tone="text-green-700" hint={`${stats.taux_encaissement}% du devis`} />
           <SummaryCard label="Bons produits" value={stats.total_products} tone="text-blue-700" />
           <SummaryCard label="Charges produit" value={stats.total_charges_products} tone="text-orange-700" />
           <SummaryCard label="Charges matériel" value={stats.total_charges_materiel} tone="text-violet-700" />
+          <SummaryCard label="Chef d’œuvre" value={stats.total_chef_oeuvre} tone="text-pink-700" />
         </> : <>
           <SummaryCard label={scope ? 'Total des bons' : 'Avances'} value={scope ? totalSortie : totalEntree} tone={scope ? 'text-red-600' : 'text-green-700'} />
           <SummaryCard label={scope ? 'Mouvements' : 'Dépenses'} value={scope ? totalEntree - totalSortie : totalSortie} tone="text-gray-800" hint={`${situation.length} opération(s)`} />

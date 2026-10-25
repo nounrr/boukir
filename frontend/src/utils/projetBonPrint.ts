@@ -11,6 +11,7 @@ export function prepareProjetBonPrint(bon: ProjetBon, projectName: string) {
     products: { title: 'BON PRODUITS', prefix: 'BP' },
     charge: { title: 'BON CHARGE PRODUIT', prefix: 'BC' },
     charge_materiel: { title: 'BON CHARGE MATÉRIEL', prefix: 'BCM' },
+    chef_oeuvre: { title: 'BON CHEF D’ŒUVRE', prefix: 'BCO' },
   };
   const label = labels[bon.type];
   return {

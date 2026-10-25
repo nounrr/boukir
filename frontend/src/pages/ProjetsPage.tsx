@@ -29,11 +29,12 @@ import {
   EmptyState, ErrorBanner, Modal, Spinner, errorMessage, formatDay, formatMoney, iconButton, inputClass, isLockedError, labelClass, primaryButton, secondaryButton,
 } from '../components/projets/shared';
 
-type TabKey = 'situation' | 'charge' | 'charge_materiel' | 'devis' | 'products' | 'avances' | 'stats';
+type TabKey = 'situation' | 'charge' | 'charge_materiel' | 'chef_oeuvre' | 'devis' | 'products' | 'avances' | 'stats';
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: 'situation', label: 'Situation complète', icon: History },
   { key: 'charge', label: 'Charges produit', icon: Receipt },
   { key: 'charge_materiel', label: 'Charges matériel', icon: Receipt },
+  { key: 'chef_oeuvre', label: 'Chef d’œuvre', icon: Receipt },
   { key: 'devis', label: 'Devis', icon: ClipboardList },
   { key: 'products', label: 'Produits', icon: Truck },
   { key: 'avances', label: 'Avances', icon: Wallet },
@@ -249,6 +250,7 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
     situation: data.situation.length,
     charge: stats.nb_bons_charge_products,
     charge_materiel: stats.nb_bons_charge_materiel,
+    chef_oeuvre: stats.nb_bons_chef_oeuvre,
     devis: data.devis.length,
     products: stats.nb_bons_products,
     avances: stats.nb_avances,
@@ -293,6 +295,7 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
         {tab === 'situation' && <SituationTab key={projet.id} projetNom={projet.nom} situation={data.situation} stats={stats} bons={data.bons} onPrint={setPrinting} />}
         {tab === 'charge' && <BonsTab key="charge" projetId={projet.id} projetNom={projet.nom} type="charge" bons={data.bons} onPrint={setPrinting} />}
         {tab === 'charge_materiel' && <BonsTab key="charge_materiel" projetId={projet.id} projetNom={projet.nom} type="charge_materiel" bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'chef_oeuvre' && <BonsTab key="chef_oeuvre" projetId={projet.id} projetNom={projet.nom} type="chef_oeuvre" bons={data.bons} onPrint={setPrinting} />}
         {tab === 'devis' && <DevisTab projetId={projet.id} projetNom={projet.nom} devis={data.devis} />}
         {tab === 'products' && <BonsTab key="products" projetId={projet.id} projetNom={projet.nom} type="products" bons={data.bons} onPrint={setPrinting} />}
         {tab === 'avances' && <AvancesTab projetId={projet.id} projetNom={projet.nom} avances={data.avances} />}
