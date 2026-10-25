@@ -4,7 +4,6 @@ import html2canvas from 'html2canvas';
 import { Download, X } from 'lucide-react';
 import type { Contact } from '../types';
 import ContactPrintTemplate, { type CompanyType, type ContactPrintMode, type PriceMode } from './ContactPrintTemplate';
-import MobileContactReader from './MobileContactReader';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designationLang';
 import { waitForPrintImages } from '../utils/waitForPrintImages';
@@ -12,6 +11,7 @@ import { waitForPrintImages } from '../utils/waitForPrintImages';
 interface ContactPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
+  closeLabel?: string;
   contact: Contact;
   mode: ContactPrintMode; // 'transactions' | 'products'
   transactions?: any[]; // Rendu optionnel car onglet transactions supprimé
@@ -32,22 +32,20 @@ interface ContactPrintModalProps {
   totalDebitSubtitle?: string;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, closeLabel = "Fermer l'aperçu", contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
   const [designationLang, setDesignationLang] = useState<DesignationLang>('fr');
   const [includeProductImages, setIncludeProductImages] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'list' | 'pdf'>('list');
-  const contentRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewWidth, setPreviewWidth] = useState(794);
   const [previewHeight, setPreviewHeight] = useState(1123);
   useEffect(() => {
-    if (!isOpen || activeTab !== 'pdf') return;
+    if (!isOpen) return;
     const updatePreview = () => {
       const page = printRef.current;
       const container = previewContainerRef.current;
@@ -63,9 +61,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
     if (previewContainerRef.current) observer.observe(previewContainerRef.current);
     window.addEventListener('resize', updatePreview);
     return () => { observer.disconnect(); window.removeEventListener('resize', updatePreview); };
-  }, [isOpen, activeTab]);
-  useEffect(() => { if (isOpen) setActiveTab('list'); }, [isOpen]);
-  useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [activeTab]);
+  }, [isOpen]);
   // Catalogue produits pour les désignations traduites (cache RTK Query partagé)
   const { data: products = [] } = useGetProductsQuery(undefined, {
     skip: !isOpen || (designationLang === 'fr' && (mode !== 'products' || !includeProductImages)),
@@ -138,16 +134,16 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60">
       <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-xl">
         <div className="shrink-0 border-b border-slate-200 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Lecture sur téléphone</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Aperçu PDF A4</p>
               <h2 className="truncate text-lg font-semibold text-slate-900">{contact?.nom_complet}</h2>
               <p className="text-sm text-slate-500">{mode === 'transactions' ? 'Détail des transactions' : 'Détail des produits'}</p>
             </div>
-            <button type="button" onClick={onClose} aria-label="Fermer l'aperçu" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600"><X size={20} /></button>
+            <button type="button" onClick={onClose} aria-label={closeLabel} title={closeLabel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600"><X size={20} /></button>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">Société
@@ -168,15 +164,8 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
               Quantité totale : <strong className="text-slate-900">{totalQty.toLocaleString('fr-FR')}</strong>
             </p>
           )}
-          <div role="tablist" aria-label="Mode d'aperçu" className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
-            <button type="button" role="tab" aria-selected={activeTab === 'list'} disabled={isGenerating} onClick={() => setActiveTab('list')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'list' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>Liste</button>
-            <button type="button" role="tab" aria-selected={activeTab === 'pdf'} disabled={isGenerating} onClick={() => setActiveTab('pdf')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'pdf' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>PDF A4</button>
-          </div>
         </div>
-        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {activeTab === 'list' ? (
-            <MobileContactReader contact={contact} mode={mode} productHistory={productHistory} transactions={transactions} products={products as any[]} designationLang={designationLang} includeProductImages={includeProductImages} priceMode={priceMode} totalQty={totalQty} totalAmount={totalAmount} finalSolde={finalSolde} totalDebit={totalDebit} totalCredit={totalCredit} dateFrom={dateFrom} dateTo={dateTo} />
-          ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div ref={previewContainerRef} className="flex w-full justify-center">
             <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
             <div ref={printRef} data-contact-pdf-page className="origin-top-left bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm', transform: `scale(${previewScale})` }}>
@@ -205,11 +194,10 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
             </div>
             </div>
           </div>
-          )}
         </div>
-        {activeTab === 'pdf' && <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <button type="button" onClick={generatePDF} disabled={isGenerating} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 font-semibold text-white shadow-sm active:bg-blue-700 disabled:opacity-50"><Download size={18} />{isGenerating ? 'Génération du PDF...' : 'Télécharger PDF'}</button>
-        </div>}
+        </div>
       </div>
     </div>
   );

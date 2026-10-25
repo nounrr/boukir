@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Banknote, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { type AvanceInput, type AvanceMode, type ProjetAvance, useDeleteProjetAvanceMutation, useSaveProjetAvanceMutation } from '../../store/api/projetsApi';
 import { EmptyState, ErrorBanner, MODE_LABELS, Modal, errorMessage, formatDay, formatMoney, iconButton, inputClass, labelClass, primaryButton, secondaryButton, todayInput } from './shared';
+import TablePrintButton from './TablePrintButton';
 
 const MODES: AvanceMode[] = ['Espece', 'Virement', 'Cheque'];
 const modeTone: Record<AvanceMode, string> = {
@@ -10,7 +11,7 @@ const modeTone: Record<AvanceMode, string> = {
   Cheque: 'bg-violet-50 text-violet-800',
 };
 
-const AvancesTab: React.FC<{ projetId: number; avances: ProjetAvance[] }> = ({ projetId, avances }) => {
+const AvancesTab: React.FC<{ projetId: number; projetNom: string; avances: ProjetAvance[] }> = ({ projetId, projetNom, avances }) => {
   const [save, { isLoading: saving }] = useSaveProjetAvanceMutation();
   const [remove, { isLoading: deleting }] = useDeleteProjetAvanceMutation();
   const [editing, setEditing] = useState<ProjetAvance | null>(null);
@@ -57,7 +58,18 @@ const AvancesTab: React.FC<{ projetId: number; avances: ProjetAvance[] }> = ({ p
           <h2 className="text-base font-semibold text-slate-900">Avances reçues</h2>
           <p className="text-sm text-slate-500">{avances.length} avance(s) · total <span className="font-semibold text-slate-800">{formatMoney(total)}</span></p>
         </div>
-        <button type="button" className={primaryButton} onClick={() => openForm(null)}><Plus className="h-4 w-4" /> Nouvelle avance</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <TablePrintButton disabled={!avances.length} report={{
+            projectName: projetNom, title: 'Avances reçues',
+            notes: [`${avances.length} avance(s)`],
+            tables: [{
+              columns: [{ label: 'Date' }, { label: 'Mode' }, { label: 'Description' }, { label: 'Montant', numeric: true }],
+              rows: avances.map(avance => [formatDay(avance.date_avance), MODE_LABELS[avance.mode_paiement], avance.description || '—', formatMoney(avance.montant)]),
+              totals: [['Total des avances', '', '', formatMoney(total)]],
+            }],
+          }} />
+          <button type="button" className={primaryButton} onClick={() => openForm(null)}><Plus className="h-4 w-4" /> Nouvelle avance</button>
+        </div>
       </div>
       <ErrorBanner message={actionError} />
 

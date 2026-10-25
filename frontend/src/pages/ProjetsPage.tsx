@@ -290,13 +290,13 @@ const ProjetDetailView: React.FC<{ id: number; tab: TabKey; onTab: (t: TabKey) =
       </div>
 
       <div role="tabpanel">
-        {tab === 'situation' && <SituationTab key={projet.id} situation={data.situation} stats={stats} bons={data.bons} onPrint={setPrinting} />}
-        {tab === 'charge' && <BonsTab key="charge" projetId={projet.id} type="charge" bons={data.bons} onPrint={setPrinting} />}
-        {tab === 'charge_materiel' && <BonsTab key="charge_materiel" projetId={projet.id} type="charge_materiel" bons={data.bons} onPrint={setPrinting} />}
-        {tab === 'devis' && <DevisTab projetId={projet.id} devis={data.devis} />}
-        {tab === 'products' && <BonsTab key="products" projetId={projet.id} type="products" bons={data.bons} onPrint={setPrinting} />}
-        {tab === 'avances' && <AvancesTab projetId={projet.id} avances={data.avances} />}
-        {tab === 'stats' && <StatsTab stats={stats} />}
+        {tab === 'situation' && <SituationTab key={projet.id} projetNom={projet.nom} situation={data.situation} stats={stats} bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'charge' && <BonsTab key="charge" projetId={projet.id} projetNom={projet.nom} type="charge" bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'charge_materiel' && <BonsTab key="charge_materiel" projetId={projet.id} projetNom={projet.nom} type="charge_materiel" bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'devis' && <DevisTab projetId={projet.id} projetNom={projet.nom} devis={data.devis} />}
+        {tab === 'products' && <BonsTab key="products" projetId={projet.id} projetNom={projet.nom} type="products" bons={data.bons} onPrint={setPrinting} />}
+        {tab === 'avances' && <AvancesTab projetId={projet.id} projetNom={projet.nom} avances={data.avances} />}
+        {tab === 'stats' && <StatsTab projetNom={projet.nom} stats={stats} />}
       </div>
 
       {printing && <BonPrintModal key={printing.id} isOpen onClose={() => setPrinting(null)} {...prepareProjetBonPrint(printing, projet.nom)} />}

@@ -15,6 +15,8 @@ import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
+import MobileContactPrintModal from '../components/MobileContactPrintModal';
+import { useMobilePrintModal } from '../hooks/useMobilePrintModal';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import ContactGroupManageModal from '../components/ContactGroupManageModal';
@@ -1114,6 +1116,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
 type PageTab = 'complet' | 'commandes' | 'vendreFournisseur' | 'avoirs' | 'avoirsVendreFournisseur' | 'paiements';
 
 const FournisseurDetailPage: React.FC = () => {
+  const isMobileDetail = useMobilePrintModal();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const fournisseurId = Number(id);
@@ -1642,6 +1645,30 @@ const FournisseurDetailPage: React.FC = () => {
           {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />)}
         </div>
       </div>
+    );
+  }
+
+  if (isMobileDetail && contact) {
+    return (
+        <MobileContactPrintModal
+          isOpen
+          onClose={() => navigate('/fournisseurs')}
+          closeLabel="Retour à la liste"
+          contact={contact}
+          mode="products"
+          transactions={[]}
+          productHistory={printProductHistory}
+          dateFrom={filterFrom || undefined}
+          dateTo={filterTo || undefined}
+          skipInitialRow={hasDateFilter || hasSelectionScopedPrint}
+          hideCumulative={false}
+          totalQty={printTotals.totalQty}
+          totalAmount={printTotals.totalAmount}
+          finalSolde={printTotals.finalSolde}
+          totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
+          totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
+          totalDebitSubtitle="(Paiements + Avoirs + Vendre fournisseur)"
+        />
     );
   }
 

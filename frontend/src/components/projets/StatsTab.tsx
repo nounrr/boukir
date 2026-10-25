@@ -2,6 +2,7 @@ import React from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ProjetStats } from '../../store/api/projetsApi';
 import { MODE_LABELS, formatMoney } from './shared';
+import TablePrintButton from './TablePrintButton';
 
 const COLORS = { avances: '#047857', products: '#d97706', charges: '#be123c' };
 
@@ -31,13 +32,42 @@ const monthLabel = (key: string) => {
 };
 const compact = (v: number) => new Intl.NumberFormat('fr-MA', { notation: 'compact', maximumFractionDigits: 1 }).format(v);
 
-const StatsTab: React.FC<{ stats: ProjetStats }> = ({ stats }) => {
+const StatsTab: React.FC<{ projetNom: string; stats: ProjetStats }> = ({ projetNom, stats }) => {
   const modes = Object.entries(stats.par_mode) as [keyof typeof MODE_LABELS, number][];
   const maxMode = Math.max(1, ...modes.map(([, v]) => v));
   const monthly = stats.par_mois.map((m) => ({ ...m, label: monthLabel(m.mois) }));
 
   return (
     <section className="space-y-5">
+      <div className="flex justify-end">
+        <TablePrintButton label="Imprimer les statistiques" report={{
+          projectName: projetNom, title: 'Statistiques du projet', landscape: true,
+          tables: [
+            {
+              title: 'Synthèse', columns: [{ label: 'Indicateur' }, { label: 'Valeur', numeric: true }],
+              rows: [
+                ['Montant du devis', formatMoney(stats.total_devis)], ['Avances reçues', formatMoney(stats.total_avances)],
+                ['Bons produits', formatMoney(stats.total_products)], ['Charges produit', formatMoney(stats.total_charges_products)],
+                ['Charges matériel', formatMoney(stats.total_charges_materiel)], ['Total dépensé', formatMoney(stats.total_depenses)],
+                ['Solde (avances − dépenses)', formatMoney(stats.solde)], ['Reste à encaisser (devis − avances)', formatMoney(stats.reste_a_encaisser)],
+                ['Résultat prévisionnel (devis − dépenses)', formatMoney(stats.resultat_previsionnel)],
+                ['Encaissement', `${stats.taux_encaissement}%`], ['Consommation du devis', `${stats.taux_consommation}%`],
+              ],
+            },
+            {
+              title: `Avances par mode de paiement · ${stats.nb_avances} avance(s)`,
+              columns: [{ label: 'Mode' }, { label: 'Montant', numeric: true }],
+              rows: modes.map(([mode, value]) => [MODE_LABELS[mode], formatMoney(value)]),
+              totals: [['Total des avances', formatMoney(stats.total_avances)]],
+            },
+            {
+              title: 'Évolution mensuelle',
+              columns: [{ label: 'Mois' }, { label: 'Avances', numeric: true }, { label: 'Bons produits', numeric: true }, { label: 'Charges produit', numeric: true }, { label: 'Charges matériel', numeric: true }],
+              rows: monthly.map(month => [month.label, formatMoney(month.avances), formatMoney(month.products), formatMoney(month.charges_products), formatMoney(month.charges_materiel)]),
+            },
+          ],
+        }} />
+      </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Montant du devis" value={formatMoney(stats.total_devis)} />
         <Kpi label="Reste à encaisser" value={formatMoney(stats.reste_a_encaisser)} tone={stats.reste_a_encaisser > 0 ? 'text-amber-700' : 'text-emerald-700'} hint="Devis − avances" />

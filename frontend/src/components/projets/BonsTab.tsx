@@ -4,6 +4,7 @@ import SituationTab from './SituationTab';
 import BonFormModal, { type ProjectBonSubmission } from '../BonFormModal';
 import { type ProjetBon, type ProjetBonType, type ProjetSituationRow, useDeleteProjetBonMutation, useSaveProjetBonMutation } from '../../store/api/projetsApi';
 import { EmptyState, ErrorBanner, formatDay, formatMoney, formatQty, iconButton, primaryButton, secondaryButton } from './shared';
+import TablePrintButton from './TablePrintButton';
 
 const COPY: Record<ProjetBonType, { title: string; hint: string; single: string; prefix: string; icon: React.ElementType; empty: string; modalTab: 'Sortie' | 'Charge' }> = {
   products: {
@@ -60,7 +61,7 @@ function toModalValues(bon: ProjetBon) {
   };
 }
 
-const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon[]; onPrint: (bon: ProjetBon) => void }> = ({ projetId, type, bons, onPrint }) => {
+const BonsTab: React.FC<{ projetId: number; projetNom: string; type: ProjetBonType; bons: ProjetBon[]; onPrint: (bon: ProjetBon) => void }> = ({ projetId, projetNom, type, bons, onPrint }) => {
   const copy = COPY[type];
   const [view, setView] = useState<'situation' | 'bons'>('situation');
   const list = useMemo(() => bons.filter((b) => b.type === type), [bons, type]);
@@ -94,18 +95,28 @@ const BonsTab: React.FC<{ projetId: number; type: ProjetBonType; bons: ProjetBon
           <h2 className="text-base font-semibold text-slate-900">{copy.title}</h2>
           <p className="text-sm text-slate-500">{copy.hint}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm text-slate-500">{list.length} bon(s) · <span className="font-semibold text-slate-800">{formatMoney(total)}</span></span>
           <button type="button" className={primaryButton} onClick={() => setModal({ bon: null })}><Plus className="h-4 w-4" /> Nouveau {copy.single}</button>
         </div>
       </div>
       <ErrorBanner message={actionError} />
 
-      <div className="flex gap-2" role="group" aria-label="Vue des bons">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Vue des bons">
         <button type="button" className={view === 'situation' ? primaryButton : secondaryButton} aria-pressed={view === 'situation'} onClick={() => setView('situation')}>Situation</button>
         <button type="button" className={view === 'bons' ? primaryButton : secondaryButton} aria-pressed={view === 'bons'} onClick={() => setView('bons')}>Gestion des bons</button>
+        {view === 'bons' && <TablePrintButton label="Imprimer les bons" disabled={!list.length} report={{
+          projectName: projetNom, title: copy.title, landscape: true,
+          notes: [`${list.length} bon(s) · Total : ${formatMoney(total)}`],
+          tables: list.map(bon => ({
+            title: `${reference(bon)} · ${formatDay(bon.date_bon)}${bon.observations ? ` — ${bon.observations}` : ''}`,
+            columns: [{ label: 'Désignation' }, { label: 'Unité' }, { label: 'Qté', numeric: true }, { label: 'PA', numeric: true }, { label: 'CR', numeric: true }, { label: 'PV', numeric: true }, { label: 'PV2', numeric: true }, { label: 'P.U. bon', numeric: true }, { label: 'Total', numeric: true }],
+            rows: bon.items.map(item => [item.designation, item.unite || '—', formatQty(item.quantite), formatMoney(item.prix_achat), formatMoney(item.cout_revient), formatMoney(item.prix_vente), formatMoney(item.prix_vente_2), formatMoney(item.prix_unitaire), formatMoney(item.total ?? 0)]),
+            totals: [['Total du bon', '', '', '', '', '', '', '', formatMoney(bon.montant_total)]],
+          })),
+        }} />}
       </div>
-      {view === 'situation' ? <SituationTab key={type} situation={situation} bons={list} scope={type} onPrint={onPrint} /> : !list.length ? (
+      {view === 'situation' ? <SituationTab key={type} projetNom={projetNom} situation={situation} bons={list} scope={type} onPrint={onPrint} /> : !list.length ? (
         <EmptyState icon={copy.icon} title={`Aucun ${copy.single}`} hint={copy.empty} />
       ) : (
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
