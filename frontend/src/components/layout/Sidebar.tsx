@@ -49,6 +49,8 @@ import {
   ListTodo,
   FolderKanban,
   ImageUp,
+  Search,
+  X,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -57,6 +59,8 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
+  const [pageSearch, setPageSearch] = React.useState('');
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const { data: projetAccess } = useGetProjetsAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
@@ -199,17 +203,60 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
     },
   ];
 
+  const normalizeSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const searchWords = isOpen ? normalizeSearch(pageSearch).trim().split(/\s+/).filter(Boolean) : [];
+  const visibleGroups = groups.map(group => ({
+    ...group,
+    items: group.items.filter(item => item.show && searchWords.every(word =>
+      normalizeSearch(`${item.name} ${group.title}`).includes(word)
+    )),
+  })).filter(group => group.items.length > 0);
+
   return (
     <aside
-      className={`${tabletCompact ? 'hidden lg:block' : 'hidden md:block'} fixed top-14 left-0 z-30 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out ${
+      className={`${tabletCompact ? 'hidden lg:flex' : 'hidden md:flex'} flex-col fixed top-14 left-0 z-30 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out ${
         isOpen ? 'w-64' : 'w-16'
       }`}
       style={{ height: 'calc(100vh - 56px)' }}
     >
-      <nav className="p-3 space-y-4 h-full overflow-y-auto">
-        {groups.map(group => {
-          const visible = group.items.filter(i => i.show);
-          if (!visible.length) return null;
+      {isOpen && (
+        <div className="shrink-0 border-b border-gray-100 p-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              aria-label="Rechercher une page"
+              aria-controls="sidebar-pages"
+              placeholder="Rechercher une page…"
+              value={pageSearch}
+              onChange={event => setPageSearch(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Escape') setPageSearch('');
+              }}
+              className="w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-9 pr-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            />
+            {pageSearch && (
+              <button
+                type="button"
+                aria-label="Effacer la recherche"
+                onClick={() => {
+                  setPageSearch('');
+                  searchInputRef.current?.focus();
+                }}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <nav id="sidebar-pages" aria-label="Pages du back-office" className="min-h-0 flex-1 p-3 space-y-4 overflow-y-auto">
+        {searchWords.length > 0 && visibleGroups.length === 0 && (
+          <p role="status" className="px-2 py-4 text-sm text-gray-500">Aucune page trouvée.</p>
+        )}
+        {visibleGroups.map(group => {
           return (
             <div key={group.title} className="space-y-1">
               {isOpen && (
@@ -217,10 +264,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
                   {group.title}
                 </div>
               )}
-              {visible.map(item => (
+              {group.items.map(item => (
                 <NavLink
                   key={item.name}
                   to={item.href}
+                  onClick={() => setPageSearch('')}
+                  title={!isOpen ? item.name : undefined}
                   className={({ isActive }) =>
                     `flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                       isActive
