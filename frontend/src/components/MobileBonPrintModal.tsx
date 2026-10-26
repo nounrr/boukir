@@ -62,7 +62,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
     window.addEventListener('resize', updatePreview);
     return () => { observer.disconnect(); window.removeEventListener('resize', updatePreview); };
   }, [isOpen, activeTab]);
-  useEffect(() => { if (isOpen) setActiveTab('list'); }, [isOpen]);
+  useEffect(() => { if (isOpen) setActiveTab(projectContext ? 'pdf' : 'list'); }, [isOpen, projectContext]);
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [activeTab]);
   // Les traductions viennent du catalogue produits: on le charge si l'appelant ne l'a pas fourni
   // (RTK Query réutilise le cache s'il est déjà chargé ailleurs).
@@ -184,7 +184,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 />
                 <span>Utiliser promo</span>
               </label>}
-              <label htmlFor="bon-images-select" className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
+              {!projectContext?.report && <label htmlFor="bon-images-select" className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
                 Images produit :
                 <select
                   id="bon-images-select"
@@ -196,12 +196,12 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                   <option value="without">Sans images</option>
                   <option value="with">Avec images</option>
                 </select>
-              </label>
+              </label>}
             </div>
-            <div role="tablist" aria-label="Mode d'aperçu" className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+            {!projectContext?.report && <div role="tablist" aria-label="Mode d'aperçu" className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
               <button type="button" role="tab" aria-selected={activeTab === 'list'} disabled={isGenerating} onClick={() => setActiveTab('list')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'list' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>Liste</button>
               <button type="button" role="tab" aria-selected={activeTab === 'pdf'} disabled={isGenerating} onClick={() => setActiveTab('pdf')} className={`min-h-10 rounded-md text-sm font-semibold disabled:opacity-50 ${activeTab === 'pdf' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>PDF A4</button>
-            </div>
+            </div>}
         </div>
 
         {/* Choix entre la lecture mobile et l'aperçu A4 utilisé pour le téléchargement. */}

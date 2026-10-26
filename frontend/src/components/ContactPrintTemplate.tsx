@@ -413,7 +413,8 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     String(t.statut || '').toLowerCase() === 'paiement' ||
                     String(t.type || '').toLowerCase() === 'paiement';
                   const isAvoir = String(t.type || '').toLowerCase().includes('avoir');
-                  const reduceBalance = isPayment || isAvoir;
+                  const balanceSign = Number(t.balanceSign);
+                  const reduceBalance = balanceSign === 1 || balanceSign === -1 ? balanceSign < 0 : isPayment || isAvoir;
                   return (
                     <tr key={t.id} className="row-alt">
                       <td>{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
@@ -445,12 +446,12 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
             </tbody>
           </table>
 
-          <div className="mt-3 flex justify-end">
+          {showPrices && <div className="mt-3 flex justify-end">
             <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
               <div className="text-xs font-semibold text-gray-700">Solde final</div>
               <div className="text-base font-bold text-gray-900">{fmtNoDecimalsIfInt(visibleSoldeCumule(finalSoldeTransactions))} DH</div>
             </div>
-          </div>
+          </div>}
         </div>
       ) : (
         <div className="print-compact">

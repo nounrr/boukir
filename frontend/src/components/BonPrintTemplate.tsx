@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import type { ProjetPrintContext } from '../utils/projetBonPrint';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
+import ProjetReportPrintBody from './projets/ProjetReportPrintBody';
 import { getBonNumeroDisplay } from '../utils/numero';
 import {
   DESIGNATION_LANG_OPTIONS,
@@ -39,8 +40,9 @@ interface BonPrintTemplateProps {
 const CompanyFooter: React.FC<{ 
   data: { address: string; phones: string; email: string; extra?: string; cachetImage?: string };
   size: 'A4' | 'A5';
+  showStamp?: boolean;
 }>
- = ({ data, size }) => {
+ = ({ data, size, showStamp = true }) => {
   // Ajuster la taille du cachet selon le format
   const isA5 = size === 'A5';
   const cachetWidth = isA5 ? '60mm' : '82mm';
@@ -60,7 +62,7 @@ const CompanyFooter: React.FC<{
         padding: padding
       }}
     >
-      <div className="w-full mb-3 flex justify-center">
+      {showStamp && <div className="w-full mb-3 flex justify-center">
         <div style={{ 
           border: '1px solid #000', 
           width: cachetWidth, 
@@ -86,7 +88,7 @@ const CompanyFooter: React.FC<{
             </h6>
           )}
         </div>
-      </div>
+      </div>}
       <div className={`border-t border-gray-300 text-center ${isA5 ? 'text-[8px]' : 'text-[10px]'} text-gray-600 pt-2 leading-snug`}>
         <p>{data.address}</p>
         <p><strong className="text-[12px]">{data.phones}</strong> | {data.email}</p>
@@ -450,7 +452,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
           </select>
         </div>
 
-        <div className="flex items-center">
+        {!projectContext?.report && <div className="flex items-center">
           <label htmlFor="print-mode" className="mr-2 text-sm font-medium">Mode impression :</label>
           <select
             id="print-mode"
@@ -462,9 +464,9 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
             <option value="WITHOUT_PRICES">Sans prix</option>
             <option value="PRODUCTS_ONLY">Produits seulement</option>
           </select>
-        </div>
+        </div>}
 
-        {showDesignationLangSelect && (
+        {showDesignationLangSelect && !projectContext?.report && (
           <div className="flex items-center">
             <label htmlFor="designation-lang" className="mr-2 text-sm font-medium">Langue désignation :</label>
             <select
@@ -482,7 +484,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       </div>
 
       {/* En-tête */}
-      <CompanyHeader companyType={selectedCompany} />
+      <CompanyHeader companyType={selectedCompany} projectName={projectContext?.projectName} />
 
       {/* Infos document */}
       <div className="flex justify-between items-start mb-6 mt-6">
@@ -553,6 +555,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       </div>
 
       {/* Table articles */}
+      {projectContext?.report ? <ProjetReportPrintBody report={projectContext.report} /> : <>
       <div className={spacing.margin}>
         <table style={{width:'100%'}} className="no-mobile-scroll print-table-full w-full border-collapse border border-gray-300">
           <thead>
@@ -767,10 +770,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         </div>
       )}
 
+      </>}
+      {projectContext?.report && <style>{`.print-root .company-footer { position: static !important; margin-top: 24px; } .print-root .print-footer-spacer { display: none !important; }`}</style>}
   {/* Spacer qui réserve la place du footer (impression) */}
   <div className="print-footer-spacer" />
   {/* Pied de page (toujours essaie de rester dans la dernière page si place) */}
-  <CompanyFooter data={companyFooters[selectedCompany]} size={size} />
+  <CompanyFooter data={companyFooters[selectedCompany]} size={size} showStamp={!projectContext} />
     </div>
   );
 };

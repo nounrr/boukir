@@ -5,10 +5,12 @@ import logo1 from "./logo1.png";
 import logoPlaceholder from "./logo-placeholder.svg";
 interface CompanyHeaderProps {
   companyType?: 'DIAMOND' | 'MPC';
+  projectName?: string;
 }
 
 const CompanyHeader: React.FC<CompanyHeaderProps> = ({ 
-  companyType = 'DIAMOND' 
+  companyType = 'DIAMOND',
+  projectName,
 }) => {
   const logoCurrent = companyType === 'MPC' ? logo1 : logo;
 
@@ -33,6 +35,14 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
   };
 
   const currentCompany = companyInfo[companyType];
+
+  if (projectName !== undefined) {
+    return (
+      <div className="flex justify-center items-center mb-6 border-b-2 border-orange-500 pb-4">
+        <h1 className="text-xl font-bold text-gray-800 mb-4 text-center whitespace-pre-wrap break-words min-w-0">{projectName}</h1>
+      </div>
+    );
+  }
 
   return (
     <div className="flex justify-center items-center mb-6 border-b-2 border-orange-500 pb-4">

@@ -200,7 +200,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 />
                 <span>Utiliser promo</span>
               </label>}
-              <label htmlFor="bon-images-select" className="ml-4 flex items-center gap-2 text-sm text-gray-700">
+              {!projectContext?.report && <label htmlFor="bon-images-select" className="ml-4 flex items-center gap-2 text-sm text-gray-700">
                 Images produit :
                 <select
                   id="bon-images-select"
@@ -212,7 +212,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                   <option value="without">Sans images</option>
                   <option value="with">Avec images</option>
                 </select>
-              </label>
+              </label>}
             </div>
           </div>
 

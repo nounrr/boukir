@@ -1,0 +1,46 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Situation complète — Villa Al Amal - Client : Ahmed Benali (exemple fictif)</title>
+    <style>
+      @page { size: A4 landscape; margin: 10mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #1f2937; background: #f3f4f6; font: 12px Arial, sans-serif; }
+      .toolbar { position: sticky; top: 0; padding: 12px 16px; background: #fff; border-bottom: 1px solid #cbd5e1; }
+      button { padding: 10px 16px; border: 0; border-radius: 6px; background: #c2410c; color: white; cursor: pointer; font: bold 14px Arial, sans-serif; }
+      .toolbar span { display: inline-block; margin: 8px 12px; color: #475569; }
+      .sheet { width: 277mm; max-width: none; margin: 20px auto; padding: 8mm; background: white; }
+      header { border-bottom: 2px solid #f97316; padding-bottom: 16px; margin-bottom: 24px; text-align: center; }
+      h1 { margin: 0 0 16px; font-size: 20px; }
+      .project { font-weight: bold; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .document-info { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin: 24px 0; break-inside: avoid; }
+      .notes { flex: 1; min-width: 0; }
+      .note { margin: 0 0 8px; padding: 12px; background: #f9fafb; border-left: 4px solid #f97316; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .document-box { margin-left: auto; padding: 16px; border: 1px solid #fed7aa; border-radius: 4px; text-align: right; max-width: 100%; }
+      .document-box h2 { color: #c2410c; font-size: 18px; margin: 0 0 8px; }
+      .meta { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+      section { margin-top: 24px; }
+      h2 { font-size: 16px; margin: 0 0 8px; break-after: avoid; white-space: pre-wrap; overflow-wrap: anywhere; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      thead { display: table-header-group; }
+      th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
+      th { background: #f3f4f6; color: #1f2937; font-weight: 600; }
+      .num { text-align: right; font-variant-numeric: tabular-nums; }
+      tr { break-inside: avoid; }
+      .totals { break-inside: avoid; background: white; font-weight: bold; }
+      .empty { text-align: center; color: #64748b; padding: 20px; }
+      @media screen and (max-width: 600px) {
+        .sheet { width: calc(100% - 24px); margin: 12px; padding: 12px; }
+        section { overflow-x: auto; }
+        table { min-width: 1000px; }
+      }
+      @media print { body { background: white; } .toolbar { display: none; } .sheet { width: 100%; margin: 0; padding: 0; } }
+    </style></head><body>
+    <div class="toolbar"><button type="button" onclick="window.print()">Imprimer / Enregistrer en PDF</button><span>Choisissez votre imprimante ou « Enregistrer en PDF ».</span></div>
+    <main class="sheet"><header><h1 class="project">Villa Al Amal - Client : Ahmed Benali (exemple fictif)</h1></header>
+    <div class="document-info"><div class="notes"><p class="note">5 ligne(s) · Vue par bon</p><p class="note">Les soldes cumulés conservent l’historique avant les filtres.</p></div>
+    <div class="document-box"><h2>Situation complète</h2>
+      <p class="meta">Édité le 26/10/2026 10:00:00</p>
+    </div></div><section>
+      <table><thead><tr><th>Date</th><th>Type</th><th>Référence</th><th>Libellé</th><th>Mode</th><th class="num">Entrée</th><th class="num">Sortie</th><th class="num">Solde cumulé</th></tr></thead>
+      <tbody><tr><td>20/10/2026</td><td>Avance</td><td>AV-0001</td><td>Avance au démarrage</td><td>Virement</td><td class="num">5.000,00 DH</td><td class="num"></td><td class="num">5.000,00 DH</td></tr><tr><td>22/10/2026</td><td>Produits</td><td>BP-0001</td><td>Livraison chantier</td><td>-</td><td class="num"></td><td class="num">3.000,00 DH</td><td class="num">2.000,00 DH</td></tr><tr><td>23/10/2026</td><td>Charge matériel</td><td>BCM-0001</td><td>Location bétonnière</td><td>-</td><td class="num"></td><td class="num">500,00 DH</td><td class="num">1.500,00 DH</td></tr><tr><td>24/10/2026</td><td>Avance</td><td>AV-0002</td><td>Deuxième avance</td><td>Espèces</td><td class="num">2.000,00 DH</td><td class="num"></td><td class="num">3.500,00 DH</td></tr><tr><td>25/10/2026</td><td>Chef d’œuvre</td><td>BCO-0001</td><td>Main-d’œuvre</td><td>-</td><td class="num"></td><td class="num">1.500,00 DH</td><td class="num">2.000,00 DH</td></tr></tbody>
+      <tbody class="totals"><tr><td colspan="5">Totaux du projet / Solde final</td><td class="num">7.000,00 DH</td><td class="num">5.000,00 DH</td><td class="num">2.000,00 DH</td></tr></tbody></table></section></main></body></html>

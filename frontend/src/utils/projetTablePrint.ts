@@ -41,24 +41,29 @@ export function buildProjetTablePrintHtml(options: ProjetTablePrintOptions, gene
     <style>
       @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }
       * { box-sizing: border-box; }
-      body { margin: 0; color: #0f172a; background: #f1f5f9; font: 11px Arial, sans-serif; }
+      body { margin: 0; color: #1f2937; background: #f3f4f6; font: 12px Arial, sans-serif; }
       .toolbar { position: sticky; top: 0; padding: 12px 16px; background: #fff; border-bottom: 1px solid #cbd5e1; }
-      button { padding: 10px 16px; border: 0; border-radius: 6px; background: #075985; color: white; cursor: pointer; font: bold 14px Arial, sans-serif; }
+      button { padding: 10px 16px; border: 0; border-radius: 6px; background: #c2410c; color: white; cursor: pointer; font: bold 14px Arial, sans-serif; }
       .toolbar span { display: inline-block; margin: 8px 12px; color: #475569; }
       .sheet { width: ${landscape ? '277mm' : '190mm'}; max-width: none; margin: 20px auto; padding: 8mm; background: white; }
-      header { border-bottom: 2px solid #075985; padding-bottom: 12px; margin-bottom: 16px; }
-      h1 { margin: 4px 0 8px; font-size: 22px; }
-      .project { font-size: 15px; font-weight: bold; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .meta { margin: 5px 0 0; color: #475569; white-space: pre-wrap; overflow-wrap: anywhere; }
-      section { margin-top: 18px; }
-      h2 { font-size: 13px; margin: 0 0 8px; break-after: avoid; white-space: pre-wrap; }
-      table { width: 100%; border-collapse: collapse; font-size: ${landscape ? '10px' : '11px'}; }
+      header { border-bottom: 2px solid #f97316; padding-bottom: 16px; margin-bottom: 24px; text-align: center; }
+      h1 { margin: 0 0 16px; font-size: 20px; }
+      .project { font-weight: bold; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .document-info { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin: 24px 0; break-inside: avoid; }
+      .notes { flex: 1; min-width: 0; }
+      .note { margin: 0 0 8px; padding: 12px; background: #f9fafb; border-left: 4px solid #f97316; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .document-box { margin-left: auto; padding: 16px; border: 1px solid #fed7aa; border-radius: 4px; text-align: right; max-width: 100%; }
+      .document-box h2 { color: #c2410c; font-size: 18px; margin: 0 0 8px; }
+      .meta { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+      section { margin-top: 24px; }
+      h2 { font-size: 16px; margin: 0 0 8px; break-after: avoid; white-space: pre-wrap; overflow-wrap: anywhere; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
       thead { display: table-header-group; }
-      th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
-      th { background: #f1f5f9; color: #334155; }
+      th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
+      th { background: #f3f4f6; color: #1f2937; font-weight: 600; }
       .num { text-align: right; font-variant-numeric: tabular-nums; }
       tr { break-inside: avoid; }
-      .totals { break-inside: avoid; background: #f0f9ff; font-weight: bold; }
+      .totals { break-inside: avoid; background: white; font-weight: bold; }
       .empty { text-align: center; color: #64748b; padding: 20px; }
       @media screen and (max-width: 600px) {
         .sheet { width: calc(100% - 24px); margin: 12px; padding: 12px; }
@@ -68,10 +73,11 @@ export function buildProjetTablePrintHtml(options: ProjetTablePrintOptions, gene
       @media print { body { background: white; } .toolbar { display: none; } .sheet { width: 100%; margin: 0; padding: 0; } }
     </style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">Imprimer / Enregistrer en PDF</button><span>Choisissez votre imprimante ou « Enregistrer en PDF ».</span></div>
-    <main class="sheet"><header><div class="project">${escapeHtml(projectName)}</div><h1>${escapeHtml(title)}</h1>
+    <main class="sheet"><header><h1 class="project">${escapeHtml(projectName)}</h1></header>
+    <div class="document-info"><div class="notes">${notes.filter(Boolean).map(note => `<p class="note">${escapeHtml(note)}</p>`).join('')}</div>
+    <div class="document-box"><h2>${escapeHtml(title)}</h2>
       <p class="meta">Édité le ${escapeHtml(generatedAt.toLocaleString('fr-MA'))}</p>
-      ${notes.filter(Boolean).map(note => `<p class="meta">${escapeHtml(note)}</p>`).join('')}
-    </header>${tables.map(renderTable).join('')}</main></body></html>`;
+    </div></div>${tables.map(renderTable).join('')}</main></body></html>`;
 }
 
 export function printProjetTable(options: ProjetTablePrintOptions): boolean {

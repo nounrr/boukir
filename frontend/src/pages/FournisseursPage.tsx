@@ -1569,6 +1569,7 @@ const FournisseurDetailPage: React.FC = () => {
           bon_date_iso: dateIso,
           product_reference: item.reference ?? item.product_reference ?? '',
           product_id: item.product_id ?? item.produit_id,
+          variant_name: getHistoryVariantLabel(item, products),
           product_image_url: item.product_image_url ?? item.image_url,
           product_designation: item.designation ?? item.product_designation ?? '-',
           quantite: qte,
@@ -1594,7 +1595,7 @@ const FournisseurDetailPage: React.FC = () => {
       scopedSolde += (Number(row.balanceSign) || 1) * amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
-  }, [history, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
+  }, [history, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint, products]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
@@ -1651,6 +1652,7 @@ const FournisseurDetailPage: React.FC = () => {
   if (isMobileDetail && contact) {
     return (
         <MobileContactPrintModal
+          historyKind="supplier"
           isOpen
           onClose={() => navigate('/fournisseurs')}
           closeLabel="Retour à la liste"

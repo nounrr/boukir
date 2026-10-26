@@ -1,9 +1,18 @@
 import type { ProjetBon } from '../store/api/projetsApi';
+import type { ProjetTablePrintOptions } from './projetTablePrint';
 
 export interface ProjetPrintContext {
   title: string;
   reference: string;
   projectName: string;
+  report?: ProjetTablePrintOptions;
+}
+
+export function prepareProjetReportPrint(report: ProjetTablePrintOptions, date = new Date()) {
+  return {
+    projectContext: { title: report.title, reference: '', projectName: report.projectName, report },
+    bon: { type: 'Projet', date_creation: date.toISOString(), items: [], notes: '' },
+  };
 }
 
 export function prepareProjetBonPrint(bon: ProjetBon, projectName: string) {

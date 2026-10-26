@@ -1,0 +1,11 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { Provider } from 'react-redux';
+import { store } from './src/store';
+import jsPDF from 'jspdf';
+import BonPrintModal from './src/components/BonPrintModal';
+import { prepareProjetReportPrint } from './src/utils/projetBonPrint';
+import './src/index.css';
+jsPDF.API.save = function () { (window as any).examplePdf = this.output('datauristring'); return this; };
+const data = prepareProjetReportPrint({ projectName: 'Villa Al Amal', title: 'Situation complète', notes: ['EXEMPLE - Données fictives'], tables: [{ columns: [{label: 'Date'}, {label: 'Référence'}, {label: 'Libellé'}, {label: 'Entrée', numeric:true}, {label: 'Sortie', numeric:true}, {label: 'Solde', numeric:true}], rows: [['20/10/2026','AV-0001','Avance au démarrage','5 000,00 DH','','5 000,00 DH'], ['22/10/2026','BP-0001','Ciment et colle Kerakoll','','3 000,00 DH','2 000,00 DH'], ['23/10/2026','BCM-0001','Location bétonnière','','500,00 DH','1 500,00 DH']], totals: [['Totaux / Solde final','','','5 000,00 DH','3 500,00 DH','1 500,00 DH']] }] }, new Date('2026-10-26T10:00:00+01:00'));
+createRoot(document.getElementById('root')!).render(<Provider store={store}><BonPrintModal isOpen onClose={() => {}} {...data}/></Provider>);
