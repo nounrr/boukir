@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
+import { unitFromRow, unitSellingPrice } from '../../utils/unitPrice.js';
 
 const router = Router();
 
@@ -115,7 +116,10 @@ router.get('/', async (req, res, next) => {
         pv.remise_artisan as variant_remise_artisan,
         pv.remise_promoteur as variant_remise_promoteur,
         COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-        pu.conversion_factor
+        pu.conversion_factor,
+        pu.prix_vente AS unit_prix_vente,
+        pu.facteur_isNormal AS unit_facteur_is_normal,
+        pu.is_default AS unit_is_default
       FROM cart_items ci
       INNER JOIN products p ON ci.product_id = p.id
       LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -154,7 +158,10 @@ router.get('/', async (req, res, next) => {
         pv.remise_artisan as variant_remise_artisan,
         pv.remise_promoteur as variant_remise_promoteur,
         COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-        pu.conversion_factor
+        pu.conversion_factor,
+        pu.prix_vente AS unit_prix_vente,
+        pu.facteur_isNormal AS unit_facteur_is_normal,
+        pu.is_default AS unit_is_default
       FROM cart_items ci
       INNER JOIN products p ON ci.product_id = p.id
       LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -191,7 +198,8 @@ router.get('/', async (req, res, next) => {
 
       // If unit is selected, adjust price by conversion factor
       if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
-        effectivePrice = effectivePrice * toSafeNumber(item.conversion_factor, 1);
+        // Prix manuel de l'unité (back-office) ou prix de base × facteur.
+        effectivePrice = unitSellingPrice(effectivePrice, unitFromRow(item), { hasVariant: Boolean(item.variant_id && item.variant_price !== null) });
       }
 
       // Apply promo

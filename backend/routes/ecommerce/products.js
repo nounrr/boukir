@@ -5,6 +5,7 @@ import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 import { createProductSitemapRouter } from './productSitemap.js';
 import { createCatalogPagesRouter } from './catalogPages.js';
 import { DEFAULT_VARIANT_ORDER_SQL, prioritizeDefaultVariant } from '../../utils/ecommerceDefaultVariant.js';
+import { unitSellingPrice } from '../../utils/unitPrice.js';
 
 const router = Router();
 // Must precede /:id.
@@ -523,6 +524,8 @@ router.get('/', async (req, res, next) => {
           id,
           unit_name,
           conversion_factor,
+          prix_vente,
+          facteur_isNormal,
           is_default
         FROM product_units
         WHERE product_id = ?
@@ -536,7 +539,8 @@ router.get('/', async (req, res, next) => {
         id: u.id,
         name: u.unit_name,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: displayPrice * Number(u.conversion_factor || 1),
+        // Prix manuel de l'unité (back-office) ou prix affiché × facteur (une variante par défaut est mise à l'échelle).
+        prix_vente: unitSellingPrice(displayPrice, u, { hasVariant: Number(r.is_obligatoire_variant || 0) === 1 && Boolean(variants[0]) }),
         is_default: !!u.is_default
       }));
 
@@ -980,6 +984,8 @@ router.get('/:id', async (req, res, next) => {
         id,
         unit_name,
         conversion_factor,
+        prix_vente,
+        facteur_isNormal,
         is_default
       FROM product_units
       WHERE product_id = ?
@@ -990,7 +996,8 @@ router.get('/:id', async (req, res, next) => {
       id: u.id,
       unit_name: u.unit_name,
       conversion_factor: Number(u.conversion_factor),
-      prix_vente: originalPrice * Number(u.conversion_factor || 1),
+      // Prix manuel de l'unité (back-office) ou prix de base × facteur ; le client met à l'échelle une variante choisie.
+      prix_vente: unitSellingPrice(originalPrice, u),
       is_default: !!u.is_default
     }));
 

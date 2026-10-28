@@ -13,6 +13,7 @@ import { calculateEcommerceShipping } from '../../utils/ecommerceShipping.js';
 import { getStoreLocation, haversineDistanceKm, normalizeLatLng } from '../../utils/geo.js';
 import { isCmiConfigured } from '../../utils/cmiPayment.js';
 import { cmiOrderToken, createCmiPaymentForOrder } from './cmiPayments.js';
+import { unitFromRow, unitSellingPrice } from '../../utils/unitPrice.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -434,7 +435,10 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
           COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-          pu.conversion_factor
+          pu.conversion_factor,
+          pu.prix_vente AS unit_prix_vente,
+          pu.facteur_isNormal AS unit_facteur_is_normal,
+          pu.is_default AS unit_is_default
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -472,7 +476,10 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
           COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-          pu.conversion_factor
+          pu.conversion_factor,
+          pu.prix_vente AS unit_prix_vente,
+          pu.facteur_isNormal AS unit_facteur_is_normal,
+          pu.is_default AS unit_is_default
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -548,7 +555,10 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
             COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-            pu.conversion_factor
+            pu.conversion_factor,
+            pu.prix_vente AS unit_prix_vente,
+            pu.facteur_isNormal AS unit_facteur_is_normal,
+            pu.is_default AS unit_is_default
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
@@ -579,7 +589,10 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
             COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-            pu.conversion_factor
+            pu.conversion_factor,
+            pu.prix_vente AS unit_prix_vente,
+            pu.facteur_isNormal AS unit_facteur_is_normal,
+            pu.is_default AS unit_is_default
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
@@ -675,7 +688,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
       let stockQuantityBase = Number(item.quantity);
       if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
         const factor = Number(item.conversion_factor || 1);
-        unitPrice = unitPrice * factor;
+        // Prix manuel de l'unité (back-office) ou prix de base × facteur ; le coût reste proportionnel au facteur.
+        unitPrice = unitSellingPrice(unitPrice, unitFromRow(item), { hasVariant: Boolean(item.variant_id) });
         unitCost = unitCost * factor;
         kgPerUnit = kgPerUnit * factor;
         stockQuantityBase = stockQuantityBase * factor;
@@ -1131,7 +1145,10 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
           COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-          pu.conversion_factor
+          pu.conversion_factor,
+          pu.prix_vente AS unit_prix_vente,
+          pu.facteur_isNormal AS unit_facteur_is_normal,
+          pu.is_default AS unit_is_default
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -1169,7 +1186,10 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           pv.stock_quantity as variant_stock,
           pu.id AS validated_unit_id,
           COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-          pu.conversion_factor
+          pu.conversion_factor,
+          pu.prix_vente AS unit_prix_vente,
+          pu.facteur_isNormal AS unit_facteur_is_normal,
+          pu.is_default AS unit_is_default
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -1251,7 +1271,10 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
             COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-            pu.conversion_factor
+            pu.conversion_factor,
+            pu.prix_vente AS unit_prix_vente,
+            pu.facteur_isNormal AS unit_facteur_is_normal,
+            pu.is_default AS unit_is_default
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
@@ -1282,7 +1305,10 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             pv.stock_quantity as variant_stock,
             pu.id AS validated_unit_id,
             COALESCE(NULLIF(pu.unit_name, ''), NULLIF(p.base_unit, ''), 'unité') AS unit_name,
-            pu.conversion_factor
+            pu.conversion_factor,
+            pu.prix_vente AS unit_prix_vente,
+            pu.facteur_isNormal AS unit_facteur_is_normal,
+            pu.is_default AS unit_is_default
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
@@ -1388,7 +1414,8 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
       let stockQuantityBase = Number(item.quantity);
       if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
         const factor = Number(item.conversion_factor || 1);
-        unitPrice = unitPrice * factor;
+        // Prix manuel de l'unité (back-office) ou prix de base × facteur ; le coût reste proportionnel au facteur.
+        unitPrice = unitSellingPrice(unitPrice, unitFromRow(item), { hasVariant: Boolean(item.variant_id) });
         unitCost = unitCost * factor;
         kgPerUnit = kgPerUnit * factor;
         stockQuantityBase = stockQuantityBase * factor;
