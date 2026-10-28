@@ -33,6 +33,13 @@ export function clientChequeEcheancierTotalSql(now = new Date()) {
   ), 0) ELSE 0 END)`;
 }
 
+export function clientChequeEcheancierListSql(now = new Date()) {
+  return `SELECT p.id, p.numero, p.date_paiement, CAST(p.date_echeance AS CHAR) AS date_echeance,
+    p.montant_total, p.banque, p.code_reglement, p.statut
+    FROM payments p WHERE p.contact_id = ? AND ${futureChequeWhere(now)}
+    ORDER BY p.date_echeance ASC, p.id ASC`;
+}
+
 export function parsePlafondEcheance(value) {
   if (value === undefined) return undefined;
   if (value === null || (typeof value === 'string' && value.trim() === '')) return null;

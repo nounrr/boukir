@@ -19,6 +19,12 @@ export interface PaginatedContactsResponse {
 export type ContactsSortBy = 'rappel' | 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'total_cumule' | 'created_at';
 export type SortDirection = 'asc' | 'desc';
 
+export interface ClientChequesEcheanciers {
+  cheques: { id: number; numero: string | null; date_paiement: string | null; date_echeance: string; montant_total: number; banque: string | null; code_reglement: string | null; statut: string | null }[];
+  total: number;
+  from_date: string;
+}
+
 export interface ContactsSummaryResponse {
   totalContacts: number;
   totalContactsGrouped?: number;
@@ -103,6 +109,11 @@ const contactsApi = api.injectEndpoints({
         };
       },
       providesTags: (_result, _error, arg) => [{ type: 'Contact', id: typeof arg === 'number' ? arg : arg.id }],
+    }),
+
+    getClientChequesEcheanciers: builder.query<ClientChequesEcheanciers, number>({
+      query: id => ({ url: `/contacts/${id}/cheques-echeanciers` }),
+      providesTags: (_result, _error, id) => [{ type: 'Contact', id }, 'Payment'],
     }),
 
     createContact: builder.mutation<Contact, CreateContactData & { created_by: number }>({
@@ -243,6 +254,7 @@ export const {
   useGetContactsSummaryQuery,
   useGetContactQuery,
   useGetContactHistoryQuery,
+  useGetClientChequesEcheanciersQuery,
   useCreateContactMutation,
   useUpdateContactMutation,
   useUpdateContactReminderMutation,

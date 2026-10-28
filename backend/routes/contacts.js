@@ -8,7 +8,7 @@ import { requireClientRemindersAccess } from '../middleware/clientCollaborationP
 import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
 import { CLIENT_LAST_PAYMENT_JOIN_SQL } from '../utils/clientLastPayment.js';
 import { historyItemCostExpr } from '../utils/contactHistoryCost.js';
-import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, parsePlafondEcheance } from '../utils/clientEcheancier.js';
+import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, clientChequeEcheancierListSql, tomorrowInCasablanca, parsePlafondEcheance } from '../utils/clientEcheancier.js';
 
 const router = express.Router();
 
@@ -1906,6 +1906,23 @@ router.get('/:id/history', async (req, res) => {
       details: error?.sqlMessage || error?.message,
       code: error?.code,
     });
+  }
+});
+
+router.get('/:id/cheques-echeanciers', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) return res.status(400).json({ error: 'Identifiant client invalide' });
+  try {
+    const [contacts] = await pool.execute("SELECT id FROM contacts WHERE id = ? AND type = 'Client' AND deleted_at IS NULL", [id]);
+    if (!contacts.length) return res.status(404).json({ error: 'Client introuvable' });
+    const now = new Date();
+    const [rows] = await pool.execute(clientChequeEcheancierListSql(now), [id]);
+    const cheques = rows.map(row => ({ ...row, montant_total: Number(row.montant_total || 0) }));
+    const total = Number(cheques.reduce((sum, row) => sum + row.montant_total, 0).toFixed(2));
+    res.json({ cheques, total, from_date: tomorrowInCasablanca(now) });
+  } catch (error) {
+    console.error('GET /contacts/:id/cheques-echeanciers:', error);
+    res.status(500).json({ error: 'Impossible de charger les chèques échéanciers' });
   }
 });
 
