@@ -14,10 +14,11 @@ test('client list exposes the last payment amount and date without losing client
     queries.push({ sql, params });
     if (sql.includes('AS grand_total_cumule')) return [[{ grand_total_cumule: 125 }]];
     assert.ok(sql.includes(CLIENT_LAST_PAYMENT_JOIN_SQL));
+    assert.match(sql, /COALESCE\(client_cheques_echeanciers.total, 0\) AS cheques_echeanciers/);
     assert.match(sql, /dernier_paiement\.montant_total AS dernier_paiement_montant/);
     assert.match(sql, /COALESCE\(dernier_paiement\.date_paiement, dernier_paiement\.created_at\) AS dernier_paiement_date/);
     return [[
-      { id: 1, nom_complet: 'Paying client', type: 'Client', dernier_paiement_id: 9, dernier_paiement_montant: '125.50', dernier_paiement_date: '2026-10-20' },
+      { id: 1, nom_complet: 'Paying client', type: 'Client', dernier_paiement_id: 9, dernier_paiement_montant: '125.50', dernier_paiement_date: '2026-10-20', cheques_echeanciers: '400.50', plafond_echeance: '10000.00' },
       { id: 2, nom_complet: 'No payments', type: 'Client', dernier_paiement_id: null, dernier_paiement_montant: null, dernier_paiement_date: null },
       { id: 3, nom_complet: 'Zero payment', type: 'Client', dernier_paiement_id: 10, dernier_paiement_montant: '0.00', dernier_paiement_date: '2026-10-21' },
     ]];
@@ -41,6 +42,9 @@ test('client list exposes the last payment amount and date without losing client
   assert.equal(body.data[1].dernier_paiement_montant, null);
   assert.equal(body.data[1].dernier_paiement_date, null);
   assert.equal(body.data[2].dernier_paiement_montant, 0);
+  assert.equal(body.data[0].cheques_echeanciers, 400.5);
+  assert.equal(body.data[0].plafond_echeance, 10000);
+  assert.equal(body.data[1].cheques_echeanciers, 0);
   assert.equal(body.pagination.total, 3);
   assert.equal(body.grandTotalCumule, 125);
   assert.equal(queries.length, 2, 'last payments require no extra query per client');

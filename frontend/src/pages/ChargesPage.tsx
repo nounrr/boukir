@@ -1,3 +1,4 @@
+import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -73,6 +74,7 @@ const MODE_COLORS: Record<string, string> = {
   Cheque: 'bg-blue-100 text-blue-700',
   Traite: 'bg-purple-100 text-purple-700',
   Virement: 'bg-indigo-100 text-indigo-700',
+  TPE: 'bg-cyan-100 text-cyan-700',
   Remise: 'bg-orange-100 text-orange-700',
 };
 const modeColor = (m: string) => MODE_COLORS[m] ?? 'bg-gray-100 text-gray-600';
@@ -192,7 +194,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           if (!detail) {
             return (
               <tr key={b.id} className={`${hoverClass} transition-colors`} style={getUiRowStyle(styleConfig)}>
-                <td className={`px-4 py-3 font-mono font-medium ${accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-3 font-mono font-medium ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></td>
                 <td className="px-4 py-3 text-gray-600">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}
@@ -209,7 +211,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           if (items.length === 0) {
             return (
               <tr key={b.id} className={`${hoverClass} transition-colors`} style={getUiRowStyle(styleConfig)}>
-                <td className={`px-4 py-2.5 font-mono font-medium ${accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-2.5 font-mono font-medium ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
@@ -235,7 +237,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 
                 return (
                   <tr key={`${b.id}-item-group-${sourceIndices.join('-')}`} className={`bg-gray-50/60 border-l-4 ${itemBorderClass} ${hoverClass}/40 transition-colors`} style={getUiRowStyle(styleConfig)}>
-                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${accentClass}`}>{bonNum}</td>
+                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                     </td>
@@ -303,7 +305,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           <article key={b.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden" style={getUiRowStyle(styleConfig)}>
             <div className="flex items-start justify-between gap-3 p-3 border-l-4 border-violet-300">
               <div className="min-w-0">
-                <p className={`font-mono text-sm font-bold ${accentClass}`}>{bonNum}</p>
+                <p className={`font-mono text-sm font-bold ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></p>
                 <p className="mt-1 flex items-center gap-1 text-xs text-gray-600"><Calendar className="w-3.5 h-3.5" />{fmtDate(b.date_creation)}</p>
               </div>
               <span className={`shrink-0 text-xs px-2 py-1 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '-'}</span>
@@ -779,7 +781,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   </span>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-black font-medium text-xs">
-                  {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}
+                  {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}<span className="ml-2"><DocumentSaisieCheckbox document={p} type="Paiement" /></span>
                 </td>
                 <td className="px-4 py-2.5 text-black/90 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-white/70" />{fmtDate(p.date_paiement)}</span>
@@ -843,7 +845,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                 </td>
-                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={row.kind} /></span></td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
@@ -884,7 +886,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                 </td>
-                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={row.kind} /></span></td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
@@ -941,7 +943,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-4 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                     </td>
-                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${meta.accentClass}`}>{bonNum}</td>
+                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${meta.accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={row.kind} /></span></td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                     </td>
@@ -1074,7 +1076,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             <div className="flex items-start justify-between gap-3 p-3">
               <div className="min-w-0">
                 <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${isPayment ? 'bg-green-100 text-green-800' : meta?.badgeClass}`}>{isPayment ? 'Paiement' : meta?.label}</span>
-                <p className="mt-2 font-mono text-sm font-semibold text-gray-900">{number}</p>
+                <p className="mt-2 font-mono text-sm font-semibold text-gray-900">{number}</p><DocumentSaisieCheckbox document={data} type={row.kind} />
                 <p className="mt-1 flex items-center gap-1 text-xs text-gray-600"><Calendar className="w-3 h-3" />{fmtDate(isPayment ? data.date_paiement : data.date_creation)}</p>
               </div>
               <div className="text-right shrink-0"><span className="block text-xs text-gray-500">Montant</span><strong className="text-sm text-gray-900 tabular-nums">{fmt(Number(data.montant_total ?? data.montant ?? 0))}</strong></div>
@@ -1904,7 +1906,7 @@ const ChargeDetailPage: React.FC = () => {
                                   <td className="px-2 py-3 text-center" {...prov.dragHandleProps}>
                                     <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500 mx-auto cursor-grab active:cursor-grabbing" />
                                   </td>
-                                  <td className="px-4 py-3 font-mono text-green-700 font-medium text-xs">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</td>
+                                  <td className="px-4 py-3 font-mono text-green-700 font-medium text-xs">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}<span className="ml-2"><DocumentSaisieCheckbox document={p} type="Paiement" /></span></td>
                                   <td className="px-4 py-3 text-gray-600">
                                     <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />{fmtDate(p.date_paiement)}</span>
                                     {p.date_echeance && <span className="text-xs text-gray-400 ml-5 block">Echeance: {fmtDate(p.date_echeance)}</span>}
@@ -1943,7 +1945,7 @@ const ChargeDetailPage: React.FC = () => {
                   </div>
                   {paiements.map((p: any, index: number) => (
                     <article key={p.id} className="rounded-xl border border-green-200 bg-white shadow-sm overflow-hidden">
-                      <div className="flex items-start justify-between gap-2 p-3"><div><p className="font-mono text-sm font-semibold text-green-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-600">{fmtDate(p.date_paiement)}</p></div><strong className="text-sm tabular-nums text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</strong></div>
+                      <div className="flex items-start justify-between gap-2 p-3"><div><p className="font-mono text-sm font-semibold text-green-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}<span className="ml-2"><DocumentSaisieCheckbox document={p} type="Paiement" /></span></p><p className="mt-1 text-xs text-gray-600">{fmtDate(p.date_paiement)}</p></div><strong className="text-sm tabular-nums text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</strong></div>
                       <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-3 py-2 text-xs text-gray-600"><span className={`w-fit rounded-full px-2 py-0.5 ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '-'}</span><span className="text-right break-all">{p.code_reglement || p.reference_virement || p.reference || '-'}</span>{p.date_echeance && <span className="col-span-2">Échéance : {fmtDate(p.date_echeance)}</span>}</div>
                       <div className="flex justify-end gap-1 border-t border-gray-100 px-3 py-2"><button type="button" onClick={() => handlePayDragEnd({ source: { droppableId: 'paiements-charge', index }, destination: { droppableId: 'paiements-charge', index: index - 1 } } as DropResult)} disabled={index === 0} aria-label="Monter le paiement" className="p-2 rounded border border-gray-200 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button><button type="button" onClick={() => handlePayDragEnd({ source: { droppableId: 'paiements-charge', index }, destination: { droppableId: 'paiements-charge', index: index + 1 } } as DropResult)} disabled={index === paiements.length - 1} aria-label="Descendre le paiement" className="p-2 rounded border border-gray-200 disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button></div>
                     </article>

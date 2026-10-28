@@ -132,7 +132,7 @@ const paymentIncludedInCaisseSql = (paymentAlias = 'p') => `
             AND (
               COALESCE(${paymentAlias}.bon_type, '') <> 'Comptant'
             )
-            AND LOWER(TRIM(COALESCE(${paymentAlias}.mode_paiement, ''))) NOT IN ('remise', 'virement')`;
+            AND LOWER(TRIM(COALESCE(${paymentAlias}.mode_paiement, ''))) NOT IN ('remise', 'virement', 'tpe')`;
 const bonComptantPaymentCaisseDateSql = (paymentAlias = 'p') =>
   `${paymentAlias}.created_at`;
 const afterLatestCaisseStartSql = (dateTimeExpr) => `
@@ -826,7 +826,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
          WHERE DATE(bc.created_at) BETWEEN ? AND ?
            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
-           AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
+           AND COALESCE(bc.mode_paiement, 'Espèces') NOT IN ('Virement', 'TPE')
            AND COALESCE(bc.non_paye, 0) = 0
            AND NOT EXISTS (
              SELECT 1
@@ -850,7 +850,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
-           AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
+           AND COALESCE(bc.mode_paiement, 'Espèces') NOT IN ('Virement', 'TPE')
            ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
            AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
          GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})
@@ -1185,7 +1185,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.created_at) = ?
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
-            AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
+            AND COALESCE(bc.mode_paiement, 'Espèces') NOT IN ('Virement', 'TPE')
             AND COALESCE(bc.non_paye, 0) = 0
             AND NOT EXISTS (
               SELECT 1
@@ -1218,7 +1218,7 @@ router.get('/days/:date', async (req, res) => {
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
-            AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
+            AND COALESCE(bc.mode_paiement, 'Espèces') NOT IN ('Virement', 'TPE')
             ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
             AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
         `,
@@ -1532,7 +1532,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.created_at) BETWEEN ? AND ?
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
-             AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
+             AND COALESCE(bc.mode_paiement, 'Espèces') NOT IN ('Virement', 'TPE')
              AND COALESCE(bc.non_paye, 0) = 0
              AND NOT EXISTS (
                SELECT 1
@@ -1556,7 +1556,7 @@ router.get('/mouvements', async (req, res) => {
              AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
-             AND COALESCE(bc.mode_paiement, 'Espèces') <> 'Virement'
+             AND COALESCE(bc.mode_paiement, 'Espèces') NOT IN ('Virement', 'TPE')
              ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
              AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
            GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})

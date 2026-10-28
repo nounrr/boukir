@@ -90,7 +90,7 @@ const CaissePage = () => {
   const [searchInput, setSearchInput] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite' | 'Remise'>('all');
+  const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'TPE' | 'Traite' | 'Remise'>('all');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
@@ -713,6 +713,7 @@ const CaissePage = () => {
   const totalCheques = paymentTotals?.totalCheques ?? sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Chèque')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
+  const totalTpe = paymentTotals?.totalTpe ?? sortedPayments.filter((p: Payment) => p.mode_paiement === 'TPE').reduce((sum: number, p: Payment) => sum + amountOf(p), 0);
   const totalVirements = paymentTotals?.totalVirements ?? sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Virement')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
@@ -861,8 +862,8 @@ const paymentValidationSchema = Yup.object({
     .min(0, 'Le montant ignoré doit être positif ou nul'),
   remise: Yup.boolean().default(false),
 
-  mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
-    .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
+  mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'TPE'|'Traite'|'Remise'>()
+    .oneOf(['Espèces','Chèque','Virement','TPE','Traite','Remise'], 'Mode invalide')
     .required('Mode de paiement est requis'),
 
   date_paiement: Yup.string()
@@ -928,8 +929,8 @@ const paymentValidationSchema = Yup.object({
         .typeError('Le montant ignoré doit être un nombre')
         .min(0, 'Le montant ignoré doit être positif ou nul'),
       remise: Yup.boolean().default(false),
-      mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
-        .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
+      mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'TPE'|'Traite'|'Remise'>()
+        .oneOf(['Espèces','Chèque','Virement','TPE','Traite','Remise'], 'Mode invalide')
         .required('Mode de paiement est requis'),
       date_paiement: Yup.string().transform(toNull).nullable(),
       bon_id: Yup.string().transform(toNull).nullable(),
@@ -1456,6 +1457,8 @@ const paymentValidationSchema = Yup.object({
         return <DollarSign size={16} className="text-green-600" />;
       case 'Chèque':
         return <Receipt size={16} className="text-blue-600" />;
+      case 'TPE':
+        return <CreditCard size={16} className="text-cyan-600" />;
       case 'Virement':
         return <CreditCard size={16} className="text-purple-600" />;
       case 'Traite':
@@ -1532,6 +1535,8 @@ const paymentValidationSchema = Yup.object({
   return 'Code/Numéro de chèque';
       case 'Virement':
   return 'Code/Numéro de virement';
+      case 'TPE':
+  return 'Référence du ticket TPE (optionnel)';
       case 'Traite':
   return 'Code/Numéro de traite';
       default:
@@ -1832,7 +1837,8 @@ const paymentValidationSchema = Yup.object({
       </div>
 
   {/* Statistiques de caisse */}
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 mb-4">
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2 mb-4">
+    <div className="bg-white p-2 rounded-lg shadow"><div className="flex items-center justify-between"><div><p className="text-sm font-medium text-gray-600">TPE</p><p className="text-xl font-bold text-cyan-600">{totalTpe.toFixed(2)} DH</p></div><CreditCard className="h-6 w-6 text-cyan-600" /></div></div>
     <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
@@ -1957,6 +1963,7 @@ const paymentValidationSchema = Yup.object({
               <option value="Espèces">Espèces</option>
               <option value="Chèque">Chèque</option>
               <option value="Virement">Virement</option>
+                        <option value="TPE">TPE</option>
               <option value="Traite">Traite</option>
               <option value="Remise">Remise</option>
             </select>
@@ -2904,6 +2911,7 @@ const paymentValidationSchema = Yup.object({
                         <option value="Espèces">Espèces</option>
                         <option value="Chèque">Chèque (avec possibilité d'image)</option>
                         <option value="Virement">Virement</option>
+                        <option value="TPE">TPE</option>
                         <option value="Traite">Traite (avec possibilité d'image)</option>
                         <option value="Remise">Remise</option>
                       </Field>
@@ -3216,6 +3224,7 @@ const paymentValidationSchema = Yup.object({
                                     <option value="Espèces">Espèces</option>
                                     <option value="Chèque">Chèque</option>
                                     <option value="Virement">Virement</option>
+                        <option value="TPE">TPE</option>
                                     <option value="Traite">Traite</option>
                                     <option value="Remise">Remise</option>
                                   </Field>

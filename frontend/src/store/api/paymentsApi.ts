@@ -25,6 +25,7 @@ type PaymentsPagedResponse = {
     totalEspeces: number;
     totalCheques: number;
     totalVirements: number;
+    totalTpe: number;
     totalTraites: number;
     totalRemises: number;
   };

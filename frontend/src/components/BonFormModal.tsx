@@ -1151,23 +1151,26 @@ const getContactTotalCumule = (contact: any) => {
 };
 
 const getContactCreditLimit = (contact: any) => {
-  const plafond = Number(contact?.plafond);
-  const garantie = Number(contact?.montant_garantie);
-  const hasPlafond = Number.isFinite(plafond) && plafond > 0;
-  const hasGarantie = Number.isFinite(garantie) && garantie > 0;
-
-  if (!hasPlafond && !hasGarantie) return null;
-  if (hasPlafond && hasGarantie) {
-    return {
-      amount: Math.min(plafond, garantie),
-      label: plafond <= garantie ? 'plafond' : 'garantie',
-      details: `Plafond: ${plafond.toFixed(2)} DH | Garantie: ${garantie.toFixed(2)} DH`,
-    };
+  const limits: { amount: number; label: string; details: string }[] = [];
+  for (const [field, label] of [['plafond', 'plafond'], ['montant_garantie', 'garantie']]) {
+    const amount = Number(contact?.[field]);
+    if (Number.isFinite(amount) && amount > 0) limits.push({ amount, label, details: `${label}: ${amount.toFixed(2)} DH` });
   }
-
-  return hasPlafond
-    ? { amount: plafond, label: 'plafond', details: `Plafond: ${plafond.toFixed(2)} DH` }
-    : { amount: garantie, label: 'garantie', details: `Garantie: ${garantie.toFixed(2)} DH` };
+  if (contact?.plafond_echeance != null) {
+    const cheques = Number(contact.cheques_echeanciers || 0);
+    const configured = Number(contact.plafond_echeance);
+    const ceiling = configured === 0
+      ? Number(contact.plafond_echeance_reference ?? Math.max(0, getContactTotalCumule(contact) + cheques))
+      : configured;
+    if (Number.isFinite(ceiling)) limits.push({
+      amount: ceiling - cheques,
+      label: 'échéancier après déduction des chèques',
+      details: `Plafond échéancier: ${ceiling.toFixed(2)} DH | Chèques échéanciers: ${cheques.toFixed(2)} DH`,
+    });
+  }
+  if (!limits.length) return null;
+  const strictest = limits.reduce((a, b) => a.amount <= b.amount ? a : b);
+  return { ...strictest, details: limits.map(limit => limit.details).join(' | ') };
 };
 
 const isContactBlocked = (contact: any) => {
@@ -5556,9 +5559,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     >
                       <option value="Espèces">Espèces</option>
                       <option value="Virement">Virement</option>
+                      <option value="TPE">TPE</option>
                     </Field>
-                    {values.mode_paiement === 'Virement' && (
-                      <div className="mt-1 text-xs text-gray-600">Le virement n’est pas inclus dans le fond de caisse.</div>
+                    {['Virement', 'TPE'].includes(values.mode_paiement) && (
+                      <div className="mt-1 text-xs text-gray-600">Ce paiement n’est pas inclus dans le fond de caisse.</div>
                     )}
                   </div>
                   <div className="mb-3 max-w-xs">
@@ -5574,8 +5578,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
                     />
                     <div className="mt-1 text-xs text-gray-500">
-                      {values.mode_paiement === 'Virement'
-                        ? 'Ce montant reste hors caisse pour un virement.'
+                      {['Virement', 'TPE'].includes(values.mode_paiement)
+                        ? 'Ce montant reste hors caisse pour ce mode de paiement.'
                         : 'Fond caisse prendra: total - montant ignoré.'}
                     </div>
                   </div>

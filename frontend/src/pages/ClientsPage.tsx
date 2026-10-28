@@ -1,3 +1,4 @@
+import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -85,6 +86,7 @@ const MODE_COLORS: Record<string, string> = {
   Chèque: 'bg-blue-100 text-blue-700',
   Traite: 'bg-purple-100 text-purple-700',
   Virement: 'bg-indigo-100 text-indigo-700',
+  TPE: 'bg-cyan-100 text-cyan-700',
   Remise: 'bg-orange-100 text-orange-700',
 };
 const modeColor = (m: string) => MODE_COLORS[m] ?? 'bg-gray-100 text-gray-600';
@@ -201,7 +203,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           if (!detail) {
             return (
               <tr key={b.id} className={`${hoverClass} transition-colors`} style={getUiRowStyle(styleConfig)}>
-                <td className={`px-4 py-3 font-mono font-medium ${accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-3 font-mono font-medium ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></td>
                 <td className="px-4 py-3 text-gray-600">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}
@@ -219,7 +221,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           if (items.length === 0) {
             return (
               <tr key={b.id} className={`${hoverClass} transition-colors`} style={getUiRowStyle(styleConfig)}>
-                <td className={`px-4 py-2.5 font-mono font-medium ${accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-2.5 font-mono font-medium ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
@@ -245,7 +247,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                 
                 return (
                   <tr key={`${b.id}-item-group-${sourceIndices.join('-')}`} className={`bg-gray-50/60 border-l-4 ${itemBorderClass} ${hoverClass}/40 hover:bg-opacity-40 transition-colors`} style={getUiRowStyle(styleConfig)}>
-                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${accentClass}`}>{bonNum}</td>
+                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={prefix} /></span></td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                     </td>
@@ -313,7 +315,7 @@ const MobileBonCards: React.FC<Pick<BonTableProps, 'bons' | 'detail' | 'products
       const items: any[] = Array.isArray(b.items) ? b.items.filter((i: any) => i && i.id) : [];
       return <article key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0"><p className="font-mono text-sm font-bold text-blue-700">{b.numero ?? `${prefix}${String(b.id).padStart(2, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(b.date_creation)}</p></div>
+          <div className="min-w-0"><p className="font-mono text-sm font-bold text-blue-700">{b.numero ?? `${prefix}${String(b.id).padStart(2, '0')}`}</p><DocumentSaisieCheckbox document={b} type={prefix} /><p className="mt-1 text-xs text-gray-500">{fmtDate(b.date_creation)}</p></div>
           <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
         </div>
         <div className="mt-3 flex items-end justify-between gap-3 border-t border-gray-100 pt-3"><span className="text-xs text-gray-500">Montant</span><strong className="text-base text-gray-900">{fmt(getBonTableTotal(prefix, b))}</strong></div>
@@ -911,7 +913,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   </span>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-black font-medium text-xs">
-                  {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}
+                  {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}<span className="ml-2"><DocumentSaisieCheckbox document={p} type="Paiement" /></span>
                 </td>
                 <td className="px-4 py-2.5 text-black/90 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-white/70" />{fmtDate(p.date_paiement)}</span>
@@ -990,7 +992,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                 </td>
-                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={row.kind} /></span></td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
@@ -1033,7 +1035,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                 </td>
-                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}</td>
+                <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={row.kind} /></span></td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
@@ -1107,7 +1109,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-4 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                     </td>
-                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${meta.accentClass}`}>{bonNum}</td>
+                    <td className={`px-4 py-2 font-mono text-xs font-semibold ${meta.accentClass}`}>{bonNum}<span className="ml-2"><DocumentSaisieCheckbox document={b} type={row.kind} /></span></td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                     </td>
@@ -1255,7 +1257,7 @@ const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeIn
       const amount = payment ? getPaymentLineTotal(b) : getBonTotalForSolde(row.kind, b);
       return <article key={id} className={`rounded-xl border p-4 shadow-sm ${payment ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-200 bg-white'}`}>
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0"><span className={`rounded-md px-2 py-1 text-xs font-bold ${payment ? 'bg-emerald-100 text-emerald-800' : meta?.badgeClass}`}>{payment ? 'Paiement' : meta?.label}</span><p className="mt-2 font-mono text-sm font-bold text-gray-900">{b.numero ?? `${payment ? 'PAY' : meta?.prefix}${String(b.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(payment ? b.date_paiement : b.date_creation)}</p></div>
+          <div className="min-w-0"><span className={`rounded-md px-2 py-1 text-xs font-bold ${payment ? 'bg-emerald-100 text-emerald-800' : meta?.badgeClass}`}>{payment ? 'Paiement' : meta?.label}</span><p className="mt-2 font-mono text-sm font-bold text-gray-900">{b.numero ?? `${payment ? 'PAY' : meta?.prefix}${String(b.id).padStart(3, '0')}`}</p><DocumentSaisieCheckbox document={b} type={row.kind} /><p className="mt-1 text-xs text-gray-500">{fmtDate(payment ? b.date_paiement : b.date_creation)}</p></div>
           {onToggleSelect && <label className="flex min-h-9 items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedIds?.has(id) ?? false} onChange={() => onToggleSelect(id)} className="h-4 w-4 accent-blue-600" /> Bon</label>}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-200 pt-3"><div><p className="text-xs text-gray-500">Montant</p><p className="font-bold text-gray-900">{fmt(amount)}</p></div><div className="text-right"><p className="text-xs text-gray-500">Solde cumulé</p><p className={`font-bold ${(balances.get(lastKey) ?? 0) > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{fmt(balances.get(lastKey) ?? 0)}</p></div></div>
@@ -2149,7 +2151,7 @@ const ClientDetailPage: React.FC = () => {
                                   <td className="px-2 py-3 text-center" {...prov.dragHandleProps}>
                                     <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500 mx-auto cursor-grab active:cursor-grabbing" />
                                   </td>
-                                  <td className="px-4 py-3 font-mono text-green-700 font-medium text-xs">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</td>
+                                  <td className="px-4 py-3 font-mono text-green-700 font-medium text-xs">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}<span className="ml-2"><DocumentSaisieCheckbox document={p} type="Paiement" /></span></td>
                                   <td className="px-4 py-3 text-gray-600">
                                     <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />{fmtDate(p.date_paiement)}</span>
                                     {p.date_echeance && <span className="text-xs text-gray-400 ml-5 block">Échéance: {fmtDate(p.date_echeance)}</span>}
@@ -2182,7 +2184,7 @@ const ClientDetailPage: React.FC = () => {
                     </tr>
                   </tfoot>
                 </table>
-                </DragDropContext></div><div className="space-y-3 p-3 md:hidden">{paiements.map((p: any, index: number) => <article key={p.id} className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-2"><div><p className="font-mono text-sm font-bold text-emerald-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</p><p className="mt-1 text-xs text-gray-500">{fmtDate(p.date_paiement)}</p></div><span className={`rounded px-2 py-1 text-xs font-semibold ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '—'}</span></div><p className="mt-3 text-lg font-bold text-gray-900">{fmt(getPaymentLineTotal(p))}</p><div className="mt-2 space-y-1 text-xs text-gray-600"><p>RIB / Réf : {p.code_reglement || p.reference_virement || p.reference || '—'}</p><p>Montant ignoré : {fmt(Number(p.montant_ignorer ?? 0))}</p>{p.date_echeance && <p>Échéance : {fmtDate(p.date_echeance)}</p>}</div><div className="mt-3 flex gap-2 border-t border-gray-100 pt-3"><button type="button" disabled={index === 0} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-client' }, destination: { index: index - 1, droppableId: 'paiements-client' }, draggableId: String(p.id), reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs text-emerald-800 disabled:opacity-40">Monter</button><button type="button" disabled={index === paiements.length - 1} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-client' }, destination: { index: index + 1, droppableId: 'paiements-client' }, draggableId: String(p.id), reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs text-emerald-800 disabled:opacity-40">Descendre</button></div></article>)}<div className="rounded-lg bg-emerald-50 p-3 text-right text-sm font-bold text-emerald-800">Total : {fmt(paiements.reduce((sum: number, p: any) => sum + getPaymentLineTotal(p), 0))}</div></div></>
+                </DragDropContext></div><div className="space-y-3 p-3 md:hidden">{paiements.map((p: any, index: number) => <article key={p.id} className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-2"><div><p className="font-mono text-sm font-bold text-emerald-700">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}<span className="ml-2"><DocumentSaisieCheckbox document={p} type="Paiement" /></span></p><p className="mt-1 text-xs text-gray-500">{fmtDate(p.date_paiement)}</p></div><span className={`rounded px-2 py-1 text-xs font-semibold ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '—'}</span></div><p className="mt-3 text-lg font-bold text-gray-900">{fmt(getPaymentLineTotal(p))}</p><div className="mt-2 space-y-1 text-xs text-gray-600"><p>RIB / Réf : {p.code_reglement || p.reference_virement || p.reference || '—'}</p><p>Montant ignoré : {fmt(Number(p.montant_ignorer ?? 0))}</p>{p.date_echeance && <p>Échéance : {fmtDate(p.date_echeance)}</p>}</div><div className="mt-3 flex gap-2 border-t border-gray-100 pt-3"><button type="button" disabled={index === 0} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-client' }, destination: { index: index - 1, droppableId: 'paiements-client' }, draggableId: String(p.id), reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs text-emerald-800 disabled:opacity-40">Monter</button><button type="button" disabled={index === paiements.length - 1} onClick={() => handlePayDragEnd({ source: { index, droppableId: 'paiements-client' }, destination: { index: index + 1, droppableId: 'paiements-client' }, draggableId: String(p.id), reason: 'DROP', type: 'DEFAULT', mode: 'FLUID', combine: null } as DropResult)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs text-emerald-800 disabled:opacity-40">Descendre</button></div></article>)}<div className="rounded-lg bg-emerald-50 p-3 text-right text-sm font-bold text-emerald-800">Total : {fmt(paiements.reduce((sum: number, p: any) => sum + getPaymentLineTotal(p), 0))}</div></div></>
               )
           )}
 
@@ -2272,7 +2274,7 @@ const ClientsListPage: React.FC = () => {
   const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false);
   const [managedGroupId, setManagedGroupId] = useState<number | null>(null);
-  const clientsTableColspan = 14 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
+  const clientsTableColspan = 16 + (canUseComments ? 1 : 0) + (canUseReminders ? 1 : 0);
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -2650,6 +2652,8 @@ const ClientsListPage: React.FC = () => {
           ? <span className="font-semibold text-sm text-gray-700">{fmt(client.plafond)}</span>
           : <span className="text-gray-300 text-xs">-</span>}
       </td>
+      <td className="px-4 py-3 text-right whitespace-nowrap">{client.plafond_echeance == null ? <span className="text-gray-300 text-xs">—</span> : <span className="font-semibold text-sm text-gray-700">{fmt(Number(client.plafond_echeance))}</span>}</td>
+      <td className="px-4 py-3 text-right whitespace-nowrap" title="Chèques dont l’échéance est demain ou plus tard"><span className="font-semibold text-sm text-indigo-700">{fmt(Number(client.cheques_echeanciers ?? 0))}</span></td>
       <td className="px-4 py-3 text-right">
         {client.montant_garantie !== null && client.montant_garantie !== undefined
           ? <span className="font-semibold text-sm text-emerald-700">{fmt(client.montant_garantie)}</span>
@@ -2736,6 +2740,8 @@ const ClientsListPage: React.FC = () => {
     const isOpen = expandedGroupKeys.has(key);
     const groupName = row.groupName.trim() || `Groupe #${row.groupId}`;
     const groupSolde = row.members.reduce((sum, member) => sum + Number(member.solde || 0), 0);
+    const groupPlafondEcheance = row.members.reduce((sum, member) => sum + Number(member.plafond_echeance || 0), 0);
+    const groupChequesEcheanciers = row.members.reduce((sum, member) => sum + Number(member.cheques_echeanciers || 0), 0);
     const groupPlafond = row.members.reduce((sum, member) => sum + Number(member.plafond || 0), 0);
     const groupGarantie = row.members.reduce((sum, member) => sum + Number(member.montant_garantie || 0), 0);
     const groupTotalCumule = row.members.reduce((sum, member) => sum + Number(member.total_cumule || 0), 0);
@@ -2809,6 +2815,8 @@ const ClientsListPage: React.FC = () => {
           <td className="px-4 py-3 text-right">
             <span className="font-semibold text-sm text-gray-700">{fmt(groupPlafond)}</span>
           </td>
+          <td className="px-4 py-3 text-right whitespace-nowrap"><span className="font-semibold text-sm text-gray-700">{fmt(groupPlafondEcheance)}</span></td>
+          <td className="px-4 py-3 text-right whitespace-nowrap"><span className="font-semibold text-sm text-indigo-700">{fmt(groupChequesEcheanciers)}</span></td>
           <td className="px-4 py-3 text-right">
             <span className="font-semibold text-sm text-emerald-700">{fmt(groupGarantie)}</span>
           </td>
@@ -2833,7 +2841,7 @@ const ClientsListPage: React.FC = () => {
       <div className="flex items-start gap-3"><input type="checkbox" checked={selectedListIds.has(id)} onChange={() => toggleListRowSelection(id)} aria-label={`Sélectionner ${client.nom_complet || client.societe || id} pour impression`} className="mt-1 h-5 w-5 shrink-0 accent-blue-600" /><div className="min-w-0 flex-1"><Link to={`/clients/${id}`} onClick={() => handleRowClick(id, false)} className="text-left text-base font-bold leading-tight text-gray-900 underline-offset-2 hover:underline">{client.nom_complet || client.societe || `Client #${id}`}</Link><p className="mt-1 font-mono text-xs text-gray-500">ID {id}{client.reference && ` · Réf ${client.reference}`}</p></div>{blocked && <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Bloqué</span>}</div>
       {client.societe && <p className="mt-3 flex items-start gap-2 text-sm text-gray-700"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />{client.societe}</p>}
       <div className="mt-3 space-y-1.5 text-xs text-gray-600">{client.telephone && <a href={`tel:${client.telephone}`} className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-gray-400" />{client.telephone}</a>}{client.email && <a href={`mailto:${client.email}`} className="flex items-center gap-2 break-all"><Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />{client.email}</a>}{client.adresse && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />{client.adresse}</p>}</div>
-      <div className="mt-4 rounded-lg bg-blue-50 p-3"><p className="text-xs font-medium text-blue-800">Solde cumulé</p><p className={`text-lg font-bold ${Number(client.total_cumule ?? 0) > 0 ? 'text-red-700' : Number(client.total_cumule ?? 0) < 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{fmt(Number(client.total_cumule ?? 0))}</p><div className="mt-2 grid grid-cols-3 gap-2 border-t border-blue-100 pt-2 text-xs"><div><p className="text-gray-500">Solde</p><strong>{fmt(Number(client.solde ?? 0))}</strong></div><div><p className="text-gray-500">Plafond</p><strong>{client.plafond != null ? fmt(Number(client.plafond)) : '—'}</strong></div><div><p className="text-gray-500">Garantie</p><strong>{client.montant_garantie != null ? fmt(Number(client.montant_garantie)) : '—'}</strong></div></div></div>
+      <div className="mt-4 rounded-lg bg-blue-50 p-3"><p className="text-xs font-medium text-blue-800">Solde cumulé</p><p className={`text-lg font-bold ${Number(client.total_cumule ?? 0) > 0 ? 'text-red-700' : Number(client.total_cumule ?? 0) < 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{fmt(Number(client.total_cumule ?? 0))}</p><div className="mt-2 grid grid-cols-3 gap-2 border-t border-blue-100 pt-2 text-xs"><div><p className="text-gray-500">Solde</p><strong>{fmt(Number(client.solde ?? 0))}</strong></div><div><p className="text-gray-500">Plafond</p><strong>{client.plafond != null ? fmt(Number(client.plafond)) : '—'}</strong></div><div><p className="text-gray-500">Plafond échéance</p><strong>{client.plafond_echeance != null ? fmt(Number(client.plafond_echeance)) : '—'}</strong></div><div><p className="text-gray-500">Chèques échéanciers</p><strong className="text-indigo-700">{fmt(Number(client.cheques_echeanciers ?? 0))}</strong></div><div><p className="text-gray-500">Garantie</p><strong>{client.montant_garantie != null ? fmt(Number(client.montant_garantie)) : '—'}</strong></div></div></div>
       <div className="mt-3 flex items-center justify-between gap-3 text-sm">
         <span className="text-gray-500">Dernier paiement</span>
         {client.dernier_paiement_id != null ? <div className="text-right">
@@ -2975,6 +2983,8 @@ const ClientsListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600">
                   Plafond
                 </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Plafond échéance</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap" title="Somme des chèques dont l’échéance est demain ou plus tard">Chèques échéanciers</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600">
                   Garantie
                 </th>
@@ -3042,6 +3052,8 @@ const ClientsListPage: React.FC = () => {
                             ? <span className="font-semibold text-sm text-gray-700">{fmt(client.plafond)}</span>
                             : <span className="text-gray-300 text-xs">-</span>}
                         </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">{client.plafond_echeance == null ? <span className="text-gray-300 text-xs">—</span> : <span className="font-semibold text-sm text-gray-700">{fmt(Number(client.plafond_echeance))}</span>}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap" title="Chèques dont l’échéance est demain ou plus tard"><span className="font-semibold text-sm text-indigo-700">{fmt(Number(client.cheques_echeanciers ?? 0))}</span></td>
                         <td className="px-4 py-3 text-right">
                           {client.montant_garantie !== null && client.montant_garantie !== undefined
                             ? <span className="font-semibold text-sm text-emerald-700">{fmt(client.montant_garantie)}</span>

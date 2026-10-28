@@ -129,6 +129,8 @@ import { ensureStatsDetailsPermissionSchema } from './utils/statsDetailsPermissi
 import { ensureSalePriceCorrectionPermissionSchema } from './utils/salePriceCorrectionPermissions.js';
 import { ensurePdgBoardSchema } from './db/ensurePdgBoardSchema.js';
 import { ensureProjetsSchema } from './db/ensureProjetsSchema.js';
+import { ensurePaymentModesAndSaisieSchema } from './db/ensurePaymentModesAndSaisieSchema.js';
+import { ensureClientEcheancierSchema } from './db/ensureClientEcheancierSchema.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
@@ -157,6 +159,8 @@ async function ensureSchemas() {
   await ensureSalePriceCorrectionPermissionSchema();
   await ensurePdgBoardSchema();
   await ensureProjetsSchema();
+  await ensurePaymentModesAndSaisieSchema();
+  await ensureClientEcheancierSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 

@@ -529,6 +529,7 @@ router.get('/paged', verifyToken, async (req, res) => {
          COALESCE(SUM(CASE WHEN p.mode_paiement = 'Espèces' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalEspeces,
          COALESCE(SUM(CASE WHEN p.mode_paiement = 'Chèque' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalCheques,
          COALESCE(SUM(CASE WHEN p.mode_paiement = 'Virement' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalVirements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'TPE' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalTpe,
          COALESCE(SUM(CASE WHEN p.mode_paiement = 'Traite' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalTraites,
          COALESCE(SUM(CASE WHEN p.mode_paiement = 'Remise' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalRemises
        FROM payments p ${joins} ${whereSql}`,
@@ -558,6 +559,7 @@ router.get('/paged', verifyToken, async (req, res) => {
         totalEspeces: Number(totalsRows?.[0]?.totalEspeces || 0),
         totalCheques: Number(totalsRows?.[0]?.totalCheques || 0),
         totalVirements: Number(totalsRows?.[0]?.totalVirements || 0),
+        totalTpe: Number(totalsRows?.[0]?.totalTpe || 0),
         totalTraites: Number(totalsRows?.[0]?.totalTraites || 0),
         totalRemises: Number(totalsRows?.[0]?.totalRemises || 0),
       },

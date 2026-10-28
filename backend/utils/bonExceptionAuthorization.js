@@ -1,3 +1,5 @@
+import { clientChequeEcheancierTotalSql } from './clientEcheancier.js';
+
 const AUTHORIZATION_TYPES = {
   PLAFOND: 'PLAFOND',
   CLIENT_BLOQUE: 'CLIENT_BLOQUE',
@@ -39,7 +41,7 @@ export function bonAuthorizationErrorPayload(error) {
   };
 }
 
-async function getClientCreditState(db, clientId) {
+export async function getClientCreditState(db, clientId, { lock = true } = {}) {
   const id = Number(clientId);
   if (!Number.isInteger(id) || id <= 0) return null;
 
@@ -49,13 +51,13 @@ async function getClientCreditState(db, clientId) {
        c.nom_complet,
        c.bloque,
        c.plafond,
+       c.plafond_echeance,
+       c.plafond_echeance_reference,
+       ${clientChequeEcheancierTotalSql()} AS cheques_echeanciers,
        c.montant_garantie,
        (
          COALESCE(c.solde, 0)
          + COALESCE((SELECT SUM(montant_total) FROM bons_sortie
-                     WHERE client_id = c.id AND ${EXCLUDED_STATUSES_SQL}), 0)
-         + COALESCE((SELECT SUM(COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0))
-                     FROM bons_comptant
                      WHERE client_id = c.id AND ${EXCLUDED_STATUSES_SQL}), 0)
          + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders
                      WHERE user_id = c.id AND is_solde = 1
@@ -76,17 +78,35 @@ async function getClientCreditState(db, clientId) {
        ) AS total_cumule
      FROM contacts c
      WHERE c.id = ? AND c.deleted_at IS NULL
-     LIMIT 1 FOR UPDATE`,
+     LIMIT 1 ${lock ? 'FOR UPDATE' : ''}`,
     [id]
   );
 
   const contact = rows?.[0];
   if (!contact) return null;
 
+  const chequesEcheanciers = Number(contact.cheques_echeanciers || 0);
+  let echeanceLimit = contact.plafond_echeance == null ? null : Number(contact.plafond_echeance);
+  if (echeanceLimit === 0) {
+    if (contact.plafond_echeance_reference == null) {
+      const reference = Math.max(0, Math.round((Number(contact.total_cumule || 0) + chequesEcheanciers) * 100) / 100);
+      await db.query(
+        'UPDATE contacts SET plafond_echeance_reference = ? WHERE id = ? AND plafond_echeance = 0 AND plafond_echeance_reference IS NULL',
+        [reference, id]
+      );
+      contact.plafond_echeance_reference = reference;
+    }
+    echeanceLimit = Number(contact.plafond_echeance_reference);
+  }
+
   const limits = [positiveLimit(contact.plafond), positiveLimit(contact.montant_garantie)]
     .filter((value) => value !== null);
 
+  if (echeanceLimit !== null) limits.push(echeanceLimit - chequesEcheanciers);
+
   return {
+    echeanceLimit,
+    chequesEcheanciers,
     id: Number(contact.id),
     nom_complet: contact.nom_complet,
     blocked: isTrue(contact.bloque),
@@ -121,6 +141,7 @@ export async function reserveBonExceptionAuthorizations({
   let baseTotal = contact.totalCumule;
   if (
     existingBon &&
+    bonType !== 'Comptant' &&
     Number(existingBon.client_id) === Number(contact.id) &&
     isStatusCounted(existingBon.statut)
   ) {
@@ -162,7 +183,11 @@ export async function reserveBonExceptionAuthorizations({
   if (!isTrue(requested)) {
     throw new BonAuthorizationError(
       'Ce bon nécessite une autorisation spéciale. Confirmez son utilisation.',
-      { requirements: toConsume, client_id: contact.id }
+      { requirements: toConsume, client_id: contact.id,
+        projected_total: projectedTotal, limit: contact.limit,
+        plafond_echeance: contact.echeanceLimit,
+        cheques_echeanciers: contact.chequesEcheanciers,
+        projected_echeancier: projectedTotal + contact.chequesEcheanciers }
     );
   }
 

@@ -571,6 +571,7 @@ const TalonCaissePage = () => {
               <option value="Espèces">Espèces</option>
               <option value="Chèque">Chèque (inclut anciens talons)</option>
               <option value="Virement">Virement</option>
+                        <option value="TPE">TPE</option>
               <option value="Traite">Traite</option>
             </select>
           </div>

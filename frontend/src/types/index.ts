@@ -456,6 +456,8 @@ export interface Contact {
   remise_utilisee?: number;
   remise_disponible?: number;
   plafond?: number | null; // Plafond de crédit (clients)
+  plafond_echeance?: number | null;
+  cheques_echeanciers?: number;
   montant_garantie?: number | null;
   numero_garantie?: string | null;
   demande_artisan?: boolean;
@@ -506,6 +508,7 @@ export interface CreateContactData {
   ice?: string | null;
   solde?: number;
   plafond?: number | null;
+  plafond_echeance?: number | null;
   montant_garantie?: number | null;
   numero_garantie?: string | null;
   isSolde?: boolean;
@@ -595,6 +598,7 @@ export interface Bon {
   montant_ignorer?: number;
   livre?: boolean | 0 | 1;
   imprime?: boolean | 0 | 1;
+  is_saisise?: boolean | 0 | 1;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
   // Ecommerce (optional)
   customer_email?: string;
@@ -664,6 +668,7 @@ export interface Livraison {
 // Types pour les paiements
 export interface Payment {
   id: number;
+  is_saisise?: boolean | 0 | 1;
   numero: string;
   payment_group_id?: string | null;
   type_paiement: 'Client' | 'Fournisseur';
@@ -678,7 +683,7 @@ export interface Payment {
   montant_total: number;
   montant_ignorer?: number;
   remise?: number | boolean;
-  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
+  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'TPE' | 'Remise';
   date_paiement: string | null;
   designation: string;
   // Champs spécifiques pour Chèque et Traite
@@ -717,7 +722,7 @@ export interface CreatePaymentData {
   montant_total: number;
   montant_ignorer?: number;
   remise?: number | boolean;
-  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
+  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'TPE' | 'Remise';
   date_paiement: string | null;
   designation: string;
   date_echeance?: string;

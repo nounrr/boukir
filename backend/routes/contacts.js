@@ -1,3 +1,4 @@
+import { getClientCreditState } from '../utils/bonExceptionAuthorization.js';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../db/pool.js';
@@ -7,6 +8,7 @@ import { requireClientRemindersAccess } from '../middleware/clientCollaborationP
 import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
 import { CLIENT_LAST_PAYMENT_JOIN_SQL } from '../utils/clientLastPayment.js';
 import { historyItemCostExpr } from '../utils/contactHistoryCost.js';
+import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, parsePlafondEcheance } from '../utils/clientEcheancier.js';
 
 const router = express.Router();
 
@@ -19,6 +21,9 @@ const REMINDER_RESPONSE_FIELDS = [
 ];
 
 function protectReminderFields(value, user) {
+  if (value && value.plafond_echeance != null && Number(value.plafond_echeance) === 0 && value.plafond_echeance_reference != null) {
+    value = { ...value, plafond_echeance: Number(value.plafond_echeance_reference) };
+  }
   if (hasClientRemindersAccess(user) || !value || typeof value !== 'object') return value;
   const protectedValue = { ...value };
   for (const field of REMINDER_RESPONSE_FIELDS) delete protectedValue[field];
@@ -162,11 +167,12 @@ const SUPPLIER_PAYMENT_SUM_EXPR = `
 
 // Optimized single-contact query (avoids full-table GROUP BY subqueries).
 // Used for GET /:id and PUT /:id responses to prevent long-running requests.
-const SINGLE_CONTACT_QUERY = `
+const SINGLE_CONTACT_QUERY = () => `
   SELECT
     c.*,
     DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants,
     cg.name AS group_name,
+    ${clientChequeEcheancierTotalSql()} AS cheques_echeanciers,
     -- Total Ventes
     (
       CASE
@@ -371,6 +377,7 @@ router.get('/', async (req, res) => {
         COALESCE(dernier_paiement.date_paiement, dernier_paiement.created_at) AS dernier_paiement_date,
         DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants,
         cg.name AS group_name,
+        COALESCE(client_cheques_echeanciers.total, 0) AS cheques_echeanciers,
         ${BALANCE_EXPR} AS solde_cumule,
         ${TOTAL_CUMULE_EXPR} AS total_cumule,
         (
@@ -395,6 +402,7 @@ router.get('/', async (req, res) => {
       LEFT JOIN contact_groups cg ON cg.id = c.group_id
 
       ${CLIENT_LAST_PAYMENT_JOIN_SQL}
+      ${clientChequeEcheancierJoinSql()}
 
       -- Ventes client = bons_sortie
       LEFT JOIN (
@@ -562,6 +570,8 @@ router.get('/', async (req, res) => {
       total_paiements: Number(row.total_paiements || 0),
       total_avoirs: Number(row.total_avoirs || 0),
       dernier_paiement_montant: row.dernier_paiement_id == null ? null : Number(row.dernier_paiement_montant || 0),
+      plafond_echeance: row.plafond_echeance == null ? null : Number(row.plafond_echeance),
+      cheques_echeanciers: Number(row.cheques_echeanciers || 0),
     }, req.user));
 
     processedRows.forEach((contact, index) => {
@@ -1902,7 +1912,7 @@ router.get('/:id/history', async (req, res) => {
 // GET /api/contacts/:id - Get contact by ID with calculated solde_cumule
 router.get('/:id', async (req, res) => {
   try {
-    const [rows] = await pool.execute(SINGLE_CONTACT_QUERY, [req.params.id]);
+    const [rows] = await pool.execute(SINGLE_CONTACT_QUERY(), [req.params.id]);
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Contact not found' });
@@ -1915,6 +1925,8 @@ router.get('/:id', async (req, res) => {
     const si = Number(r.solde || 0);
     const contact = {
       ...r,
+      plafond_echeance: r.plafond_echeance == null ? null : Number(r.plafond_echeance),
+      cheques_echeanciers: Number(r.cheques_echeanciers || 0),
       solde: si,
       solde_cumule: Number(r.solde_cumule || 0),
       total_ventes: tv,
@@ -2090,6 +2102,8 @@ router.post('/', async (req, res) => {
         ? null
         : String(numero_garantie).trim();
 
+    const normalizedPlafondEcheance = type === 'Client' ? (parsePlafondEcheance(req.body.plafond_echeance) ?? null) : null;
+
     // Auto-approve if type_compte is Artisan/Promoteur (backoffice creation)
     const isArtisan = ['Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(type_compte);
     const effectiveDemandeArtisan = isArtisan ? 0 : (demande_artisan ?? 0);
@@ -2105,9 +2119,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts
-       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, montant_garantie, numero_garantie, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, bloque, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, hashedPassword, adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), effectiveAuthProvider, (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0), (bloque ? 1 : 0)]
+       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, montant_garantie, numero_garantie, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, bloque, plafond_echeance, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, hashedPassword, adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), effectiveAuthProvider, (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0), (bloque ? 1 : 0), normalizedPlafondEcheance]
     );
 
     // Optional: persist solde eligibility if column exists.
@@ -2124,6 +2138,8 @@ router.post('/', async (req, res) => {
       }
     }
 
+    if (normalizedPlafondEcheance === 0) await getClientCreditState(pool, result.insertId, { lock: false });
+
     // Fetch the created contact
     const [rows] = await pool.execute(
       'SELECT * FROM contacts WHERE id = ?',
@@ -2132,6 +2148,7 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(protectReminderFields(rows[0], req.user));
   } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
     console.error('Error creating contact:', error);
     res.status(500).json({ error: 'Failed to create contact' });
   }
@@ -2265,6 +2282,12 @@ router.put('/:id', async (req, res) => {
       updates.push('solde = ?');
       params.push(soldeNumber);
     }
+    if (req.body.plafond_echeance !== undefined) {
+      const amount = parsePlafondEcheance(req.body.plafond_echeance);
+      updates.push('plafond_echeance = ?');
+      updates.push('plafond_echeance_reference = NULL');
+      params.push(amount);
+    }
     if (plafond !== undefined) {
       const plafondNumber = toNullableNumber(plafond);
       if (plafondNumber !== null && plafondNumber !== undefined && !Number.isFinite(plafondNumber)) {
@@ -2353,8 +2376,12 @@ router.put('/:id', async (req, res) => {
       );
     }
 
+    if (req.body.plafond_echeance != null && Number(req.body.plafond_echeance) === 0) {
+      await getClientCreditState(pool, req.params.id, { lock: false });
+    }
+
     // Fetch updated contact (fast path; keeps group_name + solde_cumule consistent)
-    const [rows] = await pool.execute(SINGLE_CONTACT_QUERY, [req.params.id]);
+    const [rows] = await pool.execute(SINGLE_CONTACT_QUERY(), [req.params.id]);
 
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'Contact not found' });
@@ -2363,8 +2390,11 @@ router.put('/:id', async (req, res) => {
     res.json(protectReminderFields({
       ...rows[0],
       solde_cumule: Number(rows?.[0]?.solde_cumule || 0),
+      plafond_echeance: rows[0].plafond_echeance == null ? null : Number(rows[0].plafond_echeance),
+      cheques_echeanciers: Number(rows[0].cheques_echeanciers || 0),
     }, req.user));
   } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ error: error.message });
     console.error('Error updating contact:', error);
 
     // Better UX for unique ICE conflicts

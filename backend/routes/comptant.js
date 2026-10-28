@@ -17,6 +17,7 @@ import {
 import { applyStockDeltas, buildStockDeltaMaps, decrementSnapshotQuantities, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
+import { normalizeComptantModePaiement } from '../utils/paymentModes.js';
 import {
   BonAuthorizationError,
   bonAuthorizationErrorPayload,
@@ -119,12 +120,6 @@ const parseBooleanFlag = (value) => (
   value === '1' ||
   (typeof value === 'string' && value.toLowerCase() === 'true')
 );
-
-const normalizeComptantModePaiement = (value) => {
-  if (value == null || value === '') return 'Espèces';
-  if (value === 'Espèces' || value === 'Virement') return value;
-  throw Object.assign(new Error('Mode de paiement invalide'), { statusCode: 400 });
-};
 
 function computeComptantRemiseTotal(items) {
   const total = (Array.isArray(items) ? items : []).reduce((sum, item) => {

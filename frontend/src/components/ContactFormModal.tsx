@@ -10,6 +10,12 @@ import type { RootState } from '../store';
 
 // Schemas de validation dynamiques
 const clientSchema = Yup.object({
+  plafond_echeance: Yup.number()
+    .nullable()
+    .transform((value, original) => original === '' || original == null ? null : value)
+    .typeError('Montant du plafond échéance invalide')
+    .min(0, 'Le plafond échéance ne peut pas être négatif')
+    .max(9999999999999.99, 'Le plafond échéance est trop élevé'),
   nom_complet: Yup.string().required('Nom complet requis'),
   telephone: Yup.string().nullable(),
   email: Yup.string().email("Format d'email invalide").nullable(),
@@ -99,6 +105,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     rib: initialValues?.rib ?? '',
     solde: initialValues?.solde ?? 0,
     plafond: initialValues?.plafond ?? (contactType === 'Client' ? 0 : null),
+    plafond_echeance: initialValues?.plafond_echeance ?? null,
     montant_garantie: initialValues?.montant_garantie ?? null,
     numero_garantie: initialValues?.numero_garantie ?? '',
     isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
@@ -153,6 +160,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 is_charge: Boolean((values as any).is_charge),
                 group_id: (values as any).group_id === '' || (values as any).group_id == null ? null : Number((values as any).group_id),
                 ...(contactType === 'Client' && { 
+                  plafond_echeance: values.plafond_echeance == null || String(values.plafond_echeance).trim() === '' ? null : Number(values.plafond_echeance),
                   plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
                 })
               };
@@ -522,6 +530,14 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                     )}
                   </div>
                 )}
+
+                {contactType === 'Client' && <div>
+                  <label htmlFor="plafond_echeance" className="block text-sm font-medium text-gray-700 mb-1">Plafond échéance (DH)</label>
+                  <Field id="plafond_echeance" name="plafond_echeance" type="number" min="0" step="0.01" placeholder="0.00"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <p className="mt-1 text-xs text-gray-500">0 fixe le plafond au solde cumulé actuel + chèques échéanciers. Les nouveaux bons sont contrôlés sur cette limite. Vide : aucun plafond échéancier.</p>
+                  {errors.plafond_echeance && touched.plafond_echeance && <p className="mt-1 text-xs text-red-500">{errors.plafond_echeance}</p>}
+                </div>}
 
                 {/* Solde */}
                 <div>

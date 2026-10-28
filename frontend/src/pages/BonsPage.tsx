@@ -1,3 +1,4 @@
+import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -3215,7 +3216,7 @@ const BonsPage = () => {
                           </button>;
                         })()}</td>
                       </>}
-                      <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
+                      <td className="px-4 py-2 text-sm"><div>{getDisplayNumero(bon)}</div><DocumentSaisieCheckbox document={bon} type={bon.type || effectiveCurrentTab} /></td>
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at || bon.date_creation)}</div>
                       </td>

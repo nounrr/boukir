@@ -549,6 +549,11 @@ export const bonsApi = api.injectEndpoints({
       },
     }),
 
+    updateDocumentSaisie: builder.mutation<{ id: number; is_saisise: boolean }, { id: number; type: string; is_saisise: boolean }>({
+      query: ({ id, type, is_saisise }) => ({ url: `/bons/${type}/${id}/saisie`, method: 'PATCH', body: { is_saisise } }),
+      invalidatesTags: (_result, error) => error ? [] : ['Bon', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'Vehicule', 'AvoirEcommerce', 'Ecommerce', 'Contact', 'Payment'],
+    }),
+
     updateComptantImprime: builder.mutation<{ id: number; imprime: boolean }, { id: number; imprime: boolean }>({
       query: ({ id, imprime }) => ({
         url: `/bons/Comptant/${id}/imprime`,
@@ -860,6 +865,7 @@ export const {
   useDeleteBonMutation,
   useUpdateBonLivreMutation,
   useUpdateComptantImprimeMutation,
+  useUpdateDocumentSaisieMutation,
   useUpdateBonStatusMutation,
   useTransformDevisMutation,
   useMarkBonAsAvoirMutation,

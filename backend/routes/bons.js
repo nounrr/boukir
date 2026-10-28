@@ -3,6 +3,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
+import { parseSaisieUpdate } from '../utils/bonSaisie.js';
 
 const router = express.Router();
 
@@ -1082,6 +1083,20 @@ router.get('/paged/:type', async (req, res) => {
   } catch (error) {
     console.error('GET /bons/paged/:type error:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message, code: error?.code });
+  }
+});
+
+router.patch('/:type/:id/saisie', forbidRoles('ChefChauffeur'), async (req, res) => {
+  const update = parseSaisieUpdate(req.params.type, req.params.id, req.body?.is_saisise);
+  if (!update) return res.status(400).json({ message: 'Type, identifiant ou état de saisie invalide' });
+  try {
+    await pool.query(`UPDATE \`${update.table}\` SET is_saisise = ? WHERE id = ?`, [update.value, update.id]);
+    const [rows] = await pool.query(`SELECT id, is_saisise FROM \`${update.table}\` WHERE id = ?`, [update.id]);
+    if (!rows.length) return res.status(404).json({ message: 'Document introuvable' });
+    return res.json({ id: update.id, type: req.params.type, is_saisise: Number(rows[0].is_saisise) === 1 });
+  } catch (error) {
+    console.error('PATCH /bons/:type/:id/saisie:', error);
+    return res.status(500).json({ message: 'Impossible de mémoriser l’état de saisie' });
   }
 });
 
