@@ -238,6 +238,7 @@ export const bonsApi = api.injectEndpoints({
         return [
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id: 'LIST' },
+          ...(type === 'Commande' ? [{ type: 'Product' as const }] : []),
         ];
       }
     }),

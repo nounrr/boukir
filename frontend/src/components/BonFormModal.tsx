@@ -1,5 +1,6 @@
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
 import { snapshotsForProductVariant } from '../utils/bonSnapshotIndex';
+import PurchasePriceIncreaseAlert from './PurchasePriceIncreaseAlert';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
@@ -7632,6 +7633,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   onKeyDown={onCellKeyDown(index, 'unit')}
   />
   </div>
+  {!isEditMode && !isProjectMode && values.type === 'Commande' && (
+    <PurchasePriceIncreaseAlert
+      productId={values.items[index].product_id}
+      variantId={values.items[index].variant_id}
+      unitId={values.items[index].unit_id}
+      price={parseFloat(normalizeDecimal(unitPriceRaw[index] ?? String(values.items[index].prix_achat ?? ''))) || 0}
+    />
+  )}
   {isProjectMode && values.type !== 'Charge' && values.items[index]?.product_id && (
     <label className="mt-2 block text-xs font-medium text-amber-900">
       Coût de revient du projet

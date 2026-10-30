@@ -5,6 +5,7 @@ import { canManageBon, canValidate } from '../utils/permissions.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { buildCommandeStockDeltaMaps } from '../utils/commandeStock.js';
 import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
+import { getPurchaseIncrease } from '../utils/purchasePriceIncrease.js';
 
 const router = express.Router();
 const commandeUnitFactorSql = 'COALESCE((SELECT NULLIF(pu.conversion_factor, 0) FROM product_units pu WHERE pu.id = ci.unit_id AND pu.product_id = ci.product_id), 1)';
@@ -209,6 +210,13 @@ router.get('/:id', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) =
 
 
 // POST /commandes - Créer un nouveau bon de commande
+router.post('/price-increase-preview', verifyToken, async (req, res, next) => {
+  try {
+    if (!canManageBon('Commande', req.user?.role)) return res.status(403).json({ message: 'Accès refusé' });
+    res.json(await getPurchaseIncrease(pool, req.body || {}));
+  } catch (error) { next(error); }
+});
+
 router.post('/', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
@@ -306,7 +314,28 @@ router.post('/', verifyToken, async (req, res) => {
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
     }
 
-  // Désactivé: on ne met plus à jour automatiquement le prix_achat produit (conservation des anciens prix)
+    // Calculate every increase before updating the catalogue to avoid compounding
+    // when the same product appears on several lines of this purchase.
+    if (st !== 'Annulé') {
+      const increases = new Map();
+      for (const item of normalizedItems) {
+        await connection.query('SELECT id FROM products WHERE id = ? FOR UPDATE', [item.product_id]);
+        const increase = await getPurchaseIncrease(connection, item);
+        const key = `${item.product_id}:${item.variant_id || 0}`;
+        if (increase && (!increases.has(key) || increase.purchase_price > increases.get(key).increase.purchase_price)) {
+          increases.set(key, { item, increase });
+        }
+      }
+      for (const { item, increase } of increases.values()) {
+        if (item.variant_id) {
+          await connection.query('UPDATE product_variants SET prix_achat = ?, prix_vente = ?, prix_vente_2 = ? WHERE id = ? AND product_id = ?',
+            [increase.purchase_price, increase.sale_price, increase.sale_price_2, item.variant_id, item.product_id]);
+        } else {
+          await connection.query('UPDATE products SET prix_achat = ?, prix_vente = ?, prix_vente_2 = ? WHERE id = ?',
+            [increase.purchase_price, increase.sale_price, increase.sale_price_2, item.product_id]);
+        }
+      }
+    }
 
   await connection.commit();
   const numero = `CMD${String(commandeId).padStart(2, '0')}`;
@@ -421,6 +450,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             p.designation,
             ci.prix_unitaire,
             COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.prix_vente_2, p.prix_vente_2) AS prix_vente_2,
             COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0) AS source_prix_vente_pourcentage,
             CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 OR COALESCE(pv.prix_vente, p.prix_vente) IS NULL THEN NULL
@@ -520,7 +550,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
           await connection.execute(
             `INSERT INTO product_snapshot (
                 product_id, variant_id,
-                prix_achat, prix_vente,
+                prix_achat, prix_vente, prix_vente_2,
                 cout_revient, cout_revient_pourcentage,
                 prix_gros, prix_gros_pourcentage,
                 prix_vente_pourcentage,
@@ -532,6 +562,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.variant_id,
                 ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
                 COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.prix_vente_2, p.prix_vente_2) AS prix_vente_2,
                 COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
                 COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
                 COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
@@ -557,7 +588,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
           await connection.execute(
             `INSERT INTO product_snapshot (
                 product_id, variant_id,
-                prix_achat, prix_vente,
+                prix_achat, prix_vente, prix_vente_2,
                 cout_revient, cout_revient_pourcentage,
                 prix_gros, prix_gros_pourcentage,
                 prix_vente_pourcentage,
@@ -569,6 +600,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.variant_id,
                 ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
                 COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.prix_vente_2, p.prix_vente_2) AS prix_vente_2,
                 COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
                 COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
                 COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
@@ -592,7 +624,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
         await connection.execute(
           `INSERT INTO product_snapshot (
               product_id, variant_id,
-              prix_achat, prix_vente,
+              prix_achat, prix_vente, prix_vente_2,
               cout_revient, cout_revient_pourcentage,
               prix_gros, prix_gros_pourcentage,
               prix_vente_pourcentage,
@@ -604,6 +636,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               ci.variant_id,
               ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
               COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.prix_vente_2, p.prix_vente_2) AS prix_vente_2,
               COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
               COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
               COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
@@ -1027,7 +1060,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(
         `INSERT INTO product_snapshot (
             product_id, variant_id,
-            prix_achat, prix_vente,
+            prix_achat, prix_vente, prix_vente_2,
             cout_revient, cout_revient_pourcentage,
             prix_gros, prix_gros_pourcentage,
             prix_vente_pourcentage,
@@ -1039,6 +1072,7 @@ router.put('/:id', verifyToken, async (req, res) => {
             ci.variant_id,
             ci.prix_unitaire / ${commandeUnitFactorSql} AS prix_achat,
             COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.prix_vente_2, p.prix_vente_2) AS prix_vente_2,
             COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
             COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
             COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,

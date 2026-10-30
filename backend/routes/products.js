@@ -4336,6 +4336,15 @@ router.patch('/:id/base-unit', async (req, res, next) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Le facteur de cette unité doit être supérieur à zéro.' });
     }
+    if (oldBaseUnit.toLocaleLowerCase('fr') === baseUnit.toLocaleLowerCase('fr') && factor !== 1) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'La nouvelle unité doit avoir un nom différent de l’ancienne unité de base.' });
+    }
+    const oldBaseFactor = 1 / factor;
+    if (oldBaseFactor < 0.0001 || Math.abs(oldBaseFactor - Math.round(oldBaseFactor * 10000) / 10000) > 1e-9) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Le facteur de l’ancienne unité de base ne peut pas être enregistré avec précision.' });
+    }
 
     const [allUnits] = await connection.query(
       'SELECT id, conversion_factor FROM product_units WHERE product_id = ? FOR UPDATE',
@@ -4401,8 +4410,9 @@ router.patch('/:id/base-unit', async (req, res, next) => {
       );
     }
 
-    // The former base remains selectable after the conversion. The user does
-    // not have to create it manually before changing the base.
+    // The former base remains selectable after the conversion. Existing bon
+    // lines with a NULL unit_id were entered in that base unit. Pin them to
+    // its new unit row so their displayed unit and stock conversion survive.
     if (oldBaseUnit.toLocaleLowerCase('fr') !== baseUnit.toLocaleLowerCase('fr')) {
       const [oldBaseRows] = await connection.query(
         `SELECT id FROM product_units
@@ -4410,21 +4420,47 @@ router.patch('/:id/base-unit', async (req, res, next) => {
          LIMIT 1`,
         [id, oldBaseUnit, sourceUnitId]
       );
-      const oldBaseFactor = 1 / factor;
+      let oldBaseUnitId;
       if (oldBaseRows.length > 0) {
+        oldBaseUnitId = oldBaseRows[0].id;
         await connection.query(
           `UPDATE product_units
            SET conversion_factor = ?, prix_vente = NULL, facteur_isNormal = 1,
                is_default = 0, updated_at = ?
            WHERE id = ? AND product_id = ?`,
-          [oldBaseFactor, now, oldBaseRows[0].id, id]
+          [oldBaseFactor, now, oldBaseUnitId, id]
         );
       } else {
-        await connection.query(
+        const [inserted] = await connection.query(
           `INSERT INTO product_units
              (product_id, unit_name, conversion_factor, prix_vente, facteur_isNormal, is_default, created_at, updated_at)
            VALUES (?, ?, ?, NULL, 1, 0, ?, ?)`,
           [id, oldBaseUnit, oldBaseFactor, now, now]
+        );
+        oldBaseUnitId = inserted.insertId;
+      }
+
+      // All tables that store product/unit selections must be covered, not
+      // just the main sale and purchase bons (returns and charges also replay
+      // their quantities to calculate stock). Identifiers come from the
+      // database schema, never from the request.
+      const [unitItemTables] = await connection.query(
+        `SELECT c.TABLE_NAME AS table_name
+         FROM information_schema.COLUMNS c
+         JOIN information_schema.TABLES t
+           ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
+          AND t.TABLE_TYPE = 'BASE TABLE'
+         JOIN information_schema.COLUMNS p
+           ON p.TABLE_SCHEMA = c.TABLE_SCHEMA AND p.TABLE_NAME = c.TABLE_NAME
+          AND p.COLUMN_NAME = 'product_id'
+         WHERE c.TABLE_SCHEMA = DATABASE() AND c.COLUMN_NAME = 'unit_id'
+           AND c.TABLE_NAME <> 'product_units'`
+      );
+      for (const { table_name: tableName } of unitItemTables) {
+        const escapedTableName = String(tableName).replaceAll('`', '``');
+        await connection.query(
+          `UPDATE \`${escapedTableName}\` SET unit_id = ? WHERE product_id = ? AND unit_id IS NULL`,
+          [oldBaseUnitId, id]
         );
       }
     }

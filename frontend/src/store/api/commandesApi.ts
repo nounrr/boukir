@@ -2,6 +2,9 @@ import { apiSlice } from './apiSlice';
 
 export const commandesApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
+    previewPurchaseIncrease: builder.mutation({
+      query: (body) => ({ url: '/commandes/price-increase-preview', method: 'POST', body }),
+    }),
     // Récupérer toutes les commandes
     getCommandes: builder.query({
       query: () => '/commandes',
@@ -21,7 +24,7 @@ export const commandesApi = apiSlice.injectEndpoints({
         method: 'POST',
         body: commandeData
       }),
-      invalidatesTags: ['Commande']
+      invalidatesTags: ['Commande', 'Product']
     }),
 
     // Mettre à jour une commande
@@ -53,6 +56,7 @@ export const commandesApi = apiSlice.injectEndpoints({
 
 // Export des hooks
 export const {
+  usePreviewPurchaseIncreaseMutation,
   useGetCommandesQuery,
   useGetCommandeQuery,
   useCreateCommandeMutation,

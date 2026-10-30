@@ -491,7 +491,7 @@ const StockPage: React.FC = () => {
     if (sourceUnit) {
       const factor = Number(sourceUnit.conversion_factor) || 0;
       const confirmation = await showConfirmation(
-        `1 ${nextBaseUnit} = ${formatNum(factor)} ${baseUnitProduct.base_unit || 'u'}. Les quantités, les prix, les variantes, les stocks d’achat et les autres facteurs seront convertis automatiquement.`,
+        `1 ${nextBaseUnit} = ${formatNum(factor)} ${baseUnitProduct.base_unit || 'u'}. Les quantités, les prix, les variantes, les stocks d’achat et les autres facteurs seront convertis automatiquement. Les anciens bons garderont leur unité d’origine.`,
         `Définir « ${nextBaseUnit} » comme unité de base ?`,
         'Oui, convertir',
         'Annuler'
@@ -2169,7 +2169,7 @@ const StockPage: React.FC = () => {
                   : 'border-blue-200 bg-blue-50 text-blue-900'
               }`}>
                 {baseUnitChoice.startsWith('unit:')
-                  ? 'Cette unité possède déjà un facteur. Le stock, les prix, les variantes et les achats actifs seront réellement convertis, puis l’ancienne unité de base sera conservée comme unité secondaire.'
+                  ? 'Cette unité possède déjà un facteur. Le stock, les prix, les variantes et les achats actifs seront convertis. L’ancienne unité de base restera disponible, et les anciens bons garderont leur unité d’origine.'
                   : 'Aucune unité supplémentaire ni aucun facteur n’est requis. Cette option remplace directement l’unité de base du produit.'}
               </div>
             </div>
