@@ -324,6 +324,7 @@ export interface Product {
   designation: string;
   old_designation?: string | null;
   categorie_id: number;
+  category_ids?: number[];
   categorie?: Category;
   categories?: Category[];
   brand_id?: number | null;
@@ -390,6 +391,7 @@ export interface CreateProductData {
   designation?: string;
   reference_2?: string | null;
   categorie_id?: number;
+  category_ids?: number[];
   quantite?: number;
   kg?: number | null;
   prix_achat?: number;

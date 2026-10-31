@@ -1,3 +1,4 @@
+import { ensureProductCategoriesSchema } from '../../utils/productCategories.js';
 import { Router } from 'express';
 import pool from '../../db/pool.js';
 import { ensureCategoryColumns } from '../../utils/ensureCategorySchema.js';
@@ -211,8 +212,9 @@ router.get('/suggestions', async (req, res, next) => {
     }
 
     if (categoryIds && categoryIds.length > 0) {
-      productWhere.push(`p.categorie_id IN (${categoryIds.map(() => '?').join(',')})`);
-      productParams.push(...categoryIds);
+      await ensureProductCategoriesSchema(pool);
+      productWhere.push(`(p.categorie_id IN (${categoryIds.map(() => '?').join(',')}) OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.map(() => '?').join(',')})))`);
+      productParams.push(...categoryIds, ...categoryIds);
     }
 
     if (remaining) {

@@ -1,3 +1,4 @@
+import { ensureProductCategoriesSchema } from '../utils/productCategories.js';
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import multer from 'multer';
@@ -313,7 +314,8 @@ router.get('/:id/usage', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
-    const [products] = await pool.query('SELECT COUNT(*) as count FROM products WHERE categorie_id = ?', [id]);
+    await ensureProductCategoriesSchema(pool);
+    const [products] = await pool.query('SELECT COUNT(*) as count FROM products p WHERE p.categorie_id = ? OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)', [id, id]);
     const [children] = await pool.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [id]);
     res.json({ 
       productCount: products[0].count,
@@ -332,7 +334,8 @@ router.delete('/:id', async (req, res, next) => {
     }
     
     // Check if category has products
-    const [products] = await pool.query('SELECT COUNT(*) as count FROM products WHERE categorie_id = ?', [id]);
+    await ensureProductCategoriesSchema(pool);
+    const [products] = await pool.query('SELECT COUNT(*) as count FROM products p WHERE p.categorie_id = ? OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)', [id, id]);
     if (products[0].count > 0) {
       return res.status(400).json({ 
         message: `Impossible de supprimer cette catégorie car elle est utilisée par ${products[0].count} produit(s)`,

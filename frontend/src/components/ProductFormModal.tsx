@@ -621,6 +621,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     designation_en: '',
     designation_zh: '',
     categorie_id: 0,
+    category_ids: [] as number[],
     brand_id: undefined as number | undefined,
     quantite: 0,
     kg: undefined as number | undefined,
@@ -714,6 +715,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     initialValues: baseEdit
       ? {
           ...baseEdit,
+          category_ids: baseEdit.category_ids ?? (baseEdit.categories?.map((c: any) => Number(c.id)) ?? (baseEdit.categorie_id ? [Number(baseEdit.categorie_id)] : [])),
           reference_2: (baseEdit as any).reference_2 ?? '',
           designation_ar: (baseEdit as any).designation_ar ?? '',
           designation_en: (baseEdit as any).designation_en ?? '',
@@ -847,7 +849,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         prix_gros_pourcentage: pgPctNum,
         prix_vente_pourcentage: pvPctNum,
         quantite: qteNum,
-        categorie_id: Number(values.categorie_id || 0),
+        categorie_id: values.category_ids[0] || 0,
+        category_ids: values.category_ids,
         brand_id: values.brand_id ? Number(values.brand_id) : null,
         ecom_published: values.ecom_published,
         stock_partage_ecom: values.stock_partage_ecom,
@@ -871,6 +874,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
           formData.append('categorie_id', String(productData.categorie_id || 0));
+          formData.append('category_ids', JSON.stringify(productData.category_ids || []));
           if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
@@ -969,6 +973,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
           formData.append('categorie_id', String(productData.categorie_id || 0));
+          formData.append('category_ids', JSON.stringify(productData.category_ids || []));
           if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
@@ -1131,7 +1136,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         }
         const categoryId = Number(draft.categorie_id);
         const brandId = Number(draft.brand_id);
-        if (!current.categorie_id && categories.some((category) => category.id === categoryId)) next.categorie_id = categoryId;
+        if (!current.category_ids.length && categories.some((category) => category.id === categoryId)) { next.categorie_id = categoryId; next.category_ids = [categoryId]; }
         if (!current.brand_id && brands.some((brand) => brand.id === brandId)) next.brand_id = brandId;
         return next;
       }, false);
@@ -1585,17 +1590,20 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             {/* Catégories (Arbre) */}
             <div>
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
-                Catégorie
+                Catégories
               </label>
               <CategoryTreeSelect
                 categories={categories}
-                selectedId={formik.values.categorie_id ?? 0}
+                selectedId={0}
+                selectedIds={formik.values.category_ids}
                 onChange={(id) => {
-                  formik.setFieldValue('categorie_id', id);
-                  // Clear legacy array if needed, or sync it
-                  formik.setFieldValue('categories', [id]);
+                  const ids: number[] = formik.values.category_ids;
+                  const next = id === 0 ? [] : ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
+                  formik.setFieldValue('category_ids', next);
+                  formik.setFieldValue('categorie_id', next[0] || 0);
                 }}
               />
+              <p className="mt-1 text-xs text-gray-500">Sélectionnez plusieurs catégories. La première est la catégorie principale.</p>
               {formik.touched.categorie_id && formik.errors.categorie_id && (
                 <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.categorie_id)}</p>
               )}

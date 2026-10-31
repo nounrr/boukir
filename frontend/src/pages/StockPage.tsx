@@ -194,6 +194,7 @@ const StockPage: React.FC = () => {
   const [customBaseUnit, setCustomBaseUnit] = useState('');
   const [attachmentTargetType, setAttachmentTargetType] = useState<'category' | 'brand'>('category');
   const [attachmentTargetId, setAttachmentTargetId] = useState('');
+  const [keepExistingCategories, setKeepExistingCategories] = useState(true);
   const [attachmentTargetSearch, setAttachmentTargetSearch] = useState('');
   const [isConvertingToVariants, setIsConvertingToVariants] = useState(false);
   const [isCloningPhotos, setIsCloningPhotos] = useState(false);
@@ -759,9 +760,12 @@ const StockPage: React.FC = () => {
         productIds: Array.from(selectedIds),
         targetType: attachmentTargetType,
         targetId,
+        keepExistingCategories: attachmentTargetType === 'category' ? keepExistingCategories : undefined,
       }).unwrap();
       const targetLabel = attachmentTargetType === 'category' ? 'catégorie' : 'marque';
-      showSuccess(`${result.updated} produit(s) modifié(s) et rattaché(s) à la ${targetLabel}.`);
+      showSuccess(attachmentTargetType === 'category' && !keepExistingCategories
+        ? `${result.updated} produit(s) transféré(s) vers la catégorie choisie.`
+        : `${result.updated} produit(s) modifié(s) et rattaché(s) à la ${targetLabel}.`);
       setIsAttachmentDialogOpen(false);
       setAttachmentTargetId('');
       setAttachmentTargetSearch('');
@@ -1061,6 +1065,7 @@ const StockPage: React.FC = () => {
             onClick={() => {
               if (selectedIds.size === 0) return;
               setAttachmentTargetType('category');
+              setKeepExistingCategories(true);
               setAttachmentTargetId('');
               setIsAttachmentDialogOpen(true);
             }}
@@ -1843,9 +1848,14 @@ const StockPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                      {product.categorie?.nom || 'N/A'}
-                    </span>
+                    <div className="flex max-w-xs flex-wrap gap-1">
+                      {(product.categories?.length ? product.categories : product.categorie ? [product.categorie] : []).map((category: Category) => (
+                        <span key={category.id} className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                          {category.nom}
+                        </span>
+                      ))}
+                      {!product.categories?.length && !product.categorie && <span className="text-gray-400">N/A</span>}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     {product.brand?.nom || <span className="text-gray-400">—</span>}
@@ -2335,8 +2345,27 @@ const StockPage: React.FC = () => {
                 )}
               </div>
 
+              {attachmentTargetType === 'category' && (
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-900">
+                  <input
+                    type="checkbox"
+                    checked={keepExistingCategories}
+                    onChange={(event) => setKeepExistingCategories(event.target.checked)}
+                    disabled={isBulkAttaching}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>
+                    <span className="block font-semibold">Conserver les catégories actuelles (multicatégorie)</span>
+                    <span className="text-gray-600">Décochez pour transférer les produits uniquement vers la catégorie cible.</span>
+                  </span>
+                </label>
+              )}
               <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                L’affectation {attachmentTargetType === 'category' ? 'de catégorie' : 'de marque'} actuelle sera remplacée pour les produits sélectionnés.
+                {attachmentTargetType === 'category'
+                  ? keepExistingCategories
+                    ? 'La catégorie sera ajoutée aux catégories actuelles des produits sélectionnés.'
+                    : 'Toutes les catégories actuelles seront remplacées par la catégorie cible.'
+                  : 'La marque actuelle sera remplacée pour les produits sélectionnés.'}
                 {selectedVariantIds.size > 0 && (
                   <span className="mt-1 block font-medium">Les {selectedVariantIds.size} variante(s) sélectionnée(s) ne sont pas concernées.</span>
                 )}
@@ -2362,7 +2391,7 @@ const StockPage: React.FC = () => {
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBulkAttaching && <LoaderCircle className="animate-spin" size={17} />}
-                {isBulkAttaching ? 'Rattachement…' : `Rattacher ${selectedIds.size} produit${selectedIds.size > 1 ? 's' : ''}`}
+                {isBulkAttaching ? 'Enregistrement…' : `${attachmentTargetType === 'category' && !keepExistingCategories ? 'Transférer' : 'Rattacher'} ${selectedIds.size} produit${selectedIds.size > 1 ? 's' : ''}`}
               </button>
             </DialogFooter>
           </form>

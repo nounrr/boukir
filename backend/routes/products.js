@@ -1,3 +1,4 @@
+import { ensureProductCategoriesSchema, parseCategoryIds, validateProductCategories, loadProductCategories, saveProductCategories } from '../utils/productCategories.js';
 import { Router } from 'express';
 import { createCategoryProductOrderRouter } from './categoryProductOrder.js';
 import pool from '../db/pool.js';
@@ -782,8 +783,7 @@ const ensureProductsColumns = initializeOnce(async () => {
     await pool.query(`ALTER TABLE products ADD CONSTRAINT fk_products_brand FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE SET NULL`);
   }
 
-  // Drop product_categories table if exists (as requested)
-  await pool.query(`DROP TABLE IF EXISTS product_categories`);
+  await ensureProductCategoriesSchema(pool);
 
   // Ensure product_images table exists
   await pool.query(`
@@ -919,8 +919,8 @@ async function runProductSearch(query) {
         };
         collectCategoryIds(rootCategoryId);
 
-        conditions.push('p.categorie_id IN (?)');
-        params.push(categoryIds);
+        conditions.push('(p.categorie_id IN (?) OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (?)))');
+        params.push(categoryIds, categoryIds);
       }
     }
 
@@ -930,7 +930,7 @@ async function runProductSearch(query) {
     }
 
     if (isMissingImageFilterEnabled(query.missing_category)) {
-      conditions.push('p.categorie_id IS NULL');
+      conditions.push('p.categorie_id IS NULL AND NOT EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id)');
     }
 
     if (isMissingImageFilterEnabled(query.missing_brand)) {
@@ -1193,6 +1193,7 @@ async function runProductSearch(query) {
 
     const [rows] = await pool.query(querySql, [...params, ...orderParams, limit, offset]);
 
+    const categoriesByProduct = await loadProductCategories(pool, rows.map(r => r.id));
     const products = rows.map((r) => {
       const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
       const variants = typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []);
@@ -1216,7 +1217,8 @@ async function runProductSearch(query) {
         designation_zh: r.designation_zh,
         categorie_id: r.categorie_id || 0,
         categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
-        categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
+        categories: categoriesByProduct.get(r.id) || [],
+        category_ids: (categoriesByProduct.get(r.id) || []).map(c => c.id),
         brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
         quantite: Number(r.quantite),
         snapshot_quantite_total: useSnapshot && r.snapshot_quantite_total !== null && r.snapshot_quantite_total !== undefined ? Number(r.snapshot_quantite_total) : null,
@@ -2075,6 +2077,7 @@ router.get('/', async (req, res, next) => {
     `;
 
     const [rows] = await pool.query(sql);
+    const categoriesByProduct = await loadProductCategories(pool, rows.map(r => r.id));
     const data = rows.map((r) => {
       const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
       const variants = typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []);
@@ -2097,7 +2100,8 @@ router.get('/', async (req, res, next) => {
         designation_zh: r.designation_zh,
         categorie_id: r.categorie_id || 0,
         categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
-        categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
+        categories: categoriesByProduct.get(r.id) || [],
+        category_ids: (categoriesByProduct.get(r.id) || []).map(c => c.id),
         brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
         quantite: Number(r.quantite),
         snapshot_quantite_total: useSnapshot && r.snapshot_quantite_total !== null && r.snapshot_quantite_total !== undefined ? Number(r.snapshot_quantite_total) : null,
@@ -2853,7 +2857,7 @@ router.post('/clone-photos', async (req, res, next) => {
   }
 });
 
-// Attach active parent products to one category or brand in a single update.
+// Add or replace categories on active parent products, or replace their brand.
 // Keep this static route before all /:id routes so Express cannot intercept it.
 router.patch('/bulk-attachment', async (req, res, next) => {
   try {
@@ -2866,6 +2870,11 @@ router.patch('/bulk-attachment', async (req, res, next) => {
     )];
     const targetType = req.body?.targetType;
     const targetId = Number(req.body?.targetId);
+    const keepExistingCategories = req.body?.keepExistingCategories ?? true;
+
+    if (targetType === 'category' && typeof keepExistingCategories !== 'boolean') {
+      return res.status(400).json({ message: 'Le choix de conservation des catégories doit être un booléen.' });
+    }
 
     if (productIds.length === 0) {
       return res.status(400).json({ message: 'Sélectionnez au moins un produit à rattacher.' });
@@ -2915,13 +2924,25 @@ router.patch('/bulk-attachment', async (req, res, next) => {
     }
 
     const matchedPlaceholders = matchedIds.map(() => '?').join(', ');
-    const targetColumn = targetType === 'category' ? 'categorie_id' : 'brand_id';
-    const [result] = await pool.query(
-      `UPDATE products
-       SET ${targetColumn} = ?, updated_by = ?, updated_at = NOW()
-       WHERE id IN (${matchedPlaceholders}) AND COALESCE(is_deleted, 0) = 0`,
-      [targetId, req.user?.id || null, ...matchedIds]
-    );
+    let result;
+    if (targetType === 'category') {
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        for (const id of [...matchedIds].sort((a, b) => a - b)) {
+          await saveProductCategories(pool, id, [targetId], { append: keepExistingCategories, connection });
+        }
+        [result] = await connection.query(`UPDATE products SET updated_by = ?, updated_at = NOW() WHERE id IN (${matchedPlaceholders})`, [req.user?.id || null, ...matchedIds]);
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally { connection.release(); }
+    } else {
+      [result] = await pool.query(`UPDATE products SET brand_id = ?, updated_by = ?, updated_at = NOW()
+        WHERE id IN (${matchedPlaceholders}) AND COALESCE(is_deleted, 0) = 0`, [targetId, req.user?.id || null, ...matchedIds]);
+    }
+    revalidateProductIds(matchedIds);
 
     res.json({
       success: true,
@@ -3196,7 +3217,7 @@ router.get('/:id(\\d+)', async (req, res, next) => {
       }
     }
 
-    const finalCategories = r.c_id ? [{ id: r.c_id, nom: r.c_nom }] : [];
+    const finalCategories = (await loadProductCategories(pool, [id])).get(id) || [];
 
     res.json({
       id: r.id,
@@ -3207,6 +3228,7 @@ router.get('/:id(\\d+)', async (req, res, next) => {
       designation_en: r.designation_en,
       designation_zh: r.designation_zh,
       categorie_id: r.categorie_id || 0,
+      category_ids: finalCategories.map(c => c.id),
       categorie: r.c_id ? { id: r.c_id, nom: r.c_nom } : undefined,
       categories: finalCategories,
       brand_id: r.brand_id ?? null,
@@ -3393,17 +3415,11 @@ router.post('/', upload.fields([
     }
 
     const now = new Date();
-    const catId = categorie_id ? Number(categorie_id) : null;
-
-    // Validate that categorie_id is a leaf category (no children)
-    if (catId) {
-      const [hasChildren] = await pool.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [catId]);
-      if (hasChildren[0].count > 0) {
-        return res.status(400).json({
-          message: 'Impossible: veuillez sélectionner une catégorie finale (sans sous-catégories)'
-        });
-      }
-    }
+    const categoryIds = req.body.category_ids !== undefined
+      ? parseCategoryIds(req.body.category_ids)
+      : (categorie_id && Number(categorie_id) !== 0 ? parseCategoryIds([categorie_id]) : []);
+    await validateProductCategories(pool, categoryIds);
+    const catId = categoryIds[0] || null;
 
     const [result] = await pool.query(
       `INSERT INTO products
@@ -3457,6 +3473,7 @@ router.post('/', upload.fields([
     );
 
     const id = result.insertId;
+    await saveProductCategories(pool, id, categoryIds);
 
     // Gallery
     const newGallery = req.files?.['gallery'] || [];
@@ -3574,6 +3591,7 @@ router.post('/', upload.fields([
       reference_2: r.reference_2 ?? null,
       designation: r.designation,
       categorie_id: r.categorie_id || 0,
+      category_ids: ((await loadProductCategories(pool, [id])).get(id) || []).map(c => c.id),
       categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
       brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
       quantite: Number(r.quantite),
@@ -3810,20 +3828,12 @@ router.put('/:id', upload.fields([
       lockedVariantPrixVente = r.forcedPrixVente;
     }
 
-    // Category handling and validation: allow null/0 to clear
-    let newCatId = null;
-    if (categorie_id === undefined) {
-      newCatId = existing.categorie_id;
-    } else {
-      const tmp = Number(categorie_id);
-      newCatId = tmp > 0 ? tmp : null;
-    }
-    if (newCatId) {
-      const [hasChildren] = await pool.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [newCatId]);
-      if (hasChildren[0].count > 0) {
-        return res.status(400).json({ message: 'Impossible: veuillez sélectionner une catégorie finale (sans sous-catégories)' });
-      }
-    }
+    const categoryIds = req.body.category_ids !== undefined
+      ? parseCategoryIds(req.body.category_ids)
+      : categorie_id !== undefined && Number(categorie_id) !== Number(existing.categorie_id)
+        ? (Number(categorie_id) === 0 || categorie_id === null || categorie_id === '' ? [] : parseCategoryIds([categorie_id]))
+        : undefined;
+    if (categoryIds !== undefined) await validateProductCategories(pool, categoryIds);
 
     // Image handling
     const newImage = req.files?.['image']?.[0];
@@ -3841,7 +3851,6 @@ router.put('/:id', upload.fields([
       designation_ar: (designation_ar !== undefined) ? designation_ar : existing.designation_ar,
       designation_en: (designation_en !== undefined) ? designation_en : existing.designation_en,
       designation_zh: (designation_zh !== undefined) ? designation_zh : existing.designation_zh,
-      categorie_id: newCatId,
       brand_id: (brand_id !== undefined && brand_id !== null && brand_id !== '') ? Number(brand_id) : existing.brand_id,
       quantite: newQuantite,
       kg: (kg === undefined || kg === null || kg === '') ? existing.kg : Number(kg),
@@ -3886,6 +3895,7 @@ router.put('/:id', upload.fields([
     const values = fields.map(f => payload[f]);
     values.push(id);
     await pool.query(`UPDATE products SET ${setClause} WHERE id = ?`, values);
+    if (categoryIds !== undefined) await saveProductCategories(pool, id, categoryIds);
 
     // A product can be converted to a service without resending its variants.
     // Clear every historical cost source immediately so later calculations
@@ -4171,6 +4181,7 @@ router.put('/:id', upload.fields([
       reference_2: r.reference_2 ?? null,
       designation: r.designation,
       categorie_id: r.categorie_id || 0,
+      category_ids: ((await loadProductCategories(pool, [id])).get(id) || []).map(c => c.id),
       categorie: r.c_id ? { id: r.c_id, nom: r.c_nom } : undefined,
       cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
       cout_revient: Number(r.cout_revient),
@@ -4251,7 +4262,7 @@ router.patch('/:id/stock', async (req, res, next) => {
     `, [id]);
     const r = rows[0];
     const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
-    const categories = r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [];
+    const categories = (await loadProductCategories(pool, [id])).get(id) || [];
     res.json({ ...r, categories, gallery, reference: String(r.id) });
   } catch (err) { next(err); }
 });

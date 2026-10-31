@@ -5,12 +5,14 @@ import type { Category } from '../types';
 interface CategoryTreeSelectProps {
   categories: Category[];
   selectedId: number | null;
+  selectedIds?: number[];
   onChange: (id: number) => void;
 }
 
 export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
   categories,
   selectedId,
+  selectedIds,
   onChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -33,7 +35,8 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
 
   // Get selected category name
   const selectedCategory = categories.find(c => c.id === selectedId);
-  const isUncategorized = !selectedId;
+  const isUncategorized = selectedIds ? selectedIds.length === 0 : !selectedId;
+  const isSelected = (id: number) => selectedIds ? selectedIds.includes(id) : selectedId === id;
 
   // Filter categories by search term
   const filteredCategories = useMemo(() => {
@@ -56,22 +59,12 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setSearchTerm('');
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const handleSelect = (catId: number) => {
     onChange(catId);
-    setIsOpen(false);
-    setSearchTerm('');
+    if (!selectedIds) {
+      setIsOpen(false);
+      setSearchTerm('');
+    }
   };
 
   const handleClear = (e: React.MouseEvent) => {
@@ -95,14 +88,14 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
             className={`
               w-full text-left px-3 py-2 flex items-center gap-2 transition-colors
               ${isDisabled ? 'cursor-not-allowed bg-gray-50 text-gray-400' : 'hover:bg-blue-50 cursor-pointer'}
-              ${selectedId === cat.id ? 'bg-blue-100 text-blue-700 font-medium' : ''}
+              ${isSelected(cat.id) ? 'bg-blue-100 text-blue-700 font-medium' : ''}
             `}
             style={{ paddingLeft: `${level * 20 + 12}px` }}
           >
             {hasChildren && <ChevronRight className="w-3 h-3" />}
             {!hasChildren && <div className="w-3" />}
             <span className={hasChildren ? 'font-semibold' : ''}>
-              {cat.nom}
+              {isSelected(cat.id) && <span aria-hidden="true">✓ </span>}{cat.nom}
               {hasChildren && <span className="text-xs ml-2 text-gray-500">(parente)</span>}
             </span>
           </button>
@@ -132,11 +125,11 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
             onClick={() => handleSelect(cat.id)}
             className={`
               w-full text-left px-3 py-2 hover:bg-blue-50 cursor-pointer transition-colors
-              ${selectedId === cat.id ? 'bg-blue-100 text-blue-700 font-medium' : ''}
+              ${isSelected(cat.id) ? 'bg-blue-100 text-blue-700 font-medium' : ''}
             `}
           >
             <div className="flex flex-col">
-              <span className="text-gray-900">{cat.nom}</span>
+              <span className="text-gray-900">{isSelected(cat.id) && <span aria-hidden="true">✓ </span>}{cat.nom}</span>
               {parentName && (
                 <span className="text-xs text-gray-500">dans {parentName}</span>
               )}
@@ -151,14 +144,15 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
       {/* Select Button */}
       <button
         type="button"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-left flex items-center justify-between"
       >
         <span className="text-gray-900">
-          {selectedCategory ? selectedCategory.nom : 'Uncategorized'}
+          {selectedIds ? (selectedIds.length ? `${selectedIds.length} catégorie${selectedIds.length > 1 ? 's' : ''} sélectionnée${selectedIds.length > 1 ? 's' : ''}` : 'Sélectionner des catégories') : selectedCategory ? selectedCategory.nom : 'Sans catégorie'}
         </span>
         <div className="flex items-center gap-1">
-          {selectedCategory && (
+          {(selectedCategory || !!selectedIds?.length) && (
             <X
               className="w-4 h-4 text-gray-400 hover:text-gray-600"
               onClick={handleClear}
@@ -168,6 +162,18 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
         </div>
       </button>
 
+      {selectedIds && selectedIds.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {selectedIds.map((id, index) => (
+            <button key={id} type="button" onClick={() => onChange(id)}
+              aria-label={`Retirer ${categories.find(c => c.id === id)?.nom || id}`}
+              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-800 hover:bg-blue-100">
+              {categories.find(c => c.id === id)?.nom || id}{index === 0 ? ' (principale)' : ''}
+              <X className="h-3 w-3" />
+            </button>
+          ))}
+        </div>
+      )}
       {/* Dropdown */}
       {isOpen && (
         <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-hidden flex flex-col">
@@ -196,7 +202,7 @@ export const CategoryTreeSelect: React.FC<CategoryTreeSelectProps> = ({
                   isUncategorized ? 'bg-blue-100 font-medium text-blue-700' : 'text-gray-900'
                 }`}
               >
-                Uncategorized
+                Sans catégorie
               </button>
             )}
             {filteredCategories.length === 0 ? (

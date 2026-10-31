@@ -160,6 +160,7 @@ const productsApi = api.injectEndpoints({
         productIds: number[];
         targetType: 'category' | 'brand';
         targetId: number;
+        keepExistingCategories?: boolean;
       }
     >({
       query: (body) => ({
@@ -167,7 +168,7 @@ const productsApi = api.injectEndpoints({
         method: 'PATCH',
         body,
       }),
-      invalidatesTags: ['Product'],
+      invalidatesTags: ['Product', 'Category'],
     }),
 
     convertProductsToVariants: builder.mutation<

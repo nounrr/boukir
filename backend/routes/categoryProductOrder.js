@@ -1,9 +1,10 @@
+import { ensureProductCategoriesSchema } from '../utils/productCategories.js';
 import { Router } from 'express';
-import { ensureCategoryProductOrderSchema, CATEGORY_PRODUCT_ORDER_JOIN, parseProductOrder, sameProductOrder } from '../utils/categoryProductOrder.js';
+import { ensureCategoryProductOrderSchema, parseProductOrder, sameProductOrder } from '../utils/categoryProductOrder.js';
 
 const productsSql = `SELECT p.id, p.reference_2 AS reference, p.designation, p.image_url
-  FROM products p ${CATEGORY_PRODUCT_ORDER_JOIN}
-  WHERE p.categorie_id = ? AND COALESCE(p.is_deleted, 0) = 0
+  FROM products p LEFT JOIN category_product_order pco ON pco.product_id = p.id AND pco.category_id = ?
+  WHERE (p.categorie_id = ? OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)) AND COALESCE(p.is_deleted, 0) = 0
     AND COALESCE(p.non_stockable, 0) = 0 AND COALESCE(p.est_service, 0) = 0
   ORDER BY pco.position IS NULL ASC, pco.position ASC, p.designation ASC, p.id ASC`;
 
@@ -19,8 +20,9 @@ export function createCategoryProductOrderRouter(db, onSaved = async () => {}) {
     try {
       const categoryId = Number(req.params.categoryId);
       if (!Number.isSafeInteger(categoryId) || categoryId <= 0) return res.status(400).json({ message: 'Catégorie invalide.' });
+      await ensureProductCategoriesSchema(db);
       await ensureCategoryProductOrderSchema(db);
-      const [rows] = await db.query(productsSql, [categoryId]);
+      const [rows] = await db.query(productsSql, [categoryId, categoryId, categoryId]);
       res.json({ products: rows, order: rows.map(row => Number(row.id)) });
     } catch (error) { next(error); }
   });
@@ -31,6 +33,7 @@ export function createCategoryProductOrderRouter(db, onSaved = async () => {}) {
       const ids = parseProductOrder(req.body?.product_ids);
       const expected = parseProductOrder(req.body?.expected_order);
       if (!Number.isSafeInteger(categoryId) || categoryId <= 0 || !ids || !expected) return res.status(400).json({ message: 'Classement invalide ou produits en double.' });
+      await ensureProductCategoriesSchema(db);
       await ensureCategoryProductOrderSchema(db);
       connection = await db.getConnection();
       await connection.beginTransaction();
@@ -39,7 +42,7 @@ export function createCategoryProductOrderRouter(db, onSaved = async () => {}) {
         await connection.rollback();
         return res.status(404).json({ message: 'Catégorie introuvable.' });
       }
-      const [rows] = await connection.query(`${productsSql} FOR UPDATE`, [categoryId]);
+      const [rows] = await connection.query(`${productsSql} FOR UPDATE`, [categoryId, categoryId, categoryId]);
       const current = rows.map(row => Number(row.id));
       const members = new Set(current);
       if (!sameProductOrder(current, expected) || ids.length !== current.length || ids.some(id => !members.has(id))) {

@@ -1,3 +1,4 @@
+import { ensureProductCategoriesSchema } from '../../utils/productCategories.js';
 import { Router } from 'express';
 import pool from '../../db/pool.js';
 import { ensureCategoryProductOrderSchema, CATEGORY_PRODUCT_ORDER_SQL, CATEGORY_PRODUCT_ORDER_JOIN } from '../../utils/categoryProductOrder.js';
@@ -88,6 +89,7 @@ ensureProductRemiseColumns().catch(e => console.error('ensureProductRemiseColumn
 // GET /api/ecommerce/products - List all published products with images, variants preview, and filter metadata
 router.get('/', async (req, res, next) => {
   try {
+    await ensureProductCategoriesSchema(pool);
     const snapshotEnabled = await hasProductSnapshotTable(pool);
     const role = req.user?.role != null ? String(req.user.role).trim() : '';
     const isBackoffice = role.length > 0;
@@ -195,8 +197,8 @@ router.get('/', async (req, res, next) => {
         const uniqueCategoryIds = [...new Set(allCategoryIds)];
         
         if (uniqueCategoryIds.length > 0) {
-          whereConditions.push(`p.categorie_id IN (${uniqueCategoryIds.map(() => '?').join(',')})`);
-          params.push(...uniqueCategoryIds);
+          whereConditions.push(`(p.categorie_id IN (${uniqueCategoryIds.map(() => '?').join(',')}) OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${uniqueCategoryIds.map(() => '?').join(',')})))`);
+          params.push(...uniqueCategoryIds, ...uniqueCategoryIds);
         }
       }
     }
@@ -803,6 +805,7 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    await ensureProductCategoriesSchema(pool);
     const snapshotEnabled = await hasProductSnapshotTable(pool);
 
     // Get main product with full details
@@ -1265,6 +1268,7 @@ router.get('/featured/promo', async (req, res, next) => {
   try {
     const { limit = 12 } = req.query;
 
+    await ensureProductCategoriesSchema(pool);
     const snapshotEnabled = await hasProductSnapshotTable(pool);
     const priceExpr = snapshotEnabled
       ? `COALESCE((
@@ -1392,6 +1396,7 @@ router.get('/featured/new', async (req, res, next) => {
   try {
     const { limit = 12 } = req.query;
 
+    await ensureProductCategoriesSchema(pool);
     const snapshotEnabled = await hasProductSnapshotTable(pool);
     const priceExpr = snapshotEnabled
       ? `COALESCE((
