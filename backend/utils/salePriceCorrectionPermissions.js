@@ -12,7 +12,7 @@ export function canAccessSalePriceCorrections(user) {
 
 // Only these roles apply corrections directly and decide on queued requests;
 // every other authorized role submits corrections for validation.
-const VALIDATOR_ROLES = new Set(['PDG', 'Manager']);
+const VALIDATOR_ROLES = new Set(['PDG', 'ManagerPlus']);
 // This employee submits PV1/PV2 proposals for another validator, regardless of role.
 const VALIDATION_REQUIRED_CINS = new Set(['KB285549']);
 

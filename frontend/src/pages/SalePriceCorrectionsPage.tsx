@@ -447,7 +447,7 @@ const ValidationPanel: React.FC<{ canValidate: boolean }> = ({ canValidate }) =>
 
       {!canValidate ? (
         <p className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-          <Clock className="h-4 w-4 shrink-0" /> Vos corrections ne sont pas appliquées directement : elles attendent la validation du PDG ou du Manager.
+          <Clock className="h-4 w-4 shrink-0" /> Vos corrections ne sont pas appliquées directement : elles attendent la validation du PDG ou d’un ManagerPlus autorisé.
         </p>
       ) : null}
 
@@ -969,7 +969,7 @@ const SalePriceCorrectionsContent: React.FC<{ canValidate: boolean }> = ({ canVa
     if (!readyRows.length || isSaving) return;
     const groupedCount = readyRows.filter((row) => groupKeys[rowKey(row)]).length;
     const confirmation = await showConfirmation(
-      `${readyRows.length} ligne(s) décidée(s)${canValidate ? ' seront traitée(s)' : ' seront envoyée(s) pour validation'}, dont ${changedCount} avec modification de prix.${groupedCount ? ` ${groupedCount} produit(s) concernent aussi toutes leurs variantes actives.` : ''}${canValidate ? '' : ' Les prix ne changeront qu’après validation par le PDG ou le Manager.'}`,
+      `${readyRows.length} ligne(s) décidée(s)${canValidate ? ' seront traitée(s)' : ' seront envoyée(s) pour validation'}, dont ${changedCount} avec modification de prix.${groupedCount ? ` ${groupedCount} produit(s) concernent aussi toutes leurs variantes actives.` : ''}${canValidate ? '' : ' Les prix ne changeront qu’après validation par le PDG ou un ManagerPlus autorisé.'}`,
       canValidate ? 'Corriger les prix de vente ?' : 'Envoyer pour validation ?'
     );
     if (!confirmation.isConfirmed) return;

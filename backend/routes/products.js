@@ -1421,7 +1421,7 @@ async function ensureSalePriceCorrectionColumns() {
       }
     }
 
-    // Corrections soumises par les rôles non validateurs, en attente du PDG / Manager.
+    // Corrections soumises par les rôles non validateurs, en attente du PDG / ManagerPlus autorisé.
     await pool.query(`CREATE TABLE IF NOT EXISTS sale_price_correction_requests (
       id INT AUTO_INCREMENT PRIMARY KEY,
       product_id INT NOT NULL,
@@ -5288,7 +5288,7 @@ export async function applySalePriceCorrections(connection, normalized, userId, 
 }
 
 // PATCH /products/sale-price-corrections
-// PDG / Manager: applied immediately. Other authorized roles: queued "En attente" for validation.
+// PDG / authorized ManagerPlus: applied immediately. Other authorized roles: queued "En attente" for validation.
 router.patch('/sale-price-corrections', requireSalePriceCorrectionAccess, async (req, res, next) => {
   let connection;
   try {

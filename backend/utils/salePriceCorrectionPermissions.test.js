@@ -16,11 +16,12 @@ test('KB285549 keeps proposal access but cannot apply or validate, regardless of
   }
 });
 
-test('other validators retain their existing rights and permission checks', () => {
+test('only PDG and authorized ManagerPlus can validate corrections', () => {
   assert.equal(canValidateSalePriceCorrections({ role: 'PDG', cin: 'OTHER' }), true);
-  assert.equal(canValidateSalePriceCorrections({ role: 'Manager', cin: 'OTHER', acces_correction_prix_vente: 1 }), true);
+  assert.equal(canValidateSalePriceCorrections({ role: 'Manager', cin: 'OTHER', acces_correction_prix_vente: 1 }), false);
   assert.equal(canValidateSalePriceCorrections({ role: 'Manager', cin: 'OTHER', acces_correction_prix_vente: 0 }), false);
-  assert.equal(canValidateSalePriceCorrections({ role: 'ManagerPlus', cin: 'OTHER', acces_correction_prix_vente: 1 }), false);
+  assert.equal(canValidateSalePriceCorrections({ role: 'ManagerPlus', cin: 'OTHER', acces_correction_prix_vente: 1 }), true);
+  assert.equal(canValidateSalePriceCorrections({ role: 'ManagerPlus', cin: 'OTHER', acces_correction_prix_vente: 0 }), false);
   assert.equal(canAccessSalePriceCorrections({ role: 'ManagerPlus', cin: 'KB285549', acces_correction_prix_vente: 0 }), false);
 });
 
@@ -29,7 +30,7 @@ test('validation API rejects the restricted employee directly', () => {
   let payload;
   let nextCalled = false;
   const res = { status(code) { status = code; return this; }, json(body) { payload = body; return this; } };
-  requireSalePriceCorrectionValidator({ user: { role: 'Manager', cin: 'KB285549', acces_correction_prix_vente: 1 } }, res, () => { nextCalled = true; });
+  requireSalePriceCorrectionValidator({ user: { role: 'ManagerPlus', cin: 'KB285549', acces_correction_prix_vente: 1 } }, res, () => { nextCalled = true; });
   assert.equal(status, 403);
   assert.equal(nextCalled, false);
   assert.match(payload.message, /autre responsable/);

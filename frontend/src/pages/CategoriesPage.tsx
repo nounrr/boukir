@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Plus, Edit, Trash2, Search, Tags, FolderTree, Sparkles } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Tags, FolderTree, Sparkles, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Category } from '../types';
 import {
@@ -42,6 +42,7 @@ const CategoriesPage: React.FC = () => {
 	const [search, setSearch] = useState('');
 	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 	const [translating, setTranslating] = useState(false);
+	const [exporting, setExporting] = useState(false);
 	const [hoverPreview, setHoverPreview] = useState<null | {
 		url: string;
 		x: number;
@@ -64,6 +65,33 @@ const CategoriesPage: React.FC = () => {
 	const handleAdd = () => {
 		setEditingCategory(null);
 		setIsModalOpen(true);
+	};
+
+	const handleDownloadExcel = async () => {
+		if (exporting || categories.length === 0) return;
+		setExporting(true);
+		try {
+			const XLSX = await import('xlsx');
+			const names = new Map(categories.map(category => [String(category.id), category.nom]));
+			const rows = categories.map(category => ({
+				'ID catégorie': category.id,
+				'Catégorie': category.nom,
+				'ID parent': category.parent_id ?? '',
+				'Catégorie parente': category.parent_id == null
+					? 'Sans parent'
+					: names.get(String(category.parent_id)) ?? 'Parent introuvable',
+			}));
+			const sheet = XLSX.utils.json_to_sheet(rows);
+			sheet['!cols'] = [{ wch: 15 }, { wch: 45 }, { wch: 15 }, { wch: 45 }];
+			sheet['!autofilter'] = { ref: sheet['!ref']! };
+			const workbook = XLSX.utils.book_new();
+			XLSX.utils.book_append_sheet(workbook, sheet, 'Catégories');
+			XLSX.writeFile(workbook, `categories-${new Date().toISOString().slice(0, 10)}.xlsx`);
+		} catch {
+			showError('Impossible de télécharger les catégories en Excel.');
+		} finally {
+			setExporting(false);
+		}
 	};
 
 	const getParentName = (parentId: number | null | undefined) => {
@@ -289,12 +317,20 @@ const CategoriesPage: React.FC = () => {
 				);
 			})()}
 
-			<div className="flex justify-between items-center mb-6">
+			<div className="flex flex-wrap justify-between items-center gap-3 mb-6">
 				<div className="flex items-center gap-3">
 					<Tags className="text-purple-600" size={28} />
 					<h1 className="text-2xl font-bold text-gray-900">Catégories</h1>
 				</div>
-				<div className="flex gap-2">
+				<div className="flex flex-wrap gap-2">
+					<button
+						onClick={handleDownloadExcel}
+						disabled={isLoading || exporting || categories.length === 0}
+						className="flex items-center gap-2 rounded-md bg-green-700 px-4 py-2 text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+						title="Télécharger toutes les catégories avec leur catégorie parente"
+					>
+						<Download size={18} /> {exporting ? 'Téléchargement…' : 'Télécharger Excel'}
+					</button>
 					{canGenerateImage && (
 						<button
 							onClick={handleGenerateSelectedImages}
