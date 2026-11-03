@@ -1,7 +1,7 @@
 import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -62,6 +62,7 @@ import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 
 // Centralize action/status icon size for easier adjustment
 const ACTION_ICON_SIZE = 24; // increased from 20 per user request
+const VehicleConsumptionCharts = lazy(() => import('../components/VehicleConsumptionCharts'));
 
 type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Charge' | 'AvoirCharge' | 'Avoir' | 'AvoirVendreFournisseur' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
 
@@ -2837,6 +2838,9 @@ const BonsPage = () => {
         </div>
         
   {/* Contenu standard */}
+        {effectiveCurrentTab === 'Vehicule' && <Suspense fallback={<div role="status" className="mb-4 rounded-lg bg-white p-4 text-sm text-gray-500">Chargement des graphiques…</div>}>
+          <VehicleConsumptionCharts />
+        </Suspense>}
         {/* Barre de filtres et actions au-dessus du tableau */}
         <div className="bg-white rounded-lg shadow mb-4 p-4">
           <div className="flex flex-wrap items-center gap-3">

@@ -4,6 +4,7 @@ import { hasClientRemindersAccess } from '../utils/clientCollaborationPermission
 import { getAbsenceDeductionsByMonth, getEmployeeDeduction } from '../utils/absences.js';
 import { hasAbsencePermission } from '../utils/absencePermissions.js';
 import { requireRole } from '../middleware/auth.js';
+import { getFixedChargeDays } from '../utils/fixedCharges.js';
 import {
   ensureStatsDetailsPermissionSchema,
   normalizeStatsDetailsPermissions,
@@ -1507,6 +1508,10 @@ router.get('/chiffre-affaires', async (req, res) => {
     ]);
 
     // UX: for day filter, always return that day even if no activity (0 totals)
+    const fixedChargeDays = await getFixedChargeDays(pool, filterArgs, [...days]);
+    const fixedChargesMap = rowsToMap(fixedChargeDays, 'day');
+    for (const row of fixedChargeDays) days.add(row.day);
+
     if (filterType === 'day' && date) {
       days.add(formatDayKey(date));
     }
@@ -1535,8 +1540,9 @@ router.get('/chiffre-affaires', async (req, res) => {
 
         const vehiculeTotal = roundSafe(veh.total);
         const salaireTotal = roundSafe(salaire.total);
+        const fixedChargesTotal = roundSafe(fixedChargesMap.get(day)?.total);
         // Salaries and vehicle vouchers count as charges.
-        const chargesTotal = roundSafe(charge.total) + salaireTotal + vehiculeTotal;
+        const chargesTotal = roundSafe(charge.total) + salaireTotal + vehiculeTotal + fixedChargesTotal;
         const avoirsChargeTotal = roundSafe(avoirCharge.total);
         const chargesNet = chargesTotal - avoirsChargeTotal;
         const achatsTotal = roundSafe(cmd.total);
@@ -1567,6 +1573,7 @@ router.get('/chiffre-affaires', async (req, res) => {
           totalSalaires: salaireTotal,
           totalRetenuesAbsences: roundSafe(salaire.retenues),
           totalBonsVehicule: vehiculeTotal,
+          totalChargesFixes: fixedChargesTotal,
         };
       })
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -1582,7 +1589,8 @@ router.get('/chiffre-affaires', async (req, res) => {
               Math.abs(d.totalCharges || 0) > 0.01 ||
               Math.abs(d.totalSalaires || 0) > 0.01 ||
               Math.abs(d.totalAvoirsCharge || 0) > 0.01 ||
-              Math.abs(d.totalBonsVehicule || 0) > 0.01
+              Math.abs(d.totalBonsVehicule || 0) > 0.01 ||
+              Math.abs(d.totalChargesFixes || 0) > 0
           );
 
     const totalChiffreAffaires = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffaires), 0);
@@ -1594,7 +1602,8 @@ router.get('/chiffre-affaires', async (req, res) => {
     const totalSalaires = Array.from(salairesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
     const totalRetenuesAbsences = Array.from(salairesMap.values()).reduce((s, r) => s + roundSafe(r.retenues), 0);
     const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
-    const totalChargesBrut = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0) + totalSalaires + totalBonsVehicule;
+    const totalChargesFixes = Math.round(fixedChargeDays.reduce((sum, row) => sum + row.total, 0) * 1000) / 1000;
+    const totalChargesBrut = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0) + totalSalaires + totalBonsVehicule + totalChargesFixes;
     const totalAvoirsCharge = Array.from(avoirsChargeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
     const totalCharges = totalChargesBrut - totalAvoirsCharge;
 
@@ -1685,6 +1694,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       totalSalaires,
       totalRetenuesAbsences,
       totalBonsVehicule,
+      totalChargesFixes,
       totalBons,
       dailyData,
       totalRemisesNet: totalRemisesVente - totalRemisesAvoir,
@@ -2190,6 +2200,28 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       totalRemiseBon: 0,
     }));
 
+    const fixedChargeDay = await getFixedChargeDays(pool, { filterType: 'day', date: selectedDate }, [], true);
+    const fixedChargeCalculs = (fixedChargeDay[0]?.items || []).filter(charge => charge.amount !== 0).map(charge => ({
+      bonId: charge.id,
+      bonNumero: `FIX${charge.id}`,
+      bonType: 'Charge fixe',
+      contact_nom: charge.libelle,
+      items: [{
+        designation: `${charge.libelle} (${Number(charge.montant_mensuel)} DH/mois, répartis sur ${charge.daysInMonth} jours)`,
+        quantite: 1,
+        prix_unitaire: charge.amount,
+        montant_ligne: charge.amount,
+        profit: -charge.amount,
+        profitBrut: -charge.amount,
+        remise_unitaire: 0,
+        remise_total: 0,
+      }],
+      totalBon: -charge.amount,
+      profitBon: -charge.amount,
+      netTotalBon: -charge.amount,
+      totalRemiseBon: 0,
+    }));
+
     const caNetCalculs = [
       ...ventesCalculs,
       ...avoirsCalculs.map((c) => ({ ...c, totalBon: -roundSafe(c.totalBon) })),
@@ -2197,6 +2229,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       ...avoirsChargeCalculs,
       ...salaireCalculs,
       ...vehiculeCalculs,
+      ...fixedChargeCalculs,
     ];
     const caNetTotal = caNetCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
     const caSansChargesTotal = [
@@ -2219,6 +2252,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       })),
       ...salaireCalculs,
     ];
+    beneficiaireCalculs.push(...fixedChargeCalculs);
     const beneficiaireTotal = beneficiaireCalculs.reduce((s, c) => s + roundSafe(c.profitBon), 0);
 
     const achatsTotal = commandesCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
@@ -2234,6 +2268,9 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       ...salaireCalculs,
       ...vehiculeCalculs,
     ];
+    chargesSectionCalculs.push(...fixedChargeCalculs.map(charge => ({
+      ...charge, totalBon: -charge.totalBon, profitBon: -charge.profitBon, netTotalBon: -charge.netTotalBon,
+    })));
     const chargesTotal = chargesSectionCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
     const chiffresDetail = [
@@ -2261,7 +2298,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       },
       {
         type: 'CHARGES',
-        title: 'Charges nettes (Bons Charge + Salaires + Bons Vehicule - Avoirs Charge)',
+        title: 'Charges nettes (Bons Charge + Charges fixes + Salaires + Bons Vehicule - Avoirs Charge)',
         total: chargesTotal,
         bons: chargesSectionCalculs.map((c) => ({ id: c.bonId })),
         calculs: chargesSectionCalculs,

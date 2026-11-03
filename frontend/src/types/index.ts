@@ -482,6 +482,7 @@ export interface Contact {
   is_charge?: boolean;
   is_remise_pour_maalem?: boolean | number;
   bloque?: boolean | number;
+  ne_repond_pas?: boolean | number;
   rappel_date?: string | null;
   rappel_jours_initial?: number | null;
   rappel_defini_le?: string | null;

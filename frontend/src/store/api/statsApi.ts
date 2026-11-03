@@ -16,6 +16,7 @@ export interface ChiffreAffairesDayRow {
   totalRemises: number;
   totalCharges?: number;
   totalChargesBrut?: number;
+  totalChargesFixes?: number;
   totalAvoirsCharge?: number;
   totalSalaires?: number;
   totalRetenuesAbsences?: number;
@@ -31,6 +32,7 @@ export interface ChiffreAffairesStatsResponse {
   totalProfitVentesFournisseur?: number;
   totalCharges?: number;
   totalChargesBrut?: number;
+  totalChargesFixes?: number;
   totalAvoirsCharge?: number;
   totalSalaires?: number;
   totalRetenuesAbsences?: number;
@@ -182,10 +184,12 @@ export const statsApi = apiSlice.injectEndpoints({
         if (args.month) params.set('month', args.month);
         return `/stats/chiffre-affaires?${params.toString()}`;
       },
+      providesTags: ['Bon', 'FixedCharge'],
     }),
 
     getChiffreAffairesDetail: builder.query<ChiffreDetailSection[], { date: string }>({
       query: ({ date }) => `/stats/chiffre-affaires/detail/${encodeURIComponent(date)}`,
+      providesTags: ['Bon', 'FixedCharge'],
     }),
 
     getStatsDetails: builder.query<StatsDetailsResponse, StatsDetailsQuery>({

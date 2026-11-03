@@ -57,8 +57,31 @@ type BonPriceHistoryResponse = {
   avoirsFournisseur: Bon[];
 };
 
+export type VehicleConsumptionArgs = { groupBy: 'day' | 'month' | 'year'; dateFrom: string; dateTo: string };
+export type VehicleConsumption = VehicleConsumptionArgs & {
+  periods: Array<{ period: string; amount: number; count: number }>;
+  vehicles: Array<{ vehicule_id: number | null; name: string; immatriculation: string; amount: number; count: number }>;
+  total: number;
+  count: number;
+};
+
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
+    getVehicleConsumption: builder.query<VehicleConsumption, VehicleConsumptionArgs>({
+      query: params => ({ url: '/bons_vehicule/consommation', params }),
+      providesTags: [{ type: 'Vehicule', id: 'LIST' }, { type: 'Bon', id: 'LIST' }],
+    }),
+    getBonForEditing: builder.query<any, { id: number; type: string }>({
+      query: ({ id, type }) => {
+        const paths: Record<string, string> = {
+          Commande: 'commandes', Sortie: 'sorties', Comptant: 'comptant',
+          Charge: 'charges', AvoirCharge: 'charges', Avoir: 'avoirs_client',
+          AvoirFournisseur: 'avoirs_fournisseur', AvoirComptant: 'avoirs_comptant',
+        };
+        if (!paths[type]) throw new Error('Type de bon non modifiable');
+        return `/${paths[type]}/${id}${type === 'AvoirCharge' ? '?type=avoir' : ''}`;
+      },
+    }),
     getBons: builder.query<Bon[], void>({
       query: () => '/bons',
       providesTags: (result) =>
@@ -849,6 +872,8 @@ export const bonsApi = api.injectEndpoints({
 });
 
 export const {
+  useGetVehicleConsumptionQuery,
+  useLazyGetBonForEditingQuery,
   useGetBonsQuery,
   useGetBonsByTypeQuery,
   useGetBonsByTypePagedQuery,

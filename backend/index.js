@@ -68,6 +68,7 @@ import avoirsFournisseurRouter from './routes/avoirs_fournisseur.js';
 import avoirsComptantRouter from './routes/avoirs_comptant.js';
 import avoirsEcommerceRouter from './routes/avoirs_ecommerce.js';
 import bonsVehiculeRouter from './routes/bons_vehicule.js';
+import fixedChargesRouter from './routes/charges_fixes.js';
 
 import paymentsRouter from './routes/payments.js';
 import uploadRouter from './routes/upload.js';
@@ -427,6 +428,7 @@ app.use('/api/commandes', commandesRouter);
 app.use('/api/sorties', sortiesRouter);
 app.use('/api/comptant', comptantRouter);
 app.use('/api/charges', chargesRouter);
+app.use('/api/charges-fixes', fixedChargesRouter);
 app.use('/api/devis', devisRouter);
 app.use('/api/avoirs_client', avoirsClientRouter);
 app.use('/api/avoirs_fournisseur', avoirsFournisseurRouter);

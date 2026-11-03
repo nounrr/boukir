@@ -19,6 +19,7 @@ interface ChiffreAffairesData {
   profitVentesFournisseur?: number;
   totalCharges: number;
   totalChargesBrut?: number;
+  totalChargesFixes?: number;
   totalAvoirsCharge?: number;
   totalSalaires?: number; // Salaires du mois (rattachés au dernier jour du mois)
   totalRemises: number; // Remises totales du jour (ventes - avoirs)
@@ -93,6 +94,7 @@ const ChiffreAffairesPage: React.FC = () => {
         totalProfitVentesFournisseur: 0,
         totalCharges: 0,
         totalChargesBrut: 0,
+        totalChargesFixes: 0,
         totalAvoirsCharge: 0,
         totalSalaires: 0,
         totalRetenuesAbsences: 0,
@@ -328,6 +330,7 @@ const ChiffreAffairesPage: React.FC = () => {
                   <p className="text-xs text-rose-600 mt-0.5">
                     Dont bons vehicule: {formatAmount(chiffreAffairesData.totalBonsVehicule || 0)} DH
                   </p>
+                  <p className="text-xs text-rose-600 mt-1">Dont charges fixes : {formatAmount(chiffreAffairesData.totalChargesFixes || 0)} DH</p>
                 </div>
               </div>
             </div>
@@ -377,6 +380,7 @@ const ChiffreAffairesPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Charges nettes (DH)
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dont charges fixes (DH)</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Salaires (DH)
                 </th>
@@ -439,6 +443,7 @@ const ChiffreAffairesPage: React.FC = () => {
                       {formatAmount(charges)} DH
                     </div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-violet-700">{formatAmount(day.totalChargesFixes || 0)} DH</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-rose-700">
                       {formatAmount(day.totalSalaires || 0)} DH
@@ -474,7 +479,7 @@ const ChiffreAffairesPage: React.FC = () => {
               })}
               {chiffreAffairesData.dailyData.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={12} className="px-6 py-4 text-center text-gray-500">
                     Aucune donnée disponible pour cette période
                   </td>
                 </tr>

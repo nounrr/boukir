@@ -8,6 +8,7 @@ import { requireClientRemindersAccess } from '../middleware/clientCollaborationP
 import { hasClientRemindersAccess } from '../utils/clientCollaborationPermissions.js';
 import { CLIENT_LAST_PAYMENT_JOIN_SQL } from '../utils/clientLastPayment.js';
 import { historyItemCostExpr } from '../utils/contactHistoryCost.js';
+import { attachContactHistoryModification } from '../utils/contactHistoryModification.js';
 import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, clientChequeEcheancierListSql, tomorrowInCasablanca, parsePlafondEcheance } from '../utils/clientEcheancier.js';
 
 const router = express.Router();
@@ -1865,9 +1866,7 @@ router.get('/:id/history', async (req, res) => {
     const page = Math.min(Math.max(1, requestedPage), totalPages);
     const selectedPage = pages[page - 1] || { rows: [], docs: new Set() };
     const keepDocs = (rows) => rows.filter((b) => selectedPage.docs.has(`${b.type}-${b.id}`));
-
-    res.json({
-      contactId,
+    const historyDocuments = {
       sorties: keepDocs(normalizeItems(sorties, 'Sortie', 'SOR')),
       comptants: keepDocs(normalizeItems(comptants, 'Comptant', 'COM')),
       charges: keepDocs(normalizeItems(charges, 'Charge', 'CHG')),
@@ -1877,6 +1876,12 @@ router.get('/:id/history', async (req, res) => {
       avoirsClient: keepDocs(normalizeItems(avoirsClient, 'Avoir', 'AVC')),
       avoirsFournisseur: keepDocs(normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF')),
       avoirsClientVendreFournisseur: keepDocs(normalizeItems(avoirsClientVendreFournisseur, 'AvoirClientVendreFournisseur', 'AVV')),
+    };
+    await attachContactHistoryModification(pool, Object.values(historyDocuments).flat());
+
+    res.json({
+      contactId,
+      ...historyDocuments,
       payments: selectedPage.rows.filter((r) => r.type === 'paiement').map((r) => payments.find((p) => `payment-${p.id}` === r.id)).filter(Boolean),
       ecommerceOrders: [],
       avoirsEcommerce: [],
@@ -2211,7 +2216,8 @@ router.put('/:id', async (req, res) => {
       updated_by,
       is_charge,
       is_remise_pour_maalem,
-      bloque
+      bloque,
+      ne_repond_pas
     } = req.body;
 
     const normalizeEmptyToNull = (value) => {
@@ -2356,6 +2362,13 @@ router.put('/:id', async (req, res) => {
     if (bloque !== undefined) {
       updates.push('bloque = ?');
       params.push(bloque ? 1 : 0);
+    }
+    if (ne_repond_pas !== undefined) {
+      if (typeof ne_repond_pas !== 'boolean' && ne_repond_pas !== 0 && ne_repond_pas !== 1) {
+        return res.status(400).json({ error: 'Le champ ne_repond_pas doit être un booléen' });
+      }
+      updates.push('ne_repond_pas = ?');
+      params.push(ne_repond_pas ? 1 : 0);
     }
     if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
     if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }

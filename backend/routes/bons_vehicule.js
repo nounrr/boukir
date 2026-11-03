@@ -2,8 +2,19 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
+import { getVehicleConsumption } from '../utils/vehicleConsumption.js';
 
 const router = express.Router();
+
+router.get('/consommation', async (req, res) => {
+  try {
+    res.json(await getVehicleConsumption(pool, req.query));
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ message: error.message });
+    console.error('GET /bons_vehicule/consommation:', error);
+    res.status(500).json({ message: 'Impossible de charger la consommation des véhicules.' });
+  }
+});
 
 // GET /bons_vehicule - list
 router.get('/', async (_req, res) => {

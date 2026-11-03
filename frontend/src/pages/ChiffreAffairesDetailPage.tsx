@@ -471,7 +471,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           groups[key].calculs.push(c);
           groups[key].total += amount;
         }
-        const order = ['Comptant', 'Sortie', 'Vente Fournisseur', 'Commande', 'Avoir', 'Avoir Vente Fournisseur', 'Charge', 'Avoir Charge', 'Bon Véhicule'];
+        const order = ['Comptant', 'Sortie', 'Vente Fournisseur', 'Commande', 'Avoir', 'Avoir Vente Fournisseur', 'Charge', 'Charge fixe', 'Avoir Charge', 'Bon Véhicule'];
         const groupKeys = Object.keys(groups).sort((a, b) => {
           const ia = order.indexOf(a);
           const ib = order.indexOf(b);
