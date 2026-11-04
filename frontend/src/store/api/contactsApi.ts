@@ -95,7 +95,7 @@ const contactsApi = api.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
     }),
 
-    getContactHistory: builder.query<any, number | { id: number; page?: number; limit?: number }>({
+    getContactHistory: builder.query<any, number | { id: number; page?: number | 'last'; limit?: number; ledger?: 'client' | 'fournisseur' | 'charge'; tab?: string; dateFrom?: string; dateTo?: string; search?: string; all?: boolean; sortBy?: string; sortDir?: string }>({
       query: (arg) => {
         const id = typeof arg === 'number' ? arg : arg.id;
         const page = typeof arg === 'number' ? undefined : arg.page;
@@ -104,6 +104,7 @@ const contactsApi = api.injectEndpoints({
           url: `/contacts/${id}/history`,
           timeout: 60000,
           params: {
+            ...(typeof arg === 'object' && arg.ledger ? { ledger: arg.ledger, tab: arg.tab, dateFrom: arg.dateFrom, dateTo: arg.dateTo, search: arg.search, all: arg.all, sortBy: arg.sortBy, sortDir: arg.sortDir } : {}),
             ...(page ? { page } : {}),
             ...(limit ? { limit } : {}),
           },
@@ -255,6 +256,7 @@ export const {
   useGetContactsSummaryQuery,
   useGetContactQuery,
   useGetContactHistoryQuery,
+  useLazyGetContactHistoryQuery,
   useGetClientChequesEcheanciersQuery,
   useCreateContactMutation,
   useUpdateContactMutation,

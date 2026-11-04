@@ -1,3 +1,4 @@
+import { buildContactLedger } from '../utils/contactLedger.js';
 import { getClientCreditState } from '../utils/bonExceptionAuthorization.js';
 import express from 'express';
 import bcrypt from 'bcryptjs';
@@ -1270,9 +1271,19 @@ router.get('/:id/history', async (req, res) => {
     const requestedPageRaw = String(req.query.page || '1').toLowerCase();
     const limit = Math.max(1, Math.min(30000, Number(req.query.limit || 30000) || 30000));
 
+    const ledgerCollections = {
+      client: ['contact', 'sorties', 'avoirsClient', 'payments'],
+      fournisseur: ['contact', 'commandes', 'sortiesVendreFournisseur', 'avoirsFournisseur', 'avoirsClientVendreFournisseur', 'payments'],
+      charge: ['contact', 'charges', 'avoirsCharge', 'sorties', 'comptants', 'avoirsClient', 'payments'],
+    };
+    const ledgerView = req.query.ledger;
+    if (ledgerView && !ledgerCollections[ledgerView]) return res.status(400).json({ error: 'Invalid ledger view' });
+    const queryForLedger = (collection, sql, params) => !ledgerView || ledgerCollections[ledgerView].includes(collection)
+      ? pool.query(sql, params) : Promise.resolve([[]]);
+
     const [[contactRows], [sorties], [comptants], [charges], [avoirsCharge], [commandes], [sortiesVendreFournisseur], [avoirsClient], [avoirsFournisseur], [avoirsClientVendreFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
-      pool.query('SELECT id, type, nom_complet, societe, solde, created_at FROM contacts WHERE id = ? LIMIT 1', [contactId]),
-      pool.query(`
+      queryForLedger('contact', 'SELECT id, type, nom_complet, societe, solde, created_at FROM contacts WHERE id = ? LIMIT 1', [contactId]),
+      queryForLedger('sorties', `
         SELECT bs.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN si.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1281,6 +1292,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', si.product_id,
               'variant_id', si.variant_id,
               'unit_id', si.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'designation', p.designation,
@@ -1302,11 +1315,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = si.product_id
         LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = si.unit_id AND pu.product_id = si.product_id
+        LEFT JOIN product_variants pv ON pv.id = si.variant_id AND pv.product_id = si.product_id
         WHERE bs.client_id = ?
         GROUP BY bs.id
         ORDER BY bs.date_creation ASC, bs.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('comptants', `
         SELECT bc.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN ci.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1315,6 +1329,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ci.product_id,
               'variant_id', ci.variant_id,
               'unit_id', ci.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'designation', p.designation,
@@ -1336,11 +1352,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = ci.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = ci.unit_id AND pu.product_id = ci.product_id
+        LEFT JOIN product_variants pv ON pv.id = ci.variant_id AND pv.product_id = ci.product_id
         WHERE bc.client_id = ?
         GROUP BY bc.id
         ORDER BY bc.date_creation ASC, bc.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('charges', `
         SELECT bch.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN chi.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1349,6 +1366,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', chi.product_id,
               'variant_id', chi.variant_id,
               'unit_id', chi.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'designation', p.designation,
@@ -1370,11 +1389,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = chi.product_id
         LEFT JOIN product_snapshot ps ON ps.id = chi.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = chi.unit_id AND pu.product_id = chi.product_id
+        LEFT JOIN product_variants pv ON pv.id = chi.variant_id AND pv.product_id = chi.product_id
         WHERE bch.client_id = ?
         GROUP BY bch.id
         ORDER BY bch.date_creation ASC, bch.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('avoirsCharge', `
         SELECT bch.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN chi.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1383,6 +1403,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', chi.product_id,
               'variant_id', chi.variant_id,
               'unit_id', chi.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'designation', COALESCE(NULLIF(chi.designation_custom, ''), p.designation),
@@ -1404,11 +1426,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = chi.product_id
         LEFT JOIN product_snapshot ps ON ps.id = chi.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = chi.unit_id AND pu.product_id = chi.product_id
+        LEFT JOIN product_variants pv ON pv.id = chi.variant_id AND pv.product_id = chi.product_id
         WHERE bch.client_id = ?
         GROUP BY bch.id
         ORDER BY bch.date_creation ASC, bch.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('commandes', `
         SELECT bcmd.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN ci.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1417,6 +1440,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ci.product_id,
               'variant_id', ci.variant_id,
               'unit_id', ci.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'designation', p.designation,
@@ -1438,11 +1463,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = ci.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = ci.unit_id AND pu.product_id = ci.product_id
+        LEFT JOIN product_variants pv ON pv.id = ci.variant_id AND pv.product_id = ci.product_id
         WHERE bcmd.fournisseur_id = ?
         GROUP BY bcmd.id
         ORDER BY bcmd.date_creation ASC, bcmd.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('sortiesVendreFournisseur', `
         SELECT bs.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN si.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1451,6 +1477,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', si.product_id,
               'variant_id', si.variant_id,
               'unit_id', si.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'designation', p.designation,
@@ -1472,12 +1500,13 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = si.product_id
         LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = si.unit_id AND pu.product_id = si.product_id
+        LEFT JOIN product_variants pv ON pv.id = si.variant_id AND pv.product_id = si.product_id
         WHERE bs.fournisseur_id = ?
           AND COALESCE(bs.vendre_au_fournisseur, 0) = 1
         GROUP BY bs.id
         ORDER BY bs.date_creation ASC, bs.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('avoirsClient', `
         SELECT ac.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN ai.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1486,6 +1515,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ai.product_id,
               'variant_id', ai.variant_id,
               'unit_id', ai.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'designation', p.designation,
@@ -1507,11 +1538,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = ai.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = ai.unit_id AND pu.product_id = ai.product_id
+        LEFT JOIN product_variants pv ON pv.id = ai.variant_id AND pv.product_id = ai.product_id
         WHERE ac.client_id = ?
         GROUP BY ac.id
         ORDER BY ac.date_creation ASC, ac.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('avoirsFournisseur', `
         SELECT af.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN afi.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1520,6 +1552,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', afi.product_id,
               'variant_id', afi.variant_id,
               'unit_id', afi.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
               'designation', p.designation,
@@ -1541,11 +1575,12 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = afi.product_id
         LEFT JOIN product_snapshot ps ON ps.id = afi.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = afi.unit_id AND pu.product_id = afi.product_id
+        LEFT JOIN product_variants pv ON pv.id = afi.variant_id AND pv.product_id = afi.product_id
         WHERE af.fournisseur_id = ?
         GROUP BY af.id
         ORDER BY af.date_creation ASC, af.id ASC
       `, [contactId]),
-      pool.query(`
+      queryForLedger('avoirsClientVendreFournisseur', `
         SELECT ac.*,
           COALESCE(JSON_ARRAYAGG(
             CASE WHEN ai.id IS NULL THEN NULL ELSE JSON_OBJECT(
@@ -1554,6 +1589,8 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ai.product_id,
               'variant_id', ai.variant_id,
               'unit_id', ai.unit_id,
+              'variant_name', pv.variant_name,
+              'unit_name', pu.unit_name,
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'designation', p.designation,
@@ -1575,14 +1612,15 @@ router.get('/:id/history', async (req, res) => {
         LEFT JOIN products p ON p.id = ai.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
         LEFT JOIN product_units pu ON pu.id = ai.unit_id AND pu.product_id = ai.product_id
+        LEFT JOIN product_variants pv ON pv.id = ai.variant_id AND pv.product_id = ai.product_id
         WHERE ac.fournisseur_id = ?
           AND COALESCE(ac.vendre_au_fournisseur, 0) = 1
         GROUP BY ac.id
         ORDER BY ac.date_creation ASC, ac.id ASC
       `, [contactId]),
-      pool.query('SELECT * FROM payments WHERE contact_id = ? ORDER BY COALESCE(date_paiement, created_at) ASC, id ASC', [contactId]),
-      pool.query("SELECT * FROM ecommerce_orders WHERE user_id = ? ORDER BY created_at ASC, id ASC", [contactId]),
-      pool.query(`
+      queryForLedger('payments', 'SELECT * FROM payments WHERE contact_id = ? ORDER BY COALESCE(date_paiement, created_at) ASC, id ASC', [contactId]),
+      queryForLedger('ecommerceOrders', "SELECT * FROM ecommerce_orders WHERE user_id = ? ORDER BY created_at ASC, id ASC", [contactId]),
+      queryForLedger('avoirsEcommerce', `
         SELECT ae.*
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders eo ON eo.id = ae.ecommerce_order_id
@@ -1668,6 +1706,24 @@ router.get('/:id/history', async (req, res) => {
         items: Array.isArray(parsedItems) ? parsedItems.filter(Boolean) : [],
       };
     });
+
+    if (ledgerView) {
+      const documents = {
+        sorties: normalizeItems(sorties, 'Sortie', 'SOR'),
+        comptants: normalizeItems(comptants, 'Comptant', 'COM'),
+        charges: normalizeItems(charges, 'Charge', 'CHG'),
+        avoirsCharge: normalizeItems(avoirsCharge, 'AvoirCharge', 'ACH'),
+        commandes: normalizeItems(commandes, 'Commande', 'CMD'),
+        sortiesVendreFournisseur: normalizeItems(sortiesVendreFournisseur, 'SortieVendreFournisseur', 'SVF'),
+        avoirsClient: normalizeItems(avoirsClient, 'Avoir', 'AVC'),
+        avoirsFournisseur: normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF'),
+        avoirsClientVendreFournisseur: normalizeItems(avoirsClientVendreFournisseur, 'AvoirClientVendreFournisseur', 'AVV'),
+        payments,
+      };
+      const ledger = buildContactLedger(contact, documents, remises, req.query);
+      await attachContactHistoryModification(pool, Object.keys(documents).filter(key => key !== 'payments').flatMap(key => ledger[key]));
+      return res.json(ledger);
+    }
 
     const isAllowedHistoryStatus = (s) => {
       if (!s) return false;

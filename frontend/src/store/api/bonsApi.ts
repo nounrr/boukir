@@ -79,7 +79,7 @@ export const bonsApi = api.injectEndpoints({
           AvoirFournisseur: 'avoirs_fournisseur', AvoirComptant: 'avoirs_comptant',
         };
         if (!paths[type]) throw new Error('Type de bon non modifiable');
-        return `/${paths[type]}/${id}${type === 'AvoirCharge' ? '?type=avoir' : ''}`;
+        return { url: `/${paths[type]}/${id}${type === 'AvoirCharge' ? '?type=avoir' : ''}`, timeout: 30000 };
       },
     }),
     getBons: builder.query<Bon[], void>({

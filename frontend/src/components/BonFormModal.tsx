@@ -1,3 +1,4 @@
+import { historyFieldAttributes } from '../utils/historyDocumentEditing';
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
 import { snapshotsForProductVariant } from '../utils/bonSnapshotIndex';
 import PurchasePriceIncreaseAlert from './PurchasePriceIncreaseAlert';
@@ -5989,6 +5990,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             type="text"
                                             inputMode="decimal"
                                             className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                            {...historyFieldAttributes(values.items[index], 'quantite')}
                                             value={qtyRaw[index] ?? String(row.quantite ?? '')}
                                             onChange={(e) => {
                                               const raw = e.target.value;
@@ -6007,6 +6009,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               type="text"
                                               inputMode="decimal"
                                               className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                              {...(field === 'prix_unitaire' ? historyFieldAttributes(values.items[index], 'prix_unitaire') : {})}
                                               value={String(values.items[index]?.[field] ?? '')}
                                               onChange={(e) => {
                                                 const raw = e.target.value;
@@ -7158,6 +7161,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     type="text"
     inputMode="decimal"
     pattern="[0-9]*[.,]?[0-9]*"
+    {...historyFieldAttributes(values.items[index], 'quantite')}
     name={`items.${index}.quantite`}
     className={"w-full px-2 py-1 border rounded-md text-sm border-gray-300"}
     value={qtyRaw[index] ?? ''}
@@ -7550,6 +7554,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     type="text"
     inputMode="decimal"
     pattern="[0-9]*[.,]?[0-9]*"
+    {...historyFieldAttributes(values.items[index], 'prix_unitaire')}
     name={values.type === 'Commande' ? `items.${index}.prix_achat` : `items.${index}.prix_unitaire`}
     className="min-w-0 flex-1 px-2 py-1 border border-gray-300 rounded-md text-sm"
     disabled={isQtyOnlyEdit || (!isProjectMode && values.type === 'Charge' && !!values.items[index]?.product_id)}
@@ -7983,6 +7988,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         type="text"
                                         inputMode="decimal"
                                         className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                        {...historyFieldAttributes(values.items[index], 'quantite')}
                                         value={qtyRaw[index] ?? String(row.quantite ?? '')}
                                         onChange={(e) => {
                                           const raw = e.target.value;
@@ -8004,6 +8010,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           type="text"
                                           inputMode="decimal"
                                           className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                          {...(field === 'prix_unitaire' ? historyFieldAttributes(values.items[index], 'prix_unitaire') : {})}
                                           value={String(values.items[index]?.[field] ?? '')}
                                           onChange={(e) => {
                                             const raw = e.target.value;

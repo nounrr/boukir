@@ -1,3 +1,7 @@
+import { ContactHistoryEditor, EditableHistoryValue } from '../components/ContactHistoryEditor';
+import { usePagedContactHistory } from '../hooks/usePagedContactHistory';
+import ContactHistoryPagination from '../components/ContactHistoryPagination';
+import { ledgerBalanceMap } from '../utils/contactLedger';
 import DocumentModificationAuthor from '../components/DocumentModificationAuthor';
 import ClientNoResponseCheckbox from '../components/ClientNoResponseCheckbox';
 import ClientChequesEcheancierButton from '../components/ClientChequesEcheancierButton';
@@ -13,13 +17,10 @@ import {
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery, useDeleteContactMutation, useUpdateContactMutation } from '../store/api/contactsApi';
-import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetClientsQuery, useGetContactQuery, useDeleteContactMutation, useUpdateContactMutation } from '../store/api/contactsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
-import MobileContactPrintModal from '../components/MobileContactPrintModal';
-import { useMobilePrintModal } from '../hooks/useMobilePrintModal';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import ContactGroupManageModal from '../components/ContactGroupManageModal';
@@ -276,8 +277,8 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                     <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">—</span>) : null}
                     </td>
-                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
-                    <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
+                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700"><EditableHistoryValue document={b} type={prefix} items={[item]} field="quantite">{qte}</EditableHistoryValue></td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-600"><EditableHistoryValue document={b} type={prefix} items={[item]} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue></td>
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
                     <td className={`px-3 py-2 text-right text-xs ${mouvementCellClass(benefice)}`}>
                       {benefice != null
@@ -298,7 +299,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
       </tbody>
       {!detail && <tfoot className="bg-gray-50 border-t-2 border-gray-200">
         <tr className="divide-x divide-gray-200">
-          <td colSpan={detail ? 8 : 2} className="px-4 py-2.5 text-right font-bold text-gray-600">Total</td>
+          <td colSpan={detail ? 8 : 2} className="px-4 py-2.5 text-right font-bold text-gray-600">Total page</td>
           {detail && <td className="px-3 py-2.5 text-center font-bold text-blue-700 bg-blue-50/20">
             {bons.reduce((s, b) => s + (Array.isArray(b.items) ? b.items.reduce((is: number, i: any) => is + Number(i.quantite || 0), 0) : 0), 0)}
           </td>}
@@ -330,13 +331,13 @@ const MobileBonCards: React.FC<Pick<BonTableProps, 'bons' | 'detail' | 'products
         {detail && items.length > 0 && <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">{groupDisplayItems(items).map(({ item, sourceIndices }) => <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs">
           <p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p>
           <p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p>
-          <div className="mt-2 flex justify-between gap-2"><span>Qté {Number(item.quantite ?? 0)} × {fmt(Number(item.prix_unitaire ?? 0))}</span><strong>{fmt(Number(item.total ?? (Number(item.quantite ?? 0) * Number(item.prix_unitaire ?? 0))))}</strong></div>
+          <div className="mt-2 flex justify-between gap-2"><span>Qté <EditableHistoryValue document={b} type={prefix} items={[item]} field="quantite">{Number(item.quantite ?? 0)}</EditableHistoryValue> × <EditableHistoryValue document={b} type={prefix} items={[item]} field="prix_unitaire">{fmt(Number(item.prix_unitaire ?? 0))}</EditableHistoryValue></span><strong>{fmt(Number(item.total ?? (Number(item.quantite ?? 0) * Number(item.prix_unitaire ?? 0))))}</strong></div>
         </div>)}</div>}
         {detail && b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}
         {detail && b.code_reglement && <p className="mt-1 text-xs text-gray-500">Code règlement : {b.code_reglement}</p>}
       </article>;
     })}
-    <div className="rounded-lg bg-blue-50 px-4 py-3 text-right text-sm font-bold text-blue-900">Total : {fmt(bons.reduce((sum, b) => sum + getBonTableTotal(prefix, b), 0))}</div>
+    <div className="rounded-lg bg-blue-50 px-4 py-3 text-right text-sm font-bold text-blue-900">Total page : {fmt(bons.reduce((sum, b) => sum + getBonTableTotal(prefix, b), 0))}</div>
   </div>
 );
 
@@ -376,16 +377,7 @@ function buildCompletRows(history: any): CompletRow[] {
 
 // Retourne le solde final après toutes les opérations — même calcul que la dernière ligne du tab Complet detail=true
 function computeFinalSoldeCumule(history: any, soldeInitial: number): number {
-  const rows = buildCompletRows(history);
-  if (rows.length === 0) return soldeInitial;
-  const map = buildSoldeCumuleDetail(rows, soldeInitial);
-  const last = rows[rows.length - 1];
-  if (last.kind === 'paiement') {
-    return map.get(`paiement-${last.data.id}`) ?? soldeInitial;
-  }
-  const items: any[] = Array.isArray(last.data.items) ? last.data.items.filter((i: any) => i && i.id) : [];
-  const lastIdx = items.length > 0 ? items.length - 1 : 0;
-  return map.get(`${last.kind}-${last.data.id}-item-${lastIdx}`) ?? soldeInitial;
+  return Number(history?.ledgerTotals?.finalSolde ?? soldeInitial);
 }
 
 function safeNum(v: any): number {
@@ -393,9 +385,6 @@ function safeNum(v: any): number {
   return isNaN(n) ? 0 : n;
 }
 
-function getPaymentTotalWithIgnored(payment: any): number {
-  return safeNum(payment?.montant_total ?? payment?.montant ?? 0);
-}
 
 function getPaymentLineTotal(payment: any): number {
   return Math.max(
@@ -521,6 +510,7 @@ function findHistoryProduct(item: any, products: any[]): any {
 }
 
 function getHistoryVariantLabel(item: any, products: any[]): string {
+  if (item?.variant_name) return item.variant_name;
   const product = findHistoryProduct(item, products);
   const variantId = item?.variant_id ?? item?.variantId;
   if (!product || !variantId) return '—';
@@ -529,6 +519,7 @@ function getHistoryVariantLabel(item: any, products: any[]): string {
 }
 
 function getHistoryUnitLabel(item: any, products: any[]): string {
+  if (item?.unit_name) return item.unit_name;
   const product = findHistoryProduct(item, products);
   const unitId = item?.unit_id ?? item?.unitId;
   if (!product || !unitId) return '—';
@@ -572,6 +563,7 @@ function filterCompletRowsBySearch(rows: CompletRow[], products: any[], search: 
 }
 
 function computeHistoryItemBenefice(item: any, products: any[]): number | null {
+  if (item?.ledgerBenefice != null) return Number(item.ledgerBenefice);
   if (!item) return null;
   if (isProductNonCalcule(item, products)) return 0;
 
@@ -648,91 +640,23 @@ function getItemClientRemiseTotal(item: any, remises: any[]): number {
 }
 
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
-  const result = new Map<string, number>();
-  let running = isNaN(soldeInitial) ? 0 : soldeInitial;
-  for (const row of rows) {
-    const montant = row.kind === 'paiement'
-      ? getPaymentTotalWithIgnored(row.data)
-      : getBonTotalForSolde(row.kind, row.data);
-    if (row.kind === 'sortie') {
-      running += montant;
-    } else if (row.kind === 'avoir' || row.kind === 'paiement') {
-      running -= montant;
-    }
-    const key = `${row.kind}-${row.data.id}`;
-    result.set(key, running);
-  }
-  return result;
+  void soldeInitial;
+  return ledgerBalanceMap(rows, false);
 }
 
 // Builds a per-item solde cumulé map in detail mode.
 // Key = `${kind}-${bonId}-item-${iIdx}`, paiement keeps `paiement-${id}`.
 // Each item contributes its own item.total (not the whole bon total).
 function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<string, number> {
-  const result = new Map<string, number>();
-  let running = isNaN(soldeInitial) ? 0 : soldeInitial;
-  for (const row of rows) {
-    if (row.kind === 'paiement') {
-      const montant = getPaymentTotalWithIgnored(row.data);
-      running -= montant;
-      result.set(`paiement-${row.data.id}`, running);
-    } else {
-      const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
-      if (items.length === 0) {
-        const montant = getBonTotalForSolde(row.kind, row.data);
-        if (row.kind === 'sortie') running += montant;
-        else running -= montant;
-        result.set(`${row.kind}-${row.data.id}-item-0`, running);
-      } else {
-        const bonMontant = getBonTotalForSolde(row.kind, row.data);
-        const itemsSum = items.reduce((s: number, i: any) => {
-          return s + safeNum(i.total ?? (safeNum(i.quantite) * safeNum(i.prix_unitaire)));
-        }, 0);
-        items.forEach((item: any, iIdx: number) => {
-          const rawTotal = safeNum(item.total ?? (safeNum(item.quantite) * safeNum(item.prix_unitaire)));
-          const total = itemsSum === 0
-            ? (iIdx === items.length - 1 ? bonMontant : 0)
-            : rawTotal;
-          if (row.kind === 'sortie') running += total;
-          else running -= total;
-          result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, running);
-        });
-      }
-    }
-  }
-  return result;
+  void soldeInitial;
+  return ledgerBalanceMap(rows, true);
 }
 
 // Le solde remise cumulé du détail client suit les colonnes visibles:
 // remise du bon (colonne Remise Abonné) + remise client_remises.
 function buildRemiseCumuleDetail(rows: CompletRow[], remises: any[] = []): Map<string, number> {
-  const result = new Map<string, number>();
-  let running = 0;
-
-  for (const row of rows) {
-    if (row.kind === 'paiement') {
-      result.set(`paiement-${row.data.id}`, running);
-      continue;
-    }
-
-    const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
-    if (items.length === 0) {
-      result.set(`${row.kind}-${row.data.id}-item-0`, running);
-      continue;
-    }
-
-    items.forEach((item: any, iIdx: number) => {
-      const remiseAbonne = getDisplayRemiseAbonneTotal(row.kind, item, remises, row.data.id);
-      const remiseClient = getDisplayRemiseClientTotal(item, remises, row.data.id);
-      const totalRowRemise = remiseAbonne + remiseClient;
-      if (totalRowRemise > 0) {
-        running += totalRowRemise;
-        result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, Number(running.toFixed(3)));
-      }
-    });
-  }
-
-  return result;
+  void remises;
+  return ledgerBalanceMap(rows, true, true);
 }
 
 interface CompletTableProps {
@@ -1150,9 +1074,9 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">—</span>) : null}
                     </td>
                     {/* Qté */}
-                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
+                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700"><EditableHistoryValue document={b} type={row.kind} items={[item]} field="quantite">{qte}</EditableHistoryValue></td>
                     {/* Prix unit. */}
-                    <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-600"><EditableHistoryValue document={b} type={row.kind} items={[item]} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue></td>
                     {/* Remise Abonné */}
                     <td className="px-3 py-2 text-right text-xs">
                       {remiseAbonne > 0 ? <span className="text-blue-600 font-medium">{fmtRemise(remiseAbonne)}</span> : <span className="text-gray-300">—</span>}
@@ -1275,7 +1199,7 @@ const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeIn
           {onToggleSelect && <label className="flex min-h-9 items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedIds?.has(id) ?? false} onChange={() => onToggleSelect(id)} className="h-4 w-4 accent-blue-600" /> Bon</label>}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-200 pt-3"><div><p className="text-xs text-gray-500">Montant</p><p className="font-bold text-gray-900">{fmt(amount)}</p></div><div className="text-right"><p className="text-xs text-gray-500">Solde cumulé</p><p className={`font-bold ${(balances.get(lastKey) ?? 0) > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{fmt(balances.get(lastKey) ?? 0)}</p></div></div>
-        {payment ? <div className="mt-3 space-y-1 text-xs text-gray-600"><p>Mode : {b.mode_paiement ?? '—'}</p><p>RIB / Réf : {b.code_reglement || b.reference_virement || b.reference || '—'}</p><p>Montant ignoré : {fmt(Number(b.montant_ignorer ?? 0))}</p>{b.date_echeance && <p>Échéance : {fmtDate(b.date_echeance)}</p>}</div> : <><p className="mt-3 text-xs text-gray-600">Statut : <span className={`rounded px-2 py-0.5 ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span></p>{detail && <div className="mt-3 space-y-2">{items.length === 0 ? <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedItemIds?.has(`${id}-item-0`) ?? false} onChange={() => onToggleItem?.(`${id}-item-0`)} className="h-4 w-4 accent-purple-600" /> Ligne sans produit</label> : groupDisplayItems(items).map(({ item, sourceIndices, sourceItems }) => { const head = sourceItems[0]; const eligibleId = `${row.kind}-${b.id}-item-${head?.id}`; const totalQte = sourceItems.reduce((sum, src) => sum + (Number(src.quantite ?? 0) || 0), 0); const price = remiseEditor?.remisePrices[eligibleId] ?? ''; const totalRem = (Number(price) || 0) * totalQte; return <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs"><div className="flex items-start gap-2"><input type="checkbox" checked={sourceIndices.every(i => selectedItemIds?.has(`${id}-item-${i}`))} onChange={() => onToggleAllItems?.(sourceIndices.map(i => `${id}-item-${i}`))} className="mt-0.5 h-4 w-4 shrink-0 accent-purple-600" aria-label="Sélectionner cette ligne pour impression" /><div className="min-w-0 flex-1"><p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p><p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p><p className="mt-2">Qté {Number(item.quantite ?? 0)} × {fmt(Number(item.prix_unitaire ?? 0))}</p><p className="mt-1 font-bold text-gray-900">{fmt(Number(item.total ?? 0))}</p>{remiseEditor?.showRemiseMode && row.kind === 'sortie' && head?.id && <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2"><label className="text-xs font-semibold text-orange-800">Prix Remise<input type="number" step="0.001" min="0" placeholder="0.000" value={price === '' ? '' : String(price)} onChange={e => remiseEditor.setItemPrice(eligibleId, parseFloat(e.target.value) || 0)} className="mt-1 w-full rounded border border-orange-300 bg-white px-2 py-2 text-right text-sm focus:ring-2 focus:ring-orange-500" /></label><div className="text-right"><p className="text-xs font-semibold text-orange-800">Total Remise</p><p className="mt-2 font-bold text-emerald-700">{totalRem > 0 ? `${totalRem.toFixed(3)} DH` : '—'}</p></div></div>}</div></div></div>; })}</div>}{b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}</>}
+        {payment ? <div className="mt-3 space-y-1 text-xs text-gray-600"><p>Mode : {b.mode_paiement ?? '—'}</p><p>RIB / Réf : {b.code_reglement || b.reference_virement || b.reference || '—'}</p><p>Montant ignoré : {fmt(Number(b.montant_ignorer ?? 0))}</p>{b.date_echeance && <p>Échéance : {fmtDate(b.date_echeance)}</p>}</div> : <><p className="mt-3 text-xs text-gray-600">Statut : <span className={`rounded px-2 py-0.5 ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span></p>{detail && <div className="mt-3 space-y-2">{items.length === 0 ? <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedItemIds?.has(`${id}-item-0`) ?? false} onChange={() => onToggleItem?.(`${id}-item-0`)} className="h-4 w-4 accent-purple-600" /> Ligne sans produit</label> : groupDisplayItems(items).map(({ item, sourceIndices, sourceItems }) => { const head = sourceItems[0]; const eligibleId = `${row.kind}-${b.id}-item-${head?.id}`; const totalQte = sourceItems.reduce((sum, src) => sum + (Number(src.quantite ?? 0) || 0), 0); const price = remiseEditor?.remisePrices[eligibleId] ?? ''; const totalRem = (Number(price) || 0) * totalQte; return <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs"><div className="flex items-start gap-2"><input type="checkbox" checked={sourceIndices.every(i => selectedItemIds?.has(`${id}-item-${i}`))} onChange={() => onToggleAllItems?.(sourceIndices.map(i => `${id}-item-${i}`))} className="mt-0.5 h-4 w-4 shrink-0 accent-purple-600" aria-label="Sélectionner cette ligne pour impression" /><div className="min-w-0 flex-1"><p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p><p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p><p className="mt-2">Qté <EditableHistoryValue document={b} type={row.kind} items={[item]} field="quantite">{Number(item.quantite ?? 0)}</EditableHistoryValue> × <EditableHistoryValue document={b} type={row.kind} items={[item]} field="prix_unitaire">{fmt(Number(item.prix_unitaire ?? 0))}</EditableHistoryValue></p><p className="mt-1 font-bold text-gray-900">{fmt(Number(item.total ?? 0))}</p>{remiseEditor?.showRemiseMode && row.kind === 'sortie' && head?.id && <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2"><label className="text-xs font-semibold text-orange-800">Prix Remise<input type="number" step="0.001" min="0" placeholder="0.000" value={price === '' ? '' : String(price)} onChange={e => remiseEditor.setItemPrice(eligibleId, parseFloat(e.target.value) || 0)} className="mt-1 w-full rounded border border-orange-300 bg-white px-2 py-2 text-right text-sm focus:ring-2 focus:ring-orange-500" /></label><div className="text-right"><p className="text-xs font-semibold text-orange-800">Total Remise</p><p className="mt-2 font-bold text-emerald-700">{totalRem > 0 ? `${totalRem.toFixed(3)} DH` : '—'}</p></div></div>}</div></div></div>; })}</div>}{b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}</>}
         {payment && onCompletDragEnd && <div className="mt-3 flex gap-2 border-t border-emerald-100 pt-3"><button type="button" disabled={rowIndex === 0} onClick={() => movePayment(rowIndex, rowIndex - 1)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs font-medium text-emerald-800 disabled:opacity-40">Monter</button><button type="button" disabled={rowIndex === displayed.length - 1} onClick={() => movePayment(rowIndex, rowIndex + 1)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs font-medium text-emerald-800 disabled:opacity-40">Descendre</button></div>}
       </article>;
     })}
@@ -1287,7 +1211,6 @@ const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeIn
 type PageTab = 'complet' | 'sorties' | 'avoirs' | 'paiements';
 
 const ClientDetailPage: React.FC = () => {
-  const isMobileDetail = useMobilePrintModal();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const clientId = Number(id);
@@ -1308,8 +1231,10 @@ const ClientDetailPage: React.FC = () => {
   const [updateContact, { isLoading: isSavingMaalemRemise }] = useUpdateContactMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const [maalemRemiseOverride, setMaalemRemiseOverride] = useState<boolean | null>(null);
-  const { currentData: history, isLoading: loadingHistory, isFetching: fetchingHistory, isError: historyError, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
-  const { data: products = [] } = useGetProductsQuery();
+  const [paySort, setPaySort] = useState<{ col: 'date' | 'montant' | 'montant_ignorer' | 'rib'; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'asc' });
+  const pagedHistory = usePagedContactHistory(clientId, 'client', tab, filterFrom, filterTo, productSearch, paySort);
+  const { history, isLoading: loadingHistory, isFetching: fetchingHistory, isError: historyError, refetch: refetchHistory } = pagedHistory;
+  const products = useMemo<any[]>(() => [], []);
   const isLoading = loadingContact || loadingHistory || (!contact && fetchingContact) || (!history && fetchingHistory);
 
   useEffect(() => {
@@ -1506,7 +1431,6 @@ const ClientDetailPage: React.FC = () => {
   const hasDateFilter = !!filterFrom || !!filterTo;
 
   // ── sort for paiements ──
-  const [paySort, setPaySort] = useState<{ col: 'date' | 'montant' | 'montant_ignorer' | 'rib'; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'asc' });
   const togglePaySort = (col: typeof paySort.col) =>
     setPaySort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
 
@@ -1543,10 +1467,7 @@ const ClientDetailPage: React.FC = () => {
     });
   }, [history, paySort, filterFrom, filterTo]);
 
-  const totalMontantIgnorerPaiements = useMemo(
-    () => paiements.reduce((s: number, p: any) => s + Number(p.montant_ignorer ?? 0), 0),
-    [paiements]
-  );
+  const totalMontantIgnorerPaiements = Number(history?.ledgerTotals?.totalMontantIgnorer ?? 0);
 
   // completRows = TOUTES les rows (jamais filtrées) — le solde cumulé reste exact
   const normalizedProductSearch = useMemo(() => productSearch.trim().toLowerCase(), [productSearch]);
@@ -1557,13 +1478,8 @@ const ClientDetailPage: React.FC = () => {
     () => filterCompletRowsBySearch(rawCompletRows, products, normalizedProductSearch),
     [rawCompletRows, products, normalizedProductSearch]
   );
-  const totalBenefice = useMemo(() => {
-    return rawCompletRows.reduce((sum: number, row: CompletRow) => {
-      if (row.kind === 'paiement') return sum;
-      const items: any[] = Array.isArray(row.data?.items) ? row.data.items.filter((item: any) => item && item.id) : [];
-      return sum + items.reduce((itemSum: number, item: any) => itemSum + (computeHistoryItemBenefice(item, products) ?? 0), 0);
-    }, 0);
-  }, [rawCompletRows, products]);
+  const totalBenefice = Number(history?.ledgerTotals?.totalBenefice ?? 0);
+
   const filteredSorties = useMemo(
     () => filterHistoryBonsBySearch(sorties, products, normalizedProductSearch),
     [sorties, products, normalizedProductSearch]
@@ -1643,10 +1559,10 @@ const ClientDetailPage: React.FC = () => {
   const detailEnabled = detail || hasProductSearch;
 
   const tabs: { id: PageTab; label: string; count: number }[] = [
-    { id: 'complet', label: 'Complet', count: visibleIds ? visibleIds.size : completRows.length },
-    { id: 'sorties', label: 'Bons Sortie', count: filteredSorties.length },
-    { id: 'avoirs', label: 'Avoirs Client', count: filteredAvoirs.length },
-    { id: 'paiements', label: 'Paiements', count: paiements.length },
+    { id: 'complet', label: 'Complet', count: (history?.ledgerCounts?.complet ?? 0) },
+    { id: 'sorties', label: 'Bons Sortie', count: (history?.ledgerCounts?.sorties ?? 0) },
+    { id: 'avoirs', label: 'Avoirs Client', count: (history?.ledgerCounts?.avoirs ?? 0) },
+    { id: 'paiements', label: 'Paiements', count: (history?.ledgerCounts?.paiements ?? 0) },
   ];
 
   const [printOpen, setPrintOpen] = useState(false);
@@ -1689,13 +1605,19 @@ const ClientDetailPage: React.FC = () => {
     });
   };
 
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSelectedItemIds(new Set());
+  }, [pagedHistory.selectionKey]);
+
   const hasSelectionScopedPrint = selectedIds.size > 0 || selectedItemIds.size > 0;
   const hasScopedPrint = hasDateFilter || hasSelectionScopedPrint;
 
+  const printSource = hasSelectionScopedPrint ? history : (pagedHistory.printHistory ?? history);
   const printProductHistory = useMemo(() => {
-    if (!history || !contact) return [];
+    if (!printSource || !contact) return [];
     // soldeCumuleMap calculé sur TOUTES les données (solde cumulé pas recalculé)
-    const allRows = buildCompletRows(history);
+    const allRows = buildCompletRows(printSource);
     const soldeCumuleMap = buildSoldeCumuleDetail(allRows, contact.solde ?? 0);
     const dateFilteredRows = allRows
       .filter(row => !hasDateFilter || inDateRange(getRowDate(row)));
@@ -1803,10 +1725,10 @@ const ClientDetailPage: React.FC = () => {
       else if (type === 'paiement' || type === 'avoir') scopedSolde += amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
-  }, [history, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint, products]);
+  }, [printSource, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint, products]);
 
   const printTotals = useMemo(() => {
-    if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
+    if (!printSource || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
     const includeInitialInDebit = !hasSelectionScopedPrint;
     const initialSoldeForDebit = Math.abs(Number(contact.solde ?? 0) || 0);
     const totalQty = printProductHistory
@@ -1823,7 +1745,7 @@ const ClientDetailPage: React.FC = () => {
       .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
     const finalSolde = printProductHistory.length > 0
       ? Number(printProductHistory[printProductHistory.length - 1]?.soldeCumulatif ?? 0)
-      : -computeFinalSoldeCumule(history, contact.solde ?? 0);
+      : -computeFinalSoldeCumule(printSource, contact.solde ?? 0);
     return {
       totalQty,
       totalAmount: totalVentes,
@@ -1831,7 +1753,7 @@ const ClientDetailPage: React.FC = () => {
       totalDebit: totalVentes + (includeInitialInDebit ? initialSoldeForDebit : 0),
       totalCredit: totalPaiements + totalAvoirs,
     };
-  }, [history, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
+  }, [printSource, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
 
 
 
@@ -1860,33 +1782,15 @@ const ClientDetailPage: React.FC = () => {
     );
   }
 
-  if (isMobileDetail && contact) {
-    return (
-        <MobileContactPrintModal
-          historyKind="client"
-          isOpen
-          onClose={() => navigate('/clients')}
-          closeLabel="Retour à la liste"
-          contact={contact}
-          mode="products"
-          transactions={[]}
-          productHistory={printProductHistory}
-          dateFrom={filterFrom || undefined}
-          dateTo={filterTo || undefined}
-          skipInitialRow={hasDateFilter || hasSelectionScopedPrint}
-          hideCumulative={false}
-          totalQty={printTotals.totalQty}
-          totalAmount={printTotals.totalAmount}
-          finalSolde={printTotals.finalSolde}
-          totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
-          totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
-          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties)' : '(Sorties + Solde initial)'}
-        />
-    );
-  }
 
   return (
+    <ContactHistoryEditor key={clientId}>
     <div className="space-y-4">
+      <ContactHistoryPagination history={pagedHistory.pagination} limit={pagedHistory.limit} busy={pagedHistory.isFetching || pagedHistory.printLoading} onPage={pagedHistory.setPage} onLimit={pagedHistory.setLimit} />
+      {pagedHistory.isFetching && <p role="status" className="text-sm text-gray-500">Actualisation de l’historique…</p>}
+      {pagedHistory.printLoading && <p role="status" className="text-sm text-blue-700">Préparation de l’historique complet pour impression…</p>}
+      {pagedHistory.printError && <p role="alert" className="text-sm text-red-700">Impossible de préparer l’impression complète. Réessayez.</p>}
+
       {/* Back + header */}
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -1945,8 +1849,8 @@ const ClientDetailPage: React.FC = () => {
           <ChevronDown className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={() => setPrintOpen(true)}
-          disabled={isLoading || !history}
+          onClick={async () => { if (hasSelectionScopedPrint || await pagedHistory.preparePrint()) setPrintOpen(true); }}
+          disabled={isLoading || !history || pagedHistory.isFetching || pagedHistory.printLoading}
           className="flex items-center gap-2 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
         >
           <Printer className="w-4 h-4" />
@@ -2106,7 +2010,7 @@ const ClientDetailPage: React.FC = () => {
                   products={products}
                   remises={history?.remises ?? []}
                   visibleIds={visibleIds}
-                  showInitialRow={!hasDateFilter}
+                  showInitialRow={!hasDateFilter && !hasProductSearch && (history?.historyPagination?.page ?? 1) === 1}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}
@@ -2115,7 +2019,7 @@ const ClientDetailPage: React.FC = () => {
                   onToggleAllItems={toggleAllItems}
                   onCompletDragEnd={handleCompletDragEnd}
                   remiseEditor={remiseEditor}
-                /></div><MobileCompletCards rows={completRows} detail={detailEnabled} soldeInitial={contact?.solde ?? 0} products={products} remises={history?.remises ?? []} visibleIds={visibleIds} showInitialRow={!hasDateFilter} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onToggleAllItems={toggleAllItems} onCompletDragEnd={handleCompletDragEnd} remiseEditor={remiseEditor} /></>
+                /></div><MobileCompletCards rows={completRows} detail={detailEnabled} soldeInitial={contact?.solde ?? 0} products={products} remises={history?.remises ?? []} visibleIds={visibleIds} showInitialRow={!hasDateFilter && !hasProductSearch && (history?.historyPagination?.page ?? 1) === 1} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onToggleAllItems={toggleAllItems} onCompletDragEnd={handleCompletDragEnd} remiseEditor={remiseEditor} /></>
           )}
 
           {/* ── Bons Sortie ── */}
@@ -2201,12 +2105,12 @@ const ClientDetailPage: React.FC = () => {
                   </Droppable>
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr>
-                      <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-600">Total</td>
+                      <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-600">Total page</td>
                       <td className="px-4 py-2 text-right font-bold text-green-700">
                         {fmt(paiements.reduce((s: number, p: any) => s + getPaymentLineTotal(p), 0))}
                       </td>
                       <td className="px-4 py-2 text-right font-bold text-orange-700">
-                        {fmt(totalMontantIgnorerPaiements)}
+                        {fmt(paiements.reduce((sum: number, payment: any) => sum + Number(payment.montant_ignorer ?? 0), 0))}
                       </td>
                     </tr>
                   </tfoot>
@@ -2240,6 +2144,7 @@ const ClientDetailPage: React.FC = () => {
       )}
 
     </div>
+    </ContactHistoryEditor>
   );
 };
 
