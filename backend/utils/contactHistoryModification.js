@@ -29,28 +29,31 @@ export async function attachContactHistoryModification(db, documents) {
   let rows;
   try {
     [rows] = await db.query(`
-      SELECT a.table_name, JSON_UNQUOTE(JSON_EXTRACT(a.pk, '$.id')) AS document_id,
+      SELECT a.id, a.operation, a.request_id,
+             a.table_name, JSON_UNQUOTE(JSON_EXTRACT(a.pk, '$.id')) AS document_id,
              e.nom_complet AS last_modified_by_name, a.changed_at AS last_modified_at
       FROM audit_logs a
-      JOIN (
-        SELECT MAX(a.id) AS id
-        FROM audit_logs a
-        WHERE a.operation = 'U' AND (${conditions.join(' OR ')})
-          AND NOT EXISTS (
-            SELECT 1 FROM audit_logs creation
-            WHERE creation.table_name = a.table_name AND creation.operation = 'I'
-              AND creation.pk = a.pk AND creation.request_id = a.request_id
-          )
-        GROUP BY a.table_name, JSON_UNQUOTE(JSON_EXTRACT(a.pk, '$.id'))
-      ) latest ON latest.id = a.id
       LEFT JOIN employees e ON e.id = a.user_id
+      WHERE a.operation IN ('I', 'U') AND (${conditions.join(' OR ')})
+      ORDER BY a.id DESC
     `, params);
   } catch (error) {
     // Older installations can lack the optional audit table.
     if (error?.code === 'ER_NO_SUCH_TABLE') return;
     throw error;
   }
-  const byDocument = new Map(rows.map(row => [`${row.table_name}:${row.document_id}`, row]));
+  // Read the selected documents' audit rows once. A correlated NOT EXISTS
+  // rescanned unindexed creation records for every update on large audit tables.
+  const creationRequests = new Set(rows
+    .filter(row => row.operation === 'I' && row.request_id != null)
+    .map(row => JSON.stringify([row.table_name, row.document_id, row.request_id])));
+  const byDocument = new Map();
+  for (const row of rows) {
+    if (row.operation !== 'U') continue;
+    if (row.request_id != null && creationRequests.has(JSON.stringify([row.table_name, row.document_id, row.request_id]))) continue;
+    const key = `${row.table_name}:${row.document_id}`;
+    if (!byDocument.has(key)) byDocument.set(key, row);
+  }
   for (const document of documents) {
     const entry = byDocument.get(`${TABLE_BY_TYPE[document.type]}:${document.id}`);
     if (!entry) continue;

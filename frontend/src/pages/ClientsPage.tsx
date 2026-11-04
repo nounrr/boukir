@@ -1304,13 +1304,13 @@ const ClientDetailPage: React.FC = () => {
   });
   const canUseComments = collaborationPermissions?.commentaires_clients === true;
   const canUseReminders = collaborationPermissions?.rappels_clients === true;
-  const { data: contact, isLoading: loadingContact, refetch: refetchContact } = useGetContactQuery(clientId);
+  const { currentData: contact, isLoading: loadingContact, isFetching: fetchingContact, isError: contactError, refetch: refetchContact } = useGetContactQuery(clientId);
   const [updateContact, { isLoading: isSavingMaalemRemise }] = useUpdateContactMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const [maalemRemiseOverride, setMaalemRemiseOverride] = useState<boolean | null>(null);
-  const { data: history, isLoading: loadingHistory, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
+  const { currentData: history, isLoading: loadingHistory, isFetching: fetchingHistory, isError: historyError, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
   const { data: products = [] } = useGetProductsQuery();
-  const isLoading = loadingContact || loadingHistory;
+  const isLoading = loadingContact || loadingHistory || (!contact && fetchingContact) || (!history && fetchingHistory);
 
   useEffect(() => {
     if (canUseReminders) refetchContact();
@@ -1834,6 +1834,19 @@ const ClientDetailPage: React.FC = () => {
   }, [history, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
 
 
+
+  if ((contactError || historyError) && !isLoading) {
+    return (
+      <div role="alert" className="space-y-4 rounded-xl border border-red-200 bg-red-50 p-6">
+        <h1 className="text-lg font-semibold text-red-900">Impossible de charger le détail du client</h1>
+        <p className="text-red-800">Le serveur n’a pas répondu à temps ou une erreur est survenue. Réessayez le chargement.</p>
+        <div className="flex gap-3">
+          <button type="button" className="rounded-lg bg-red-700 px-4 py-2 text-white" onClick={() => { refetchContact(); refetchHistory(); }}>Réessayer</button>
+          <button type="button" className="rounded-lg border border-red-300 px-4 py-2" onClick={() => navigate('/clients')}>Retour aux clients</button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

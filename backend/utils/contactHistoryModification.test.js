@@ -12,8 +12,8 @@ test('keeps documents with overlapping IDs and different types separate', async 
     calls++;
     assert.deepEqual(params, ['bons_sortie', '12', 'bons_commande', '12', 'avoirs_client', '13']);
     return [[
-      { table_name: 'bons_sortie', document_id: '12', last_modified_by_name: 'Tawfik', last_modified_at: '2026-11-03 12:00:00' },
-      { table_name: 'bons_commande', document_id: '12', last_modified_by_name: 'Autre employé', last_modified_at: '2026-11-03 13:00:00' },
+      { operation: 'U', table_name: 'bons_sortie', document_id: '12', last_modified_by_name: 'Tawfik', last_modified_at: '2026-11-03 12:00:00' },
+      { operation: 'U', table_name: 'bons_commande', document_id: '12', last_modified_by_name: 'Autre employé', last_modified_at: '2026-11-03 13:00:00' },
     ]];
   } }, documents);
   assert.equal(calls, 1);
@@ -38,6 +38,23 @@ test('ignores payments, unsupported types, and invalid IDs without querying', as
   const documents = [{ type: 'Paiement', id: 1 }, { type: 'Sortie', id: -1 }];
   await attachContactHistoryModification({ query: () => assert.fail('Unexpected database query') }, documents);
   assert.ok(documents.every(document => document.last_modified_by_name === null));
+});
+
+test('skips creation updates and keeps the latest genuine edit, including null request IDs', async () => {
+  const documents = [{ type: 'Sortie', id: 12 }, { type: 'Commande', id: 12 }];
+  const row = (id, operation, request_id, table_name, name) => ({
+    id, operation, request_id, table_name, document_id: '12', last_modified_by_name: name,
+  });
+  await attachContactHistoryModification({ query: async () => [[
+    row(6, 'U', 'create', 'bons_sortie', 'Creation author'),
+    row(5, 'U', null, 'bons_commande', 'Null request edit'),
+    row(4, 'U', 'edit', 'bons_sortie', 'Latest editor'),
+    row(3, 'U', 'older', 'bons_sortie', 'Older editor'),
+    row(2, 'I', null, 'bons_commande', 'Creation author'),
+    row(1, 'I', 'create', 'bons_sortie', 'Creation author'),
+  ]] }, documents);
+  assert.equal(documents[0].last_modified_by_name, 'Latest editor');
+  assert.equal(documents[1].last_modified_by_name, 'Null request edit');
 });
 
 test('SQL attribution excludes creation and resolves edits in the same second', {

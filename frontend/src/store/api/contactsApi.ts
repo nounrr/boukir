@@ -91,7 +91,7 @@ const contactsApi = api.injectEndpoints({
     }),
 
     getContact: builder.query<Contact, number>({
-      query: (id) => ({ url: `/contacts/${id}` }),
+      query: (id) => ({ url: `/contacts/${id}`, timeout: 30000 }),
       providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
     }),
 
@@ -102,6 +102,7 @@ const contactsApi = api.injectEndpoints({
         const limit = typeof arg === 'number' ? undefined : arg.limit;
         return {
           url: `/contacts/${id}/history`,
+          timeout: 60000,
           params: {
             ...(page ? { page } : {}),
             ...(limit ? { limit } : {}),

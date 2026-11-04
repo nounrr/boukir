@@ -19,6 +19,8 @@ import ChiffreAffairesMonthlyCharts from '../components/ChiffreAffairesMonthlyCh
 import { useGetMyClientCollaborationPermissionsQuery } from '../store/api/clientCollaborationPermissionsApi';
 import { useGetMyAbsencePermissionsQuery } from '../store/api/absencesApi';
 
+const VehicleConsumptionCharts = React.lazy(() => import('../components/VehicleConsumptionCharts'));
+
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -367,6 +369,11 @@ const DashboardPage: React.FC = () => {
       {user?.role === 'PDG' && (
         <div className="mt-6">
           <ChiffreAffairesMonthlyCharts compact />
+          <div className="mt-6">
+            <React.Suspense fallback={<div role="status" className="rounded-xl bg-white p-5 text-sm text-gray-500">Chargement des graphiques véhicules…</div>}>
+              <VehicleConsumptionCharts />
+            </React.Suspense>
+          </div>
         </div>
       )}
 
