@@ -1842,7 +1842,7 @@ const ClientDetailPage: React.FC = () => {
         <p className="text-red-800">Le serveur n’a pas répondu à temps ou une erreur est survenue. Réessayez le chargement.</p>
         <div className="flex gap-3">
           <button type="button" className="rounded-lg bg-red-700 px-4 py-2 text-white" onClick={() => { refetchContact(); refetchHistory(); }}>Réessayer</button>
-          <button type="button" className="rounded-lg border border-red-300 px-4 py-2" onClick={() => navigate('/clients')}>Retour aux clients</button>
+          <button type="button" className="rounded-lg border border-red-300 px-4 py-2" onClick={() => navigate('/clients-copy')}>Retour aux clients</button>
         </div>
       </div>
     );
@@ -1865,7 +1865,7 @@ const ClientDetailPage: React.FC = () => {
         <MobileContactPrintModal
           historyKind="client"
           isOpen
-          onClose={() => navigate('/clients')}
+          onClose={() => navigate('/clients-copy')}
           closeLabel="Retour à la liste"
           contact={contact}
           mode="products"
@@ -1890,7 +1890,7 @@ const ClientDetailPage: React.FC = () => {
       {/* Back + header */}
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={() => navigate('/clients')}
+          onClick={() => navigate('/clients-copy')}
           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
@@ -2393,7 +2393,7 @@ const ClientsListPage: React.FC = () => {
       currentPage: search === debouncedSearch ? currentPage : 1,
     };
     try { sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify(stateToSave)); } catch { /* Continuer la navigation. */ }
-    if (navigateInApp) navigate(`/clients/${id}`);
+    if (navigateInApp) navigate(`/clients-copy/${id}`);
   };
 
   const handleCreate = () => {
@@ -2870,7 +2870,7 @@ const ClientsListPage: React.FC = () => {
     const commentCount = commentCounts[id]?.total ?? 0;
     return <article key={key} className={`rounded-xl border p-4 shadow-sm ${noResponse ? 'border-orange-300 bg-orange-100' : blocked ? 'border-red-200 bg-red-50/60' : 'border-gray-200 bg-white'}`}>
       <div className="mb-2"><ClientNoResponseCheckbox client={client} showLabel /></div>
-      <div className="flex items-start gap-3"><input type="checkbox" checked={selectedListIds.has(id)} onChange={() => toggleListRowSelection(id)} aria-label={`Sélectionner ${client.nom_complet || client.societe || id} pour impression`} className="mt-1 h-5 w-5 shrink-0 accent-blue-600" /><div className="min-w-0 flex-1"><Link to={`/clients/${id}`} onClick={() => handleRowClick(id, false)} className="text-left text-base font-bold leading-tight text-gray-900 underline-offset-2 hover:underline">{client.nom_complet || client.societe || `Client #${id}`}</Link><p className="mt-1 font-mono text-xs text-gray-500">ID {id}{client.reference && ` · Réf ${client.reference}`}</p></div>{blocked && <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Bloqué</span>}</div>
+      <div className="flex items-start gap-3"><input type="checkbox" checked={selectedListIds.has(id)} onChange={() => toggleListRowSelection(id)} aria-label={`Sélectionner ${client.nom_complet || client.societe || id} pour impression`} className="mt-1 h-5 w-5 shrink-0 accent-blue-600" /><div className="min-w-0 flex-1"><Link to={`/clients-copy/${id}`} onClick={() => handleRowClick(id, false)} className="text-left text-base font-bold leading-tight text-gray-900 underline-offset-2 hover:underline">{client.nom_complet || client.societe || `Client #${id}`}</Link><p className="mt-1 font-mono text-xs text-gray-500">ID {id}{client.reference && ` · Réf ${client.reference}`}</p></div>{blocked && <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Bloqué</span>}</div>
       {client.societe && <p className="mt-3 flex items-start gap-2 text-sm text-gray-700"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />{client.societe}</p>}
       <div className="mt-3 space-y-1.5 text-xs text-gray-600">{client.telephone && <a href={`tel:${client.telephone}`} className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-gray-400" />{client.telephone}</a>}{client.email && <a href={`mailto:${client.email}`} className="flex items-center gap-2 break-all"><Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />{client.email}</a>}{client.adresse && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />{client.adresse}</p>}</div>
       <div className="mt-4 rounded-lg bg-blue-50 p-3"><p className="text-xs font-medium text-blue-800">Solde cumulé</p><p className={`text-lg font-bold ${Number(client.total_cumule ?? 0) > 0 ? 'text-red-700' : Number(client.total_cumule ?? 0) < 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{fmt(Number(client.total_cumule ?? 0))}</p><div className="mt-2 grid grid-cols-3 gap-2 border-t border-blue-100 pt-2 text-xs"><div><p className="text-gray-500">Solde</p><strong>{fmt(Number(client.solde ?? 0))}</strong></div><div><p className="text-gray-500">Plafond</p><strong>{client.plafond != null ? fmt(Number(client.plafond)) : '—'}</strong></div><div><p className="text-gray-500">Plafond échéance</p><strong>{client.plafond_echeance != null ? fmt(Number(client.plafond_echeance)) : '—'}</strong></div><div><p className="text-gray-500">Chèques échéanciers <ClientChequesEcheancierButton client={client} /></p><strong className="text-indigo-700">{fmt(Number(client.cheques_echeanciers ?? 0))}</strong></div><div><p className="text-gray-500">Garantie</p><strong>{client.montant_garantie != null ? fmt(Number(client.montant_garantie)) : '—'}</strong></div></div></div>
@@ -2882,7 +2882,7 @@ const ClientsListPage: React.FC = () => {
         </div> : <span className="text-xs text-gray-400">Aucun paiement</span>}
       </div>
       {canUseComments && commentCounts[id]?.dernier_contenu && <p className="mt-3 line-clamp-2 text-xs text-gray-600"><MessageSquare className="mr-1 inline h-3.5 w-3.5 text-indigo-500" />{commentCounts[id].dernier_contenu}</p>}
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">{canUseReminders && <button type="button" onClick={() => setReminderClient(client)} className="min-h-9 rounded-lg border border-amber-200 px-2 text-xs text-amber-800">{client.rappel_date ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} /> : 'Définir rappel'}</button>}{canUseComments && <button type="button" onClick={() => setOpenCommentsClientId(prev => prev === id ? null : id)} className="min-h-9 rounded-lg border border-indigo-200 px-3 text-xs font-medium text-indigo-700">Commentaires {commentCount > 0 && `(${commentCount})`}</button>}<Link to={`/clients/${id}`} onClick={() => handleRowClick(id, false)} className="inline-flex min-h-9 items-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Voir détails</Link><button type="button" onClick={() => handleEdit(client)} className="min-h-9 rounded-lg border border-blue-200 px-3 text-xs font-medium text-blue-700">Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(client)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-700">Supprimer</button>}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">{canUseReminders && <button type="button" onClick={() => setReminderClient(client)} className="min-h-9 rounded-lg border border-amber-200 px-2 text-xs text-amber-800">{client.rappel_date ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} /> : 'Définir rappel'}</button>}{canUseComments && <button type="button" onClick={() => setOpenCommentsClientId(prev => prev === id ? null : id)} className="min-h-9 rounded-lg border border-indigo-200 px-3 text-xs font-medium text-indigo-700">Commentaires {commentCount > 0 && `(${commentCount})`}</button>}<Link to={`/clients-copy/${id}`} onClick={() => handleRowClick(id, false)} className="inline-flex min-h-9 items-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Voir détails</Link><button type="button" onClick={() => handleEdit(client)} className="min-h-9 rounded-lg border border-blue-200 px-3 text-xs font-medium text-blue-700">Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(client)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-700">Supprimer</button>}</div>
       <label className="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={blocked} onChange={() => handleToggleClientBloque(client)} className="h-4 w-4 accent-orange-600" />Client bloqué</label>
       {canUseComments && commentsOpen && <div className="mt-3 border-t border-indigo-100 pt-3"><ContactCommentsSection contactId={id} /></div>}
     </article>;
@@ -3159,8 +3159,8 @@ const ClientsListPage: React.FC = () => {
 
 // ─── Router entry ─────────────────────────────────────────────────────────────
 // App.tsx doit avoir deux routes :
-//   /clients       → <ClientsListPage />
-//   /clients/:id   → <ClientDetailPage />
+//   /clients-copy       → <ClientsListPage />
+//   /clients-copy/:id   → <ClientDetailPage />
 // Ce fichier exporte les deux composants.
 
 export { ClientDetailPage };

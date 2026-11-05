@@ -1655,7 +1655,7 @@ const ChargeDetailPage: React.FC = () => {
         <MobileContactPrintModal
           historyKind="charge"
           isOpen
-          onClose={() => navigate('/charges')}
+          onClose={() => navigate('/charges-copy')}
           closeLabel="Retour à la liste"
           contact={contact}
           mode="products"
@@ -1680,7 +1680,7 @@ const ChargeDetailPage: React.FC = () => {
       {/* Back + header */}
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={() => navigate('/charges')}
+          onClick={() => navigate('/charges-copy')}
           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
@@ -2098,7 +2098,7 @@ const ChargesListPage: React.FC = () => {
       currentPage: search === debouncedSearch ? currentPage : 1,
     };
     try { sessionStorage.setItem(FOURNISSEURS_STATE_KEY, JSON.stringify(stateToSave)); } catch { /* Continuer la navigation. */ }
-    if (navigateInApp) navigate(`/charges/${id}`);
+    if (navigateInApp) navigate(`/charges-copy/${id}`);
   };
 
   const handleCreate = () => {
@@ -2433,7 +2433,7 @@ const ChargesListPage: React.FC = () => {
                     <p>Garantie : <strong className="text-gray-800">{f.montant_garantie != null ? fmt(f.montant_garantie) : '-'}</strong></p>
                   </div>
                   <div className="flex flex-wrap gap-2 border-t border-gray-100 p-3">
-                    <Link to={`/charges/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 min-w-[90px] items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Voir détails</Link>
+                    <Link to={`/charges-copy/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 min-w-[90px] items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Voir détails</Link>
                     <button type="button" onClick={() => handleEdit(f)} className="rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="inline h-4 w-4 mr-1" />Modifier</button>
                     {currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="inline h-4 w-4 mr-1" />Supprimer</button>}
                   </div>

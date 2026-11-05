@@ -1,3 +1,4 @@
+import LegacyContactCopyNotice from './components/LegacyContactCopyNotice';
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { initializeAuth, logout, refreshUser } from './store/slices/authSlice';
@@ -28,6 +29,12 @@ const EmployeeSelfPage = React.lazy(() => import('./pages/EmployeeSelfPage'));
 const EmployeeArchivePage = React.lazy(() => import('./pages/EmployeeArchivePage'));
 const EmployeeDocumentsPage = React.lazy(() => import('./pages/EmployeeDocumentsPage'));
 const StockDepot2Page = React.lazy(() => import('./pages/StockDepot2Page'));
+const ClientsCopyPage = React.lazy(() => import('./pages/client copy'));
+const ClientCopyDetailPage = React.lazy(() => import('./pages/client copy').then(m => ({ default: m.ClientDetailPage })));
+const FournisseursCopyPage = React.lazy(() => import('./pages/fournisseur copy'));
+const FournisseurCopyDetailPage = React.lazy(() => import('./pages/fournisseur copy').then(m => ({ default: m.FournisseurDetailPage })));
+const ChargesCopyPage = React.lazy(() => import('./pages/charge copy'));
+const ChargeCopyDetailPage = React.lazy(() => import('./pages/charge copy').then(m => ({ default: m.ChargeDetailPage })));
 const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const ClientDetailPage = React.lazy(() => import('./pages/ClientsPage').then((m) => ({ default: m.ClientDetailPage })));
 const FournisseursPage = React.lazy(() => import('./pages/FournisseursPage'));
@@ -399,6 +406,49 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
+
+        <Route path="/clients-copy" element={
+          <ProtectedRoute forbiddenRoles={['Employé']}>
+            <LayoutWithAccessCheck>
+              <LegacyContactCopyNotice label="Client copy"><ClientsCopyPage /></LegacyContactCopyNotice>
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
+        <Route path="/clients-copy/:id" element={
+          <ProtectedRoute forbiddenRoles={['Employé']}>
+            <LayoutWithAccessCheck>
+              <LegacyContactCopyNotice label="Client copy"><ClientCopyDetailPage /></LegacyContactCopyNotice>
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
+        <Route path="/fournisseurs-copy" element={
+          <ProtectedRoute forbiddenRoles={['Employé']}>
+            <LayoutWithAccessCheck>
+              <LegacyContactCopyNotice label="Fournisseur copy"><FournisseursCopyPage /></LegacyContactCopyNotice>
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
+        <Route path="/fournisseurs-copy/:id" element={
+          <ProtectedRoute forbiddenRoles={['Employé']}>
+            <LayoutWithAccessCheck>
+              <LegacyContactCopyNotice label="Fournisseur copy"><FournisseurCopyDetailPage /></LegacyContactCopyNotice>
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
+        <Route path="/charges-copy" element={
+          <ProtectedRoute requiredRoles={['PDG']}>
+            <LayoutWithAccessCheck>
+              <LegacyContactCopyNotice label="Charge copy"><ChargesCopyPage /></LegacyContactCopyNotice>
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
+        <Route path="/charges-copy/:id" element={
+          <ProtectedRoute requiredRoles={['PDG']}>
+            <LayoutWithAccessCheck>
+              <LegacyContactCopyNotice label="Charge copy"><ChargeCopyDetailPage /></LegacyContactCopyNotice>
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
 
         <Route
           path="/clients"

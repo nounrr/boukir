@@ -2,14 +2,18 @@
 
 ## Copies antérieures
 
-Les fichiers suivants sont des copies intégrales prises avant cette modification :
+Les fichiers suivants proviennent du commit Git `5d32677`, avant cette modification :
 
 - `frontend/src/pages/client copy.tsx` : ancien `ClientsPage.tsx`.
 - `frontend/src/pages/fournisseur copy.tsx` : ancien `FournisseursPage.tsx`.
 - `frontend/src/pages/charge copy.tsx` : ancien `ChargesPage.tsx`.
 
-Ils ne sont pas importés par l'application. Les tests de régression exécutent leurs
-fonctions de calcul afin de comparer les anciens soldes détaillés aux nouveaux.
+Ils sont accessibles depuis le menu Tiers sous « Client copy », « Fournisseur
+copy » et « Charge copy », avec les routes `/clients-copy`, `/fournisseurs-copy`
+et `/charges-copy` et leurs détails `/:id`. Seuls les chemins de navigation dans
+ces fichiers ont été adaptés pour rester dans la copie. Les calculs et requêtes
+d'origine sont conservés. Les tests de régression exécutent leurs fonctions de
+calcul afin de comparer les anciens soldes détaillés aux nouveaux.
 
 ## Contrat de calcul
 
@@ -45,6 +49,10 @@ bon. Les dates, la recherche produit, les onglets et le tri des paiements sont
 appliqués avant le découpage. La sélection est effacée au changement de page ou
 de filtre. Les sous-totaux de tableaux sont ceux de la page affichée.
 
+Dans le détail client, la pagination est intégrée au pied du tableau et la
+dernière page est demandée par défaut (`page=last`). Les boutons permettent ensuite
+de choisir explicitement une autre page.
+
 L'impression complète utilise `all=true` uniquement à la demande et garde les
 filtres. Une sélection imprime uniquement les éléments sélectionnés, avec le
 cumul propre à cette sélection comme auparavant. Sur mobile, les cartes sont
@@ -72,7 +80,15 @@ de 50, et affichage mobile à 390 px des trois pages.
 
 ## Édition depuis une valeur de l'historique
 
-Un double-clic sur une quantité ou un prix ouvre le formulaire existant du bon et
+Dans les détails client et fournisseur, le curseur pointer signale les quantités
+et prix modifiables. Un double-clic remplace la valeur par un champ dans la cellule.
+Entrée ou ✓ enregistre, Échap ou ✕ annule. La sauvegarde recharge le bon complet,
+vérifie que les lignes source n'ont pas changé et utilise la mutation existante
+pour conserver les contrôles de stock et actualiser les soldes. Les quantités
+regroupées sont réparties proportionnellement entre leurs lots d'origine ; les
+autres lignes et les frais d'en-tête sont conservés.
+
+Dans le détail charge, le double-clic ouvre le formulaire existant du bon et
 sélectionne le champ de la ligne concernée. Entrée/F2 fonctionne au clavier ; une
 pression tactile ouvre également le formulaire. L'identification repose sur la
 ligne source et le produit/variant, jamais sur la position dans la page filtrée.

@@ -265,8 +265,8 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                     <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">-</span>) : null}
                     </td>
-                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700"><EditableHistoryValue document={b} type={prefix} items={[item]} field="quantite">{qte}</EditableHistoryValue></td>
-                    <td className="px-3 py-2 text-right text-xs text-gray-600">{showInternalPrices ? <EditableHistoryValue document={b} type={prefix} items={[item]} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue> : '—'}</td>
+                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700"><EditableHistoryValue document={b} type={prefix} items={sourceItems} field="quantite">{qte}</EditableHistoryValue></td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-600">{showInternalPrices ? <EditableHistoryValue document={b} type={prefix} items={sourceItems} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue> : '—'}</td>
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
                     <td className="px-3 py-2 text-right text-xs">
                       {benefice != null
@@ -323,7 +323,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
               return <div key={sourceIndices.join('-')} className={`border-l-2 ${itemBorderClass} bg-gray-50 px-3 py-2 text-xs`}>
                 <p className="font-semibold text-gray-900 break-words">{item.designation ?? item.product_designation ?? '-'}</p>
                 <p className="mt-1 text-gray-500">{item.reference ?? item.product_reference ?? '-'} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p>
-                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1"><span>Qté : <EditableHistoryValue document={b} type={prefix} items={[item]} field="quantite">{qte}</EditableHistoryValue></span><span className="text-right">Total : <strong>{fmt(total)}</strong></span>{showInternalPrices && <span>Prix unit. : <EditableHistoryValue document={b} type={prefix} items={[item]} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue></span>}{benefice != null && <span className="text-right">Mouvement : {fmt(benefice)}</span>}</div>
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1"><span>Qté : <EditableHistoryValue document={b} type={prefix} items={sourceItems} field="quantite">{qte}</EditableHistoryValue></span><span className="text-right">Total : <strong>{fmt(total)}</strong></span>{showInternalPrices && <span>Prix unit. : <EditableHistoryValue document={b} type={prefix} items={sourceItems} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue></span>}{benefice != null && <span className="text-right">Mouvement : {fmt(benefice)}</span>}</div>
               </div>;
             })}
             {(b.adresse_livraison || b.code_reglement) && <p className="break-words text-xs text-gray-500">{b.adresse_livraison && `Adr. livraison : ${b.adresse_livraison}`} {b.code_reglement && ` · Code régl. : ${b.code_reglement}`}</p>}
@@ -909,8 +909,8 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">-</span>) : null}
                     </td>
-                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700"><EditableHistoryValue document={b} type={row.kind} items={[item]} field="quantite">{qte}</EditableHistoryValue></td>
-                    <td className="px-3 py-2 text-right text-xs text-gray-600">{showInternalPrices ? <EditableHistoryValue document={b} type={row.kind} items={[item]} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue> : '—'}</td>
+                    <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700"><EditableHistoryValue document={b} type={row.kind} items={sourceItems} field="quantite">{qte}</EditableHistoryValue></td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-600">{showInternalPrices ? <EditableHistoryValue document={b} type={row.kind} items={sourceItems} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue> : '—'}</td>
                     <td className="px-3 py-2 text-right text-xs">
                       {remiseAbonne > 0 ? <span className="text-blue-600 font-medium">{fmtRemise(remiseAbonne)}</span> : <span className="text-gray-300">-</span>}
                     </td>
@@ -1030,7 +1030,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             const remiseClient = sourceItems.reduce((sum, src) => sum + Number(src.remise_client ?? 0), 0);
             return <div key={keys.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs">
               <div className="flex items-start gap-2">{selectionMode && <input type="checkbox" aria-label="Sélectionner la ligne" checked={keys.every(k => selectedItemIds?.has(k))} onChange={() => keys.forEach(k => onToggleItem?.(k))} />}<div className="min-w-0 flex-1"><p className="font-semibold text-gray-900 break-words">{item.designation ?? item.product_designation ?? '-'}</p><p className="mt-1 break-words text-gray-500">{item.reference ?? item.product_reference ?? '-'} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p></div></div>
-              <div className="mt-2 grid grid-cols-2 gap-1 text-gray-600"><span>Qté : <EditableHistoryValue document={b} type={row.kind} items={[item]} field="quantite">{qty}</EditableHistoryValue></span><span className="text-right font-semibold text-gray-900">{fmt(total)}</span>{showInternalPrices && <span>Prix unit. : <EditableHistoryValue document={b} type={row.kind} items={[item]} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue></span>}{benefice != null && <span className="text-right">Mouvement : {fmt(benefice)}</span>}{remiseAbonne > 0 && <span>Remise abonné : {fmtRemise(remiseAbonne)}</span>}{remiseClient > 0 && <span>Remise client : {fmtRemise(remiseClient)}</span>}</div>
+              <div className="mt-2 grid grid-cols-2 gap-1 text-gray-600"><span>Qté : <EditableHistoryValue document={b} type={row.kind} items={sourceItems} field="quantite">{qty}</EditableHistoryValue></span><span className="text-right font-semibold text-gray-900">{fmt(total)}</span>{showInternalPrices && <span>Prix unit. : <EditableHistoryValue document={b} type={row.kind} items={sourceItems} field="prix_unitaire">{fmt(pu)}</EditableHistoryValue></span>}{benefice != null && <span className="text-right">Mouvement : {fmt(benefice)}</span>}{remiseAbonne > 0 && <span>Remise abonné : {fmtRemise(remiseAbonne)}</span>}{remiseClient > 0 && <span>Remise client : {fmtRemise(remiseClient)}</span>}</div>
             </div>;
           })}{(b.adresse_livraison || b.code_reglement) && <p className="break-words text-xs text-gray-500">{b.adresse_livraison && `Adr. livraison : ${b.adresse_livraison}`} {b.code_reglement && ` · Code régl. : ${b.code_reglement}`}</p>}</div>}
           <div className="mt-3 flex items-center justify-between rounded-lg bg-yellow-50 px-3 py-2 text-xs"><span className="text-yellow-800">Solde cumulé</span><span className="font-bold text-gray-900">{fmt(soldeCumuleMap.get(balanceKey) ?? 0)}</span></div>
@@ -1592,7 +1592,7 @@ const FournisseurDetailPage: React.FC = () => {
 
 
   return (
-    <ContactHistoryEditor key={fournisseurId}>
+    <ContactHistoryEditor key={fournisseurId} inline>
     <div className="space-y-4">
       <ContactHistoryPagination history={pagedHistory.pagination} limit={pagedHistory.limit} busy={pagedHistory.isFetching || pagedHistory.printLoading} onPage={pagedHistory.setPage} onLimit={pagedHistory.setLimit} />
       {pagedHistory.isFetching && <p role="status" className="text-sm text-gray-500">Actualisation de l’historique…</p>}

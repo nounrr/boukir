@@ -4,13 +4,14 @@ type Props = {
   busy: boolean;
   onPage: (page: number) => void;
   onLimit: (limit: number) => void;
+  embedded?: boolean;
 };
 
-export default function ContactHistoryPagination({ history, limit, busy, onPage, onLimit }: Props) {
+export default function ContactHistoryPagination({ history, limit, busy, onPage, onLimit, embedded = false }: Props) {
   const page = history?.page ?? 1;
   const pages = history?.totalPages ?? 1;
   const buttonClass = 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-40 hover:bg-gray-50';
-  return <nav aria-label="Pagination de l’historique" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3">
+  return <nav aria-label="Pagination de l’historique" className={`flex flex-wrap items-center justify-between gap-3 ${embedded ? 'border-t border-gray-200 bg-gray-50 px-4 py-3' : 'rounded-xl border border-gray-200 bg-white p-3'}`}>
     <div className="text-sm text-gray-600" aria-live="polite">Page <strong>{page}</strong> sur {pages} · {history?.totalRows ?? 0} opérations
       <span className="block text-xs text-gray-500">Les soldes cumulés incluent les opérations des pages précédentes.</span>
     </div>

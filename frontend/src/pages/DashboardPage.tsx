@@ -146,6 +146,15 @@ const DashboardPage: React.FC = () => {
         </p>
       </div>
       
+      {user?.role === 'PDG' && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-950">Anciennes versions — vérifier les calculs</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[['Client copy', '/clients-copy'], ['Fournisseur copy', '/fournisseurs-copy'], ['Charge copy', '/charges-copy']].map(([label, path]) =>
+            <button key={path} type="button" onClick={() => navigate(path)} className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100">{label}</button>
+          )}
+        </div>
+      </div>}
+
       {/* Stats Cards - Première ligne (4 cartes) */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 mt-6">
         <button 
