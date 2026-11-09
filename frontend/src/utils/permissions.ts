@@ -1,5 +1,7 @@
-import type { User } from '../types';
+import type { Role, User } from '../types';
 import { canAccessEmployeePage } from './employeePagePermissions';
+
+export const CATEGORY_EXCEL_ROLES: Role[] = ['PDG', 'Manager', 'ManagerPlus'];
 
 // Utilitaires pour les permissions basées sur les rôles
 

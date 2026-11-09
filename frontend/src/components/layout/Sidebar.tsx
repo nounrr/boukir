@@ -3,7 +3,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
-import { canManageEmployees } from '../../utils/permissions';
+import { canManageEmployees, CATEGORY_EXCEL_ROLES } from '../../utils/permissions';
 import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
 import { canViewInternalPrices } from '../../utils/internalPrices';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
@@ -119,6 +119,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Stock faible rotation', href: '/slow-moving-stock', icon: TrendingDown, show: user?.role === 'PDG' },
         { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: !isChefChauffeur && user?.role !== undefined },
         { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
+        { name: 'Catégorie Excel', href: '/category-excel', icon: Upload, show: !!user?.role && CATEGORY_EXCEL_ROLES.includes(user.role) },
         { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },
         { name: 'Produits archivés', href: '/products/archived', icon: Package, show: canViewArchivedProducts },
       ],

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
-import { canManageEmployees } from '../../utils/permissions';
+import { canManageEmployees, CATEGORY_EXCEL_ROLES } from '../../utils/permissions';
 import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
@@ -84,6 +84,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Qualité images', to: '/products/image-enhancement', show: !isChefChauffeur },
         { name: 'Produits Translate', to: '/products/translate', show: true },
         { name: 'Catégories', to: '/categories', show: true },
+        { name: 'Catégorie Excel', to: '/category-excel', show: !!user?.role && CATEGORY_EXCEL_ROLES.includes(user.role) },
         { name: 'Produits archivés', to: '/products/archived', show: canViewArchivedProducts },
         { name: 'Solver prix achat', to: '/solver-prix-achat', show: user?.role === 'PDG' },
         { name: 'Correction prix ventes', to: '/products/sale-price-corrections', show: canViewSalePriceCorrections },

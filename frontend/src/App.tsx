@@ -8,6 +8,7 @@ import { useValidateTokenQuery } from './store/api/authApi';
 import { useAccessScheduleMonitor } from './hooks/useAccessScheduleMonitor';
 import { useSocketConnection } from './hooks/useSocketConnection';
 import { canViewInternalPrices } from './utils/internalPrices';
+import { CATEGORY_EXCEL_ROLES } from './utils/permissions';
 
 // Composants
 import LoginPage from './components/auth/LoginPage';
@@ -48,6 +49,7 @@ const VehiculesPage = React.lazy(() => import('./pages/VehiculesPage'));
 const FondCaissePage = React.lazy(() => import('./pages/FondCaissePage'));
 const FondCaisseDetailPage = React.lazy(() => import('./pages/FondCaisseDetailPage'));
 const CategoriesPage = React.lazy(() => import('./pages/CategoriesPage'));
+const CategoryExcelPage = React.lazy(() => import('./pages/CategoryExcelPage'));
 const CategoryManagementPage = React.lazy(() => import('./pages/CategoryManagementPage'));
 const BrandsPage = React.lazy(() => import('./pages/BrandsPage'));
 const MaalemCategoriesPage = React.lazy(() => import('./pages/MaalemCategoriesPage'));
@@ -581,6 +583,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <CategoriesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/category-excel"
+          element={
+            <ProtectedRoute requiredRoles={CATEGORY_EXCEL_ROLES}>
+              <LayoutWithAccessCheck>
+                <CategoryExcelPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
