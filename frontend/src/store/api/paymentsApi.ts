@@ -88,6 +88,14 @@ export const paymentsApi = api.injectEndpoints({
       invalidatesTags: ['Payment', 'Contact'],
     }),
 
+    correctClientPaymentAmount: builder.mutation<
+      { montant_total: number },
+      { id: number; clientId: number; amount: number; expectedAmount: number; expectedStatus: 'En attente' | 'Validé' }
+    >({
+      query: ({ id, ...body }) => ({ url: '/payments/' + id + '/client-history-amount', method: 'PATCH', body }),
+      invalidatesTags: result => result ? ['Payment', 'Contact', 'Dashboard', 'FondCaisse', 'Remise'] : [],
+    }),
+
     updatePayment: builder.mutation<Payment, Partial<Payment> & { id: number; updated_by: number }>({
       query: ({ id, ...patch }) => ({ url: `/payments/${id}`, method: 'PUT', body: patch }),
       // invalidate specific payment AND the global Payment list so queries refetch
@@ -157,6 +165,7 @@ export const {
   useGetPaymentPrintBalanceQuery,
   useCreatePaymentMutation,
   useCreateMultiClientChequeMutation,
+  useCorrectClientPaymentAmountMutation,
   useUpdatePaymentMutation,
   useChangePaymentStatusMutation,
   useDeletePaymentMutation,

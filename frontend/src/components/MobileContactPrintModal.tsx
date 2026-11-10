@@ -13,6 +13,7 @@ interface ContactPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   closeLabel?: string;
+  onEditHistory?: () => void;
   contact: Contact;
   mode: ContactPrintMode; // 'transactions' | 'products'
   transactions?: any[]; // Rendu optionnel car onglet transactions supprimé
@@ -34,7 +35,7 @@ interface ContactPrintModalProps {
   historyKind?: ContactHistoryKind;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, closeLabel = "Fermer l'aperçu", contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle, historyKind }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, closeLabel = "Fermer l'aperçu", onEditHistory, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle, historyKind }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -196,6 +197,12 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
             </div>
             <button type="button" onClick={onClose} aria-label={closeLabel} title={closeLabel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600"><X size={20} /></button>
           </div>
+          {onEditHistory && (
+            <button type="button" onClick={onEditHistory}
+              className="mt-3 min-h-10 rounded-lg border border-blue-200 px-3 text-sm font-medium text-blue-700">
+              Modifier l’historique
+            </button>
+          )}
           <fieldset disabled={isGenerating} className="mt-3 max-h-[42dvh] overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-200">
             {filterable && <div>
               {panelButton('filters', `Filtres${hasFilters ? ' · actifs' : ''}`)}

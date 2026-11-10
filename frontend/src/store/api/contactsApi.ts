@@ -42,6 +42,14 @@ export interface SoldeCumuleCardResponse {
   total_avoirs?: number;
 }
 
+type ClientBonLineCorrection = {
+  id: number;
+  expectedQuantity: number;
+  expectedUnitPrice: number;
+  quantity: number;
+  unitPrice: number;
+};
+
 const contactsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getContacts: builder.query<PaginatedContactsResponse, { type?: 'Client' | 'Fournisseur'; page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection }>({
@@ -111,6 +119,20 @@ const contactsApi = api.injectEndpoints({
         };
       },
       providesTags: (_result, _error, arg) => [{ type: 'Contact', id: typeof arg === 'number' ? arg : arg.id }],
+    }),
+
+    correctClientBonLines: builder.mutation<
+      { updated: number },
+      { id: number; clientId: number; kind: 'sortie' | 'avoir'; edits: ClientBonLineCorrection[] }
+    >({
+      query: ({ id, clientId, kind, edits }) => ({
+        url: '/contacts/' + clientId + '/history/' + kind + '/' + id + '/lines',
+        method: 'PATCH',
+        body: { edits },
+      }),
+      invalidatesTags: result => result?.updated
+        ? ['Contact', 'Bon', 'Sortie', 'AvoirClient', 'Product', 'Dashboard', 'Remise']
+        : [],
     }),
 
     getClientChequesEcheanciers: builder.query<ClientChequesEcheanciers, number>({
@@ -257,6 +279,7 @@ export const {
   useGetContactQuery,
   useGetContactHistoryQuery,
   useLazyGetContactHistoryQuery,
+  useCorrectClientBonLinesMutation,
   useGetClientChequesEcheanciersQuery,
   useCreateContactMutation,
   useUpdateContactMutation,

@@ -69,7 +69,7 @@ export async function applyProductStockDeltas(connection, deltas, updatedBy = nu
   if (productIds.length === 0) return;
 
   // Lock product rows to avoid concurrent stock races
-  await connection.execute('SELECT id FROM products WHERE id IN (?) FOR UPDATE', [productIds]);
+  await connection.query('SELECT id FROM products WHERE id IN (?) FOR UPDATE', [productIds]);
 
   const effectiveDeltas = productIds
     .map((productId) => [productId, Number(deltas.get(productId))])
@@ -108,7 +108,7 @@ export async function applyStockDeltas(connection, deltaMaps, updatedBy = null) 
   if (variantIds.length === 0) return;
 
   // Lock variant rows to avoid concurrent stock races
-  await connection.execute('SELECT id FROM product_variants WHERE id IN (?) FOR UPDATE', [variantIds]);
+  await connection.query('SELECT id FROM product_variants WHERE id IN (?) FOR UPDATE', [variantIds]);
 
   const effectiveDeltas = variantIds
     .map((variantId) => [variantId, Number(variantDeltas.get(variantId))])

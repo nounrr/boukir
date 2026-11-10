@@ -20,6 +20,7 @@ import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
 import MobileContactPrintModal from '../components/MobileContactPrintModal';
 import { useMobilePrintModal } from '../hooks/useMobilePrintModal';
+import { canModifyPayments } from '../utils/permissions';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import ContactGroupManageModal from '../components/ContactGroupManageModal';
@@ -1288,6 +1289,7 @@ type PageTab = 'complet' | 'sorties' | 'avoirs' | 'paiements';
 
 const ClientDetailPage: React.FC = () => {
   const isMobileDetail = useMobilePrintModal();
+  const [mobileHistoryClientId, setMobileHistoryClientId] = useState<number | null>(null);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const clientId = Number(id);
@@ -1860,13 +1862,14 @@ const ClientDetailPage: React.FC = () => {
     );
   }
 
-  if (isMobileDetail && contact) {
+  if (isMobileDetail && contact && mobileHistoryClientId !== clientId) {
     return (
         <MobileContactPrintModal
           historyKind="client"
           isOpen
           onClose={() => navigate('/clients-copy')}
           closeLabel="Retour à la liste"
+          onEditHistory={canModifyPayments(currentUser) ? () => setMobileHistoryClientId(clientId) : undefined}
           contact={contact}
           mode="products"
           transactions={[]}
@@ -1887,6 +1890,12 @@ const ClientDetailPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {isMobileDetail && mobileHistoryClientId === clientId && (
+        <button type="button" onClick={() => setMobileHistoryClientId(null)}
+          className="min-h-10 rounded-lg border border-blue-200 px-3 text-sm font-medium text-blue-700">
+          Revenir à l’aperçu PDF
+        </button>
+      )}
       {/* Back + header */}
       <div className="flex flex-wrap items-center gap-3">
         <button

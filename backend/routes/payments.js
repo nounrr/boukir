@@ -960,6 +960,73 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
+router.patch('/:id/client-history-amount', requireRoles('PDG', 'ManagerPlus', 'Manager'), async (req, res, next) => {
+  const id = Number(req.params.id);
+  const { clientId, amount, expectedAmount, expectedStatus } = req.body || {};
+  if (![id, clientId].every(value => Number.isSafeInteger(value) && value > 0)
+    || typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0
+    || amount > 9999999999.99 || Number(amount.toFixed(2)) !== amount
+    || typeof expectedAmount !== 'number' || !Number.isFinite(expectedAmount)
+    || !['En attente', 'Validé'].includes(expectedStatus)) {
+    return res.status(400).json({ message: 'Saisissez un montant de paiement positif avec au maximum deux décimales.' });
+  }
+
+  let connection;
+  try {
+    await ensurePaymentRemiseColumns();
+    await ensurePaymentMontantIgnorerColumn();
+    await ensurePaymentGroupColumn();
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [[payment]] = await connection.execute(
+      "SELECT p.* FROM payments p JOIN contacts c ON c.id = p.contact_id AND c.type = 'Client' AND c.deleted_at IS NULL"
+      + " WHERE p.id = ? AND p.contact_id = ? AND p.type_paiement = 'Client' FOR UPDATE",
+      [id, clientId],
+    );
+    if (!payment) throw Object.assign(new Error('Paiement introuvable pour ce client.'), { statusCode: 404 });
+    const status = mapToCanonical(payment.statut);
+    if (status === 'Validé' && req.user.role === 'Manager') {
+      throw Object.assign(new Error('Le PDG ou un ManagerPlus peut corriger un paiement validé.'), { statusCode: 403 });
+    }
+    if (status !== expectedStatus || Number(payment.montant_total) !== expectedAmount) {
+      throw Object.assign(new Error('Le paiement a changé depuis son affichage. Actualisez la fiche.'), { statusCode: 409 });
+    }
+    if (String(payment.payment_group_id || '').startsWith('comptant-remise-')) {
+      throw Object.assign(new Error('Ce paiement est calculé depuis son bon comptant.'), { statusCode: 409 });
+    }
+    if (payment.mode_paiement === 'Chèque' && payment.payment_group_id && payment.code_reglement) {
+      const [siblings] = await connection.execute(
+        "SELECT id FROM payments WHERE payment_group_id = ? AND mode_paiement = 'Chèque'"
+        + ' AND code_reglement = ? AND contact_id <> ? LIMIT 1',
+        [payment.payment_group_id, payment.code_reglement, clientId],
+      );
+      if (siblings.length) {
+        throw Object.assign(new Error('Ce chèque est réparti entre plusieurs clients. Corrigez sa répartition ensemble.'), { statusCode: 409 });
+      }
+    }
+
+    if (amount < Number(payment.montant_ignorer || 0)) {
+      throw Object.assign(new Error('Le montant ne peut pas être inférieur au montant ignoré.'), { statusCode: 400 });
+    }
+    if (amount !== expectedAmount) {
+      await resolveRemisePaymentInput(connection, { ...payment, montant_total: amount }, payment);
+      await connection.execute(
+        'UPDATE payments SET montant_total = ?, updated_by = ?, updated_at = NOW() WHERE id = ?',
+        [amount, req.user.id, id],
+      );
+    }
+    await connection.commit();
+    res.json({ montant_total: amount });
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    if (error.statusCode) return res.status(error.statusCode).json({ message: error.message });
+    next(error);
+  } finally {
+    connection?.release();
+  }
+});
+
 router.put('/:id', verifyToken, async (req, res) => {
 	try {
     await ensurePaymentRemiseColumns();

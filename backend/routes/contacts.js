@@ -1,4 +1,6 @@
 import { buildContactLedger } from '../utils/contactLedger.js';
+import { correctValidatedClientBon } from '../utils/clientHistoryCorrection.js';
+import { requireRoles } from '../middleware/auth.js';
 import { getClientCreditState } from '../utils/bonExceptionAuthorization.js';
 import express from 'express';
 import bcrypt from 'bcryptjs';
@@ -1258,6 +1260,30 @@ router.get('/debug-solde', async (req, res) => {
   } catch (error) {
     console.error('Error in debug-solde:', error);
     res.status(500).json({ error: 'Failed to debug solde' });
+  }
+});
+
+// Corrections of validated client documents keep the same line IDs, lots and status.
+router.patch('/:clientId/history/:type/:id/lines', requireRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const result = await correctValidatedClientBon(connection, {
+      clientId: Number(req.params.clientId),
+      id: Number(req.params.id),
+      type: req.params.type,
+      edits: req.body?.edits,
+      userId: req.user.id,
+    });
+    await connection.commit();
+    res.json(result);
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    next(error);
+  } finally {
+    connection?.release();
   }
 });
 
