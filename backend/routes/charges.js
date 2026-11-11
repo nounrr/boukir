@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
@@ -522,6 +523,7 @@ router.post('/', async (req, res) => {
       }
     }
 
+    await saveBonGerantNumber(connection, cfg.table, result.insertId, req.body?.numero_gerant, req.user);
     await connection.commit();
     const [rows] = await buildChargeSelect('WHERE bc.id = ?', [result.insertId], operationType);
     const row = rows[0];
@@ -672,6 +674,7 @@ router.put('/:id', async (req, res) => {
     }
     await applyStockDeltas(connection, deltas, updatedBy);
 
+    await saveBonGerantNumber(connection, cfg.table, id, req.body?.numero_gerant, req.user);
     await connection.commit();
     const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id], operationType);
     const row = rows[0];

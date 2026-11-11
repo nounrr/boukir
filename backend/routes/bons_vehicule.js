@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
@@ -159,6 +160,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       `, [bonId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
+    await saveBonGerantNumber(connection, 'bons_vehicule', bonId, req.body?.numero_gerant, req.user);
     await connection.commit();
     const numero = `VEH${String(bonId).padStart(2, '0')}`;
     res.status(201).json({ message: 'Bon véhicule créé avec succès', id: bonId, numero });
@@ -272,6 +274,7 @@ router.put('/:id', async (req, res) => {
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
+    await saveBonGerantNumber(connection, 'bons_vehicule', id, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.json({ message: 'Bon véhicule mis à jour avec succès' });
   } catch (error) {

@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
 import pool from '../db/pool.js';
@@ -443,7 +444,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await decrementSnapshotQuantities(connection, items);
     }
 
-  await connection.commit();
+  await saveBonGerantNumber(connection, 'bons_sortie', sortieId, req.body?.numero_gerant, req.user);
+    await connection.commit();
   const numero = `SOR${String(sortieId).padStart(2, '0')}`;
   res.status(201).json({ message: 'Bon de sortie créé avec succès', id: sortieId, numero });
   } catch (error) {
@@ -745,6 +747,7 @@ router.put('/:id', async (req, res) => {
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
+    await saveBonGerantNumber(connection, 'bons_sortie', id, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.json({ message: 'Bon de sortie mis à jour avec succès' });
   } catch (error) {

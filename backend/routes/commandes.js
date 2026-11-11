@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles, verifyToken } from '../middleware/auth.js';
@@ -349,7 +350,8 @@ router.post('/', verifyToken, async (req, res) => {
       }
     }
 
-  await connection.commit();
+  await saveBonGerantNumber(connection, 'bons_commande', commandeId, req.body?.numero_gerant, req.user);
+    await connection.commit();
   const numero = `CMD${String(commandeId).padStart(2, '0')}`;
   res.status(201).json({ message: 'Bon de commande créé avec succès', id: commandeId, numero });
   } catch (error) {
@@ -1163,6 +1165,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       }
     }
 
+    await saveBonGerantNumber(connection, 'bons_commande', id, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.json({ message: 'Bon de commande mis à jour avec succès' });
   } catch (error) {

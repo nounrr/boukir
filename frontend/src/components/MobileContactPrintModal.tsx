@@ -10,6 +10,7 @@ import { waitForPrintImages } from '../utils/waitForPrintImages';
 import { contactHistoryTotals, contactHistoryTransactions, filterContactHistory, historyDocumentKey, historyOperation, historyOperationLabels, selectedContactHistory, type ContactHistoryKind, type HistoryFilters } from '../utils/mobileContactHistory';
 
 interface ContactPrintModalProps {
+  projectName?: string;
   isOpen: boolean;
   onClose: () => void;
   closeLabel?: string;
@@ -35,7 +36,7 @@ interface ContactPrintModalProps {
   historyKind?: ContactHistoryKind;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, closeLabel = "Fermer l'aperçu", onEditHistory, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle, historyKind }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, closeLabel = "Fermer l'aperçu", onEditHistory, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle, historyKind, projectName }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -54,7 +55,8 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
     setSelectionLimit(30);
     setOpenPanel(null);
   }, [contact.id, isOpen, dateFrom, dateTo]);
-  const kind = historyKind ?? (contact.type === 'Fournisseur' ? 'supplier' : 'client');
+  // Project rows use expense-positive internal balances; the client template reverses them for display.
+  const kind = projectName !== undefined ? 'charge' : historyKind ?? (contact.type === 'Fournisseur' ? 'supplier' : 'client');
   const filterable = mode === 'products';
   const hasFilters = filterable && Boolean(filters.from || filters.to || filters.search.trim() || filters.operation);
   const isScoped = hasFilters || selectedRows !== null;
@@ -273,6 +275,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
             <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
             <div ref={printRef} data-contact-pdf-page className="origin-top-left bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm', transform: `scale(${previewScale})` }}>
               <ContactPrintTemplate
+                projectName={projectName}
                 contact={contact}
                 mode={filterable && !showDetail ? 'transactions' : mode}
                 transactions={filterable ? summaryTransactions : transactions}

@@ -3,7 +3,8 @@ import { scopeProjetSituation } from '../../utils/projetSituation';
 import { Calendar, ChevronDown, ChevronUp, History, Printer, Search, X } from 'lucide-react';
 import type { ProjetBon, ProjetBonType, ProjetSituationRow, ProjetStats } from '../../store/api/projetsApi';
 import { MODE_LABELS, formatDay, formatMoney, formatQty } from './shared';
-import TablePrintButton from './TablePrintButton';
+import ContactPrintModal from '../ContactPrintModal';
+import { prepareProjetSituationPrint } from '../../utils/projetSituationPrint';
 
 type Filter = 'all' | ProjetSituationRow['kind'];
 const FILTERS: { key: Filter; label: string }[] = [
@@ -39,6 +40,7 @@ const SituationTab: React.FC<{ projetNom: string; situation: ProjetSituationRow[
   const totalEntree = situation.reduce((sum, row) => sum + row.entree, 0);
   const totalSortie = situation.reduce((sum, row) => sum + row.sortie, 0);
   const finalBalance = situation.at(-1)?.solde ?? 0;
+  const [printing, setPrinting] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const [detail, setDetail] = useState(true);
   const [search, setSearch] = useState('');
@@ -121,35 +123,18 @@ const SituationTab: React.FC<{ projetNom: string; situation: ProjetSituationRow[
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => scrollToEdge(false)} disabled={!rows.length} title="Aller en haut" aria-label="Aller en haut de la situation" className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-40"><ChevronUp className="h-4 w-4" /></button>
           <button type="button" onClick={() => scrollToEdge(true)} disabled={!rows.length} title="Aller en bas" aria-label="Aller en bas de la situation" className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-40"><ChevronDown className="h-4 w-4" /></button>
-          <TablePrintButton className={printButtonClass} disabled={!rows.length} report={{
-          projectName: projetNom,
-          title: scope ? `Situation — ${KIND[scope].label}` : 'Situation complète',
-          landscape: true,
-          notes: [
-            `${rows.length} ligne(s) · ${detail ? 'Vue détaillée' : 'Vue par bon'}`,
-            filter !== 'all' ? `Type : ${KIND[filter].label}` : '',
-            search.trim() ? `Recherche : ${search.trim()}` : '',
-            from || to ? `Période : ${from ? formatDay(from) : 'début'} → ${to ? formatDay(to) : 'sans limite'}` : '',
-            'Les soldes cumulés conservent l’historique avant les filtres.',
-          ],
-          tables: [{
-            columns: [
-              { label: 'Date' }, { label: 'Type' }, { label: 'Référence' }, { label: detail ? 'Désignation / Libellé' : 'Libellé' },
-              ...(detail ? [{ label: 'Unité' }, { label: 'Qté', numeric: true }, { label: 'Prix unitaire', numeric: true }] : []),
-              { label: 'Mode' }, { label: 'Entrée', numeric: true }, { label: 'Sortie', numeric: true }, { label: 'Solde cumulé', numeric: true },
-            ],
-            rows: rows.map(row => [
-              formatDay(row.date), KIND[row.kind].label, row.reference,
-              row.item ? `${row.item.designation}${row.libelle !== KIND[row.kind].label ? `\n${row.libelle}` : ''}` : row.libelle,
-              ...(detail ? [row.item?.unite || '—', row.item ? formatQty(row.item.quantite) : '—', row.item ? formatMoney(row.item.prix_unitaire) : '—'] : []),
-              row.mode_paiement ? MODE_LABELS[row.mode_paiement] : '—', row.entree ? formatMoney(row.entree) : '', row.sortie ? formatMoney(row.sortie) : '', formatMoney(row.solde),
-            ]),
-            totals: [
-              ...(filtered ? [['Totaux affichés', ...Array(detail ? 7 : 4).fill(''), formatMoney(visibleTotals.entree), formatMoney(visibleTotals.sortie), '—']] : []),
-              [scope ? 'Totaux de ce type / Solde final' : 'Totaux du projet / Solde final', ...Array(detail ? 7 : 4).fill(''), formatMoney(totalEntree), formatMoney(totalSortie), formatMoney(finalBalance)],
-            ],
-          }],
-        }} />
+          <button type="button" className={printButtonClass} disabled={!rows.length} onClick={() => setPrinting(true)}>
+            <Printer className="h-4 w-4" /> Imprimer le tableau
+          </button>
+          {printing && <ContactPrintModal
+            isOpen
+            onClose={() => setPrinting(false)}
+            mode="products"
+            {...prepareProjetSituationPrint(projetNom, rows)}
+            dateFrom={from || undefined}
+            dateTo={to || undefined}
+            skipInitialRow={filtered}
+          />}
         </div>
       </div>
 

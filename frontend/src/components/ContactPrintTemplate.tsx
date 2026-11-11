@@ -10,6 +10,7 @@ export type ContactPrintMode = 'transactions' | 'products';
 export type PriceMode = 'WITH_PRICES' | 'WITHOUT_PRICES';
 
 interface ContactPrintTemplateProps {
+  projectName?: string;
   contact: Contact;
   mode: ContactPrintMode;
   transactions: any[];
@@ -157,6 +158,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   designationLang = 'fr',
   products = [],
   includeProductImages = false,
+  projectName,
 }) => {
   const langIsRtl = isRtlLang(designationLang);
   const productsById = React.useMemo(() => {
@@ -361,7 +363,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
       `}</style>
 
       {/* En-tête société */}
-      <CompanyHeader companyType={companyType} />
+      <CompanyHeader companyType={companyType} projectName={projectName} />
 
       {/* Bloc contact + période */}
       <div className="mt-4 mb-6 grid grid-cols-2 gap-4">

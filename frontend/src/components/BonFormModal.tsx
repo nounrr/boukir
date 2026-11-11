@@ -31,6 +31,7 @@ import { useGetBonPriceHistoryQuery, useGetBonsByTypeQuery, useCreateBonMutation
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import ContactSoldeCumuleHint from './ContactSoldeCumuleHint';
+import BonModificationNote from './BonModificationNote';
 import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
 import ContactFormModal from './ContactFormModal';
@@ -387,6 +388,7 @@ const bonValidationSchema = Yup.object({
   lieu_charge: Yup.string(),
   adresse_livraison: Yup.string(),
   phone: Yup.string().trim(),
+  numero_gerant: Yup.string().trim().max(50, 'Maximum 50 caractères'),
   isNotCalculated: Yup.boolean(),
   vendre_au_fournisseur: Yup.boolean(),
   client_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
@@ -2720,6 +2722,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_societe: initialValues.fournisseur_societe || '',
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
+  numero_gerant: initialValues.numero_gerant || '',
         vendre_au_fournisseur: initialValues.vendre_au_fournisseur === true || initialValues.vendre_au_fournisseur === 1 || String(initialValues.vendre_au_fournisseur) === '1',
         isNotCalculated: initialValues.isNotCalculated === true || initialValues.isNotCalculated === 1 ? true : false,
         payer_partiellement: initialValues.non_paye === true || initialValues.non_paye === 1 || false,
@@ -2740,6 +2743,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       date_validation: '',
   statut: 'En attente',
   phone: '',
+  numero_gerant: '',
       client_id: '',
       client_nom: currentTab === 'AvoirComptant' ? 'client' : '',
       client_adresse: '',
@@ -3516,6 +3520,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       lieu_chargement: values.lieu_charge || '',
   adresse_livraison: values.adresse_livraison || '',
   phone: values.phone || null,
+  numero_gerant: String(values.numero_gerant || '').trim(),
       isNotCalculated: requestType === 'Commande' ? null : (values.isNotCalculated ? true : null),
       statut: values.statut || 'Brouillon',
   vendre_au_fournisseur: (requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur ? 1 : undefined,
@@ -3865,6 +3870,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         lieu_chargement: locked?.lieu_chargement ?? cleanBonData.lieu_chargement,
         adresse_livraison: locked?.adresse_livraison ?? cleanBonData.adresse_livraison,
         phone: locked?.phone ?? cleanBonData.phone,
+        numero_gerant: locked?.numero_gerant ?? cleanBonData.numero_gerant,
         mode_paiement: locked?.mode_paiement ?? cleanBonData.mode_paiement,
         isNotCalculated: locked?.isNotCalculated ?? cleanBonData.isNotCalculated,
         statut: locked?.statut ?? cleanBonData.statut,
@@ -4840,6 +4846,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   Annuaire indisponible. <button type="button" className="underline" onClick={() => refetchContactDirectory()}>Réessayer</button>
                 </p>
               )}
+              {isEditMode && <BonModificationNote id={Number(initialValues?.id)} type={currentModalType} />}
               <AutoCheckNonCalculatedForAwatif isOpen={isOpen} clients={clients as any[]} />
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 
@@ -4902,9 +4909,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
                 <div>
                   <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                    Téléphone du bon
+                    Numéro de chantier
                   </label>
-                  <Field type="text" id="phone" name="phone" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
+                  <Field type="text" id="phone" name="phone" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de chantier (facultatif)" />
+                </div>
+                <div>
+                  <label htmlFor="numero_gerant" className="block text-sm font-medium text-gray-700 mb-1">
+                    Numéro du gérant
+                  </label>
+                  <Field type="tel" id="numero_gerant" name="numero_gerant" maxLength={50} disabled={isQtyOnlyEdit}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro du gérant (facultatif)" />
+                  <ErrorMessage name="numero_gerant" component="div" className="mt-1 text-sm text-red-500" />
                 </div>
                 {values.type !== 'Commande' && (
                 <div className="flex items-center gap-2">

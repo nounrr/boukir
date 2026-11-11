@@ -1,4 +1,5 @@
 import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
+import BonModificationNote from '../components/BonModificationNote';
 import { confirmBonExceptionAuthorization } from '../utils/confirmBonExceptionAuthorization';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
@@ -2312,15 +2313,23 @@ const BonsPage = () => {
       setNewComptantPaymentAmount('');
       setNewComptantPaymentNote('');
       setNewComptantPaymentDate(getCurrentDateTimeInput());
-      showSuccess('Paiement enregistré. Le bon attend la vérification du règlement.');
+      const updatedBon = (result as any)?.bon;
+      if (updatedBon && Number(updatedBon.non_paye) === 0 && Number(updatedBon.reste) === 0) {
+        togglePrintSelection(selectedComptantForPayments, false);
+        closeComptantPaymentsModal();
+        showSuccess('Paiement enregistré. Le bon est dans Comptant payé.');
+      } else if (updatedBon && Number(updatedBon.reste) === 0) {
+        showSuccess('Paiement enregistré. Le bon attend la vérification du règlement.');
+      } else {
+        showSuccess('Paiement partiel enregistré.');
+      }
     } catch (error: any) {
       showError(error?.data?.message || error?.message || 'Erreur lors de l\'ajout du paiement.');
     }
   };
 
-  const handleVerifyComptantPayment = async () => {
-    const bon = selectedComptantForPayments;
-    if (!bon || !canVerifyComptantPayment || !isComptantPaymentPending(bon)) return;
+  const handleVerifyComptantPayment = async (bon = selectedComptantForPayments) => {
+    if (!bon || !canVerifyComptantPayment || !isComptantPaymentPending(bon) || isVerifyingComptantPayment) return;
     const confirmation = await showConfirmation(
       `Confirmer le règlement intégral du bon ${getDisplayNumero(bon)} et le déplacer dans Comptant payé ?`,
       'Vérifier le règlement',
@@ -3711,6 +3720,18 @@ const BonsPage = () => {
                                 } catch (error: any) { showError(error?.data?.message || 'Impossible d’ajouter ce bon.'); }
                               }}><Truck size={ACTION_ICON_SIZE} /></button>;
                           })()}
+                          {isUnpaidComptantTab && canVerifyComptantPayment && isComptantPaymentPending(bon) && (
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyComptantPayment(bon)}
+                              disabled={isVerifyingComptantPayment}
+                              className="rounded p-1 text-purple-700 hover:bg-purple-50 hover:text-purple-900 disabled:opacity-50"
+                              title="Payer le bon"
+                              aria-label="Payer le bon"
+                            >
+                              <CheckCircle2 size={ACTION_ICON_SIZE} />
+                            </button>
+                          )}
                           {canMarkLivre && (() => {
                             const isLivre = bon?.livre === true || Number(bon?.livre) === 1;
                             const isUpdatingLivre = updatingLivreKeys.has(getLivreUpdateKey(bon));
@@ -4471,7 +4492,7 @@ const BonsPage = () => {
                 <div className="mt-5 flex justify-end">
                   <button
                     type="button"
-                    onClick={handleVerifyComptantPayment}
+                  onClick={() => handleVerifyComptantPayment()}
                     disabled={isFetchingComptantPayments || !getComptantPaymentRows(comptantPayments).length || isVerifyingComptantPayment}
                     className="rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800 disabled:opacity-60"
                   >
@@ -4538,6 +4559,7 @@ const BonsPage = () => {
                   ✕
                 </button>
               </div>
+              <BonModificationNote id={Number(selectedBon.id)} type={selectedBon.type || effectiveCurrentTab} />
               {currentUser?.role === 'PDG' && (
                 <div className="mb-3">
                   <button

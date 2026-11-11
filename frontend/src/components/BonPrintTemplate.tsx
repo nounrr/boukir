@@ -329,6 +329,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   })();
   const contactRefLabel = isSupplierDocument ? 'Ref fournisseur' : 'Ref client';
   const tel = (bon?.phone ?? bon?.tel ?? bon?.telephone ?? (contact as any)?.telephone ?? (contact as any)?.tel ?? '') as string | undefined;
+  const telephoneLabel = String(bon?.phone ?? '').trim() ? 'Numéro de chantier' : 'Téléphone';
   const adrLiv = (bon?.adresse_livraison || bon?.adresseLivraison || '') as string | undefined;
   const hasContactOrInfo = Boolean(contact || (tel && String(tel).trim()) || (adrLiv && String(adrLiv).trim()));
 
@@ -515,12 +516,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                         <div><span className="font-medium">{contactRefLabel}:</span> {contactRef}</div>
                       )}
                       {tel && String(tel).trim() && (
-                        <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
+                        <div><span className="font-medium">{telephoneLabel}:</span> {String(tel).trim()}</div>
                       )}
                     </div>
                   )}
                   {(!contactSociete && !contactPersonName) && tel && String(tel).trim() && (
-                    <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
+                    <div><span className="font-medium">{telephoneLabel}:</span> {String(tel).trim()}</div>
                   )}
                   <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
                 </div>

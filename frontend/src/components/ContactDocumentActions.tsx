@@ -5,7 +5,7 @@ import { useMatch } from 'react-router-dom';
 import ClientHistoryCorrectionDialog from './ClientHistoryCorrectionDialog';
 import type { HistoryCorrectionDocument } from './ClientHistoryCorrectionDialog';
 import DocumentSaisieCheckbox from './DocumentSaisieCheckbox';
-import DocumentModificationAuthor from './DocumentModificationAuthor';
+import DocumentModificationAuthor, { DocumentModificationNote } from './DocumentModificationAuthor';
 import { useAuth } from '../hooks/redux';
 import { useLazyGetBonForEditingQuery } from '../store/api/bonsApi';
 import { canModifyBons, canModifyPayments } from '../utils/permissions';
@@ -75,6 +75,7 @@ export default function ContactDocumentActions({ document, type }: {
   };
 
   return <>
+    <DocumentModificationNote document={document} />
     <DocumentSaisieCheckbox document={document} type={bonType} />
     {canCorrect && <button
       type="button"

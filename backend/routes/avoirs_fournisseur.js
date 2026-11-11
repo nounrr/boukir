@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken, forbidRoles } from '../middleware/auth.js';
@@ -246,7 +247,8 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
       }
     }
 
-  await connection.commit();
+  await saveBonGerantNumber(connection, 'avoirs_fournisseur', avoirId, req.body?.numero_gerant, req.user);
+    await connection.commit();
   res.status(201).json({ message: 'Avoir fournisseur créé avec succès', id: avoirId, numero: finalNumero });
   } catch (error) {
     await connection.rollback();
@@ -430,6 +432,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
+    await saveBonGerantNumber(connection, 'avoirs_fournisseur', id, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.json({ message: 'Avoir fournisseur mis à jour avec succès' });
   } catch (error) {

@@ -597,6 +597,7 @@ export interface Bon {
   // Free-text names (some endpoints don't use client_id/fournisseur_id)
   client_nom?: string;
   phone?: string | null;
+  numero_gerant?: string | null;
   adresse_livraison?: string;
   montant_total: number;
   montant_ignorer?: number;
@@ -649,6 +650,7 @@ export interface CreateBonData {
   vehicule_id?: number;
   lieu_chargement?: string;
   phone?: string | null;
+  numero_gerant?: string | null;
   adresse_livraison?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
   items: Omit<BonItem, 'id' | 'bon_id'>[];

@@ -3,6 +3,7 @@ const TABLE_BY_TYPE = {
   Comptant: 'bons_comptant', Commande: 'bons_commande', Charge: 'bons_charge',
   AvoirCharge: 'avoirs_charge', Avoir: 'avoirs_client',
   AvoirClientVendreFournisseur: 'avoirs_client', AvoirFournisseur: 'avoirs_fournisseur',
+  AvoirComptant: 'avoirs_comptant', Devis: 'devis',
 };
 
 // Only return attribution for documents already selected by contact/pagination.

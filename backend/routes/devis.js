@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
 import pool from '../db/pool.js';
@@ -212,6 +213,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       `, [devisId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    await saveBonGerantNumber(connection, 'devis', devisId, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.status(201).json({ message: 'Devis créé avec succès', id: devisId, numero: finalNumero });
   } catch (error) {
@@ -286,6 +288,7 @@ router.put('/:id', async (req, res) => {
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    await saveBonGerantNumber(connection, 'devis', id, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.json({ message: 'Devis mis à jour avec succès' });
   } catch (error) {

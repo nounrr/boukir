@@ -505,7 +505,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   ) : null}
                   {tel ? (
                     <>
-                      Téléphone: {tel}
+                      {String(bon?.phone ?? '').trim() ? 'Numéro de chantier' : 'Téléphone'}: {tel}
                       <br />
                     </>
                   ) : null}

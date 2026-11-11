@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useCorrectClientBonLinesMutation } from '../store/api/contactsApi';
 import { useCorrectClientPaymentAmountMutation } from '../store/api/paymentsApi';
 import { showSuccess } from '../utils/notifications';
+import BonModificationNote from './BonModificationNote';
 
 export type HistoryCorrectionItem = {
   id: number;
@@ -108,6 +109,7 @@ export default function ClientHistoryCorrectionDialog({ document, kind, clientId
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4" onClick={event => event.stopPropagation()}>
+          {!payment && <BonModificationNote id={document.id} type={kind === 'sortie' ? 'Sortie' : 'Avoir'} />}
           {payment ? (
             <label className="block max-w-xs text-sm font-medium text-gray-700">
               Montant du paiement (DH)

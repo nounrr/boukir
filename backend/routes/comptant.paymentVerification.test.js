@@ -4,7 +4,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { getPagePermissionCatalog, parsePagePermissionUpdate } from '../utils/pagePermissionsRegistry.js';
 
-test('a full Comptant payment stays unpaid until an authorized employee verifies it', async (t) => {
+test('Comptant payments require verification except when the PDG completes settlement', async (t) => {
   const bon = { id: 7, montant_total: 100, reste: 100, non_paye: 1, statut: 'Validé' };
   const employees = new Map([
     [1, { role: 'Employé', acces_verification_reglements_comptant: 0 }],
@@ -125,4 +125,14 @@ test('a full Comptant payment stays unpaid until an authorized employee verifies
   assert.equal((await deleted.json()).bon.reste, 60);
   assert.equal(bon.non_paye, 1);
   assert.equal((await verify(3)).status, 409);
+  const pdgPartial = await request('/7/paiements', 3, 'POST', { montant: 20, date_paiement: '2026-11-11 10:00:00' });
+  assert.equal(pdgPartial.status, 201);
+  assert.equal((await pdgPartial.json()).bon.non_paye, 1);
+  assert.equal(bon.reste, 40);
+
+  const pdgFull = await request('/7/paiements', 3, 'POST', { montant: 40, date_paiement: '2026-11-11 10:01:00' });
+  assert.equal(pdgFull.status, 201);
+  assert.equal((await pdgFull.json()).bon.non_paye, 0);
+  assert.equal(bon.reste, 0);
+  assert.equal(verificationWrites, 1, 'PDG completion requires no separate verification request');
 });

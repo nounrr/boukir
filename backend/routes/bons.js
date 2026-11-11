@@ -4,8 +4,30 @@ import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
 import { parseSaisieUpdate } from '../utils/bonSaisie.js';
+import { attachContactHistoryModification } from '../utils/contactHistoryModification.js';
 
 const router = express.Router();
+
+router.get('/:type/:id/modification', async (req, res, next) => {
+  if (!req.user?.role || req.user.type_compte != null) {
+    return res.status(403).json({ message: 'Accès refusé.' });
+  }
+  const types = new Set(['Sortie', 'Comptant', 'Commande', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirFournisseur', 'AvoirComptant', 'Devis']);
+  const id = Number(req.params.id);
+  if (!types.has(req.params.type) || !Number.isSafeInteger(id) || id <= 0) {
+    return res.status(400).json({ message: 'Bon invalide.' });
+  }
+  try {
+    const document = { id, type: req.params.type };
+    await attachContactHistoryModification(pool, [document]);
+    res.set('Cache-Control', 'no-store').json({
+      last_modified_by_name: document.last_modified_by_name,
+      last_modified_at: document.last_modified_at,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 const isClientCreditNoteType = (type) =>
   ['Avoir', 'AvoirComptant', 'AvoirEcommerce'].includes(String(type || ''));
@@ -52,7 +74,7 @@ const bonPagedConfigs = {
     phoneExpr: 'COALESCE(f.telephone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts f ON f.id = b.fournisseur_id LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
-    selectExtra: `f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, f.telephone AS phone, v.nom AS vehicule_nom`,
+    selectExtra: `f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, f.telephone AS contact_telephone, v.nom AS vehicule_nom`,
     itemTable: 'commande_items',
     itemFk: 'bon_commande_id',
     itemAlias: 'i',
@@ -70,7 +92,7 @@ const bonPagedConfigs = {
     phoneExpr: 'CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN COALESCE(f.telephone, \'\') ELSE COALESCE(c.telephone, \'\') END',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id LEFT JOIN contacts f ON f.id = b.fournisseur_id LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
-    selectExtra: `c.nom_complet AS client_nom, c.societe AS client_societe, f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN f.telephone ELSE c.telephone END AS phone, v.nom AS vehicule_nom`,
+    selectExtra: `c.nom_complet AS client_nom, c.societe AS client_societe, f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN f.telephone ELSE c.telephone END AS contact_telephone, v.nom AS vehicule_nom`,
     itemTable: 'sortie_items',
     itemFk: 'bon_sortie_id',
     itemAlias: 'i',
@@ -87,7 +109,7 @@ const bonPagedConfigs = {
     phoneExpr: 'COALESCE(c.telephone, b.phone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
-    selectExtra: `COALESCE(b.client_nom, c.nom_complet) AS client_nom, COALESCE(c.telephone, b.phone) AS phone, v.nom AS vehicule_nom`,
+    selectExtra: `COALESCE(b.client_nom, c.nom_complet) AS client_nom, COALESCE(c.telephone, b.phone) AS contact_telephone, v.nom AS vehicule_nom`,
     itemTable: 'comptant_items',
     itemFk: 'bon_comptant_id',
     itemAlias: 'i',
@@ -104,7 +126,7 @@ const bonPagedConfigs = {
     phoneExpr: 'COALESCE(c.telephone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
-    selectExtra: `c.nom_complet AS client_nom, c.telephone AS phone`,
+    selectExtra: `c.nom_complet AS client_nom, c.telephone AS contact_telephone`,
     itemTable: 'charge_items',
     itemFk: 'bon_charge_id',
     itemAlias: 'i',
@@ -124,7 +146,7 @@ const bonPagedConfigs = {
     phoneExpr: 'COALESCE(c.telephone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
-    selectExtra: `c.nom_complet AS client_nom, c.telephone AS phone`,
+    selectExtra: `c.nom_complet AS client_nom, c.telephone AS contact_telephone`,
     itemTable: 'items_avoir_charge',
     itemFk: 'avoir_charge_id',
     itemAlias: 'i',
@@ -144,7 +166,7 @@ const bonPagedConfigs = {
     phoneExpr: 'COALESCE(c.telephone, b.phone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
-    selectExtra: `COALESCE(b.client_nom, c.nom_complet) AS client_nom, COALESCE(c.telephone, b.phone) AS phone`,
+    selectExtra: `COALESCE(b.client_nom, c.nom_complet) AS client_nom, COALESCE(c.telephone, b.phone) AS contact_telephone`,
     itemTable: 'devis_items',
     itemFk: 'devis_id',
     itemAlias: 'i',
@@ -161,7 +183,7 @@ const bonPagedConfigs = {
     phoneExpr: 'CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN COALESCE(f.telephone, \'\') ELSE COALESCE(c.telephone, \'\') END',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id LEFT JOIN contacts f ON f.id = b.fournisseur_id`,
-    selectExtra: `c.nom_complet AS client_nom, c.societe AS client_societe, f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN f.telephone ELSE c.telephone END AS phone`,
+    selectExtra: `c.nom_complet AS client_nom, c.societe AS client_societe, f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN f.telephone ELSE c.telephone END AS contact_telephone`,
     itemTable: 'avoir_client_items',
     itemFk: 'avoir_client_id',
     itemAlias: 'i',
@@ -177,7 +199,7 @@ const bonPagedConfigs = {
     phoneExpr: 'COALESCE(f.telephone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts f ON f.id = b.fournisseur_id`,
-    selectExtra: `f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, f.telephone AS phone`,
+    selectExtra: `f.nom_complet AS fournisseur_nom, f.societe AS fournisseur_societe, f.telephone AS contact_telephone`,
     itemTable: 'avoir_fournisseur_items',
     itemFk: 'avoir_fournisseur_id',
     itemAlias: 'i',

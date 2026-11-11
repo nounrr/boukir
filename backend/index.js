@@ -134,6 +134,7 @@ import { ensureProjetsSchema } from './db/ensureProjetsSchema.js';
 import { ensurePaymentModesAndSaisieSchema } from './db/ensurePaymentModesAndSaisieSchema.js';
 import { ensureClientEcheancierSchema } from './db/ensureClientEcheancierSchema.js';
 import { ensureContactArchiveSchema, startContactArchiveWorker } from './utils/contactArchive.js';
+import { ensureBonContactNumberSchema } from './utils/bonContactNumbers.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
@@ -165,6 +166,7 @@ async function ensureSchemas() {
   await ensurePaymentModesAndSaisieSchema();
   await ensureClientEcheancierSchema();
   await ensureContactArchiveSchema();
+  await ensureBonContactNumberSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 

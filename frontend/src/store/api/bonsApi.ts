@@ -71,6 +71,14 @@ export const bonsApi = api.injectEndpoints({
       query: params => ({ url: '/bons_vehicule/consommation', params }),
       providesTags: [{ type: 'Vehicule', id: 'LIST' }, { type: 'Bon', id: 'LIST' }],
     }),
+    getBonModification: builder.query<{
+      last_modified_by_name: string | null;
+      last_modified_at: string | null;
+    }, { id: number; type: string }>({
+      query: ({ id, type }) => `/bons/${type}/${id}/modification`,
+      providesTags: ['Bon'],
+      keepUnusedDataFor: 0,
+    }),
     getBonForEditing: builder.query<any, { id: number; type: string }>({
       query: ({ id, type }) => {
         const paths: Record<string, string> = {
@@ -886,6 +894,7 @@ export const bonsApi = api.injectEndpoints({
 export const {
   useGetVehicleConsumptionQuery,
   useLazyGetBonForEditingQuery,
+  useGetBonModificationQuery,
   useGetBonsQuery,
   useGetBonsByTypeQuery,
   useGetBonsByTypePagedQuery,

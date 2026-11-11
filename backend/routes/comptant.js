@@ -1,3 +1,4 @@
+import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
 import pool from '../db/pool.js';
@@ -182,7 +183,7 @@ async function assertComptantPaymentsWithinTotal(db, bonComptantId, montantTotal
 async function syncComptantBonReste(db, bonId, montantTotal, requiresVerification = true) {
   const montantPaye = await sumComptantBonPayments(db, bonId);
   const reste = Math.max(0, roundMoney(roundMoney(montantTotal) - montantPaye));
-  // Un règlement complet reste dans l'onglet Non payé jusqu'à sa vérification.
+  // Les règlements soumis à vérification restent dans Non payé une fois complets.
   const nonPaye = Number(reste > 0 || (requiresVerification && montantPaye > 0));
   await db.execute(
     'UPDATE bons_comptant SET reste = ?, non_paye = ?, updated_at = NOW() WHERE id = ?',
@@ -603,7 +604,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
       [bonId, montant, datePaiement, note, createdBy]
     );
 
-    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total, req.user?.role !== 'PDG');
     const montantPaye = Math.max(0, Number((Number(bon.montant_total || 0) - reste).toFixed(2)));
 
     const [rows] = await connection.execute(
@@ -716,7 +717,7 @@ router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
       [montant, datePaiement, note, updatedBy, paymentId, bonId]
     );
 
-    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total, req.user?.role !== 'PDG');
     const montantTotal = Number(bon.montant_total || 0);
     const montantPaye = Math.max(0, Number((montantTotal - reste).toFixed(2)));
     const [updatedRows] = await connection.execute(
@@ -1037,7 +1038,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     }
 
     if (nonPayeRequested) {
-      await syncComptantBonReste(connection, comptantId, montantTotalForPayments);
+      await syncComptantBonReste(connection, comptantId, montantTotalForPayments, req.user?.role !== 'PDG');
     } else {
       await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [comptantId]);
     }
@@ -1050,7 +1051,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await decrementSnapshotQuantities(connection, items);
     }
 
-  await connection.commit();
+  await saveBonGerantNumber(connection, 'bons_comptant', comptantId, req.body?.numero_gerant, req.user);
+    await connection.commit();
   const numero = `COM${String(comptantId).padStart(2, '0')}`;
   res.status(201).json({ message: 'Bon comptant créé avec succès', id: comptantId, numero });
   } catch (error) {
@@ -1328,7 +1330,8 @@ router.put('/:id', async (req, res) => {
     }
 
     if (shouldPreservePaymentHistory) {
-      const requiresVerification = wasUnpaid || paymentsNeedAdjustment || nextNonPayePayments.length > 0;
+      const pdgCompletesPayment = req.user?.role === 'PDG' && (paymentsNeedAdjustment || nextNonPayePayments.length > 0);
+      const requiresVerification = !pdgCompletesPayment && (wasUnpaid || paymentsNeedAdjustment || nextNonPayePayments.length > 0);
       await syncComptantBonReste(connection, id, montantTotalForPayments, requiresVerification);
     } else {
       await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
@@ -1451,6 +1454,7 @@ router.put('/:id', async (req, res) => {
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
+    await saveBonGerantNumber(connection, 'bons_comptant', id, req.body?.numero_gerant, req.user);
     await connection.commit();
     res.json({ message: 'Bon comptant mis à jour avec succès' });
   } catch (error) {

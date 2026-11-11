@@ -9,6 +9,7 @@ import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designa
 import { waitForPrintImages } from '../utils/waitForPrintImages';
 
 interface ContactPrintModalProps {
+  projectName?: string;
   isOpen: boolean;
   onClose: () => void;
   contact: Contact;
@@ -31,7 +32,7 @@ interface ContactPrintModalProps {
   totalDebitSubtitle?: string;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit, totalDebitSubtitle, projectName }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -177,6 +178,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
           <div className="flex justify-center">
             <div ref={printRef} className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
               <ContactPrintTemplate
+                projectName={projectName}
                 contact={contact}
                 mode={mode}
                 transactions={transactions}
