@@ -1,11 +1,35 @@
-import { useMemo, useState } from 'react';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useEffect, useMemo, useState } from 'react';
+import { MoveHorizontal, TrendingUp, Truck } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Text, Tooltip, XAxis, YAxis } from 'recharts';
 import { useGetVehicleConsumptionQuery } from '../store/api/bonsApi';
 import type { VehicleConsumptionArgs } from '../store/api/bonsApi';
 
 type Group = VehicleConsumptionArgs['groupBy'];
 const money = (value: number) => new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
 const compact = (value: number) => new Intl.NumberFormat('fr-MA', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+const chargeColor = '#d97706';
+const categoryTick = { fill: '#475569', fontSize: 11 };
+const amountTick = { fill: '#64748b', fontSize: 11 };
+const categoryAxisLine = { stroke: '#cbd5e1' };
+const vehicleColumnWidth = 78;
+
+function ConsumptionTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload?: { label: string; amount: number } }>;
+}) {
+  const point = payload?.[0]?.payload;
+  if (!active || !point) return null;
+
+  return (
+    <div className="w-max max-w-56 rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-xl">
+      <p className="mb-2 break-words font-semibold text-slate-900">{point.label}</p>
+      <p className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-slate-600">
+        <span>Montant</span>
+        <span className="whitespace-nowrap font-semibold tabular-nums text-amber-700">{money(point.amount)}</span>
+      </p>
+    </div>
+  );
+}
 
 function defaultRange(groupBy: Group): VehicleConsumptionArgs {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -26,14 +50,37 @@ function periodLabel(value: string, group: Group) {
 
 export default function VehicleConsumptionCharts() {
   const [filters, setFilters] = useState<VehicleConsumptionArgs>(() => defaultRange('month'));
+  const [vehicleViewport, setVehicleViewport] = useState<HTMLDivElement | null>(null);
+  const [canScrollVehicles, setCanScrollVehicles] = useState(false);
   const validRange = Boolean(filters.dateFrom && filters.dateTo && filters.dateFrom <= filters.dateTo);
   const { currentData: data, isFetching, isError, error, refetch } = useGetVehicleConsumptionQuery(filters, { skip: !validRange });
   const errorMessage = error && 'data' in error && error.data && typeof error.data === 'object' && 'message' in error.data
     ? String(error.data.message) : 'Impossible de charger les graphiques. Réessayez dans un instant.';
   const periods = useMemo(() => (data?.periods ?? []).map(row => ({ ...row, label: periodLabel(row.period, filters.groupBy) })), [data, filters.groupBy]);
-  const vehicles = useMemo(() => (data?.vehicles ?? []).map(row => ({
-    ...row, label: `${row.name}${row.immatriculation ? ` · ${row.immatriculation}` : ''}`,
-  })), [data]);
+  const vehicles = useMemo(() => {
+    const rows = data?.vehicles ?? [];
+    const nameCounts = new Map<string, number>();
+    for (const row of rows) nameCounts.set(row.name, (nameCounts.get(row.name) ?? 0) + 1);
+
+    return rows.map(row => ({
+      ...row,
+      label: `${row.name}${row.immatriculation ? ` · ${row.immatriculation}` : ''}`,
+      axisDetail: (nameCounts.get(row.name) ?? 0) > 1
+        ? row.immatriculation || (row.vehicule_id == null ? '' : `#${row.vehicule_id}`)
+        : '',
+    }));
+  }, [data]);
+  const vehicleChartMinWidth = 62 + vehicles.length * vehicleColumnWidth;
+
+  useEffect(() => {
+    if (!vehicleViewport) return;
+    const updateScrollHint = () => setCanScrollVehicles(vehicleViewport.clientWidth < vehicleChartMinWidth);
+    const observer = new ResizeObserver(updateScrollHint);
+    updateScrollHint();
+    observer.observe(vehicleViewport);
+    return () => observer.disconnect();
+  }, [vehicleViewport, vehicleChartMinWidth]);
+
   const inputClass = 'mt-1 min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
   return <section className="mb-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="vehicle-consumption-title">
@@ -68,44 +115,98 @@ export default function VehicleConsumptionCharts() {
       </div>
       : !data?.count ? <p className="mt-5 rounded-lg bg-gray-50 p-6 text-center text-sm text-gray-500">Aucun bon véhicule sur cette période.</p>
       : <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-2">
-        <div className="min-w-0 rounded-lg border border-blue-100 p-3 sm:p-4">
-          <h3 className="font-semibold text-gray-900">Total de toutes les voitures</h3>
-          <p className="mt-1 text-xs text-gray-500">Évolution {filters.groupBy === 'day' ? 'par jour' : filters.groupBy === 'month' ? 'par mois' : 'par année'} · DH</p>
-          <div className="mt-4 h-72 w-full" role="img" aria-label="Évolution de la consommation totale des véhicules en DH">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={periods} margin={{ top: 10, right: 12, bottom: 6, left: 0 }} accessibilityLayer>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={30} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={compact} tick={{ fontSize: 11 }} width={56} tickLine={false} axisLine={false} />
-                <Tooltip formatter={value => [money(Number(value)), 'Consommation']} />
-                <Area type="linear" dataKey="amount" stroke="#2563eb" fill="#dbeafe" strokeWidth={2} dot={periods.length === 1 ? { r: 4 } : false} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <details className="mt-3 text-xs text-gray-600"><summary className="cursor-pointer font-medium">Voir les montants par période</summary>
-            <div className="mt-2 max-h-56 overflow-auto"><table className="w-full text-left"><thead><tr><th className="py-2">Période</th><th className="text-right">Montant</th></tr></thead><tbody>{periods.map(row => <tr key={row.period} className="border-t border-gray-100"><td className="py-2">{row.label}</td><td className="text-right tabular-nums">{money(row.amount)}</td></tr>)}</tbody></table></div>
-          </details>
-        </div>
-        <div className="min-w-0 rounded-lg border border-teal-100 p-3 sm:p-4">
-          <h3 className="font-semibold text-gray-900">Consommation de chaque voiture</h3>
-          <p className="mt-1 text-xs text-gray-500">Total par véhicule sur la période sélectionnée · DH</p>
-          <div className="mt-4 max-h-96 overflow-y-auto" role="img" aria-label="Comparaison de la consommation de chaque véhicule en DH">
-            <div style={{ height: Math.max(288, vehicles.length * 42) }}>
+        <figure className="min-w-0 rounded-lg border border-slate-200 bg-slate-50/50 p-3 sm:p-4">
+          <figcaption className="mb-4">
+            <div className="flex items-center gap-2">
+              <Truck className="shrink-0 text-amber-600" size={18} aria-hidden="true" />
+              <h3 className="font-semibold text-slate-900">Consommation par véhicule</h3>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Total par véhicule sur la période sélectionnée · DH</p>
+          </figcaption>
+          <div
+            ref={setVehicleViewport}
+            className="overflow-x-auto"
+            role="img"
+            aria-label="Graphique en colonnes avec les véhicules sur l’axe horizontal et les montants en DH sur l’axe vertical"
+            tabIndex={canScrollVehicles ? 0 : undefined}
+          >
+            <div className="h-[280px]" style={{ minWidth: vehicleChartMinWidth }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart layout="vertical" data={vehicles} margin={{ top: 8, right: 16, bottom: 6, left: 0 }} accessibilityLayer>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                  <XAxis type="number" tickFormatter={compact} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="label" width={125} tick={{ fontSize: 11 }} interval={0} tickLine={false} axisLine={false} />
-                  <Tooltip formatter={value => [money(Number(value)), 'Consommation']} cursor={{ fill: '#f0fdfa' }} />
-                  <Bar dataKey="amount" fill="#0d9488" radius={[0, 4, 4, 0]} maxBarSize={24} isAnimationActive={false} />
+                <BarChart data={vehicles} margin={{ top: 8, right: 8, bottom: 4, left: 0 }} accessibilityLayer>
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    height={38}
+                    interval={0}
+                    tickLine={false}
+                    axisLine={categoryAxisLine}
+                    tick={({ x, y, index }) => {
+                      const vehicle = vehicles[index];
+                      if (!vehicle) return null;
+
+                      return (
+                        <g>
+                          <Text x={x} y={y} width={vehicleColumnWidth - 6} maxLines={vehicle.axisDetail ? 1 : 2} verticalAnchor="start" textAnchor="middle" style={categoryTick}>
+                            {vehicle.name}
+                          </Text>
+                          {vehicle.axisDetail && (
+                            <Text x={x} y={y} dy={13} width={vehicleColumnWidth - 6} maxLines={1} verticalAnchor="start" textAnchor="middle" style={amountTick}>
+                              {vehicle.axisDetail}
+                            </Text>
+                          )}
+                        </g>
+                      );
+                    }}
+                  />
+                  <YAxis width={54} tickFormatter={compact} tick={amountTick} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ConsumptionTooltip />} cursor={{ fill: '#e2e8f0', opacity: 0.35 }} />
+                  <Bar dataKey="amount" name="Consommation" fill={chargeColor} radius={[3, 3, 0, 0]} maxBarSize={34} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
-          <details className="mt-3 text-xs text-gray-600"><summary className="cursor-pointer font-medium">Voir les montants par voiture</summary>
-            <div className="mt-2 max-h-56 overflow-auto"><table className="w-full text-left"><thead><tr><th className="py-2">Voiture</th><th className="text-right">Montant</th></tr></thead><tbody>{vehicles.map(row => <tr key={row.vehicule_id ?? 'unassigned'} className="border-t border-gray-100"><td className="py-2 pr-2">{row.label}</td><td className="whitespace-nowrap text-right tabular-nums">{money(row.amount)}</td></tr>)}</tbody></table></div>
+          {canScrollVehicles && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600">
+              <MoveHorizontal size={14} className="shrink-0" aria-hidden="true" />
+              Faites défiler horizontalement pour voir tous les véhicules.
+            </p>
+          )}
+          <details className="mt-3 text-xs text-slate-600"><summary className="cursor-pointer font-medium">Voir les montants par véhicule</summary>
+            <div className="mt-2 max-h-56 overflow-auto"><table className="w-full text-left"><thead><tr><th className="py-2">Véhicule</th><th className="text-right">Montant</th></tr></thead><tbody>{vehicles.map(row => <tr key={row.vehicule_id ?? 'unassigned'} className="border-t border-slate-200"><td className="py-2 pr-2">{row.label}</td><td className="whitespace-nowrap text-right tabular-nums">{money(row.amount)}</td></tr>)}</tbody></table></div>
           </details>
-        </div>
+        </figure>
+        <figure className="min-w-0 rounded-lg border border-slate-200 bg-slate-50/50 p-3 sm:p-4">
+          <figcaption className="mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="shrink-0 text-amber-600" size={18} aria-hidden="true" />
+              <h3 className="font-semibold text-slate-900">Consommation totale des véhicules</h3>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Évolution {filters.groupBy === 'day' ? 'par jour' : filters.groupBy === 'month' ? 'par mois' : 'par année'} · DH</p>
+          </figcaption>
+          <div className="h-[280px] w-full" role="img" aria-label="Évolution de la consommation totale des véhicules en DH">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={periods} margin={{ top: 8, right: 16, bottom: 4, left: 0 }} accessibilityLayer>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" height={38} tick={categoryTick} minTickGap={20} tickLine={false} axisLine={categoryAxisLine} />
+                <YAxis width={54} tickFormatter={compact} tick={amountTick} tickLine={false} axisLine={false} />
+                <Tooltip content={<ConsumptionTooltip />} cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3' }} />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  name="Consommation totale"
+                  stroke={chargeColor}
+                  strokeWidth={3}
+                  dot={periods.length <= 31 ? { r: 4, fill: '#fff', strokeWidth: 2 } : false}
+                  activeDot={{ r: 6, fill: chargeColor, stroke: '#fff', strokeWidth: 2 }}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <details className="mt-3 text-xs text-slate-600"><summary className="cursor-pointer font-medium">Voir les montants par période</summary>
+            <div className="mt-2 max-h-56 overflow-auto"><table className="w-full text-left"><thead><tr><th className="py-2">Période</th><th className="text-right">Montant</th></tr></thead><tbody>{periods.map(row => <tr key={row.period} className="border-t border-slate-200"><td className="py-2 pr-2">{row.label}</td><td className="whitespace-nowrap text-right tabular-nums">{money(row.amount)}</td></tr>)}</tbody></table></div>
+          </details>
+        </figure>
       </div>}
   </section>;
 }

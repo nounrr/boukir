@@ -7,6 +7,7 @@ const initialState: AuthState = {
   token: localStorage.getItem('token'),
   isAuthenticated: false,
   passwordChangeRequired: localStorage.getItem('password_change_required') === 'true',
+  passwordReauthenticationRequired: false,
   loading: false,
   error: null,
 };
@@ -25,6 +26,7 @@ const authSlice = createSlice({
       state.user = action.payload.user;
       state.token = action.payload.token;
       state.passwordChangeRequired = Boolean(action.payload.password_change_required);
+      state.passwordReauthenticationRequired = false;
       state.error = null;
       localStorage.setItem('token', action.payload.token);
       localStorage.setItem('user', JSON.stringify(action.payload.user));
@@ -41,11 +43,12 @@ const authSlice = createSlice({
       localStorage.removeItem('user');
       localStorage.removeItem('password_change_required');
     },
-    logout: (state) => {
+    logout: (state, action: PayloadAction<'password-reauth' | undefined>) => {
       state.isAuthenticated = false;
       state.user = null;
       state.token = null;
       state.passwordChangeRequired = false;
+      state.passwordReauthenticationRequired = action.payload === 'password-reauth';
       state.error = null;
       localStorage.removeItem('token');
       localStorage.removeItem('user');

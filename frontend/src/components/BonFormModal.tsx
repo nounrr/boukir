@@ -1,3 +1,4 @@
+import { confirmBonExceptionAuthorization } from '../utils/confirmBonExceptionAuthorization';
 import { historyFieldAttributes } from '../utils/historyDocumentEditing';
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
 import { snapshotsForProductVariant } from '../utils/bonSnapshotIndex';
@@ -22,12 +23,14 @@ import { useCorrectBonProductPricesMutation, useGetProductBaseUnitsQuery, useGet
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetComptantPaymentsQuery, useUpdateComptantPaymentMutation } from '../store/api/comptantApi';
-import { useGetClientsQuery, useGetFournisseursQuery, useGetChargesQuery, useCreateContactMutation, useGetContactQuery } from '../store/api/contactsApi';
+import { useCreateContactMutation, useGetBonContactQuery, useLazyGetBonContactQuery } from '../store/api/contactsApi';
+import { useBonContactDirectory } from '../hooks/useBonContactDirectory';
+import { bonContactSearchLabel } from '../utils/bonContactSearch';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonPriceHistoryQuery, useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
-import { useContactSoldeCumule } from '../hooks/useContactSoldeCumule';
+import ContactSoldeCumuleHint from './ContactSoldeCumuleHint';
 import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
 import ContactFormModal from './ContactFormModal';
@@ -99,6 +102,8 @@ const getDisabledOptionTitle = (option: { label: string; data?: any; disabled?: 
   option.disabled ? (option.data?.disabledReason || 'Client non selectionnable') : option.label
 );
 
+const normalizeOptionSearch = (text: string) => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -135,19 +140,16 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [highlightIndex, setHighlightIndex] = useState<number>(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Multi-word search: every token typed must be present in the label (order-independent)
-  // Accent-insensitive: "coud ferme" matches "Coude fermé" (é→e, à→a, ç→c, ...)
-  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const tokens = norm(searchTerm).split(/\s+/).filter(Boolean);
-  const matchOption = (option: { label: string; data?: any }) => {
-    if (tokens.length === 0) return true;
-    // Also match against the old designation (ancienne désignation) when available
-    const oldDesignation = String(option.data?.old_designation ?? '').trim();
-    const L = norm(oldDesignation ? `${option.label} ${oldDesignation}` : option.label);
-    return tokens.every((t) => L.includes(t));
-  };
-
-  const allMatches = options.filter(matchOption);
+  const searchIndex = useMemo(() => isOpen ? options.map(option => ({
+    option,
+    text: normalizeOptionSearch(`${option.label} ${option.data?.old_designation ?? ''}`),
+  })) : [], [isOpen, options]);
+  const allMatches = useMemo(() => {
+    const tokens = normalizeOptionSearch(searchTerm).split(/\s+/).filter(Boolean);
+    if (!tokens.length) return options;
+    return searchIndex.filter(({ text }) => tokens.every(token => text.includes(token)))
+      .map(({ option }) => option);
+  }, [options, searchIndex, searchTerm]);
   const filteredOptions = allMatches.slice(0, displayCount);
   const hasMoreItems = allMatches.length > displayCount;
 
@@ -366,36 +368,6 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           aria-label="Fermer la liste"
         />
       )}
-    </div>
-  );
-};
-
-const ContactSoldeCumuleHint: React.FC<{
-  contactId?: string | number | null;
-  contactType: 'Client' | 'Fournisseur';
-  colorClassName?: string;
-  labelClassName?: string;
-  valueClassName?: string;
-}> = ({
-  contactId,
-  contactType,
-  colorClassName = 'bg-blue-50',
-  labelClassName = 'text-blue-700',
-  valueClassName = 'text-blue-800',
-}) => {
-  const numericId = contactId ? Number(contactId) : null;
-  const { soldeCumule, contact, isLoading } = useContactSoldeCumule(numericId, contactType);
-
-  if (!numericId) return null;
-
-  const hasValue = contact && Number.isFinite(Number(soldeCumule));
-
-  return (
-    <div className={`mt-2 p-2 rounded ${colorClassName}`}>
-      <span className={`text-sm font-medium ${labelClassName}`}>Solde cumule: </span>
-      <span className={`text-sm font-semibold ${valueClassName}`}>
-        {isLoading ? 'Chargement...' : hasValue ? `${Number(soldeCumule).toFixed(2)} DH` : '-'}
-      </span>
     </div>
   );
 };
@@ -1142,6 +1114,12 @@ const computeComptantMontantTotal = (
     : Number(values.montant_total || 0);
 };
 
+const includeInitialContact = (contacts: Contact[], initialContact?: Contact) => (
+  initialContact && !contacts.some(contact => contact.id === initialContact.id)
+    ? [initialContact, ...contacts]
+    : contacts
+);
+
 const getContactTotalCumule = (contact: any) => {
   if (contact?.total_cumule !== null && contact?.total_cumule !== undefined) {
     const totalCumule = Number(contact.total_cumule);
@@ -1251,11 +1229,13 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const showBonPrices = isProjectMode || showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
   const formatPrixAchatOption = (value: any) => showInternalPrices ? formatPurchasePrice(value) : '';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
-  const { data: myBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, { skip: !isOpen });
+  const { data: myBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, {
+    skip: !isOpen || isPDG,
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
+  });
   const plafondAuthorizationsRemaining = Number(myBonAuthorizations?.bon_plafond_autorisations || 0);
   const blockedAuthorizationsRemaining = Number(myBonAuthorizations?.bon_client_bloque_autorisations || 0);
-  const canAuthorizePlafond = isPDG || plafondAuthorizationsRemaining > 0;
-  const canAuthorizeBlockedClient = isPDG || blockedAuthorizationsRemaining > 0;
   const isQtyOnlyEdit = isChefChauffeur && isEditMode;
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
@@ -1331,10 +1311,6 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [selectedProductCache, setSelectedProductCache] = useState<Record<string, any>>({});
   const debouncedProductSearchTerm = useDebouncedValue(productSearchTerm.trim(), 250);
-  const [clientSearchTerm, setClientSearchTerm] = useState('');
-  const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
-  const debouncedClientSearchTerm = useDebouncedValue(clientSearchTerm.trim(), 250);
-  const debouncedFournisseurSearchTerm = useDebouncedValue(fournisseurSearchTerm.trim(), 250);
   // Listes de CONTACTS (clients/fournisseurs complets) : même en édition on NE charge
   // PAS toute la liste — le contact déjà choisi est récupéré par son ID (GET /contacts/:id).
   // La liste complète n'est chargée qu'à la première interaction (ouverture d'un select).
@@ -1690,61 +1666,39 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       })),
     [products]
   );
-  const currentContactTypeForSelect = String(currentTab || (initialValues as any)?.type || '');
-  const isChargeContactSelect = ['Charge', 'AvoirCharge'].includes(currentContactTypeForSelect);
-  const clientSearchEnabled = debouncedClientSearchTerm.length >= 2;
-  const chargeClientSearchEnabled = isChargeContactSelect;
-  const fournisseurSearchEnabled = debouncedFournisseurSearchTerm.length >= 2;
-  const { data: clientsResponse, isFetching: isSearchingClients } = useGetClientsQuery(
-    { page: 1, limit: 80, search: debouncedClientSearchTerm },
-    { skip: !clientSearchEnabled || isChargeContactSelect }
-  );
-  const { data: chargeClientsResponse, isFetching: isSearchingChargeClients } = useGetChargesQuery(
-    { page: 1, limit: debouncedClientSearchTerm ? 80 : 1000, search: debouncedClientSearchTerm },
-    { skip: !chargeClientSearchEnabled }
-  );
-  const { data: fournisseursResponse, isFetching: isSearchingFournisseurs } = useGetFournisseursQuery(
-    { page: 1, limit: 80, search: debouncedFournisseurSearchTerm },
-    { skip: !fournisseurSearchEnabled }
-  );
-  const clientsRaw = clientsResponse?.data || [];
-  const chargeClientsRaw = chargeClientsResponse?.data || [];
-  const fournisseursRaw = fournisseursResponse?.data || [];
-  const clientSelectLoading = isChargeContactSelect ? isSearchingChargeClients : (clientSearchEnabled && isSearchingClients);
-  const fournisseurSelectLoading = fournisseurSearchEnabled && isSearchingFournisseurs;
+  const {
+    clients: directoryClients, charges: directoryCharges, fournisseurs: directoryFournisseurs,
+    isLoading: isContactDirectoryLoading, isError: isContactDirectoryError, refetch: refetchContactDirectory,
+  } = useBonContactDirectory(!isOpen || isProjectMode);
+  const [getBonContact] = useLazyGetBonContactQuery();
+  const [isSelectingClient, setIsSelectingClient] = useState(false);
+  const selectingClient = useRef(false);
 
-  // À l'ouverture en modification, on récupère le contact (client/fournisseur) DÉJÀ
-  // sélectionné directement par son ID (GET /contacts/:id), sans charger toute la liste.
-  // On le fusionne ensuite dans les listes pour qu'il s'affiche et que toute la logique
-  // (clients.find / fournisseurs.find) le retrouve même si la liste complète n'est pas chargée.
-  const selectedClientId = useMemo(() => {
-    const id = Number((initialValues as any)?.client_id ?? (initialValues as any)?.contact_id);
-    return Number.isFinite(id) && id > 0 ? id : undefined;
-  }, [initialValues]);
-  const selectedFournisseurId = useMemo(() => {
-    const id = Number((initialValues as any)?.fournisseur_id);
-    return Number.isFinite(id) && id > 0 ? id : undefined;
-  }, [initialValues]);
-  const { data: selectedClientById } = useGetContactQuery(selectedClientId as number, { skip: !selectedClientId });
-  const { data: selectedFournisseurById } = useGetContactQuery(selectedFournisseurId as number, { skip: !selectedFournisseurId });
-
-  // Fusionne un contact (récupéré par ID) dans une liste sans créer de doublon.
-  const mergeContactById = (list: Contact[], extra?: Contact): Contact[] => {
-    if (!extra?.id) return list;
-    if ((list || []).some((c: any) => String(c?.id) === String(extra.id))) return list;
-    return [extra, ...(list || [])];
+  const initialClientId = Number((initialValues as any)?.client_id ?? (initialValues as any)?.contact_id) || 0;
+  const initialFournisseurId = Number((initialValues as any)?.fournisseur_id) || 0;
+  const { currentData: initialClient } = useGetBonContactQuery(initialClientId, { skip: !isOpen || initialClientId <= 0 });
+  const { currentData: initialFournisseur } = useGetBonContactQuery(initialFournisseurId, { skip: !isOpen || initialFournisseurId <= 0 });
+  const loadClientForExistingBon = async (clientId: number) => {
+    try {
+      return await getBonContact(clientId, true).unwrap();
+    } catch (error) {
+      // An older bon may still reference a contact that has since been deleted.
+      if (isEditMode && clientId === initialClientId && (error as { status?: number }).status === 404) return null;
+      throw error;
+    }
   };
+
   const clients = useMemo(
-    () => mergeContactById(clientsRaw as Contact[], selectedClientById as Contact | undefined),
-    [clientsRaw, selectedClientById]
+    () => includeInitialContact(directoryClients, initialClient?.type === 'Client' && !Number(initialClient.is_charge) ? initialClient : undefined),
+    [directoryClients, initialClient]
   );
   const chargeClients = useMemo(
-    () => mergeContactById(chargeClientsRaw as Contact[], selectedClientById as Contact | undefined),
-    [chargeClientsRaw, selectedClientById]
+    () => includeInitialContact(directoryCharges, initialClient?.type === 'Client' && Number(initialClient.is_charge) ? initialClient : undefined),
+    [directoryCharges, initialClient]
   );
   const fournisseurs = useMemo(
-    () => mergeContactById(fournisseursRaw as Contact[], selectedFournisseurById as Contact | undefined),
-    [fournisseursRaw, selectedFournisseurById]
+    () => includeInitialContact(directoryFournisseurs, initialFournisseur?.type === 'Fournisseur' ? initialFournisseur : undefined),
+    [directoryFournisseurs, initialFournisseur]
   );
   const currentModalType = String((initialValues as any)?.type || currentTab || '');
   const comptantPaymentBonId = Number((initialValues as any)?.id || 0);
@@ -1844,51 +1798,22 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     () => (['Charge', 'AvoirCharge'].includes(String(currentTab || (initialValues as any)?.type || '')) ? chargeClients : clients),
     [chargeClients, clients, currentTab, initialValues]
   );
-  const buildClientOption = (c: Contact) => {
-    const allowCreditNote = isClientCreditNoteType(currentModalType);
-    const soldeCumule = getContactTotalCumule(c);
-    const creditLimit = getContactCreditLimit(c);
-    const limite = creditLimit?.amount ?? 0;
-    const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
-    const depassement = isOverLimit ? soldeCumule - limite : 0;
-    const isBlocked = isContactBlocked(c);
-    const supportsExceptionAuthorization = ['Sortie', 'Comptant'].includes(String(currentModalType));
-    const isDisabled = !allowCreditNote && (
-      (isBlocked && (!supportsExceptionAuthorization || !canAuthorizeBlockedClient)) ||
-      (isOverLimit && (supportsExceptionAuthorization ? !canAuthorizePlafond : user?.role !== 'PDG'))
-    );
-    const blockedLabel = !allowCreditNote && isBlocked ? ' - Client bloque' : '';
-    const disabledReason = !allowCreditNote && isBlocked && (!supportsExceptionAuthorization || !canAuthorizeBlockedClient)
-      ? 'Client bloque - aucune autorisation restante'
-      : !allowCreditNote && isOverLimit && (supportsExceptionAuthorization ? !canAuthorizePlafond : user?.role !== 'PDG')
-        ? 'Client non selectionnable - Plafond depasse'
-        : undefined;
-    const baseLabel = `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}${blockedLabel}`;
-
-    return {
-      value: c.id.toString(),
-      label: !allowCreditNote && isOverLimit ? `${baseLabel} - DEPASSE de ${depassement.toFixed(2)} DH` : baseLabel,
-      data: { ...c, disabledReason },
-      disabled: isDisabled,
-    };
-  };
-  // PERF: options client mémoïsées — évite de recalculer buildClientOption (qui lit le
-  // solde cumulé / plafond de chaque contact) à chaque frappe/render du formulaire.
-  const clientOptions = useMemo(
-    () => (selectableClients as Contact[]).map(buildClientOption),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectableClients, user?.role, currentModalType, canAuthorizeBlockedClient, canAuthorizePlafond]
-  );
-  // PERF: options fournisseur mémoïsées (évite .map(fournisseurs) à chaque render).
-  const fournisseurOptions = useMemo(
-    () =>
-      (fournisseurs as Contact[]).map((f: Contact) => ({
-        value: f.id.toString(),
-        label: `${f.nom_complet} ${f.reference ? `(${f.reference})` : ''}`,
-        data: f,
-      })),
-    [fournisseurs]
-  );
+  const clientOptions = useMemo(() => {
+    const canSelectBlocked = isClientCreditNoteType(currentModalType) || ['Sortie', 'Comptant'].includes(currentModalType);
+    return selectableClients.map(contact => {
+      const blocked = !isClientCreditNoteType(currentModalType) && isContactBlocked(contact);
+      return {
+        value: String(contact.id),
+        label: bonContactSearchLabel(contact) + (blocked ? ' - Client bloqué' : ''),
+        data: { disabledReason: blocked ? 'Client bloqué' : undefined },
+        disabled: blocked && !canSelectBlocked,
+      };
+    });
+  }, [selectableClients, currentModalType]);
+  const fournisseurOptions = useMemo(() => fournisseurs.map(contact => ({
+    value: String(contact.id),
+    label: bonContactSearchLabel(contact),
+  })), [fournisseurs]);
   const productMap = useMemo(() => {
     const map = new Map<string, any>();
     (products || []).forEach((prod: any) => {
@@ -1968,12 +1893,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const ecommerceClientOptions = useMemo(() => {
     return (clients || []).map((c: any) => {
       const name = String(c?.nom_complet || '').trim();
-      const ref = String(c?.reference || '').trim();
-      const phone = String(c?.telephone || c?.phone || '').trim();
-      const labelParts = [name, ref ? `(${ref})` : '', phone ? `• ${phone}` : ''].filter(Boolean);
       return {
         value: name,
-        label: labelParts.join(' ').replace(/\s+/g, ' ').trim(),
+        label: bonContactSearchLabel(c),
         data: c,
       };
     });
@@ -3313,39 +3235,32 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   };
 
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
-  if (submitInProgressRef.current) {
+  if (submitInProgressRef.current || selectingClient.current) {
     return;
   }
   submitInProgressRef.current = true;
   setIsSavingBon(true);
   try {
-    let useExceptionAuthorization = false;
-
     const selectedClientId = values.client_id ? Number(values.client_id) : null;
     const selectedClient = selectedClientId
-      ? allClients.find((c: any) => Number(c?.id) === selectedClientId)
+      ? await loadClientForExistingBon(selectedClientId)
       : null;
     if (selectedClient && !isClientCreditNoteType(values.type) && isContactBlocked(selectedClient)) {
       const supportsExceptionAuthorization = ['Sortie', 'Comptant'].includes(String(values.type));
-      if (!supportsExceptionAuthorization || !canAuthorizeBlockedClient) {
+      if (!supportsExceptionAuthorization) {
         showError(`Client bloqué : ${selectedClient.nom_complet || selectedClientId}. Aucune autorisation "client bloqué" restante.`);
         setSubmitting(false);
         return;
       }
-      const blockedConfirmation = await showConfirmation(
-        `${selectedClient.nom_complet || selectedClientId} est bloqué.\n\n` +
-        (isPDG
-          ? 'Le PDG peut autoriser ce bon sans quota.'
-          : `Cette opération consommera 1 autorisation "client bloqué".\nAutorisations restantes : ${blockedAuthorizationsRemaining}.`),
-        'Autorisation client bloqué',
-        'Utiliser l’autorisation',
-        'Annuler'
-      );
-      if (!blockedConfirmation.isConfirmed) {
-        setSubmitting(false);
-        return;
+      if (isPDG) {
+        const blockedConfirmation = await showConfirmation(
+          `${selectedClient.nom_complet || selectedClientId} est bloqué. Voulez-vous enregistrer ce bon ?`,
+          'Autorisation client bloqué',
+          'Continuer',
+          'Annuler'
+        );
+        if (!blockedConfirmation.isConfirmed) return;
       }
-      useExceptionAuthorization = !isPDG;
     }
     if (isChefChauffeur && !isEditMode) {
       showError('Permission refusée: Chef Chauffeur ne peut pas créer des bons/avoirs.');
@@ -3627,7 +3542,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       remise_client_nom: (requestType === 'Sortie' || requestType === 'Comptant') ? effectiveRemiseTarget.remise_client_nom : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
-      use_exception_authorization: useExceptionAuthorization,
       // N'envoyer livraisons que si au moins un véhicule est défini
       livraisons: livraisonsClean.length ? livraisonsClean : undefined,
       items: (requestType === 'Charge' || requestType === 'AvoirCharge')
@@ -3992,7 +3906,14 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     if (isEditMode) {
       await savePdgCatalogPriceCorrections(values);
-      const updated = await updateBonMutation({ id: (initialValues as any).id, type: requestType, ...cleanBonData }).unwrap();
+      const update = await confirmBonExceptionAuthorization(confirmed => updateBonMutation({
+        id: (initialValues as any).id,
+        type: requestType,
+        ...cleanBonData,
+        use_exception_authorization: confirmed,
+      }).unwrap());
+      if (!update.saved) return;
+      const updated = update.result;
       const mergedUpdatedBon = {
         ...(initialValues as any),
         ...cleanBonData,
@@ -4045,147 +3966,31 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       // est maintenant gérée par le backend lors du changement de statut vers "Validé"
       // (voir backend/routes/commandes.js PATCH /:id/statut)
     } else {
-      // Vérification de la limite plafond/garantie pour les bons clients.
-      if (['Sortie', 'Comptant'].includes(requestType) && cleanBonData.client_id) {
-        const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
-        const creditLimit = getContactCreditLimit(client);
-        if (client && creditLimit) {
-          // Utiliser total_cumule comme sur la page clients, puis ajouter le total du bon courant.
-          const backendClientSolde = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
-          const soldeCumule = getContactTotalCumule(backendClientSolde);
-          const limite = creditLimit.amount;
-          const nouveauSolde = soldeCumule + montantTotal;
-          
-          // Cas 1: Client déjà au-dessus de la limite AVANT ce bon
-          if (soldeCumule > limite) {
-            const depassementActuel = soldeCumule - limite;
-            
-            if (user?.role === 'PDG') {
-              // Vérifier si le PDG a déjà approuvé ce client récemment (dans les 30 dernières minutes)
-              const hasRecentApproval = pdgApprovedOverLimit && 
-                                       pdgApprovedOverLimit.clientId === cleanBonData.client_id.toString() &&
-                                       (Date.now() - pdgApprovedOverLimit.timestamp) < 30 * 60 * 1000; // 30 min
-
-              if (!hasRecentApproval) {
-                // PDG : Alerte informative mais peut continuer
-                const result = await showConfirmation(
-                  `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DE LA LIMITE ⚠️\n\n` +
-                  `Client: ${client.nom_complet}\n` +
-                  `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                  `${creditLimit.details}\n` +
-                  `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n` +
-                  `Dépassement actuel: ${depassementActuel.toFixed(2)} DH\n\n` +
-                  `Montant du nouveau bon: ${montantTotal.toFixed(2)} DH\n` +
-                  `Solde après ce bon: ${nouveauSolde.toFixed(2)} DH\n\n` +
-                  `Ce client a déjà dépassé sa limite de crédit.\n` +
-                  `Voulez-vous tout de même créer ce bon ?`,
-                  'Client au-dessus de la limite',
-                  'Continuer',
-                  'Annuler'
-                );
-                
-                if (!result.isConfirmed) {
-                  setSubmitting(false);
-                  return;
-                }
-              }
-              // Si approbation récente ou nouvelle approbation, continuer
-            } else if (canAuthorizePlafond) {
-              const result = await showConfirmation(
-                `Client : ${client.nom_complet}\n` +
-                `Dépassement actuel : ${depassementActuel.toFixed(2)} DH\n` +
-                `Montant du nouveau bon : ${montantTotal.toFixed(2)} DH\n\n` +
-                `Cette opération consommera 1 autorisation "dépassement de plafond".\n` +
-                `Autorisations restantes : ${plafondAuthorizationsRemaining}.`,
-                'Utiliser une autorisation plafond',
-                'Utiliser l’autorisation',
-                'Annuler'
-              );
-              if (!result.isConfirmed) {
-                setSubmitting(false);
-                return;
-              }
-              cleanBonData.use_exception_authorization = true;
-            } else {
-              // Autres rôles : Interdiction complète
-              showError(
-                `🚫 CRÉATION INTERDITE - CLIENT AU-DESSUS DE LA LIMITE 🚫\n\n` +
-                `Client: ${client.nom_complet}\n` +
-                `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                `${creditLimit.details}\n` +
-                `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n` +
-                `Dépassement actuel: ${depassementActuel.toFixed(2)} DH\n\n` +
-                `❌ Ce client a déjà dépassé sa limite de crédit.\n` +
-                `Vous n'êtes pas autorisé à créer de nouveaux bons pour ce client.\n` +
-                `Contactez votre responsable.`
-              );
-              setSubmitting(false);
-              return;
-            }
-          }
-          // Cas 2: Client dans les limites mais ce bon le ferait dépasser
-          else if (nouveauSolde > limite) {
-            const depassement = nouveauSolde - limite;
-            
-            if (user?.role === 'PDG') {
-              // PDG : Popup personnalisé avec boutons Continuer/Annuler
-              const result = await showConfirmation(
-                `⚠️ ATTENTION - CE BON DÉPASSERA LA LIMITE ⚠️\n\n` +
-                `Client: ${client.nom_complet}\n` +
-                `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
-                `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
-                `${creditLimit.details}\n` +
-                `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n\n` +
-                `Ce bon ferait dépasser la limite de ${depassement.toFixed(2)} DH.\n\n` +
-                `Voulez-vous autoriser la création malgré le dépassement ?`,
-                'Dépassement de limite détecté',
-                'Continuer',
-                'Annuler'
-              );
-              
-              if (!result.isConfirmed) {
-                setSubmitting(false);
-                return;
-              }
-            } else if (canAuthorizePlafond) {
-              const result = await showConfirmation(
-                `Client : ${client.nom_complet}\n` +
-                `Ce bon dépassera la limite de ${depassement.toFixed(2)} DH.\n\n` +
-                `Cette opération consommera 1 autorisation "dépassement de plafond".\n` +
-                `Autorisations restantes : ${plafondAuthorizationsRemaining}.`,
-                'Utiliser une autorisation plafond',
-                'Utiliser l’autorisation',
-                'Annuler'
-              );
-              if (!result.isConfirmed) {
-                setSubmitting(false);
-                return;
-              }
-              cleanBonData.use_exception_authorization = true;
-            } else {
-              // Autres rôles : Annulation automatique
-              showError(
-                `🚫 CRÉATION INTERDITE - DÉPASSEMENT DE LIMITE 🚫\n\n` +
-                `Client: ${client.nom_complet}\n` +
-                `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
-                `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
-                `${creditLimit.details}\n` +
-                `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n\n` +
-                `Ce bon dépasserait la limite de ${depassement.toFixed(2)} DH.\n\n` +
-                `❌ Vous n'êtes pas autorisé à créer ce bon.\n` +
-                `Veuillez réduire le montant ou contacter votre responsable.`
-              );
-              setSubmitting(false);
-              return;
-            }
-          }
+      if (isPDG && selectedClient && ['Sortie', 'Comptant'].includes(requestType)) {
+        const creditLimit = getContactCreditLimit(selectedClient);
+        const soldeCumule = getContactTotalCumule(selectedClient);
+        const nouveauSolde = soldeCumule + montantTotal;
+        const alreadyApproved = pdgApprovedOverLimit?.clientId === String(selectedClient.id) &&
+          Date.now() - pdgApprovedOverLimit.timestamp < 30 * 60 * 1000;
+        if (creditLimit && nouveauSolde > creditLimit.amount && !(soldeCumule > creditLimit.amount && alreadyApproved)) {
+          const confirmation = await showConfirmation(
+            `Client : ${selectedClient.nom_complet}\nSolde actuel : ${soldeCumule.toFixed(2)} DH\n` +
+            `${creditLimit.details}\nSolde après ce bon : ${nouveauSolde.toFixed(2)} DH\n` +
+            `Dépassement : ${(nouveauSolde - creditLimit.amount).toFixed(2)} DH`,
+            'Dépassement de limite',
+            'Continuer',
+            'Annuler'
+          );
+          if (!confirmation.isConfirmed) return;
         }
       }
 
       await savePdgCatalogPriceCorrections(values);
-      const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
+      const creation = await confirmBonExceptionAuthorization(confirmed => createBon({
+        type: requestType, ...cleanBonData, use_exception_authorization: confirmed,
+      }).unwrap());
+      if (!creation.saved) return;
+      const created = creation.result;
       submittedBon = {
         ...cleanBonData,
         ...(created && typeof created === 'object' ? created : {}),
@@ -4803,7 +4608,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return true;
     }
 
-    const client = clients.find((c: any) => Number(c.id) === Number(values.client_id));
+    let client: Contact | null;
+    try {
+      client = await loadClientForExistingBon(Number(values.client_id));
+    } catch {
+      showError('Impossible de vérifier le solde du client. Réessayez.');
+      return false;
+    }
     const creditLimit = getContactCreditLimit(client);
     if (!client || !creditLimit) {
       return true;
@@ -4817,8 +4628,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return sum + q * u;
     }, 0);
 
-  const backendClient = clients.find((c: any) => c.id.toString() === values.client_id.toString());
-  const soldeCumule = getContactTotalCumule(backendClient);
+    const soldeCumule = getContactTotalCumule(client);
     const limite = creditLimit.amount;
     const nouveauSolde = soldeCumule + montantBon;
 
@@ -5013,12 +4823,22 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 <div className="flex flex-wrap gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <span className="font-medium">Autorisations disponibles :</span>
                   <span className="rounded bg-white px-2 py-0.5">
-                    Plafond {plafondAuthorizationsRemaining}
+                    Plafond global {plafondAuthorizationsRemaining}
                   </span>
+                  {values.client_id && (
+                    <span className="rounded bg-white px-2 py-0.5">
+                      Plafond pour ce client {myBonAuthorizations?.plafond_par_client?.[values.client_id] ?? 0}
+                    </span>
+                  )}
                   <span className="rounded bg-white px-2 py-0.5">
                     Client bloqué {blockedAuthorizationsRemaining}
                   </span>
                 </div>
+              )}
+              {isContactDirectoryError && (
+                <p className="text-sm text-red-700" role="status">
+                  Annuaire indisponible. <button type="button" className="underline" onClick={() => refetchContactDirectory()}>Réessayer</button>
+                </p>
               )}
               <AutoCheckNonCalculatedForAwatif isOpen={isOpen} clients={clients as any[]} />
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -5257,114 +5077,65 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    loading={clientSelectLoading}
-                    onSearchTermChange={setClientSearchTerm}
+                    loading={isContactDirectoryLoading}
                     options={clientOptions}
                     value={values.client_id}
                     valueLabelFallback={values.client_nom || ''}
                     minSearchChars={['Charge', 'AvoirCharge'].includes(values.type) ? 0 : 2}
-                    disabled={isQtyOnlyEdit}
+                    disabled={isQtyOnlyEdit || isSelectingClient}
                     onChange={async (clientId) => {
-                      if (isQtyOnlyEdit) return;
-                      const numericClientId = Number(clientId);
-                      setPriceHistoryContactId(
-                        Number.isInteger(numericClientId) && numericClientId > 0
-                          ? numericClientId
-                          : undefined
-                      );
-                      const client = selectableClients.find((c: Contact) => c.id.toString() === clientId);
-                      if (!client) {
-                        setFieldValue('client_id', clientId);
-                        return;
-                      }
-                      if (!isClientCreditNoteType(values.type) && isContactBlocked(client)) {
-                        const supportsExceptionAuthorization = ['Sortie', 'Comptant'].includes(String(values.type));
-                        if (!supportsExceptionAuthorization || !canAuthorizeBlockedClient) {
-                          showError(`Client bloqué : ${client.nom_complet || clientId}. Aucune autorisation "client bloqué" restante.`);
-                          return;
-                        }
-                      }
-                      
-                      if (isClientCreditNoteType(values.type)) {
-                        setFieldValue('client_id', clientId);
-                        setFieldValue('client_nom', client.nom_complet);
-                        setFieldValue('client_adresse', client.adresse || '');
-                        setFieldValue('client_societe', (client as any).societe || '');
+                      if (isQtyOnlyEdit || selectingClient.current) return;
+                      if (!clientId) {
+                        setFieldValue('client_id', '');
+                        setPriceHistoryContactId(undefined);
                         setPdgApprovedOverLimit(null);
                         return;
                       }
 
-                      const soldeCumule = getContactTotalCumule(client);
-                      const creditLimit = getContactCreditLimit(client);
-                      const limite = creditLimit?.amount ?? 0;
-                      const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
-                      
-                      if (isOverLimit) {
-                        const depassement = soldeCumule - limite;
-                        
-                        if (user?.role === 'PDG') {
-                          // PDG : Alerte mais peut continuer
-                          const result = await showConfirmation(
-                            `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DE LA LIMITE ⚠️\n\n` +
-                            `Client: ${client.nom_complet}\n` +
-                            `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                            `${creditLimit?.details}\n` +
-                            `Limite appliquée (${creditLimit?.label}): ${limite.toFixed(2)} DH\n` +
-                            `Dépassement actuel: ${depassement.toFixed(2)} DH\n\n` +
-                            `Ce client a déjà dépassé sa limite de crédit.\n` +
-                            `Voulez-vous tout de même continuer avec ce client ?`,
-                            'Client au-dessus de la limite',
-                            'Continuer',
-                            'Choisir un autre client'
-                          );
-                          
-                          if (result.isConfirmed) {
-                            // PDG accepte de continuer - mémoriser cette approbation
-                            setPdgApprovedOverLimit({
-                              clientId: clientId,
-                              timestamp: Date.now()
-                            });
-                            setFieldValue('client_id', clientId);
-                            setFieldValue('client_nom', client.nom_complet);
-                            setFieldValue('client_adresse', client.adresse || '');
-                            setFieldValue('client_societe', (client as any).societe || '');
-                            // Clear client_nom when selecting from dropdown
-                            if (values.type === 'Devis') setFieldValue('client_nom', '');
-                          }
-                          // Sinon ne pas sélectionner le client
-                        } else if (canAuthorizePlafond) {
-                          setFieldValue('client_id', clientId);
-                          setFieldValue('client_nom', client.nom_complet);
-                          setFieldValue('client_adresse', client.adresse || '');
-                          setFieldValue('client_societe', (client as any).societe || '');
-                          showSuccess(`Client sélectionné. Il reste ${plafondAuthorizationsRemaining} autorisation(s) plafond.`);
-                        } else {
-                          // Autres rôles : Interdiction complète
-                          showError(
-                            `🚫 CLIENT NON SÉLECTIONNABLE 🚫\n\n` +
-                            `Client: ${client.nom_complet}\n` +
-                            `Solde cumulé: ${soldeCumule.toFixed(2)} DH\n` +
-                            `${creditLimit?.details}\n` +
-                            `Limite appliquée (${creditLimit?.label}): ${limite.toFixed(2)} DH\n` +
-                            `Dépassement: ${depassement.toFixed(2)} DH\n\n` +
-                            `❌ Ce client a déjà dépassé sa limite de crédit.\n` +
-                            `Veuillez choisir un autre client ou contactez votre responsable.`
-                          );
-                          // Ne pas sélectionner le client
+                      selectingClient.current = true;
+                      setIsSelectingClient(true);
+                      try {
+                        const client = await getBonContact(Number(clientId), true).unwrap();
+                        const isCreditNote = isClientCreditNoteType(values.type);
+                        const supportsException = ['Sortie', 'Comptant'].includes(String(values.type));
+                        if (!isCreditNote && !supportsException && isContactBlocked(client)) {
+                          showError(`Client bloqué : ${client.nom_complet || clientId}.`);
+                          return;
                         }
-                      } else {
-                        // Client dans les limites, sélection normale
+
+                        const creditLimit = isCreditNote ? null : getContactCreditLimit(client);
+                        const soldeCumule = getContactTotalCumule(client);
+                        if (creditLimit && soldeCumule > creditLimit.amount) {
+                          const depassement = soldeCumule - creditLimit.amount;
+                          if (!isPDG && !supportsException) {
+                            showError(`Client au-dessus de la limite. Dépassement : ${depassement.toFixed(2)} DH`);
+                            return;
+                          }
+                          if (isPDG) {
+                            const result = await showConfirmation(
+                              `Client : ${client.nom_complet}\nSolde actuel : ${soldeCumule.toFixed(2)} DH\n` +
+                              `${creditLimit.details}\nDépassement : ${depassement.toFixed(2)} DH`,
+                              'Client au-dessus de la limite', 'Continuer', 'Choisir un autre client'
+                            );
+                            if (!result.isConfirmed) return;
+                          }
+                        }
+
+                        setPdgApprovedOverLimit(isPDG && creditLimit && soldeCumule > creditLimit.amount
+                          ? { clientId, timestamp: Date.now() } : null);
+                        setPriceHistoryContactId(Number(clientId));
                         setFieldValue('client_id', clientId);
-                        setFieldValue('client_nom', client.nom_complet);
+                        setFieldValue('client_nom', values.type === 'Devis' ? '' : client.nom_complet);
                         setFieldValue('client_adresse', client.adresse || '');
-                        setFieldValue('client_societe', (client as any).societe || '');
-                        // Reset previous PDG approval when selecting different client
-                        setPdgApprovedOverLimit(null);
-                        // Clear client_nom when selecting from dropdown
-                        if (values.type === 'Devis') setFieldValue('client_nom', '');
+                        setFieldValue('client_societe', client.societe || '');
+                      } catch {
+                        showError('Impossible de charger le client et son solde. Réessayez.');
+                      } finally {
+                        selectingClient.current = false;
+                        setIsSelectingClient(false);
                       }
                     }}
-                    placeholder="Sélectionnez un client"
+                    placeholder={isSelectingClient ? "Chargement du client…" : "Sélectionnez un client"}
                     className="w-full"
                     maxDisplayItems={200}
                     autoOpenOnFocus
@@ -5426,8 +5197,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   {values.type === 'AvoirEcommerce' ? (
                     <SearchableSelect
-                      loading={clientSelectLoading}
-                      onSearchTermChange={setClientSearchTerm}
+                      loading={isContactDirectoryLoading}
                       options={ecommerceClientOptions}
                       value={values.client_nom || ''}
                       valueLabelFallback={values.client_nom || ''}
@@ -5666,8 +5436,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    loading={fournisseurSelectLoading}
-                    onSearchTermChange={setFournisseurSearchTerm}
+                    loading={isContactDirectoryLoading}
                     options={fournisseurOptions}
                     value={values.fournisseur_id}
                     valueLabelFallback={values.fournisseur_nom || ''}

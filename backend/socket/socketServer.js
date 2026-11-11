@@ -46,6 +46,9 @@ export function initializeSocketServer(httpServer) {
 
       // Verify JWT token
       const decoded = jwt.verify(token, getJwtSecret());
+      if (decoded.weekly_password_change_week) {
+        return next(new Error('Changement de mot de passe obligatoire'));
+      }
       
       // Get user from database
       // Check EMPLOYEES table first (for employee/PDG users)

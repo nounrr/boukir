@@ -6,6 +6,7 @@ import { ensureStatsDetailsPermissionSchema } from './statsDetailsPermissions.js
 import { ensureSalePriceCorrectionPermissionSchema } from './salePriceCorrectionPermissions.js';
 import { ensureInternalPricePermissionSchema } from './internalPricePermissions.js';
 import { ensureArchivedProductPermissionSchema } from './archivedProductPermissions.js';
+import { COMPTANT_PAYMENT_VERIFICATION_COLUMN, ensureComptantPaymentVerificationPermissionSchema } from './comptantPaymentVerificationPermissions.js';
 import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmployeePagePermissions } from './employeePagePermissions.js';
 
 /**
@@ -59,7 +60,7 @@ export const PAGE_PERMISSION_GROUPS = Object.freeze([
     key: 'clients',
     label: 'Clients · commentaires & rappels',
     page: 'Fiches contacts',
-    href: '/clients',
+    href: '/clients-copy',
     description:
       "Collaboration sur les fiches clients : commentaires internes et rappels de suivi.",
     legacyPage: '/employees/client-collaboration-permissions',
@@ -184,6 +185,19 @@ export const PAGE_PERMISSION_GROUPS = Object.freeze([
         description: 'Ouvrir la page, appliquer des corrections et remettre une ligne à corriger.',
       },
     ],
+  },
+  {
+    key: 'comptant_payment_verification',
+    label: 'Comptant non payé',
+    page: 'Bons · Comptant non payé',
+    href: '/bons?tab=ComptantNonPaye',
+    description: 'Les bons intégralement réglés attendent une vérification avant de passer dans Comptant payé.',
+    permissions: [{
+      key: 'verify',
+      column: COMPTANT_PAYMENT_VERIFICATION_COLUMN,
+      label: 'Vérifier les règlements',
+      description: 'Confirmer un règlement complet et transférer le bon dans Comptant payé.',
+    }],
   },
   {
     key: 'stats_details',
@@ -333,6 +347,7 @@ export async function ensurePagePermissionSchema(db = pool) {
   await ensureEmployeePagePermissionSchema(db);
   await ensureInternalPricePermissionSchema(db);
   await ensureArchivedProductPermissionSchema(db);
+  await ensureComptantPaymentVerificationPermissionSchema(db);
   await ensureFondCaissePermissionSchema(db);
   await ensureStatsDetailsPermissionSchema(db);
   await ensureSalePriceCorrectionPermissionSchema(db);

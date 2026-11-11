@@ -11,6 +11,7 @@ export interface MyBonAuthorizations {
   unlimited: boolean;
   bon_plafond_autorisations: number | null;
   bon_client_bloque_autorisations: number | null;
+  plafond_par_client: Record<string, number>;
 }
 
 export const employeesServerApi = api.injectEndpoints({
@@ -26,6 +27,17 @@ export const employeesServerApi = api.injectEndpoints({
     getMyBonAuthorizations: builder.query<MyBonAuthorizations, void>({
       query: () => ({ url: '/employees/me/bon-authorizations', method: 'GET' }),
       providesTags: [{ type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' }],
+    }),
+    grantClientPlafondAuthorizations: builder.mutation<
+      { employee_id: number; client_id: number; remaining: number },
+      { employeeId: number; client_id: number; quantity: number }
+    >({
+      query: ({ employeeId, ...body }) => ({
+        url: `/employees/${employeeId}/plafond-authorizations`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [{ type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' }],
     }),
     createEmployee: builder.mutation<Employee, CreateEmployeeData & { created_by: number }>({
       query: (body) => ({ url: '/employees', method: 'POST', body }),
@@ -86,6 +98,7 @@ export const {
   useGetEmployeesQuery: useGetEmployeesQueryServer,
   useGetEmployeeQuery: useGetEmployeeQueryServer,
   useGetMyBonAuthorizationsQuery: useGetMyBonAuthorizationsQueryServer,
+  useGrantClientPlafondAuthorizationsMutation,
   useCreateEmployeeMutation: useCreateEmployeeMutationServer,
   useUpdateEmployeeMutation: useUpdateEmployeeMutationServer,
   useDeleteEmployeeMutation: useDeleteEmployeeMutationServer,

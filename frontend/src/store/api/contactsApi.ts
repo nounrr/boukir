@@ -7,6 +7,7 @@ export interface PaginatedContactsResponse {
     page: number;
     limit: number;
     total: number;
+    totalGrouped?: number;
     totalPages: number;
   };
   grandTotalCumule?: number;
@@ -18,6 +19,17 @@ export interface PaginatedContactsResponse {
 
 export type ContactsSortBy = 'rappel' | 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'total_cumule' | 'created_at';
 export type SortDirection = 'asc' | 'desc';
+export type ContactArchiveKind = 'client' | 'fournisseur' | 'charge';
+
+export type PaymentDirectoryContact = Pick<Contact, 'id' | 'type' | 'nom_complet' | 'nom' | 'societe' | 'telephone' | 'reference' | 'is_remise_pour_maalem' | 'solde'>;
+
+interface ArchivedContactsResponse {
+  data: Array<Pick<Contact, 'id' | 'nom_complet' | 'societe'> & {
+    archived_at: string;
+    archive_reason: 'manual' | 'inactivity';
+  }>;
+  pagination: { page: number; totalPages: number };
+}
 
 export interface ClientChequesEcheanciers {
   cheques: { id: number; numero: string | null; date_paiement: string | null; date_echeance: string; montant_total: number; banque: string | null; code_reglement: string | null; statut: string | null }[];
@@ -52,6 +64,38 @@ type ClientBonLineCorrection = {
 
 const contactsApi = api.injectEndpoints({
   endpoints: (builder) => ({
+    getPaymentContactDirectory: builder.query<PaymentDirectoryContact[], void>({
+      query: () => '/contacts/payment-directory',
+      providesTags: ['ContactDirectory'],
+      keepUnusedDataFor: 300,
+    }),
+    getBonContactDirectory: builder.query<Contact[], void>({
+      query: () => '/contacts/bon-directory',
+      providesTags: ['ContactDirectory'],
+      keepUnusedDataFor: 300,
+    }),
+    getBonContact: builder.query<Contact, number>({
+      query: (id) => `/contacts/${id}/bon-contact`,
+      providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
+      keepUnusedDataFor: 15,
+    }),
+    getContactPaymentBalance: builder.query<{ id: number; type: Contact['type']; total_cumule: number }, number>({
+      query: (id) => `/contacts/${id}/payment-balance`,
+      providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
+      keepUnusedDataFor: 0,
+    }),
+    getArchivedContacts: builder.query<ArchivedContactsResponse, { kind: ContactArchiveKind; page: number; search: string }>({
+      query: (params) => ({ url: '/contacts/archives', params }),
+      providesTags: ['Contact'],
+    }),
+    setContactArchive: builder.mutation<void, { id: number; archived: boolean }>({
+      query: ({ id, archived }) => ({
+        url: `/contacts/${id}/archive`,
+        method: 'PATCH',
+        body: { archived },
+      }),
+      invalidatesTags: (_result, error) => error ? [] : ['Contact', 'ContactDirectory', 'ContactGroup', 'Dashboard'],
+    }),
     getContacts: builder.query<PaginatedContactsResponse, { type?: 'Client' | 'Fournisseur'; page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection }>({
       query: ({ type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir }) => ({ 
         url: '/contacts', 
@@ -146,7 +190,7 @@ const contactsApi = api.injectEndpoints({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Contact'],
+      invalidatesTags: ['Contact', 'ContactDirectory'],
     }),
 
     updateContact: builder.mutation<Contact, Partial<Contact> & { id: number; updated_by?: number }>({
@@ -158,6 +202,7 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, { id, is_remise_pour_maalem }) => [
         { type: 'Contact', id },
         'Contact',
+        'ContactDirectory',
         ...(is_remise_pour_maalem !== undefined ? [{ type: 'Remise' as const, id: 'LIST' }, { type: 'Remise' as const, id: 'ANCIENS-ABONNES' }] : []),
       ],
     }),
@@ -184,7 +229,7 @@ const contactsApi = api.injectEndpoints({
         method: 'DELETE',
         body: { updated_by },
       }),
-      invalidatesTags: ['Contact'],
+      invalidatesTags: ['Contact', 'ContactDirectory'],
     }),
 
     getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string; exclude_charge?: boolean; only_charge?: boolean }>({
@@ -274,6 +319,13 @@ const contactsApi = api.injectEndpoints({
 });
 
 export const {
+  useGetPaymentContactDirectoryQuery,
+  useGetBonContactDirectoryQuery,
+  useGetBonContactQuery,
+  useLazyGetBonContactQuery,
+  useGetContactPaymentBalanceQuery,
+  useGetArchivedContactsQuery,
+  useSetContactArchiveMutation,
   useGetContactsQuery,
   useGetContactsSummaryQuery,
   useGetContactQuery,

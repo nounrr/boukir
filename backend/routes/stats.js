@@ -498,6 +498,7 @@ router.get('/dashboard-summary', async (req, res) => {
           DATEDIFF(c.rappel_date, CURDATE()) AS rappel_jours_restants
         FROM contacts c
         WHERE c.deleted_at IS NULL
+          AND c.archived_at IS NULL
           AND c.type = 'Client'
           AND COALESCE(c.is_charge, 0) = 0
           AND c.rappel_date = CURDATE()

@@ -2,7 +2,7 @@ import { api } from './apiSlice';
 import type { LoginCredentials, User } from '../../types';
 
 type MeResponse = User & { password_change_required?: boolean };
-type ChangePasswordBody = { old_password: string; new_password: string; confirm_password?: string };
+type ChangePasswordBody = { old_password?: string; new_password: string; confirm_password?: string };
 
 // Backend-powered auth
 const authApi = api.injectEndpoints({
@@ -14,7 +14,7 @@ const authApi = api.injectEndpoints({
       query: () => ({ url: '/auth/me', method: 'GET' }),
       providesTags: ['Auth'],
     }),
-    changePassword: builder.mutation<{ ok: boolean; message?: string }, ChangePasswordBody>({
+    changePassword: builder.mutation<{ ok: boolean; token: string; message?: string }, ChangePasswordBody>({
       query: (body) => ({ url: '/auth/change-password', method: 'POST', body }),
       invalidatesTags: ['Auth'],
     }),

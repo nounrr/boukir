@@ -29,6 +29,26 @@ export const comptantApi = apiSlice.injectEndpoints({
       ]
     }),
 
+    getComptantPaymentVerificationAccess: builder.query<{ allowed: boolean }, void>({
+      query: () => '/comptant/paiements/verification-access',
+      providesTags: ['Auth', 'PagePermissions'],
+    }),
+
+    verifyComptantPayment: builder.mutation<
+      { bon: { id: number; reste: number; non_paye: number; montant_paye: number } },
+      number
+    >({
+      query: (id) => ({
+        url: `/comptant/${id}/paiements/verification`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Comptant', id },
+        'Comptant',
+        'FondCaisse',
+      ],
+    }),
+
     createComptantPayment: builder.mutation({
       query: ({ id, ...body }) => ({
         url: `/comptant/${id}/paiements`,
@@ -112,6 +132,8 @@ export const {
   useGetComptantQuery,
   useGetComptantByIdQuery,
   useGetComptantPaymentsQuery,
+  useGetComptantPaymentVerificationAccessQuery,
+  useVerifyComptantPaymentMutation,
   useCreateComptantPaymentMutation,
   useUpdateComptantPaymentMutation,
   useDeleteComptantPaymentMutation,

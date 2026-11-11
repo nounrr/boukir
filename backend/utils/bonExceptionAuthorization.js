@@ -115,7 +115,7 @@ export async function getClientCreditState(db, clientId, { lock = true } = {}) {
   };
 }
 
-const isStatusCounted = (status) => {
+export const isStatusCounted = (status) => {
   const normalized = String(status || '').trim().toLowerCase();
   return !['annulé', 'annule', 'supprimé', 'supprime', 'brouillon', 'refusé', 'refuse', 'expiré', 'expire']
     .includes(normalized);
@@ -180,17 +180,6 @@ export async function reserveBonExceptionAuthorizations({
     return { contact, requirements, consumed: [], projectedTotal };
   }
 
-  if (!isTrue(requested)) {
-    throw new BonAuthorizationError(
-      'Ce bon nécessite une autorisation spéciale. Confirmez son utilisation.',
-      { requirements: toConsume, client_id: contact.id,
-        projected_total: projectedTotal, limit: contact.limit,
-        plafond_echeance: contact.echeanceLimit,
-        cheques_echeanciers: contact.chequesEcheanciers,
-        projected_echeancier: projectedTotal + contact.chequesEcheanciers }
-    );
-  }
-
   const [employeeRows] = await db.query(
     `SELECT id, bon_plafond_autorisations, bon_client_bloque_autorisations
      FROM employees WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
@@ -201,9 +190,15 @@ export async function reserveBonExceptionAuthorizations({
     throw new BonAuthorizationError('Employé introuvable.', { requirements: toConsume });
   }
 
+  const scopedRemaining = toConsume.includes(AUTHORIZATION_TYPES.PLAFOND)
+    ? await getClientPlafondAuthorizationRemaining(db, employeeId, contact.id)
+    : 0;
+
   for (const type of toConsume) {
     const column = COUNT_COLUMNS[type];
-    const remaining = Number(employee[column] || 0);
+    const remaining = type === AUTHORIZATION_TYPES.PLAFOND && scopedRemaining > 0
+      ? scopedRemaining
+      : Number(employee[column] || 0);
     if (remaining < 1) {
       throw new BonAuthorizationError(
         type === AUTHORIZATION_TYPES.PLAFOND
@@ -221,8 +216,29 @@ export async function reserveBonExceptionAuthorizations({
     }
   }
 
+  if (!isTrue(requested)) {
+    throw new BonAuthorizationError(
+      'Ce bon nécessite une autorisation spéciale. Confirmez son utilisation.',
+      { requirements: toConsume, confirmation_required: true,
+        client_id: contact.id, client_name: contact.nom_complet,
+        projected_total: projectedTotal, limit: contact.limit,
+        plafond_echeance: contact.echeanceLimit,
+        cheques_echeanciers: contact.chequesEcheanciers,
+        projected_echeancier: projectedTotal + contact.chequesEcheanciers }
+    );
+  }
+
   const consumed = [];
   for (const type of toConsume) {
+    if (type === AUTHORIZATION_TYPES.PLAFOND && scopedRemaining > 0) {
+      const balanceAfter = scopedRemaining - 1;
+      await db.query(
+        'UPDATE employee_client_plafond_authorizations SET remaining = ? WHERE employee_id = ? AND client_id = ?',
+        [balanceAfter, employeeId, contact.id]
+      );
+      consumed.push({ type, balanceAfter, quotaClientId: contact.id });
+      continue;
+    }
     const column = COUNT_COLUMNS[type];
     const balanceAfter = Number(employee[column]) - 1;
     await db.query(`UPDATE employees SET ${column} = ? WHERE id = ?`, [balanceAfter, employeeId]);
@@ -231,6 +247,48 @@ export async function reserveBonExceptionAuthorizations({
   }
 
   return { contact, requirements, consumed, projectedTotal };
+}
+
+async function getClientPlafondAuthorizationRemaining(db, employeeId, clientId) {
+  const [[quota]] = await db.query(
+    'SELECT remaining FROM employee_client_plafond_authorizations WHERE employee_id = ? AND client_id = ? FOR UPDATE',
+    [employeeId, clientId]
+  );
+  return Number(quota?.remaining || 0);
+}
+
+// Uses the same contact → employee → quota lock order as bon reservation.
+export async function grantClientPlafondAuthorizations(db, { employeeId, clientId, quantity, performedBy }) {
+  const [[client]] = await db.query(
+    "SELECT id FROM contacts WHERE id = ? AND type = 'Client' AND deleted_at IS NULL FOR UPDATE",
+    [clientId]
+  );
+  if (!client) throw Object.assign(new Error('Client introuvable.'), { statusCode: 404 });
+  const [[employee]] = await db.query(
+    'SELECT id, role FROM employees WHERE id = ? AND deleted_at IS NULL FOR UPDATE',
+    [employeeId]
+  );
+  if (!employee) throw Object.assign(new Error('Employé introuvable.'), { statusCode: 404 });
+  if (!employee.role || employee.role === 'PDG') {
+    throw Object.assign(new Error('Sélectionnez un employé avec un rôle autre que PDG.'), { statusCode: 400 });
+  }
+
+  const balanceAfter = await getClientPlafondAuthorizationRemaining(db, employeeId, clientId) + quantity;
+  if (balanceAfter > 100000) {
+    throw Object.assign(new Error('Le total restant ne peut pas dépasser 100000 autorisations.'), { statusCode: 400 });
+  }
+  await db.query(
+    `INSERT INTO employee_client_plafond_authorizations (employee_id, client_id, remaining)
+     VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE remaining = ?`,
+    [employeeId, clientId, balanceAfter, balanceAfter]
+  );
+  await db.query(
+    `INSERT INTO employee_bon_authorization_events
+     (employee_id, authorization_type, action, quantity, balance_after, client_id, quota_client_id, performed_by)
+     VALUES (?, 'PLAFOND', 'GRANT', ?, ?, ?, ?, ?)`,
+    [employeeId, quantity, balanceAfter, clientId, clientId, performedBy]
+  );
+  return balanceAfter;
 }
 
 export async function recordBonExceptionAuthorizationUsage({
@@ -244,8 +302,8 @@ export async function recordBonExceptionAuthorizationUsage({
     await db.query(
       `INSERT INTO employee_bon_authorization_events
        (employee_id, authorization_type, action, quantity, balance_after,
-        bon_type, bon_id, client_id, performed_by)
-       VALUES (?, ?, 'USE', -1, ?, ?, ?, ?, ?)`,
+        bon_type, bon_id, client_id, quota_client_id, performed_by)
+       VALUES (?, ?, 'USE', -1, ?, ?, ?, ?, ?, ?)`,
       [
         Number(user.id),
         item.type,
@@ -253,6 +311,7 @@ export async function recordBonExceptionAuthorizationUsage({
         String(bonType),
         Number(bonId),
         reservation.contact?.id ?? null,
+        item.quotaClientId ?? null,
         Number(user.id),
       ]
     );

@@ -20,6 +20,7 @@ import ContactPrintModal from '../components/ContactPrintModal';
 import MobileContactPrintModal from '../components/MobileContactPrintModal';
 import { useMobilePrintModal } from '../hooks/useMobilePrintModal';
 import ContactFormModal from '../components/ContactFormModal';
+import ContactArchiveButton from '../components/ContactArchiveButton';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import ContactGroupManageModal from '../components/ContactGroupManageModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
@@ -2278,7 +2279,7 @@ const FournisseursListPage: React.FC = () => {
                 <div className="mt-3 space-y-1 text-xs text-gray-600">{f.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />{f.telephone}</p>}{f.email && <p className="flex items-center gap-1.5 break-all"><Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />{f.email}</p>}{f.adresse && <p className="flex items-start gap-1.5 break-words"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />{f.adresse}</p>}</div>
               </div></div>
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-3 text-xs"><div><p className="text-gray-500">Solde</p><p className={`mt-1 font-bold ${f.solde < 0 ? 'text-red-600' : f.solde > 0 ? 'text-green-600' : 'text-gray-700'}`}>{fmt(f.solde)}</p></div><div><p className="text-gray-500">Total cumulé</p><p className={`mt-1 font-bold ${(f as any).total_cumule > 0 ? 'text-red-600' : (f as any).total_cumule < 0 ? 'text-green-600' : 'text-gray-700'}`}>{fmt((f as any).total_cumule ?? 0)}</p></div><div><p className="text-gray-500">Plafond</p><p className="mt-1 font-semibold text-gray-700">{f.plafond != null ? fmt(f.plafond) : '—'}</p></div><div><p className="text-gray-500">Garantie</p><p className="mt-1 font-semibold text-emerald-700">{f.montant_garantie != null ? fmt(f.montant_garantie) : '—'}</p></div></div>
-            <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3"><Link to={`/fournisseurs-copy/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">Voir détail</Link><button type="button" onClick={() => handleEdit(f)} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="h-4 w-4" />Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="h-4 w-4" />Supprimer</button>}</div>
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3"><Link to={`/fournisseurs-copy/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">Voir détail</Link><button type="button" onClick={() => handleEdit(f)} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="h-4 w-4" />Modifier</button>{currentUser?.role === 'PDG' && <ContactArchiveButton id={f.id} name={f.nom_complet || f.societe || 'Contact #' + f.id} compact={false} />}{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="h-4 w-4" />Supprimer</button>}</div>
           </article>)}
       </div>
       <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -2413,6 +2414,7 @@ const FournisseursListPage: React.FC = () => {
                             >
                               <Edit className="w-4 h-4" />
                             </button>
+                            {currentUser?.role === 'PDG' && <ContactArchiveButton id={f.id} name={f.nom_complet || f.societe || 'Contact #' + f.id} />}
                             {currentUser?.role === 'PDG' && (
                               <button
                                 type="button"
@@ -2471,6 +2473,7 @@ const FournisseursListPage: React.FC = () => {
           setEditingContact(null);
         }}
         contactType="Fournisseur"
+        confirmBalanceEdit
         initialValues={editingContact || undefined}
         defaultIsCharge={false}
         onContactAdded={() => {

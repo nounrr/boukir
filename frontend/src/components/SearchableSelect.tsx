@@ -1,6 +1,13 @@
-import React, { useState, useRef, useEffect, useId } from 'react';
+import React, { useState, useRef, useEffect, useId, useMemo } from 'react';
 
 interface Option { value: string; label: string; data?: any; disabled?: boolean }
+
+const normalizeSearch = (text: string) => String(text || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
 
 interface SearchableSelectProps {
   options: Option[];
@@ -47,26 +54,18 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const generatedId = useId();
   const listboxId = `${id || `searchable-select-${generatedId.replace(/:/g, '')}`}-listbox`;
 
-  // Multi-word search: every token must be contained in the label (order-independent)
-  const norm = (s: string) => String(s || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const tokens = norm(searchTerm).split(/\s+/).filter(Boolean);
-  const matchLabel = (label: string) => {
-    const L = norm(label);
-    if (tokens.length === 0) return true;
-    return tokens.every((t) => L.includes(t));
-  };
-  const allMatches = options.filter((o) => {
-    const haystack = [o.label, o.value, o.data ? JSON.stringify(o.data) : '']
-      .map((part) => norm(part))
-      .join(' ');
-    if (tokens.length === 0) return true;
-    return tokens.every((t) => haystack.includes(t));
-  });
+  const searchIndex = useMemo(() => options.map((option) => ({
+    option,
+    text: [option.label, option.value, option.data ? JSON.stringify(option.data) : '']
+      .map(normalizeSearch)
+      .join(' '),
+  })), [options]);
+  const allMatches = useMemo(() => {
+    const tokens = normalizeSearch(searchTerm).split(' ').filter(Boolean);
+    if (!tokens.length) return options;
+    return searchIndex.filter(({ text }) => tokens.every((token) => text.includes(token)))
+      .map(({ option }) => option);
+  }, [options, searchIndex, searchTerm]);
   const filteredOptions = allMatches.slice(0, displayCount);
   const hasMoreItems = allMatches.length > displayCount;
   const selectedOption = options.find(o => o.value === value);

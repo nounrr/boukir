@@ -32,7 +32,8 @@ import {
 import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
 import { useGetCaisseBonsContextQuery } from '../store/api/bonsApi';
-import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
+import { useGetContactPaymentBalanceQuery, useGetPaymentContactDirectoryQuery } from '../store/api/contactsApi';
+import type { PaymentDirectoryContact } from '../store/api/contactsApi';
 import { useGetClientRemisesQuery, useGetDirectContactRemiseBalancesQuery } from '../store/api/remisesApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
@@ -52,6 +53,55 @@ import MultiClientChequeModal from '../components/MultiClientChequeModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 
 const DIRECT_CONTACT_OFFSET = 10_000_000;
+const EMPTY_REMISE_ROWS: any[] = [];
+
+const balanceFormatter = new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function paymentContactOptions(contacts: PaymentDirectoryContact[]) {
+  return contacts.map(({ id, reference, nom_complet, societe, telephone, type }) => ({
+    value: String(id),
+    label: [`Réf ${reference || id}`, nom_complet || `${type} #${id}`, societe, telephone, `ID ${id}`]
+      .filter(Boolean).join(' - '),
+    data: { id, reference, nom_complet, societe },
+  }));
+}
+
+function renderContactSelectContent({ data }: { data?: ReturnType<typeof paymentContactOptions>[number]['data'] }) {
+  if (!data) return null;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-xs font-semibold text-violet-700">
+        Réf {data.reference || data.id}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-gray-900">{data.nom_complet}</span>
+        {data.societe && <span className="block truncate text-xs text-gray-500">{data.societe}</span>}
+      </span>
+    </div>
+  );
+}
+
+function PaymentContactBalance({ contactId, type }: { contactId: number; type: Contact['type'] }) {
+  const { currentData, isFetching, isError, refetch } = useGetContactPaymentBalanceQuery(contactId);
+
+  if (isFetching) return <p className="mt-2 text-xs text-gray-500" role="status">Calcul du solde…</p>;
+  if (isError) return (
+    <p className="mt-2 text-xs text-red-700" role="status">
+      Solde indisponible. <button type="button" className="underline" onClick={() => refetch()}>Réessayer</button>
+    </p>
+  );
+  if (!currentData || currentData.type !== type) return null;
+
+  const total = currentData.total_cumule;
+  const color = total > 0 ? 'border-red-200 bg-red-50 text-red-700'
+    : total < 0 ? 'border-green-200 bg-green-50 text-green-700'
+    : 'border-gray-200 bg-gray-100 text-gray-600';
+  return (
+    <div className={`mt-2 inline-flex rounded border px-2 py-1 text-xs font-semibold ${color}`} role="status">
+      Total cumulé : {balanceFormatter.format(total)} DH
+    </div>
+  );
+}
 
 type RemiseAccountType = 'client-remise' | 'client_abonne' | 'direct-client';
 
@@ -83,6 +133,7 @@ const CaissePage = () => {
   
   // État local
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [loadRemiseBalances, setLoadRemiseBalances] = useState(false);
   const [isMultiClientChequeOpen, setIsMultiClientChequeOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
@@ -112,8 +163,12 @@ const CaissePage = () => {
   // Redux data
   const user = useAppSelector(state => state.auth.user);
   const isPdgOrManagerPlus = user?.role === 'PDG' || user?.role === 'ManagerPlus';
-  const { data: clients = [] } = useGetAllClientsQuery(undefined);
-  const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
+  const { data: contactDirectory, isFetching: isLoadingContacts, isError: isContactDirectoryError, refetch: refetchContactDirectory } =
+    useGetPaymentContactDirectoryQuery(undefined, { refetchOnMountOrArgChange: 300, refetchOnFocus: true });
+  const clients = useMemo(() => contactDirectory?.filter(contact => contact.type === 'Client') ?? [], [contactDirectory]);
+  const fournisseurs = useMemo(() => contactDirectory?.filter(contact => contact.type === 'Fournisseur') ?? [], [contactDirectory]);
+  const clientOptions = useMemo(() => paymentContactOptions(clients), [clients]);
+  const fournisseurOptions = useMemo(() => paymentContactOptions(fournisseurs), [fournisseurs]);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const paymentSortBy = sortField || 'date';
   const paymentsQueryArgs = useMemo(() => ({
@@ -130,12 +185,14 @@ const CaissePage = () => {
     data: paymentsPagedResponse,
     refetch: refetchPayments,
   } = useGetPaymentsPagedQuery(paymentsQueryArgs);
-  const needsAllPayments = isCreateModalOpen || isViewModalOpen || isPrintModalOpen;
-  const { data: allPaymentsForHistory = [] } = useGetPaymentsQuery(undefined, { skip: !needsAllPayments });
-  const { data: clientRemisesRaw = [] } = useGetClientRemisesQuery();
-  const { data: directContactBalances = [] } = useGetDirectContactRemiseBalancesQuery();
+  const { data: paymentsForHistory, isError: isPaymentHistoryError, refetch: refetchPaymentHistory } =
+    useGetPaymentsQuery(undefined, { skip: !isPrintModalOpen });
+  const skipRemiseBalances = !isCreateModalOpen || !loadRemiseBalances;
+  const { data: clientRemisesRaw = EMPTY_REMISE_ROWS, isFetching: isLoadingRemiseAccounts, isError: isRemiseAccountsError, refetch: refetchRemiseAccounts } =
+    useGetClientRemisesQuery(undefined, { skip: skipRemiseBalances });
+  const { data: directContactBalances = EMPTY_REMISE_ROWS, isFetching: isLoadingDirectRemise, isError: isDirectRemiseError, refetch: refetchDirectRemise } =
+    useGetDirectContactRemiseBalancesQuery(undefined, { skip: skipRemiseBalances });
   const payments = paymentsPagedResponse?.data || [];
-  const paymentsForHistory = needsAllPayments ? allPaymentsForHistory : payments;
   const [createPayment] = useCreatePaymentMutation();
   const [createMultiClientCheque] = useCreateMultiClientChequeMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
@@ -757,6 +814,7 @@ const CaissePage = () => {
     }
 
     setSelectedPayment(payment);
+    setLoadRemiseBalances(payment.mode_paiement === 'Remise' || Number(payment.remise) === 1);
     // Réinitialiser l'état de l'image
     setSelectedImage(null);
     setRemoteImageUrl('');
@@ -1216,6 +1274,14 @@ const paymentValidationSchema = Yup.object({
         )
         .reduce((sum: number, line: any) => sum + Number(line.montant_ignorer || 0), 0);
 
+      const needsRemiseBalance = remiseAmount > 0 ||
+        (ignoredRemiseAmount > 0 && ['En attente', 'Validé'].includes(String(values.statut || '')));
+      if (needsRemiseBalance && (isLoadingRemiseAccounts || isLoadingDirectRemise || isRemiseAccountsError || isDirectRemiseError)) {
+        showError(isRemiseAccountsError || isDirectRemiseError
+          ? 'Le solde de remise est indisponible.' : 'Le solde de remise est en cours de chargement.');
+        return;
+      }
+
       if (ignoredRemiseAmount > 0 && ['En attente', 'Validé'].includes(String(values.statut || ''))) {
         const ordinaryContactId = Number(values.contact_id);
         const authoritativeAccount = clientAbonneAccountByContactId.get(ordinaryContactId);
@@ -1544,65 +1610,6 @@ const paymentValidationSchema = Yup.object({
     }
   };
 
-  const formatTotalCumule = (value: number) =>
-    `${new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} DH`;
-
-  const normalizeContactTotalCumule = (contact?: Contact | null) => {
-    const total = contact?.total_cumule;
-    return total !== null && total !== undefined ? Number(total) || 0 : null;
-  };
-
-  const getTotalCumuleBadgeClasses = (value: number) => {
-    if (value > 0) return 'border border-red-200 bg-red-50 text-red-700';
-    if (value < 0) return 'border border-green-200 bg-green-50 text-green-700';
-    return 'border border-gray-200 bg-gray-100 text-gray-600';
-  };
-
-  const getContactSelectLabel = (contact: Contact, kind: 'Client' | 'Fournisseur') => {
-    const reference = String(contact.reference || contact.id).trim();
-    const totalCumule = normalizeContactTotalCumule(contact);
-    return [
-      `Réf ${reference}`,
-      String(contact.nom_complet || `${kind} #${contact.id}`).trim(),
-      contact.societe ? String(contact.societe).trim() : '',
-      contact.telephone ? String(contact.telephone).trim() : '',
-      `ID ${contact.id}`,
-      totalCumule === null ? '' : `Total cumulé ${formatTotalCumule(totalCumule)}`,
-    ].filter(Boolean).join(' - ');
-  };
-
-  const renderContactSelectContent = (option: { data?: any }) => {
-    const contact = option.data as Contact | undefined;
-    if (!contact) return null;
-    const totalCumule = normalizeContactTotalCumule(contact);
-
-    return (
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="shrink-0 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-xs font-semibold text-violet-700">
-          Réf {contact.reference || contact.id}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-gray-900">{contact.nom_complet}</span>
-          {contact.societe && (
-            <span className="block truncate text-xs text-gray-500">{contact.societe}</span>
-          )}
-        </span>
-        {totalCumule !== null && (
-          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold sm:ml-auto ${getTotalCumuleBadgeClasses(totalCumule)}`}>
-            Total cumulé : {formatTotalCumule(totalCumule)}
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  const getContactTotalCumule = (contactId: string | number, type: 'Client' | 'Fournisseur') => {
-    if (!contactId) return null;
-    const source = type === 'Fournisseur' ? fournisseurs : clients;
-    const contact = source.find((c: any) => Number(c.id) === Number(contactId));
-    return normalizeContactTotalCumule(contact);
-  };
-
   // Rendu d'une ligne de paiement (utilisée pour les paiements simples et les items d'un groupe déplié)
   const renderPaymentRow = (payment: Payment, isGroupChild: boolean) => (
     <tr
@@ -1808,6 +1815,7 @@ const paymentValidationSchema = Yup.object({
           <button
             onClick={() => {
               setSelectedPayment(null);
+              setLoadRemiseBalances(false);
               setSelectedImage(null);
               setRemoteImageUrl('');
               setImagePreview('');
@@ -2662,6 +2670,16 @@ const paymentValidationSchema = Yup.object({
                     }
                   }}
                 >
+                  {loadRemiseBalances && (isLoadingRemiseAccounts || isLoadingDirectRemise || isRemiseAccountsError || isDirectRemiseError) && (
+                    <p className="text-xs text-amber-800" role="status">
+                      {isRemiseAccountsError || isDirectRemiseError ? (
+                        <>Solde de remise indisponible. <button type="button" className="underline" onClick={() => {
+                          if (isRemiseAccountsError) refetchRemiseAccounts();
+                          if (isDirectRemiseError) refetchDirectRemise();
+                        }}>Réessayer</button></>
+                      ) : 'Chargement des soldes de remise…'}
+                    </p>
+                  )}
                   {/* Payeur: type de paiement + client/fournisseur seulement */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div>
@@ -2773,19 +2791,22 @@ const paymentValidationSchema = Yup.object({
                           </label>
                           <SearchableSelect
                             id="contact_id_select"
-                            options={(isFournisseurPayment ? fournisseurs : clients).map((c: Contact) => ({
-                              value: String(c.id),
-                              label: getContactSelectLabel(c, isFournisseurPayment ? 'Fournisseur' : 'Client'),
-                              data: c,
-                            }))}
+                            options={isFournisseurPayment ? fournisseurOptions : clientOptions}
                             value={values.contact_id ? String(values.contact_id) : ''}
                             onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('contact_optional', false); setFieldValue('bon_id', ''); }}
-                            placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
+                            placeholder={!contactDirectory && isLoadingContacts ? 'Chargement des contacts…'
+                              : isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
+                            disabled={!contactDirectory && isLoadingContacts}
                             className="w-full"
                             autoOpenOnFocus={true}
                             renderOption={renderContactSelectContent}
                             renderValue={renderContactSelectContent}
                           />
+                          {isContactDirectoryError && !contactDirectory && (
+                            <p className="mt-2 text-xs text-red-700" role="status">
+                              Annuaire indisponible. <button type="button" className="underline" onClick={() => refetchContactDirectory()}>Réessayer</button>
+                            </p>
+                          )}
                           <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
                           {isFournisseurPayment && values.contact_id && (
                             <label className="mt-3 inline-flex items-center gap-2 text-sm text-gray-700">
@@ -2797,15 +2818,9 @@ const paymentValidationSchema = Yup.object({
                               Payment fournisseur
                             </label>
                           )}
-                          {values.contact_id && (() => {
-                            const totalCumule = getContactTotalCumule(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client');
-                            if (totalCumule === null) return null;
-                            return (
-                              <div className={`mt-2 inline-flex rounded px-2 py-1 text-xs font-semibold ${getTotalCumuleBadgeClasses(totalCumule)}`}>
-                                Total cumulé : {formatTotalCumule(totalCumule)}
-                              </div>
-                            );
-                          })()}
+                          {Number(values.contact_id) > 0 && (
+                            <PaymentContactBalance contactId={Number(values.contact_id)} type={isFournisseurPayment ? 'Fournisseur' : 'Client'} />
+                          )}
                         </>
                       )}
                     </div>
@@ -2871,6 +2886,10 @@ const paymentValidationSchema = Yup.object({
                             type="checkbox"
                             name="remise"
                             disabled={!canUseIgnoredRemise}
+                            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                              if (event.target.checked) setLoadRemiseBalances(true);
+                              setFieldValue('remise', event.target.checked);
+                            }}
                             className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-2 focus:ring-amber-500"
                           />
                           Remise
@@ -2895,6 +2914,7 @@ const paymentValidationSchema = Yup.object({
                           const nextMode = e.target.value;
                           setFieldValue('mode_paiement', nextMode);
                           if (nextMode === 'Remise') {
+                            setLoadRemiseBalances(true);
                             setFieldValue('remise', false);
                             setFieldValue('type_paiement', 'Client');
                             setFieldValue('contact_optional', true);
@@ -3196,6 +3216,10 @@ const paymentValidationSchema = Yup.object({
                                       <Field
                                         type="checkbox"
                                         name={`payment_lines.${index}.remise`}
+                                        onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                          if (event.target.checked) setLoadRemiseBalances(true);
+                                          setFieldValue(`payment_lines.${index}.remise`, event.target.checked);
+                                        }}
                                         disabled={
                                           isFournisseurPayment ||
                                           !values.contact_id ||
@@ -3542,6 +3566,8 @@ const paymentValidationSchema = Yup.object({
           client={selectedPayment.type_paiement === 'Client' ? clients.find(c => c.id === selectedPayment.contact_id) : undefined}
           fournisseur={selectedPayment.type_paiement === 'Fournisseur' ? fournisseurs.find(f => f.id === selectedPayment.contact_id) : undefined}
           allPayments={paymentsForHistory}
+          historyError={isPaymentHistoryError}
+          onRetryHistory={refetchPaymentHistory}
         />
       )}
 

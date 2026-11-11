@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { signToken, verifyToken } from '../middleware/auth.js';
+import { employeePasswordVersion, enforceWeeklyPasswordChange, getEmployeeWeeklyPasswordState, isEmployeePasswordSession } from '../middleware/passwordPolicy.js';
 import { checkUserAccess } from '../middleware/accessSchedule.js';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
@@ -58,23 +59,6 @@ async function registerLoginFailure(key) {
   );
 }
 
-async function getEmployeePasswordChangeRequired(employeeId) {
-  const [rows] = await pool.query(
-    `
-    SELECT
-      DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS week_start,
-      (password_changed_at IS NULL OR DATE(password_changed_at) < DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)) AS needs_change
-    FROM employees
-    WHERE id = ? AND deleted_at IS NULL
-    LIMIT 1
-    `,
-    [employeeId]
-  );
-  const r = rows[0];
-  if (!r) return false;
-  return Boolean(r.needs_change);
-}
-
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
@@ -123,16 +107,23 @@ router.post('/login', async (req, res, next) => {
     await pool.query('UPDATE employees SET last_login_at = NOW() WHERE id = ? AND deleted_at IS NULL', [row.id]);
 
     // Enforce weekly Monday password change (DB-time based)
-    const passwordChangeRequired = await getEmployeePasswordChangeRequired(row.id);
+    const passwordState = await getEmployeeWeeklyPasswordState(row.id);
+    if (!passwordState || passwordState.passwordVersion !== employeePasswordVersion(row.password)) {
+      return res.status(401).json({ message: 'Identifiants invalides' });
+    }
+    const passwordChangeRequired = passwordState.required;
     if (passwordChangeRequired) {
       await pool.query(
-        'UPDATE employees SET password_change_required_week_start = DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) WHERE id = ? AND deleted_at IS NULL',
-        [row.id]
+        'UPDATE employees SET password_change_required_week_start = ? WHERE id = ? AND deleted_at IS NULL',
+        [passwordState.weekStart, row.id]
       );
     }
     
     const user = { id: row.id, nom_complet: row.nom_complet, cin: row.cin, date_embauche: row.date_embauche, role: row.role, acces_prix_internes: row.acces_prix_internes };
-    const token = signToken({ id: user.id, role: user.role, cin: user.cin });
+    const identity = { id: user.id, role: user.role, cin: user.cin, employee_password_version: passwordState.passwordVersion };
+    const token = passwordChangeRequired
+      ? signToken({ ...identity, weekly_password_change_week: passwordState.weekStart }, '15m')
+      : signToken(identity);
     
     res.json({ 
       user: { ...user, employee_page_permissions: normalizeEmployeePagePermissions(row) },
@@ -147,12 +138,12 @@ router.post('/login', async (req, res, next) => {
 });
 
 // GET /api/auth/me (requires Bearer token)
-router.get('/me', verifyToken, async (req, res, next) => {
+router.get('/me', verifyToken, enforceWeeklyPasswordChange, async (req, res, next) => {
   try {
     await ensureInternalPricePermissionSchema();
     await ensureEmployeePagePermissionSchema();
     const { id } = req.user || {};
-    if (!id) return res.status(401).json({ message: 'Non autorisé' });
+    if (!isEmployeePasswordSession(req.user)) return res.status(401).json({ message: 'Non autorisé' });
     const [rows] = await pool.query(
       `SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, ${Object.values(EMPLOYEE_PAGE_COLUMNS).join(', ')}, password_changed_at, password_change_required_week_start FROM employees WHERE id = ? AND deleted_at IS NULL`,
       [id]
@@ -163,15 +154,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
       : null;
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
-    const passwordChangeRequired = await getEmployeePasswordChangeRequired(id);
-    if (passwordChangeRequired) {
-      await pool.query(
-        'UPDATE employees SET password_change_required_week_start = DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) WHERE id = ? AND deleted_at IS NULL',
-        [id]
-      );
-    }
-
-    res.json({ ...user, employee_page_permissions: normalizeEmployeePagePermissions(row), password_change_required: passwordChangeRequired });
+    res.json({ ...user, employee_page_permissions: normalizeEmployeePagePermissions(row), password_change_required: req.weeklyPasswordState.required });
   } catch (err) { next(err); }
 });
 
@@ -204,14 +187,15 @@ router.get('/check-access', verifyToken, async (req, res, next) => {
 });
 
 // POST /api/auth/change-password (requires Bearer token)
-router.post('/change-password', verifyToken, async (req, res, next) => {
+router.post('/change-password', verifyToken, enforceWeeklyPasswordChange, async (req, res, next) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: 'Non autorisé' });
+    if (!isEmployeePasswordSession(req.user)) return res.status(401).json({ message: 'Non autorisé' });
 
     const { old_password, new_password, confirm_password } = req.body || {};
-    if (!old_password || !new_password) {
-      return res.status(400).json({ message: 'Ancien et nouveau mot de passe requis' });
+    const weeklyChange = req.weeklyPasswordState.required;
+    if (typeof new_password !== 'string' || !new_password || (!weeklyChange && (typeof old_password !== 'string' || !old_password))) {
+      return res.status(400).json({ message: weeklyChange ? 'Nouveau mot de passe requis' : 'Ancien et nouveau mot de passe requis' });
     }
     if (String(new_password).length < 8) {
       return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 8 caractères' });
@@ -227,12 +211,11 @@ router.post('/change-password', verifyToken, async (req, res, next) => {
     const row = rows[0];
     if (!row) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
-    const ok = await bcrypt.compare(String(old_password), row.password || '');
-    if (!ok) return res.status(401).json({ message: 'Ancien mot de passe incorrect' });
-
-    // New password must be different from the old one
-    if (String(new_password) === String(old_password)) {
-      return res.status(400).json({ message: 'Le nouveau mot de passe doit être différent de l\'ancien' });
+    if (req.weeklyPasswordState.passwordVersion !== employeePasswordVersion(row.password)) {
+      return res.status(409).json({ message: 'Le mot de passe a changé. Reconnectez-vous.', error_type: 'PASSWORD_REAUTH_REQUIRED' });
+    }
+    if (!weeklyChange && !(await bcrypt.compare(old_password, row.password || ''))) {
+      return res.status(401).json({ message: 'Ancien mot de passe incorrect' });
     }
     const sameAsOld = await bcrypt.compare(String(new_password), row.password || '');
     if (sameAsOld) {
@@ -240,12 +223,18 @@ router.post('/change-password', verifyToken, async (req, res, next) => {
     }
 
     const hashed = await bcrypt.hash(String(new_password), 10);
-    await pool.query(
-      'UPDATE employees SET password = ?, password_changed_at = NOW(), password_change_required_week_start = NULL WHERE id = ? AND deleted_at IS NULL',
-      [hashed, userId]
+    const [update] = await pool.query(
+      'UPDATE employees SET password = ?, password_changed_at = NOW(), password_change_required_week_start = NULL WHERE id = ? AND deleted_at IS NULL AND BINARY password = ?',
+      [hashed, userId, row.password]
     );
+    if (!update.affectedRows) {
+      return res.status(409).json({ message: 'Le mot de passe a changé. Reconnectez-vous.', error_type: 'PASSWORD_REAUTH_REQUIRED' });
+    }
 
-    res.json({ ok: true, message: 'Mot de passe modifié avec succès' });
+    const token = signToken({
+      id: userId, role: req.user.role, cin: req.user.cin, employee_password_version: employeePasswordVersion(hashed),
+    });
+    res.json({ ok: true, token, message: 'Mot de passe modifié avec succès' });
   } catch (err) {
     next(err);
   }

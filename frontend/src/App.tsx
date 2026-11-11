@@ -1,6 +1,5 @@
-import LegacyContactCopyNotice from './components/LegacyContactCopyNotice';
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { initializeAuth, logout, refreshUser } from './store/slices/authSlice';
 import { setPasswordChangeRequired } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
@@ -36,14 +35,7 @@ const FournisseursCopyPage = React.lazy(() => import('./pages/fournisseur copy')
 const FournisseurCopyDetailPage = React.lazy(() => import('./pages/fournisseur copy').then(m => ({ default: m.FournisseurDetailPage })));
 const ChargesCopyPage = React.lazy(() => import('./pages/charge copy'));
 const ChargeCopyDetailPage = React.lazy(() => import('./pages/charge copy').then(m => ({ default: m.ChargeDetailPage })));
-const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
-const ClientDetailPage = React.lazy(() => import('./pages/ClientsPage').then((m) => ({ default: m.ClientDetailPage })));
-const FournisseursPage = React.lazy(() => import('./pages/FournisseursPage'));
-const FournisseurDetailPage = React.lazy(() => import('./pages/FournisseursPage').then((m) => ({ default: m.FournisseurDetailPage })));
-const ChargesPage = React.lazy(() => import('./pages/ChargesPage'));
-const ChargeDetailPage = React.lazy(() => import('./pages/ChargesPage').then((m) => ({ default: m.ChargeDetailPage })));
 const GarantiesPage = React.lazy(() => import('./pages/GarantiesPage'));
-const ContactArchiverPage = React.lazy(() => import('./pages/ContactArchiverPage'));
 const BonCreatePage = React.lazy(() => import('./pages/BonCreatePage'));
 const VehiculesPage = React.lazy(() => import('./pages/VehiculesPage'));
 const FondCaissePage = React.lazy(() => import('./pages/FondCaissePage'));
@@ -111,9 +103,16 @@ const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode; tabletCompact
 };
 
 // Composant pour initialiser l'app
+function ContactCopyRedirect({ to }: { to: string }) {
+  const { id } = useParams();
+  const { search, hash, state } = useLocation();
+  const pathname = id ? `${to}/${encodeURIComponent(id)}` : to;
+  return <Navigate to={{ pathname, search, hash }} state={state} replace />;
+}
+
 const AppContent: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, passwordChangeRequired } = useAuth();
 
   // Initialize Socket.IO connection for PDG users
   useSocketConnection();
@@ -133,25 +132,26 @@ const AppContent: React.FC = () => {
   }, [dispatch]);
 
   // Validate token with backend when authenticated; if invalid, logout
-  const { data: meData, isError: tokenInvalid } = useValidateTokenQuery(undefined, {
+  const { currentData: meData, isError: tokenInvalid } = useValidateTokenQuery(undefined, {
     skip: !isAuthenticated,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
+    pollingInterval: 60_000,
   });
   useEffect(() => {
     if (meData) dispatch(refreshUser(meData));
   }, [meData, dispatch]);
   useEffect(() => {
-    if (tokenInvalid) {
+    if (tokenInvalid && isAuthenticated) {
       dispatch(logout());
     }
-  }, [tokenInvalid, dispatch]);
+  }, [tokenInvalid, isAuthenticated, dispatch]);
 
   // Sync weekly password policy from backend
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (meData && typeof (meData as any).password_change_required !== 'undefined') {
-      dispatch(setPasswordChangeRequired(Boolean((meData as any).password_change_required)));
+    if (typeof meData?.password_change_required === 'boolean') {
+      dispatch(setPasswordChangeRequired(meData.password_change_required));
     }
   }, [isAuthenticated, meData, dispatch]);
 
@@ -165,7 +165,9 @@ const AppContent: React.FC = () => {
           <Route 
             path="/login" 
             element={
-              isAuthenticated ? <Navigate to={user?.role === 'ChefChauffeur' ? '/bons' : '/dashboard'} replace /> : <LoginPage />
+              isAuthenticated
+                ? <Navigate to={passwordChangeRequired ? '/change-password' : user?.role === 'ChefChauffeur' ? '/bons' : '/dashboard'} replace />
+                : <LoginPage />
             } 
           />
 
@@ -173,7 +175,9 @@ const AppContent: React.FC = () => {
             path="/change-password"
             element={
               <ProtectedRoute>
-                <ChangePasswordPage />
+                {meData ? <ChangePasswordPage /> : (
+                  <div role="status" className="grid min-h-screen place-items-center text-gray-600">Vérification de la session…</div>
+                )}
               </ProtectedRoute>
             }
           />
@@ -412,89 +416,49 @@ const AppContent: React.FC = () => {
         <Route path="/clients-copy" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <LegacyContactCopyNotice label="Client copy"><ClientsCopyPage /></LegacyContactCopyNotice>
+              <ClientsCopyPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
         <Route path="/clients-copy/:id" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <LegacyContactCopyNotice label="Client copy"><ClientCopyDetailPage /></LegacyContactCopyNotice>
+              <ClientCopyDetailPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
         <Route path="/fournisseurs-copy" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <LegacyContactCopyNotice label="Fournisseur copy"><FournisseursCopyPage /></LegacyContactCopyNotice>
+              <FournisseursCopyPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
         <Route path="/fournisseurs-copy/:id" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <LegacyContactCopyNotice label="Fournisseur copy"><FournisseurCopyDetailPage /></LegacyContactCopyNotice>
+              <FournisseurCopyDetailPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
         <Route path="/charges-copy" element={
           <ProtectedRoute requiredRoles={['PDG']}>
             <LayoutWithAccessCheck>
-              <LegacyContactCopyNotice label="Charge copy"><ChargesCopyPage /></LegacyContactCopyNotice>
+              <ChargesCopyPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
         <Route path="/charges-copy/:id" element={
           <ProtectedRoute requiredRoles={['PDG']}>
             <LayoutWithAccessCheck>
-              <LegacyContactCopyNotice label="Charge copy"><ChargeCopyDetailPage /></LegacyContactCopyNotice>
+              <ChargeCopyDetailPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
 
-        <Route
-          path="/clients"
-          element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
-              <LayoutWithAccessCheck>
-                <ClientsPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/clients/:id"
-          element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
-              <LayoutWithAccessCheck>
-                <ClientDetailPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/fournisseurs"
-          element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
-              <LayoutWithAccessCheck>
-                <FournisseursPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/charges"
-          element={
-            <ProtectedRoute requiredRoles={['PDG']}>
-              <LayoutWithAccessCheck>
-                <ChargesPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/clients/:id?" element={<ContactCopyRedirect to="/clients-copy" />} />
+        <Route path="/fournisseurs/:id?" element={<ContactCopyRedirect to="/fournisseurs-copy" />} />
+        <Route path="/charges/:id?" element={<ContactCopyRedirect to="/charges-copy" />} />
 
         <Route
           path="/garanties"
@@ -507,38 +471,7 @@ const AppContent: React.FC = () => {
           }
         />
 
-        <Route
-          path="/charges/:id"
-          element={
-            <ProtectedRoute requiredRoles={['PDG']}>
-              <LayoutWithAccessCheck>
-                <ChargeDetailPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/fournisseurs/:id"
-          element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
-              <LayoutWithAccessCheck>
-                <FournisseurDetailPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/contacts-archiver"
-          element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
-              <LayoutWithAccessCheck>
-                <ContactArchiverPage />
-              </LayoutWithAccessCheck>
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/contacts-archiver" element={<Navigate to="/clients-copy?tab=archives" replace />} />
 
         <Route
           path="/bons"

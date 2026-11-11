@@ -1,3 +1,4 @@
+import { CONTACT_BALANCE_JOINS, TOTAL_CUMULE_EXPR, contactBalanceJoins } from '../utils/contactBalanceSql.js';
 import { buildContactLedger } from '../utils/contactLedger.js';
 import { correctValidatedClientBon } from '../utils/clientHistoryCorrection.js';
 import { requireRoles } from '../middleware/auth.js';
@@ -15,6 +16,7 @@ import { attachContactHistoryModification } from '../utils/contactHistoryModific
 import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, clientChequeEcheancierListSql, tomorrowInCasablanca, parsePlafondEcheance } from '../utils/clientEcheancier.js';
 
 const router = express.Router();
+const GROUPED_CONTACT_COUNT_SQL = `COUNT(*) - COUNT(NULLIF(c.group_id, 0)) + COUNT(DISTINCT NULLIF(c.group_id, 0))`;
 
 const REMINDER_RESPONSE_FIELDS = [
   'rappel_date',
@@ -37,7 +39,7 @@ function protectReminderFields(value, user) {
 const isProd = process.env.NODE_ENV === 'production';
 
 const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge, onlyCharge }) => {
-  let whereSql = ' WHERE c.deleted_at IS NULL';
+  let whereSql = ' WHERE c.deleted_at IS NULL AND c.archived_at IS NULL';
   const params = [];
 
   if (type && (type === 'Client' || type === 'Fournisseur')) {
@@ -136,27 +138,6 @@ const BALANCE_EXPR = `
 
 // Convention frontend : solde_initial + sorties - paiements - avoirs (bons comptant exclus)
 // positif = client doit de l'argent, nÃ©gatif = crÃ©dit en faveur du client
-const TOTAL_CUMULE_EXPR = `
-  CASE
-    WHEN c.type = 'Client' THEN
-      COALESCE(c.solde, 0)
-      + COALESCE(ventes_client.total_ventes, 0)
-      + COALESCE(ventes_ecommerce.total_ventes, 0)
-      - COALESCE(paiements_client.total_paiements, 0)
-      - COALESCE(avoirs_client.total_avoirs, 0)
-      + COALESCE(charges_client.total_charges, 0)
-      - COALESCE(avoirs_charge.total_avoirs_charge, 0)
-    WHEN c.type = 'Fournisseur' THEN
-      COALESCE(c.solde, 0)
-      + COALESCE(achats_fournisseur.total_achats, 0)
-      - COALESCE(sorties_vendre_fournisseur.total_sorties, 0)
-      - COALESCE(paiements_fournisseur.total_paiements, 0)
-      - COALESCE(avoirs_fournisseur.total_avoirs, 0)
-      + COALESCE(avoirs_vendre_fournisseur.total_avoirs, 0)
-    ELSE NULL
-  END
-`;
-
 const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0)`;
 const PAYMENT_TOTAL_SQL_P = `COALESCE(p.montant_total, 0)`;
 
@@ -366,7 +347,10 @@ router.get('/', async (req, res) => {
 
     // RequÃªte pour compter le total
     const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
-    const countQuery = `SELECT COUNT(*) as total FROM contacts c${countWhereSql}`;
+    const countQuery = `
+      SELECT COUNT(*) AS total,
+             ${GROUPED_CONTACT_COUNT_SQL} AS totalGrouped
+      FROM contacts c${countWhereSql}`;
 
     const [countResult] = await pool.execute(countQuery, countParams);
     const total = countResult[0].total;
@@ -408,114 +392,7 @@ router.get('/', async (req, res) => {
       ${CLIENT_LAST_PAYMENT_JOIN_SQL}
       ${clientChequeEcheancierJoinSql()}
 
-      -- Ventes client = bons_sortie
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_ventes
-        FROM bons_sortie
-        WHERE client_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-        GROUP BY client_id
-      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
-
-      -- Ventes e-commerce: uniquement les commandes is_solde = 1 (sauf annulÃ©es/remboursÃ©es)
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(o.total_amount) AS total_ventes
-        FROM ecommerce_orders o
-        INNER JOIN contacts c_link
-          ON o.user_id = c_link.id
-        WHERE c_link.type = 'Client'
-          AND o.is_solde = 1
-          AND o.status IN ('pending','confirmed','processing','shipped','delivered')
-          AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-        GROUP BY c_link.id
-      ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
-
-      -- Charges client = bons_charge
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_charges
-        FROM bons_charge
-        WHERE client_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-        GROUP BY client_id
-      ) charges_client ON charges_client.client_id = c.id AND c.type = 'Client'
-
-      -- Avoir charges client
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_avoirs_charge
-        FROM avoirs_charge
-        WHERE client_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulÃƒÂ©','annule','supprimÃƒÂ©','supprime','brouillon','refusÃƒÂ©','refuse','expirÃƒÂ©','expire')
-        GROUP BY client_id
-      ) avoirs_charge ON avoirs_charge.client_id = c.id AND c.type = 'Client'
-
-      -- Achats fournisseur = bons_commande
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_achats
-        FROM bons_commande
-        WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      -- Sorties vendre fournisseur: deduites du cumul fournisseur
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_sorties
-        FROM bons_sortie
-        WHERE fournisseur_id IS NOT NULL
-          AND COALESCE(vendre_au_fournisseur, 0) = 1
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) sorties_vendre_fournisseur ON sorties_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      -- Paiements client
-      LEFT JOIN (
-      SELECT contact_id, SUM(${PAYMENT_TOTAL_SQL}) AS total_paiements
-      FROM payments
-      WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY contact_id
-      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
-
-      -- Paiements fournisseur
-      LEFT JOIN (
-      SELECT contact_id, ${SUPPLIER_PAYMENT_SUM_EXPR} AS total_paiements
-      FROM payments
-      WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY contact_id
-      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
-
-      -- Avoirs client (avoirs_client table)
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_client
-        WHERE statut IN ('En attente','Valide','Applique')
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY client_id
-      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
-
-      -- Avoirs fournisseur classiques
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_fournisseur
-        WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      -- Avoir vendre fournisseur: ajoute au cumul fournisseur
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_client
-        WHERE fournisseur_id IS NOT NULL
-          AND COALESCE(vendre_au_fournisseur, 0) = 1
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) avoirs_vendre_fournisseur ON avoirs_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+      ${CONTACT_BALANCE_JOINS}
     `;
 
     const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
@@ -654,6 +531,7 @@ router.get('/', async (req, res) => {
         page: parseInt(page),
         limit: parseInt(limit),
         total: total,
+        totalGrouped: Number(countResult[0].totalGrouped),
         totalPages: Math.ceil(total / parseInt(limit))
       },
       grandTotalCumule,
@@ -672,7 +550,113 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/contacts/summary - Stats globales (count, solde cumulÃ©, avec ICE)
+const BON_CONTACT_FIELDS = `c.id, c.type, c.nom_complet, c.nom, c.societe, c.telephone,
+  c.email, c.adresse, c.ice, c.solde, c.bloque, c.is_charge, c.created_at, c.updated_at`;
+
+router.get('/bon-directory', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT ${BON_CONTACT_FIELDS}
+      FROM contacts c
+      WHERE c.deleted_at IS NULL AND c.archived_at IS NULL AND c.type IN ('Client', 'Fournisseur')
+      ORDER BY c.nom_complet, c.id
+    `);
+    res.set('Cache-Control', 'no-store').json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/payment-directory', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT id, type, nom_complet, nom, societe, telephone, is_remise_pour_maalem, solde
+      FROM contacts
+      WHERE deleted_at IS NULL AND archived_at IS NULL
+        AND (type = 'Fournisseur' OR (type = 'Client' AND COALESCE(is_charge, 0) = 0))
+      ORDER BY nom_complet, id
+    `);
+    res.set('Cache-Control', 'no-store').json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get(['/:id/payment-balance', '/:id/bon-contact'], async (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    return res.status(400).json({ message: 'Identifiant de contact invalide.' });
+  }
+  const fields = /\/bon-contact\/?$/i.test(req.path)
+    ? `${BON_CONTACT_FIELDS}, c.plafond, c.montant_garantie, c.plafond_echeance,
+       c.plafond_echeance_reference, ${clientChequeEcheancierTotalSql()} AS cheques_echeanciers`
+    : 'c.id, c.type';
+  const { sql, params } = contactBalanceJoins(id);
+  try {
+    const [[row]] = await pool.query(`
+      SELECT STRAIGHT_JOIN ${fields}, (${TOTAL_CUMULE_EXPR}) AS total_cumule
+      FROM contacts c
+      ${sql}
+      WHERE c.id = ? AND c.deleted_at IS NULL AND c.type IN ('Client', 'Fournisseur')
+    `, [...params, id]);
+    if (!row) return res.status(404).json({ message: 'Contact introuvable.' });
+    res.set('Cache-Control', 'no-store').json({ ...row, total_cumule: Number(row.total_cumule) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/archives', requireRoles('PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'ChefChauffeur'), async (req, res, next) => {
+  const { kind = 'client' } = req.query;
+  if (!['client', 'fournisseur', 'charge'].includes(kind)) {
+    return res.status(400).json({ message: 'Type de contact invalide.' });
+  }
+  if (kind === 'charge' && req.user.role !== 'PDG') {
+    return res.status(403).json({ message: 'Accès aux charges réservé au PDG.' });
+  }
+  const page = Math.min(100000, Math.max(1, Number.parseInt(req.query.page, 10) || 1));
+  const search = String(req.query.search ?? '').trim().slice(0, 100);
+  const limit = 25;
+  const type = kind === 'fournisseur' ? 'Fournisseur' : 'Client';
+  const where = `WHERE deleted_at IS NULL AND archived_at IS NOT NULL
+    AND type = ? AND COALESCE(is_charge, 0) ${kind === 'charge' ? '<>' : '='} 0
+    ${search ? 'AND (nom_complet LIKE ? OR societe LIKE ? OR CAST(id AS CHAR) = ?)' : ''}`;
+  const params = search ? [type, `%${search}%`, `%${search}%`, search] : [type];
+  try {
+    const [[count]] = await pool.query(`SELECT COUNT(*) AS total FROM contacts ${where}`, params);
+    const dataPage = Math.min(page, Math.max(1, Math.ceil(Number(count.total) / limit)));
+    const [data] = await pool.query(
+      `SELECT id, nom_complet, societe, archived_at, archive_reason FROM contacts
+       ${where} ORDER BY archived_at DESC, id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, (dataPage - 1) * limit]
+    );
+    return res.json({ data, pagination: { page: dataPage, totalPages: Math.ceil(Number(count.total) / limit) } });
+  } catch (error) { return next(error); }
+});
+
+router.patch('/:id/archive', requireRoles('PDG'), async (req, res, next) => {
+  const id = Number(req.params.id);
+  const archived = req.body?.archived;
+  if (!Number.isSafeInteger(id) || id <= 0 || typeof archived !== 'boolean') {
+    return res.status(400).json({ message: 'Contact ou état d’archivage invalide.' });
+  }
+  try {
+    const [result] = await pool.execute(
+      archived
+        ? `UPDATE contacts SET archived_at = NOW(), archive_reason = 'manual', updated_by = ?
+           WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL`
+        : `UPDATE contacts SET archived_at = NULL, archive_reason = NULL, archive_reactivated_at = NOW(), updated_by = ?
+           WHERE id = ? AND deleted_at IS NULL AND archived_at IS NOT NULL`,
+      [req.user.id, id]
+    );
+    if (!result.affectedRows) {
+      const [[contact]] = await pool.execute('SELECT id FROM contacts WHERE id = ? AND deleted_at IS NULL', [id]);
+      if (!contact) return res.status(404).json({ message: 'Contact introuvable.' });
+    }
+    return res.status(204).send();
+  } catch (error) { return next(error); }
+});
+
 router.get('/summary', async (req, res) => {
   try {
     const { type, search, clientSubTab, groupId, exclude_charge, only_charge } = req.query;
@@ -681,95 +665,12 @@ router.get('/summary', async (req, res) => {
     const summaryQuery = `
       SELECT
         COUNT(*) AS totalContacts,
-        (
-          COALESCE(SUM(CASE WHEN c.group_id IS NULL THEN 1 ELSE 0 END), 0)
-          + COALESCE(COUNT(DISTINCT c.group_id), 0)
-        ) AS totalContactsGrouped,
+        ${GROUPED_CONTACT_COUNT_SQL} AS totalContactsGrouped,
         COALESCE(SUM(${BALANCE_EXPR}), 0) AS totalSoldeCumule,
         COALESCE(SUM(CASE WHEN c.ice IS NOT NULL AND TRIM(c.ice) <> '' THEN 1 ELSE 0 END), 0) AS totalWithICE
       FROM contacts c
 
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_ventes
-        FROM bons_sortie
-        WHERE client_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-        GROUP BY client_id
-      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(o.total_amount) AS total_ventes
-        FROM ecommerce_orders o
-        INNER JOIN contacts c_link
-          ON o.user_id = c_link.id
-        WHERE c_link.type = 'Client'
-          AND o.is_solde = 1
-          AND o.status IN ('pending','confirmed','processing','shipped','delivered')
-          AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-        GROUP BY c_link.id
-      ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_achats
-        FROM bons_commande
-        WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_sorties
-        FROM bons_sortie
-        WHERE fournisseur_id IS NOT NULL
-          AND COALESCE(vendre_au_fournisseur, 0) = 1
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) sorties_vendre_fournisseur ON sorties_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      LEFT JOIN (
-      SELECT contact_id, SUM(${PAYMENT_TOTAL_SQL}) AS total_paiements
-      FROM payments
-      WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY contact_id
-      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-      SELECT contact_id, ${SUPPLIER_PAYMENT_SUM_EXPR} AS total_paiements
-      FROM payments
-      WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY contact_id
-      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
-
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_client
-        WHERE statut IN ('En attente','Valide','Applique')
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY client_id
-      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_fournisseur
-        WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_client
-        WHERE fournisseur_id IS NOT NULL
-          AND COALESCE(vendre_au_fournisseur, 0) = 1
-          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        GROUP BY fournisseur_id
-      ) avoirs_vendre_fournisseur ON avoirs_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+      ${CONTACT_BALANCE_JOINS}
       ${whereSql}
     `;
 

@@ -9,7 +9,7 @@ router.get('/', async (_req, res) => {
     const [rows] = await pool.execute(
       `SELECT g.*, COUNT(c.id) AS contacts_count
        FROM contact_groups g
-       LEFT JOIN contacts c ON c.group_id = g.id
+       LEFT JOIN contacts c ON c.group_id = g.id AND c.deleted_at IS NULL AND c.archived_at IS NULL
        GROUP BY g.id
        ORDER BY g.name ASC`
     );

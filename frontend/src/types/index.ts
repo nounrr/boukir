@@ -22,6 +22,7 @@ export interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   passwordChangeRequired: boolean;
+  passwordReauthenticationRequired: boolean;
   loading: boolean;
   error: string | null;
 }

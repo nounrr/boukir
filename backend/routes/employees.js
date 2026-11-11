@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
 import { verifyToken, requireRole } from '../middleware/auth.js';
+import { grantClientPlafondAuthorizations } from '../utils/bonExceptionAuthorization.js';
 import { normalizeEmployeePagePermissions, requireEmployeePagePermission } from '../utils/employeePagePermissions.js';
 import {
   normalizeClientCollaborationPermissions,
@@ -60,14 +61,16 @@ router.get('/', requireEmployeePagePermission('view'), async (req, res, next) =>
 
 router.get('/me/bon-authorizations', async (req, res, next) => {
   try {
-    if (!req.user?.role) {
+    if (!req.user?.role || req.user.type_compte != null) {
       return res.status(403).json({ message: 'Accès réservé aux employés' });
     }
-    if (req.user?.role === 'PDG') {
+    res.set('Cache-Control', 'no-store');
+    if (req.user.role === 'PDG') {
       return res.json({
         unlimited: true,
         bon_plafond_autorisations: null,
         bon_client_bloque_autorisations: null,
+        plafond_par_client: {},
       });
     }
     const [rows] = await pool.query(
@@ -76,12 +79,45 @@ router.get('/me/bon-authorizations', async (req, res, next) => {
       [Number(req.user?.id)]
     );
     if (!rows[0]) return res.status(404).json({ message: 'Employé introuvable' });
+    const [clientQuotas] = await pool.query(
+      'SELECT client_id, remaining FROM employee_client_plafond_authorizations WHERE employee_id = ? AND remaining > 0',
+      [Number(req.user.id)]
+    );
     res.json({
       unlimited: false,
       bon_plafond_autorisations: Number(rows[0].bon_plafond_autorisations || 0),
       bon_client_bloque_autorisations: Number(rows[0].bon_client_bloque_autorisations || 0),
+      plafond_par_client: Object.fromEntries(clientQuotas.map(row => [row.client_id, Number(row.remaining)])),
     });
   } catch (err) { next(err); }
+});
+
+router.post('/:id(\\d+)/plafond-authorizations', requireRole('PDG'), async (req, res, next) => {
+  const employeeId = Number(req.params.id);
+  const { client_id: clientId, quantity } = req.body ?? {};
+  if (
+    !Number.isSafeInteger(employeeId) || employeeId < 1 ||
+    !Number.isSafeInteger(clientId) || clientId < 1 ||
+    !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
+  ) {
+    return res.status(400).json({ message: 'Choisissez un client, un employé et un nombre entier de 1 à 100000.' });
+  }
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const remaining = await grantClientPlafondAuthorizations(connection, {
+      employeeId, clientId, quantity, performedBy: req.user.id,
+    });
+    await connection.commit();
+    res.status(201).json({ client_id: clientId, employee_id: employeeId, remaining });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    if (error.statusCode) return res.status(error.statusCode).json({ message: error.message });
+    return next(error);
+  } finally {
+    connection?.release();
+  }
 });
 
 // Permissions courantes, toujours normalisées depuis les données rechargées
@@ -265,14 +301,13 @@ router.post('/', requireRole('PDG'), async (req, res, next) => {
 });
 
 router.put('/:id', requireRole('PDG'), async (req, res, next) => {
+  let connection;
   try {
     const id = Number(req.params.id);
     const {
       nom_complet, cin, date_embauche, role, salaire, password,
       bon_plafond_autorisations, bon_client_bloque_autorisations,
     } = req.body;
-    const [rows0] = await pool.query('SELECT * FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
-    if (rows0.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
     if (cin !== undefined) {
       const cinTrim = typeof cin === 'string' ? cin.trim() : cin;
       if (!cinTrim) return res.status(400).json({ message: 'CIN requis' });
@@ -303,28 +338,40 @@ router.put('/:id', requireRole('PDG'), async (req, res, next) => {
     }
     fields.push('updated_by = ?'); values.push(req.user.id);
     fields.push('updated_at = ?'); values.push(now);
-    if (fields.length === 0) {
-      const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
-      return res.json(rows[0]);
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [[employee]] = await connection.query(
+      'SELECT bon_plafond_autorisations, bon_client_bloque_autorisations FROM employees WHERE id = ? AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (!employee) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Employé introuvable' });
     }
     const sql = `UPDATE employees SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id);
-    await pool.query(sql, values);
+    await connection.query(sql, values);
     const authorizationChanges = [
-      ['PLAFOND', plafondCount, Number(rows0[0].bon_plafond_autorisations || 0)],
-      ['CLIENT_BLOQUE', blockedCount, Number(rows0[0].bon_client_bloque_autorisations || 0)],
+      ['PLAFOND', plafondCount, Number(employee.bon_plafond_autorisations || 0)],
+      ['CLIENT_BLOQUE', blockedCount, Number(employee.bon_client_bloque_autorisations || 0)],
     ].filter(([, nextValue, oldValue]) => nextValue !== undefined && nextValue !== oldValue);
     for (const [authorizationType, nextValue, oldValue] of authorizationChanges) {
-      await pool.query(
+      await connection.query(
         `INSERT INTO employee_bon_authorization_events
          (employee_id, authorization_type, action, quantity, balance_after, performed_by)
          VALUES (?, ?, 'SET', ?, ?, ?)`,
         [id, authorizationType, nextValue - oldValue, nextValue, req.user.id]
       );
     }
-  const [rows] = await pool.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE id = ?`, [id]);
+    const [rows] = await connection.query(`SELECT ${EMPLOYEE_SELECT} FROM employees WHERE id = ?`, [id]);
+    await connection.commit();
     res.json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (connection) await connection.rollback();
+    next(err);
+  } finally {
+    connection?.release();
+  }
 });
 
 router.delete('/:id', requireRole('PDG'), async (req, res, next) => {

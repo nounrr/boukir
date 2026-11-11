@@ -1,17 +1,18 @@
-import { useState } from 'react';
-import type { Contact } from '../types';
+import { useMemo, useState } from 'react';
+import { useGetContactPaymentBalanceQuery } from '../store/api/contactsApi';
+import type { PaymentDirectoryContact } from '../store/api/contactsApi';
 import type { MultiClientChequeData } from '../store/api/paymentsApi';
 import { getCurrentDateTimeInput } from '../utils/dateUtils';
 import SearchableSelect from './SearchableSelect';
 import { distributeCheque } from '../utils/multiClientChequeAllocation';
 
-type Allocation = { contactId: number; amount: string };
+type Allocation = { contactId: number; name: string; due: number; amount: string };
 
 const cents = (value: unknown) => Math.round(Number(value) * 100);
 const money = (value: number) => (value / 100).toFixed(2);
 
 type Props = {
-  clients: Contact[];
+  clients: PaymentDirectoryContact[];
   onClose: () => void;
   onSave: (data: MultiClientChequeData) => Promise<void>;
 };
@@ -29,29 +30,33 @@ export default function MultiClientChequeModal({ clients, onClose, onSave }: Pro
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const clientById = new Map(clients.map((client) => [Number(client.id), client]));
-  const dueCents = (client: Contact) => Math.max(0, cents(client.total_cumule ?? 0));
-  const selectedIds = new Set(allocations.map((line) => line.contactId));
-  const choices = clients.filter((client) => dueCents(client) > 0 && !selectedIds.has(Number(client.id)));
+  const nextId = Number(nextClient);
+  const balance = useGetContactPaymentBalanceQuery(nextId, { skip: nextId <= 0 });
+  const due = balance.currentData?.type === 'Client' ? cents(balance.currentData.total_cumule) : 0;
+  const canAdd = nextId > 0 && due > 0 && !balance.isFetching && !balance.isError;
+  const selectedClientIds = useMemo(() => new Set(allocations.map(line => line.contactId)), [allocations]);
+  const choices = useMemo(() => clients
+    .filter(client => !selectedClientIds.has(Number(client.id)))
+    .map(client => ({
+      value: String(client.id),
+      label: [client.reference || client.id, client.nom_complet, client.societe, client.telephone].filter(Boolean).join(' — '),
+    })), [clients, selectedClientIds]);
   const allocatedCents = allocations.reduce((sum, line) => sum + (Number.isFinite(cents(line.amount)) ? cents(line.amount) : 0), 0);
   const totalCents = cents(total);
   const difference = Number.isFinite(totalCents) ? totalCents - allocatedCents : 0;
 
   const addClient = () => {
-    const id = Number(nextClient);
-    const client = clientById.get(id);
-    if (!client || selectedIds.has(id) || dueCents(client) <= 0) return;
-    const remaining = Number.isFinite(totalCents) && totalCents > 0 ? Math.max(0, totalCents - allocatedCents) : dueCents(client);
-    setAllocations((prev) => [...prev, { contactId: id, amount: money(Math.min(dueCents(client), remaining)) }]);
+    if (!canAdd || selectedClientIds.has(nextId)) return;
+    const client = clients.find(entry => Number(entry.id) === nextId);
+    if (!client) return;
+    const remaining = Number.isFinite(totalCents) && totalCents > 0 ? Math.max(0, totalCents - allocatedCents) : due;
+    setAllocations(prev => [...prev, { contactId: nextId, name: client.nom_complet, due, amount: money(Math.min(due, remaining)) }]);
     setNextClient('');
     setError('');
   };
 
   const distribute = () => {
-    const parts = distributeCheque(totalCents, allocations.map((line) => {
-      const client = clientById.get(line.contactId);
-      return client ? dueCents(client) : 0;
-    }));
+    const parts = distributeCheque(totalCents, allocations.map(line => line.due));
     setAllocations((prev) => prev.map((line, index) => ({ ...line, amount: money(parts[index]) })));
     setError('');
   };
@@ -68,9 +73,8 @@ export default function MultiClientChequeModal({ clients, onClose, onSave }: Pro
       return;
     }
     if (allocations.some((line) => {
-      const client = clientById.get(line.contactId);
       const amount = cents(line.amount);
-      return !client || !Number.isSafeInteger(amount) || amount <= 0 || amount > dueCents(client);
+      return !Number.isSafeInteger(amount) || amount <= 0 || amount > line.due;
     })) {
       setError('Chaque part doit être positive et ne pas dépasser le solde à payer du client.');
       return;
@@ -134,18 +138,22 @@ export default function MultiClientChequeModal({ clients, onClose, onSave }: Pro
             <label className="mb-1 block text-sm font-medium text-gray-800">Ajouter un client</label>
             <div className="flex gap-2">
               <SearchableSelect
-                options={choices.map((client) => ({
-                  value: String(client.id),
-                  label: `${client.reference || client.id} — ${client.nom_complet} — Solde à payer ${money(dueCents(client))} DH`,
-                }))}
+                options={choices}
                 value={nextClient}
                 onChange={setNextClient}
                 placeholder="Rechercher un client"
                 className="min-w-0 flex-1"
                 autoOpenOnFocus
               />
-              <button type="button" onClick={addClient} disabled={!nextClient} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Ajouter</button>
+              <button type="button" onClick={addClient} disabled={!canAdd} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Ajouter</button>
             </div>
+            {nextClient && (
+              <p className="mt-2 text-xs text-gray-700" role="status">
+                {balance.isFetching ? 'Calcul du solde…' : balance.isError ? (
+                  <>Solde indisponible. <button type="button" className="underline" onClick={() => balance.refetch()}>Réessayer</button></>
+                ) : due > 0 ? `Solde à payer : ${money(due)} DH` : 'Ce client n’a aucun solde à payer.'}
+              </p>
+            )}
           </div>
           {allocations.length > 0 && (
             <div className="space-y-2">
@@ -153,15 +161,13 @@ export default function MultiClientChequeModal({ clients, onClose, onSave }: Pro
                 <h3 className="font-semibold text-gray-900">Répartition</h3>
                 <button type="button" onClick={distribute} className="text-sm font-medium text-blue-700 hover:underline">Répartir selon les soldes</button>
               </div>
-              {allocations.map((line) => {
-                const client = clientById.get(line.contactId);
-                if (!client) return null;
-                return <div key={line.contactId} className="grid grid-cols-[minmax(0,1fr)_120px_34px] items-center gap-2 rounded-md border border-gray-200 p-2 text-sm">
-                  <div className="min-w-0"><strong className="block truncate">{client.nom_complet}</strong><span className="text-gray-500">Solde à payer : {money(dueCents(client))} DH</span></div>
-                  <input type="number" min="0.01" max={money(dueCents(client))} step="0.01" aria-label={`Montant pour ${client.nom_complet}`} value={line.amount} onChange={(event) => setAllocations((prev) => prev.map((item) => item.contactId === line.contactId ? { ...item, amount: event.target.value } : item))} className="w-full rounded-md border border-gray-300 px-2 py-2 text-right" />
-                  <button type="button" aria-label={`Retirer ${client.nom_complet}`} onClick={() => setAllocations((prev) => prev.filter((item) => item.contactId !== line.contactId))} className="text-lg text-red-600">×</button>
-                </div>;
-              })}
+              {allocations.map(line => (
+                <div key={line.contactId} className="grid grid-cols-[minmax(0,1fr)_120px_34px] items-center gap-2 rounded-md border border-gray-200 p-2 text-sm">
+                  <div className="min-w-0"><strong className="block truncate">{line.name}</strong><span className="text-gray-500">Solde à payer : {money(line.due)} DH</span></div>
+                  <input type="number" min="0.01" max={money(line.due)} step="0.01" aria-label={`Montant pour ${line.name}`} value={line.amount} onChange={(event) => setAllocations((prev) => prev.map((item) => item.contactId === line.contactId ? { ...item, amount: event.target.value } : item))} className="w-full rounded-md border border-gray-300 px-2 py-2 text-right" />
+                  <button type="button" aria-label={`Retirer ${line.name}`} onClick={() => setAllocations((prev) => prev.filter((item) => item.contactId !== line.contactId))} className="text-lg text-red-600">×</button>
+                </div>
+              ))}
               <div className="flex justify-between border-t pt-2 text-sm"><span>Réparti : <strong>{money(allocatedCents)} DH</strong></span><span className={difference === 0 ? 'text-green-700' : 'text-red-700'}>Écart : {money(difference)} DH</span></div>
             </div>
           )}

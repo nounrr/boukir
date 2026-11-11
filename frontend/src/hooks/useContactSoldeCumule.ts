@@ -1,72 +1,21 @@
-import {
-  useGetClientsQuery,
-  useGetFournisseursQuery,
-  useGetContactQuery,
-} from '../store/api/contactsApi';
+import { useGetBonContactQuery } from '../store/api/contactsApi';
 
-type ContactType = 'Client' | 'Fournisseur';
-
-/**
- * Utilise en priorite la meme API liste que ClientsPage / FournisseursPage
- * pour recuperer total_cumule. Fallback sur GET /contacts/:id si besoin.
- */
 export const useContactSoldeCumule = (
   contactId: number | null | undefined,
-  contactType?: ContactType
+  contactType?: 'Client' | 'Fournisseur'
 ) => {
-  const shouldLoadClientList = !!contactId && contactType === 'Client';
-  const shouldLoadFournisseurList = !!contactId && contactType === 'Fournisseur';
-
-  const { data: clientsResponse, isLoading: isClientsLoading } = useGetClientsQuery(
-    { page: 1, limit: 10000 },
-    { skip: !shouldLoadClientList }
-  );
-
-  const { data: fournisseursResponse, isLoading: isFournisseursLoading } = useGetFournisseursQuery(
-    { page: 1, limit: 10000 },
-    { skip: !shouldLoadFournisseurList }
-  );
-
-  const {
-    data: fallbackContact,
-    isLoading: isFallbackLoading,
-    error,
-    refetch,
-  } = useGetContactQuery(contactId!, {
-    skip: !contactId || !!contactType,
+  const { currentData, isFetching, error, refetch } = useGetBonContactQuery(contactId ?? 0, {
+    skip: !contactId,
   });
-
-  const list =
-    contactType === 'Client'
-      ? clientsResponse?.data ?? []
-      : contactType === 'Fournisseur'
-        ? fournisseursResponse?.data ?? []
-        : [];
-
-  const listContact =
-    contactId && list.length > 0
-      ? list.find((item: any) => Number(item?.id) === Number(contactId))
-      : null;
-
-  const contact = listContact ?? fallbackContact ?? null;
-
-  const totalCumule =
-    contact?.total_cumule !== null && contact?.total_cumule !== undefined
-      ? Number(contact.total_cumule) || 0
-      : Number(contact?.solde_cumule ?? 0) || 0;
-
-  const isLoading = contactType
-    ? contactType === 'Client'
-      ? isClientsLoading
-      : isFournisseursLoading
-    : isFallbackLoading;
+  const contact = currentData && (!contactType || currentData.type === contactType) ? currentData : null;
+  const totalCumule = Number(contact?.total_cumule ?? 0);
 
   return {
     soldeCumule: totalCumule,
     totalCumule,
-    soldeInitial: Number(contact?.solde ?? 0) || 0,
+    soldeInitial: Number(contact?.solde ?? 0),
     contact,
-    isLoading,
+    isLoading: isFetching,
     error,
     refetch,
   };

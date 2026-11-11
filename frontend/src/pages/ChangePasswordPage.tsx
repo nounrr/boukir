@@ -6,11 +6,10 @@ import { useNavigate } from 'react-router-dom';
 
 import { useChangePasswordMutation } from '../store/api/authApi';
 import { useAppDispatch, useAuth } from '../hooks/redux';
-import { setPasswordChangeRequired } from '../store/slices/authSlice';
+import { loginSuccess } from '../store/slices/authSlice';
 import { useToast } from '../components/ui/use-toast';
 
 const schema = Yup.object().shape({
-  old_password: Yup.string().required('Ancien mot de passe requis'),
   new_password: Yup.string()
     .min(8, 'Le mot de passe doit contenir au moins 8 caractères')
     .required('Nouveau mot de passe requis'),
@@ -18,11 +17,12 @@ const schema = Yup.object().shape({
     .oneOf([Yup.ref('new_password')], 'Les mots de passe ne correspondent pas')
     .required('Confirmation requise'),
 });
+const manualSchema = schema.shape({ old_password: Yup.string().required('Ancien mot de passe requis') });
 
 const ChangePasswordPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { passwordChangeRequired } = useAuth();
+  const { passwordChangeRequired, user } = useAuth();
   const { toast } = useToast();
   const [changePassword, { isLoading }] = useChangePasswordMutation();
 
@@ -50,18 +50,21 @@ const ChangePasswordPage: React.FC = () => {
         <div className="bg-white py-8 px-6 shadow-xl rounded-xl border border-gray-100">
           <Formik
             initialValues={{ old_password: '', new_password: '', confirm_password: '' }}
-            validationSchema={schema}
+            validationSchema={passwordChangeRequired ? schema : manualSchema}
             onSubmit={async (values, { setSubmitting, setStatus }) => {
               setStatus(undefined);
               try {
-                const result = await changePassword(values).unwrap();
-                if (result?.ok) {
-                  dispatch(setPasswordChangeRequired(false));
+                const result = await changePassword(passwordChangeRequired ? {
+                  new_password: values.new_password,
+                  confirm_password: values.confirm_password,
+                } : values).unwrap();
+                if (result?.ok && result.token && user) {
+                  dispatch(loginSuccess({ user, token: result.token }));
                   toast({
                     title: 'Succès',
                     description: result.message || 'Mot de passe modifié',
                   });
-                  navigate('/dashboard', { replace: true });
+                  navigate(user.role === 'ChefChauffeur' ? '/bons' : '/dashboard', { replace: true });
                 } else {
                   setStatus('Erreur lors du changement de mot de passe');
                 }
@@ -74,7 +77,7 @@ const ChangePasswordPage: React.FC = () => {
           >
             {({ isSubmitting, status }) => (
               <Form className="space-y-6">
-                <div>
+                {!passwordChangeRequired && <div>
                   <label htmlFor="old_password" className="block text-sm font-semibold text-gray-700 mb-1">
                     Ancien mot de passe
                   </label>
@@ -82,6 +85,7 @@ const ChangePasswordPage: React.FC = () => {
                     <Field
                       id="old_password"
                       name="old_password"
+                      autoComplete="current-password"
                       type={showOld ? 'text' : 'password'}
                       className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-gray-50 focus:bg-white"
                     />
@@ -94,7 +98,7 @@ const ChangePasswordPage: React.FC = () => {
                     </button>
                     <ErrorMessage name="old_password" component="div" className="mt-2 text-sm text-red-600" />
                   </div>
-                </div>
+                </div>}
 
                 <div>
                   <label htmlFor="new_password" className="block text-sm font-semibold text-gray-700 mb-1">
@@ -104,6 +108,7 @@ const ChangePasswordPage: React.FC = () => {
                     <Field
                       id="new_password"
                       name="new_password"
+                      autoComplete="new-password"
                       type={showNew ? 'text' : 'password'}
                       className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-gray-50 focus:bg-white"
                     />
@@ -126,6 +131,7 @@ const ChangePasswordPage: React.FC = () => {
                     <Field
                       id="confirm_password"
                       name="confirm_password"
+                      autoComplete="new-password"
                       type={showConfirm ? 'text' : 'password'}
                       className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-gray-50 focus:bg-white"
                     />

@@ -12,6 +12,8 @@ interface PaymentPrintModalProps {
   client?: any;
   fournisseur?: any;
   allPayments?: any[]; // Tous les paiements pour le calcul du solde
+  historyError: boolean;
+  onRetryHistory: () => void;
 }
 
 const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
@@ -20,14 +22,17 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
   payment,
   client,
   fournisseur,
-  allPayments = [],
+  allPayments,
+  historyError,
+  onRetryHistory,
 }) => {
   const [size, setSize] = useState<'A4' | 'A5'>('A5');
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   // Récupérer les bons nécessaires pour le calcul du solde cumulé (comme ContactsPage)
-  const { data: bonsContext } = useGetPaymentPrintBonsContextQuery(undefined, { skip: !isOpen });
+  const { data: bonsContext, isError: bonsError, refetch: retryBons } = useGetPaymentPrintBonsContextQuery(undefined, { skip: !isOpen });
+  const isReady = Boolean(allPayments && bonsContext);
   const sorties = bonsContext?.sorties || [];
   const comptants = bonsContext?.comptants || [];
   const commandes = bonsContext?.commandes || [];
@@ -164,10 +169,10 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <button onClick={handlePrint} disabled={isGenerating} className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
+            <button onClick={handlePrint} disabled={!isReady || isGenerating} className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
               <Printer size={16} className="mr-1" /> Imprimer
             </button>
-            <button onClick={generatePDF} disabled={isGenerating} className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
+            <button onClick={generatePDF} disabled={!isReady || isGenerating} className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
               <Download size={16} className="mr-1" /> {isGenerating ? 'Génération...' : 'PDF'}
             </button>
             <button onClick={onClose} className="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">Fermer</button>
@@ -175,6 +180,16 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
         </div>
         {/* Zone d'aperçu */}
         <div className="flex-1 overflow-auto bg-gray-100 p-4">
+          {!isReady ? (
+            <p className="p-4 text-center text-sm text-gray-700" role="status">
+              {historyError || bonsError ? (
+                <>Historique indisponible. <button type="button" className="underline" onClick={() => {
+                  if (historyError) onRetryHistory();
+                  if (bonsError) retryBons();
+                }}>Réessayer</button></>
+              ) : 'Chargement de l’historique…'}
+            </p>
+          ) : (
           <div className="flex justify-center">
             <div
               ref={printRef}
@@ -195,6 +210,7 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
               />
             </div>
           </div>
+          )}
         </div>
         <div className="p-2 border-t bg-gray-50 text-xs text-gray-600 text-center">
           Aperçu impression - Les couleurs peuvent différer de l'impression finale

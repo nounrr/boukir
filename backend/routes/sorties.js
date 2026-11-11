@@ -786,7 +786,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     }
 
     const [oldRows] = await connection.execute(
-      'SELECT statut FROM bons_sortie WHERE id = ? FOR UPDATE',
+      'SELECT statut, client_id, montant_total FROM bons_sortie WHERE id = ? FOR UPDATE',
       [id]
     );
     if (!Array.isArray(oldRows) || oldRows.length === 0) {
@@ -818,6 +818,13 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id: Number(id), statut } });
     }
 
+    const reservation = !isStatusCounted(oldStatut) && isStatusCounted(statut)
+      ? await reserveBonExceptionAuthorizations({
+          db: connection, user: req.user, clientId: oldRows[0].client_id,
+          amount: oldRows[0].montant_total, bonType: 'Sortie', bonId: Number(id),
+          requested: req.body.use_exception_authorization,
+        })
+      : null;
     const [result] = await connection.execute(
       'UPDATE bons_sortie SET statut = ?, updated_at = NOW() WHERE id = ?',
       [statut, id]
@@ -857,10 +864,16 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       WHERE bs.id = ?
     `, [id]);
 
+    await recordBonExceptionAuthorizationUsage({
+      db: connection, reservation, user: req.user, bonType: 'Sortie', bonId: Number(id),
+    });
     await connection.commit();
     res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: rows[0] });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('PATCH /sorties/:id/statut', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
   } finally {

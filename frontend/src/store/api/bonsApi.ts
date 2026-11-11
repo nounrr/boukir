@@ -26,7 +26,7 @@ type PagedBonsArgs = {
   sortBy?: 'numero' | 'date' | 'contact' | 'montant';
   sortDir?: 'asc' | 'desc';
   paymentState?: 'paid' | 'unpaid' | 'vendre_fournisseur' | 'normal_sortie' | 'normal_avoir_client';
-  vehiculeId?: number;
+  vehiculeId?: number | 'unassigned';
 };
 
 type PagedBonsResponse = {
@@ -262,11 +262,14 @@ export const bonsApi = api.injectEndpoints({
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id: 'LIST' },
           ...(type === 'Commande' ? [{ type: 'Product' as const }] : []),
+          ...(!_error && (type === 'Sortie' || type === 'Comptant')
+            ? [{ type: 'Employee' as const, id: 'ME_BON_AUTHORIZATIONS' }]
+            : []),
         ];
       }
     }),
     
-  updateBon: builder.mutation<Bon, Partial<Bon> & { id: number; type?: AnyBonType }>({
+  updateBon: builder.mutation<Bon, Partial<Bon> & { id: number; type?: AnyBonType; use_exception_authorization?: boolean }>({
       query: ({ id, type, ...bonData }) => {
         let endpoint = '';
         switch (type) {
@@ -629,8 +632,8 @@ export const bonsApi = api.injectEndpoints({
     }),
 
     // Pour changer le statut d'un bon (Valider, Annuler, etc.)
-  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: AnyBonType; force_clamp_percentages?: boolean }>({
-      query: ({ id, statut, type, force_clamp_percentages }) => {
+  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: AnyBonType; force_clamp_percentages?: boolean; use_exception_authorization?: boolean }>({
+      query: ({ id, statut, type, force_clamp_percentages, use_exception_authorization }) => {
         let endpoint = '';
         switch (type) {
           case 'Commande':
@@ -672,7 +675,11 @@ export const bonsApi = api.injectEndpoints({
         return {
           url: endpoint,
           method: 'PATCH',
-          body: { statut, ...(force_clamp_percentages ? { force_clamp_percentages: true } : {}) },
+          body: {
+            statut,
+            ...(force_clamp_percentages ? { force_clamp_percentages: true } : {}),
+            ...(use_exception_authorization ? { use_exception_authorization: true } : {}),
+          },
         };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
@@ -687,6 +694,9 @@ export const bonsApi = api.injectEndpoints({
           { type: 'Bon', id: 'LIST' },
           { type: 'Product', id: 'LIST' },
           'Contact', // Solde cumulé dépend du statut des bons
+          ...(!_error && (type === 'Sortie' || type === 'Comptant')
+            ? [{ type: 'Employee' as const, id: 'ME_BON_AUTHORIZATIONS' }]
+            : []),
         ];
       },
     }),
@@ -739,6 +749,7 @@ export const bonsApi = api.injectEndpoints({
         lieu_chargement?: string | null;
         numero?: string;
         created_by: number;
+        use_exception_authorization?: boolean;
       }
     >({
       query: ({ id, ...body }) => ({
@@ -759,6 +770,7 @@ export const bonsApi = api.injectEndpoints({
         'Comptant',
         'Commande',
         'Contact',
+        { type: 'Employee', id: 'ME_BON_AUTHORIZATIONS' },
       ],
     }),
 

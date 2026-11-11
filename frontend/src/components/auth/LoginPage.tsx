@@ -4,7 +4,7 @@ import * as Yup from 'yup';
 import { useAppDispatch, useAuth } from '../../hooks/redux';
 import { useLoginMutation } from '../../store/api/authApi';
 import { loginStart, loginSuccess, loginFailure } from '../../store/slices/authSlice';
-import { LogIn, Eye, EyeOff, User } from 'lucide-react';
+import { LogIn, Eye, EyeOff } from 'lucide-react';
 import type { LoginCredentials } from '../../types';
 
 // Schéma de validation avec Yup
@@ -18,7 +18,7 @@ const loginSchema = Yup.object().shape({
 
 const LoginPage: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { loading, error } = useAuth();
+  const { loading, error, passwordReauthenticationRequired } = useAuth();
   const [login] = useLoginMutation();
   const [showPassword, setShowPassword] = React.useState(false);
 
@@ -50,6 +50,11 @@ const LoginPage: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 shadow-xl rounded-xl border border-gray-100">
+          {passwordReauthenticationRequired && (
+            <p role="status" className="mb-5 rounded-md bg-blue-50 p-3 text-sm text-blue-900">
+              Pour continuer, reconnectez-vous avec votre CIN et votre mot de passe actuel.
+            </p>
+          )}
           <Formik
             initialValues={{ cin: '', password: '' }}
             validationSchema={loginSchema}
@@ -65,6 +70,7 @@ const LoginPage: React.FC = () => {
                     <Field
                       id="cin"
                       name="cin"
+                      autoComplete="username"
                       type="text"
                       placeholder="Ex: BK123456"
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-gray-50 focus:bg-white"
@@ -86,6 +92,7 @@ const LoginPage: React.FC = () => {
                     <Field
                       id="password"
                       name="password"
+                      autoComplete="current-password"
                       type={showPassword ? 'text' : 'password'}
                       className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-gray-50 focus:bg-white"
                     />

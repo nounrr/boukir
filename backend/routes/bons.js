@@ -978,7 +978,9 @@ router.get('/paged/:type', async (req, res) => {
 
     // Filtre par véhicule (vehicule_id direct ou via livraisons)
     const vehiculeIdParam = clampInt(req.query.vehiculeId, 0, 0, 2147483647);
-    if (vehiculeIdParam > 0) {
+    if (type === 'Vehicule' && req.query.vehiculeId === 'unassigned') {
+      whereParts.push('b.vehicule_id IS NULL');
+    } else if (vehiculeIdParam > 0) {
       if (cfg.livraisonType) {
         whereParts.push(`(b.vehicule_id = ? OR EXISTS (
           SELECT 1 FROM livraisons lvf

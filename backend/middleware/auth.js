@@ -36,8 +36,7 @@ export function verifyToken(req, res, next) {
   }
 }
 
-export function signToken(payload) {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+export function signToken(payload, expiresIn = process.env.JWT_EXPIRES_IN || '7d') {
   return jwt.sign(payload, getJwtSecret(), { expiresIn });
 }
 

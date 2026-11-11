@@ -18,9 +18,11 @@ import { applyStockDeltas, buildStockDeltaMaps, decrementSnapshotQuantities, mer
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
 import { normalizeComptantModePaiement } from '../utils/paymentModes.js';
+import { loadComptantPaymentVerificationAccess } from '../utils/comptantPaymentVerificationPermissions.js';
 import {
   BonAuthorizationError,
   bonAuthorizationErrorPayload,
+  isStatusCounted,
   recordBonExceptionAuthorizationUsage,
   reserveBonExceptionAuthorizations,
 } from '../utils/bonExceptionAuthorization.js';
@@ -177,25 +179,16 @@ async function assertComptantPaymentsWithinTotal(db, bonComptantId, montantTotal
   }
 }
 
-async function syncComptantBonReste(db, bonComptantId, montantTotalOverride = null) {
-  const bonId = Number(bonComptantId);
-  if (!Number.isFinite(bonId) || bonId <= 0) return 0;
-
-  const montantTotal = montantTotalOverride == null
-    ? await (async () => {
-        const [rows] = await db.execute('SELECT montant_total FROM bons_comptant WHERE id = ? LIMIT 1', [bonId]);
-        return Number(rows?.[0]?.montant_total || 0);
-      })()
-    : Number(montantTotalOverride || 0);
-
+async function syncComptantBonReste(db, bonId, montantTotal, requiresVerification = true) {
   const montantPaye = await sumComptantBonPayments(db, bonId);
-  const reste = Math.max(0, Number((montantTotal - montantPaye).toFixed(2)));
-  const nonPaye = reste > 0 ? 1 : 0;
+  const reste = Math.max(0, roundMoney(roundMoney(montantTotal) - montantPaye));
+  // Un règlement complet reste dans l'onglet Non payé jusqu'à sa vérification.
+  const nonPaye = Number(reste > 0 || (requiresVerification && montantPaye > 0));
   await db.execute(
     'UPDATE bons_comptant SET reste = ?, non_paye = ?, updated_at = NOW() WHERE id = ?',
     [reste, nonPaye, bonId]
   );
-  return reste;
+  return { reste, non_paye: nonPaye };
 }
 
 async function adaptComptantPaymentsToBonTotal(db, bonComptantId, montantTotal, updatedBy = null) {
@@ -476,6 +469,61 @@ router.get('/:id', async (req, res) => {
 /* =========================
    GET /comptant/:id/paiements
    ========================= */
+router.get('/paiements/verification-access', verifyToken, async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ allowed: await loadComptantPaymentVerificationAccess(req.user) });
+  } catch (error) { next(error); }
+});
+
+router.post('/:id/paiements/verification', verifyToken, async (req, res, next) => {
+  const bonId = Number(req.params.id);
+  if (!Number.isSafeInteger(bonId) || bonId <= 0) {
+    return res.status(400).json({ message: 'Bon comptant invalide.' });
+  }
+
+  let connection;
+  try {
+    if (!(await loadComptantPaymentVerificationAccess(req.user))) {
+      return res.status(403).json({ message: 'Vous n’êtes pas autorisé à vérifier les règlements.' });
+    }
+    await comptantSchemaReady;
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [[bon]] = await connection.execute(
+      'SELECT non_paye, reste, montant_total, statut FROM bons_comptant WHERE id = ? FOR UPDATE',
+      [bonId]
+    );
+    if (!bon) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon comptant introuvable.' });
+    }
+
+    const statut = String(bon.statut || '').trim().toLowerCase();
+    const montantTotal = roundMoney(bon.montant_total);
+    const montantPaye = roundMoney(await sumComptantBonPayments(connection, bonId));
+    if (
+      statut.startsWith('annul') || statut === 'avoir' ||
+      bon.reste == null || Number(bon.reste) !== 0 ||
+      montantTotal <= 0 || montantPaye !== montantTotal
+    ) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Le bon doit être intégralement réglé et actif pour être vérifié.' });
+    }
+
+    if (Number(bon.non_paye) === 1) {
+      await connection.execute('UPDATE bons_comptant SET non_paye = 0, updated_at = NOW() WHERE id = ?', [bonId]);
+    }
+    await connection.commit();
+    return res.json({ bon: { id: bonId, reste: 0, non_paye: 0, montant_paye: montantPaye } });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    return next(error);
+  } finally {
+    connection?.release();
+  }
+});
+
 router.get('/:id/paiements', verifyToken, async (req, res) => {
   try {
     await comptantSchemaReady;
@@ -555,7 +603,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
       [bonId, montant, datePaiement, note, createdBy]
     );
 
-    const reste = await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total);
     const montantPaye = Math.max(0, Number((Number(bon.montant_total || 0) - reste).toFixed(2)));
 
     const [rows] = await connection.execute(
@@ -573,7 +621,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
         montant_total: Number(bon.montant_total || 0),
         montant_paye: montantPaye,
         reste,
-        non_paye: reste > 0 ? 1 : 0,
+        non_paye,
       },
     });
   } catch (error) {
@@ -668,7 +716,7 @@ router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
       [montant, datePaiement, note, updatedBy, paymentId, bonId]
     );
 
-    const reste = await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total);
     const montantTotal = Number(bon.montant_total || 0);
     const montantPaye = Math.max(0, Number((montantTotal - reste).toFixed(2)));
     const [updatedRows] = await connection.execute(
@@ -686,7 +734,7 @@ router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
         montant_total: montantTotal,
         montant_paye: montantPaye,
         reste,
-        non_paye: reste > 0 ? 1 : 0,
+        non_paye,
       },
     });
   } catch (error) {
@@ -714,15 +762,6 @@ router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Identifiant invalide' });
     }
 
-    const [rows] = await connection.execute(
-      'SELECT id FROM paiement_boncomptant_nonpaye WHERE id = ? AND bon_comptant_id = ?',
-      [paymentId, bonId]
-    );
-    if (!Array.isArray(rows) || !rows.length) {
-      await connection.rollback();
-      return res.status(404).json({ message: 'Paiement non trouvé' });
-    }
-
     const [bonRows] = await connection.execute(
       'SELECT montant_total FROM bons_comptant WHERE id = ? FOR UPDATE',
       [bonId]
@@ -732,11 +771,15 @@ router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
       return res.status(404).json({ message: 'Bon comptant non trouvé' });
     }
 
-    await connection.execute(
+    const [deleted] = await connection.execute(
       'DELETE FROM paiement_boncomptant_nonpaye WHERE id = ? AND bon_comptant_id = ?',
       [paymentId, bonId]
     );
-    const reste = await syncComptantBonReste(connection, bonId, bonRows[0].montant_total);
+    if (!deleted.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Paiement non trouvé' });
+    }
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bonRows[0].montant_total);
     const montantTotal = Number(bonRows[0].montant_total || 0);
     const montantPaye = Math.max(0, Number((montantTotal - reste).toFixed(2)));
 
@@ -749,7 +792,7 @@ router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
         montant_total: montantTotal,
         montant_paye: montantPaye,
         reste,
-        non_paye: reste > 0 ? 1 : 0,
+        non_paye,
       },
     });
   } catch (error) {
@@ -1059,7 +1102,7 @@ router.put('/:id', async (req, res) => {
     const remise_id = req.body?.remise_id;
     const remise_client_nom = req.body?.remise_client_nom;
 
-    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, montant_ignorer, mode_paiement, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, montant_ignorer, mode_paiement, non_paye, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon comptant non trouvé' });
@@ -1244,11 +1287,10 @@ router.put('/:id', async (req, res) => {
     });
 
     const existingPaymentTotal = await sumComptantBonPayments(connection, id);
-    // Un bon totalement regle repasse automatiquement a non_paye = 0. Une
-    // modification ulterieure ne doit pas supprimer les paiements qui ont
-    // alimente la caisse le jour de leur saisie.
-    const shouldPreservePaymentHistory = nonPayeRequested || existingPaymentTotal > 0;
-    if (existingPaymentTotal > montantTotalForPayments + 0.000001) {
+    const wasUnpaid = Number(oldBon.non_paye) === 1;
+    const shouldPreservePaymentHistory = wasUnpaid || nonPayeRequested || existingPaymentTotal > 0;
+    const paymentsNeedAdjustment = existingPaymentTotal > montantTotalForPayments + 0.000001;
+    if (paymentsNeedAdjustment) {
       await adaptComptantPaymentsToBonTotal(
         connection,
         id,
@@ -1286,7 +1328,8 @@ router.put('/:id', async (req, res) => {
     }
 
     if (shouldPreservePaymentHistory) {
-      await syncComptantBonReste(connection, id, montantTotalForPayments);
+      const requiresVerification = wasUnpaid || paymentsNeedAdjustment || nextNonPayePayments.length > 0;
+      await syncComptantBonReste(connection, id, montantTotalForPayments, requiresVerification);
     } else {
       await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
       await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [id]);
@@ -1499,7 +1542,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const isChefChauffeur = userRole === 'ChefChauffeur';
 
     const [oldRows] = await connection.execute(
-      'SELECT statut FROM bons_comptant WHERE id = ? FOR UPDATE',
+      'SELECT statut, client_id, montant_total FROM bons_comptant WHERE id = ? FOR UPDATE',
       [id]
     );
     if (!Array.isArray(oldRows) || oldRows.length === 0) {
@@ -1531,6 +1574,13 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id: Number(id), statut } });
     }
 
+    const reservation = !isStatusCounted(oldStatut) && isStatusCounted(statut)
+      ? await reserveBonExceptionAuthorizations({
+          db: connection, user: req.user, clientId: oldRows[0].client_id,
+          amount: oldRows[0].montant_total, bonType: 'Comptant', bonId: Number(id),
+          requested: req.body.use_exception_authorization,
+        })
+      : null;
     const [result] = await connection.execute(
       'UPDATE bons_comptant SET statut = ?, updated_at = NOW() WHERE id = ?',
       [statut, id]
@@ -1576,10 +1626,16 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       }
     }
 
+    await recordBonExceptionAuthorizationUsage({
+      db: connection, reservation, user: req.user, bonType: 'Comptant', bonId: Number(id),
+    });
     await connection.commit();
     res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: { id: Number(id), statut } });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('PATCH /comptant/:id/statut', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
   } finally {

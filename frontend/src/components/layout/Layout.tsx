@@ -3,6 +3,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import MobileBottomNav from './MobileBottomNav';
 import StockQuickSearch from '../StockQuickSearch';
+import PlafondQuickAuthorization from '../PlafondQuickAuthorization';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -32,6 +33,7 @@ const Layout: React.FC<LayoutProps> = ({ children, manualAccessCheck, tabletComp
         </main>
       </div>
       <StockQuickSearch />
+      <PlafondQuickAuthorization />
       <MobileBottomNav tabletCompact={tabletCompact} />
     </div>
   );

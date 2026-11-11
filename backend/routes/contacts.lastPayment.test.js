@@ -9,7 +9,11 @@ test('client list exposes the last payment amount and date without losing client
   const execute = pool.execute;
   const query = pool.query;
   const queries = [];
-  pool.execute = async () => [[{ total: 3 }]];
+  pool.execute = async sql => {
+    assert.match(sql, /c\.archived_at IS NULL/);
+    assert.match(sql, /COUNT\(DISTINCT NULLIF\(c\.group_id, 0\)\)/);
+    return [[{ total: 3, totalGrouped: 2 }]];
+  };
   pool.query = async (sql, params) => {
     queries.push({ sql, params });
     if (sql.includes('AS grand_total_cumule')) return [[{ grand_total_cumule: 125 }]];
@@ -46,6 +50,7 @@ test('client list exposes the last payment amount and date without losing client
   assert.equal(body.data[0].plafond_echeance, 10000);
   assert.equal(body.data[1].cheques_echeanciers, 0);
   assert.equal(body.pagination.total, 3);
+  assert.equal(body.pagination.totalGrouped, 2);
   assert.equal(body.grandTotalCumule, 125);
   assert.equal(queries.length, 2, 'last payments require no extra query per client');
 });

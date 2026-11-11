@@ -499,6 +499,10 @@ const EmployeePage: React.FC = () => { // NOSONAR
           await updateEmployee({
             id: editingEmployee.id,
             ...payload,
+            bon_plafond_autorisations: payload.bon_plafond_autorisations === Number(editingEmployee.bon_plafond_autorisations || 0)
+              ? undefined : payload.bon_plafond_autorisations,
+            bon_client_bloque_autorisations: payload.bon_client_bloque_autorisations === Number(editingEmployee.bon_client_bloque_autorisations || 0)
+              ? undefined : payload.bon_client_bloque_autorisations,
             updated_by: user?.id || 1,
           }).unwrap();
         } else {

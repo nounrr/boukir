@@ -133,6 +133,7 @@ import { ensurePdgBoardSchema } from './db/ensurePdgBoardSchema.js';
 import { ensureProjetsSchema } from './db/ensureProjetsSchema.js';
 import { ensurePaymentModesAndSaisieSchema } from './db/ensurePaymentModesAndSaisieSchema.js';
 import { ensureClientEcheancierSchema } from './db/ensureClientEcheancierSchema.js';
+import { ensureContactArchiveSchema, startContactArchiveWorker } from './utils/contactArchive.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
@@ -163,6 +164,7 @@ async function ensureSchemas() {
   await ensureProjetsSchema();
   await ensurePaymentModesAndSaisieSchema();
   await ensureClientEcheancierSchema();
+  await ensureContactArchiveSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
 }
 
@@ -336,9 +338,9 @@ app.use(notifyCashRegisterChanges);
 
 // Personnel documents and payment proofs are private. Catalogue assets and
 // bon PDFs remain publicly served by the generic static mount below.
-app.use('/uploads/employee_docs', verifyCurrentUserWithSchedule, requireRole('PDG'), express.static(path.join(__dirname, 'uploads', 'employee_docs'), { fallthrough: false }));
-app.use('/uploads/payments', verifyCurrentUserWithSchedule, express.static(path.join(__dirname, 'uploads', 'payments'), { fallthrough: false }));
-app.use('/uploads/inventory', verifyCurrentUserWithSchedule, (req, res, next) => (
+app.use('/uploads/employee_docs', verifyCurrentUserWithSchedule, enforceWeeklyPasswordChange, requireRole('PDG'), express.static(path.join(__dirname, 'uploads', 'employee_docs'), { fallthrough: false }));
+app.use('/uploads/payments', verifyCurrentUserWithSchedule, enforceWeeklyPasswordChange, express.static(path.join(__dirname, 'uploads', 'payments'), { fallthrough: false }));
+app.use('/uploads/inventory', verifyCurrentUserWithSchedule, enforceWeeklyPasswordChange, (req, res, next) => (
   canViewInternalPrices(req.user) ? next() : res.status(403).json({ message: 'Accès aux prix internes non autorisé.' })
 ));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -545,6 +547,7 @@ ensureDb()
       console.log(`\n✅ API listening on http://localhost:${PORT}`);
       console.log(`✅ Socket.IO ready on ws://localhost:${PORT}\n`);
       startReviewInvitationWorker();
+      startContactArchiveWorker();
     });
   })
   .catch((err) => {

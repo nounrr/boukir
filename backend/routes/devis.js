@@ -4,6 +4,12 @@ import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
+import {
+  BonAuthorizationError,
+  bonAuthorizationErrorPayload,
+  recordBonExceptionAuthorizationUsage,
+  reserveBonExceptionAuthorizations,
+} from '../utils/bonExceptionAuthorization.js';
 
 const router = express.Router();
 
@@ -434,6 +440,10 @@ router.post('/:id/transform', async (req, res) => {
         return res.status(400).json(blockedClientPayload(blockedClient));
       }
 
+      const reservation = await reserveBonExceptionAuthorizations({
+        db: connection, user: req.user, clientId,
+        amount: devis.montant_total, bonType: 'Sortie', requested: req.body.use_exception_authorization,
+      });
       // Insert en "En attente"
       const [ins] = await connection.execute(`
         INSERT INTO bons_sortie (
@@ -444,6 +454,9 @@ router.post('/:id/transform', async (req, res) => {
       `, [today, clientId, vehicule_id, lieu, devis.montant_total, created_by, clientId]);
 
   const sortieId = ins.insertId;
+      await recordBonExceptionAuthorizationUsage({
+        db: connection, reservation, user: req.user, bonType: 'Sortie', bonId: sortieId,
+      });
   // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
   const numero = `SOR${String(sortieId).padStart(2, '0')}`;
 
@@ -525,6 +538,10 @@ router.post('/:id/transform', async (req, res) => {
         await connection.rollback();
         return res.status(400).json(blockedClientPayload(blockedClient));
       }
+      const reservation = await reserveBonExceptionAuthorizations({
+        db: connection, user: req.user, clientId: client_id,
+        amount: devis.montant_total, bonType: 'Comptant', requested: req.body.use_exception_authorization,
+      });
       const [ins] = await connection.execute(`
         INSERT INTO bons_comptant (
           date_creation, client_id, vehicule_id, lieu_chargement,
@@ -534,6 +551,9 @@ router.post('/:id/transform', async (req, res) => {
       `, [today, client_id, vehicule_id, lieu, devis.montant_total, created_by, client_id]);
 
   const bctId = ins.insertId;
+      await recordBonExceptionAuthorizationUsage({
+        db: connection, reservation, user: req.user, bonType: 'Comptant', bonId: bctId,
+      });
   // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
   const numero = `COM${String(bctId).padStart(2, '0')}`;
 
@@ -566,6 +586,9 @@ router.post('/:id/transform', async (req, res) => {
     return res.status(400).json({ message: 'target invalide (attendu: "sortie", "commande" ou "comptant")' });
   } catch (error) {
     await connection.rollback();
+    if (error instanceof BonAuthorizationError) {
+      return res.status(error.statusCode).json(bonAuthorizationErrorPayload(error));
+    }
     console.error('Erreur POST /devis/:id/transform:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
   } finally {

@@ -4,7 +4,7 @@ import ClientChequesEcheancierButton from '../components/ClientChequesEcheancier
 import ContactDocumentActions from '../components/ContactDocumentActions';
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
@@ -22,6 +22,8 @@ import MobileContactPrintModal from '../components/MobileContactPrintModal';
 import { useMobilePrintModal } from '../hooks/useMobilePrintModal';
 import { canModifyPayments } from '../utils/permissions';
 import ContactFormModal from '../components/ContactFormModal';
+import ContactArchiveButton from '../components/ContactArchiveButton';
+import ContactArchivesPanel from '../components/ContactArchivesPanel';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import ContactGroupManageModal from '../components/ContactGroupManageModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
@@ -2348,6 +2350,7 @@ const ClientsListPage: React.FC = () => {
   const printSourceRows = printData?.data ?? clients;
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
+  const totalActiveClients = data?.pagination?.totalGrouped ?? total;
 
   // Compteurs de commentaires pour les lignes affichées (une seule requête par page).
   // La clé est sérialisée pour garder une référence stable entre deux rendus.
@@ -2739,6 +2742,7 @@ const ClientsListPage: React.FC = () => {
           >
             <Edit className="w-4 h-4" />
           </button>
+          {currentUser?.role === 'PDG' && <ContactArchiveButton id={client.id} name={client.nom_complet || client.societe || 'Contact #' + client.id} />}
           {currentUser?.role === 'PDG' && (
             <button
               type="button"
@@ -2891,7 +2895,7 @@ const ClientsListPage: React.FC = () => {
         </div> : <span className="text-xs text-gray-400">Aucun paiement</span>}
       </div>
       {canUseComments && commentCounts[id]?.dernier_contenu && <p className="mt-3 line-clamp-2 text-xs text-gray-600"><MessageSquare className="mr-1 inline h-3.5 w-3.5 text-indigo-500" />{commentCounts[id].dernier_contenu}</p>}
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">{canUseReminders && <button type="button" onClick={() => setReminderClient(client)} className="min-h-9 rounded-lg border border-amber-200 px-2 text-xs text-amber-800">{client.rappel_date ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} /> : 'Définir rappel'}</button>}{canUseComments && <button type="button" onClick={() => setOpenCommentsClientId(prev => prev === id ? null : id)} className="min-h-9 rounded-lg border border-indigo-200 px-3 text-xs font-medium text-indigo-700">Commentaires {commentCount > 0 && `(${commentCount})`}</button>}<Link to={`/clients-copy/${id}`} onClick={() => handleRowClick(id, false)} className="inline-flex min-h-9 items-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Voir détails</Link><button type="button" onClick={() => handleEdit(client)} className="min-h-9 rounded-lg border border-blue-200 px-3 text-xs font-medium text-blue-700">Modifier</button>{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(client)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-700">Supprimer</button>}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">{canUseReminders && <button type="button" onClick={() => setReminderClient(client)} className="min-h-9 rounded-lg border border-amber-200 px-2 text-xs text-amber-800">{client.rappel_date ? <ReminderBadge daysRemaining={client.rappel_jours_restants} date={client.rappel_date} /> : 'Définir rappel'}</button>}{canUseComments && <button type="button" onClick={() => setOpenCommentsClientId(prev => prev === id ? null : id)} className="min-h-9 rounded-lg border border-indigo-200 px-3 text-xs font-medium text-indigo-700">Commentaires {commentCount > 0 && `(${commentCount})`}</button>}<Link to={`/clients-copy/${id}`} onClick={() => handleRowClick(id, false)} className="inline-flex min-h-9 items-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Voir détails</Link><button type="button" onClick={() => handleEdit(client)} className="min-h-9 rounded-lg border border-blue-200 px-3 text-xs font-medium text-blue-700">Modifier</button>{currentUser?.role === 'PDG' && <ContactArchiveButton id={client.id} name={client.nom_complet || client.societe || 'Contact #' + client.id} compact={false} />}{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(client)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-700">Supprimer</button>}</div>
       <label className="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={blocked} onChange={() => handleToggleClientBloque(client)} className="h-4 w-4 accent-orange-600" />Client bloqué</label>
       {canUseComments && commentsOpen && <div className="mt-3 border-t border-indigo-100 pt-3"><ContactCommentsSection contactId={id} /></div>}
     </article>;
@@ -2912,7 +2916,7 @@ const ClientsListPage: React.FC = () => {
           <div className="p-2 bg-blue-100 rounded-lg"><Users className="w-6 h-6 text-blue-600" /></div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Clients</h1>
-            <p className="text-sm text-gray-500">{total} client{total !== 1 ? 's' : ''} au total</p>
+            <p className="text-sm text-gray-500">{totalActiveClients} client{totalActiveClients !== 1 ? 's actifs' : ' actif'}</p>
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -3155,6 +3159,7 @@ const ClientsListPage: React.FC = () => {
           setEditingContact(null);
         }}
         contactType="Client"
+        confirmBalanceEdit
         initialValues={editingContact || undefined}
         defaultIsCharge={false}
         onContactAdded={() => {
@@ -3173,5 +3178,30 @@ const ClientsListPage: React.FC = () => {
 // Ce fichier exporte les deux composants.
 
 export { ClientDetailPage };
-export default ClientsListPage;
+export default function ClientsCopyPage() {
+  const [params, setParams] = useSearchParams();
+  const showArchives = params.get('tab') === 'archives';
+  const changeTab = (archived: boolean) => {
+    const next = new URLSearchParams(params);
+    if (archived) next.set('tab', 'archives');
+    else next.delete('tab');
+    setParams(next);
+  };
+
+  return (
+    <div className="space-y-4">
+      <nav aria-label="Vues clients" className="flex flex-wrap gap-2">
+        <button type="button" aria-pressed={!showArchives} onClick={() => changeTab(false)}
+          className="rounded-lg border px-4 py-2 text-sm font-medium aria-pressed:border-blue-700 aria-pressed:bg-blue-700 aria-pressed:text-white">
+          Clients actifs
+        </button>
+        <button type="button" aria-pressed={showArchives} onClick={() => changeTab(true)}
+          className="rounded-lg border px-4 py-2 text-sm font-medium aria-pressed:border-blue-700 aria-pressed:bg-blue-700 aria-pressed:text-white">
+          Archives
+        </button>
+      </nav>
+      {showArchives ? <ContactArchivesPanel /> : <ClientsListPage />}
+    </div>
+  );
+}
 

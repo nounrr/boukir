@@ -1,7 +1,7 @@
 import { ensureProductCategoriesSchema } from '../../utils/productCategories.js';
 import { Router } from 'express';
 import pool from '../../db/pool.js';
-import { ensureCategoryProductOrderSchema, CATEGORY_PRODUCT_ORDER_SQL, CATEGORY_PRODUCT_ORDER_JOIN } from '../../utils/categoryProductOrder.js';
+import { ensureCategoryProductOrderSchema, categoryBrandPriceOrderSql, CATEGORY_PRODUCT_ORDER_SQL, CATEGORY_PRODUCT_ORDER_JOIN } from '../../utils/categoryProductOrder.js';
 import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 import { createProductSitemapRouter } from './productSitemap.js';
 import { createCatalogPagesRouter } from './catalogPages.js';
@@ -103,6 +103,34 @@ router.get('/', async (req, res, next) => {
           LIMIT 1
         ), p.prix_vente)`
       : 'p.prix_vente';
+    const variantPriceExpr = snapshotEnabled
+      ? `COALESCE((
+          SELECT NULLIF(ps.prix_vente, 0) FROM product_snapshot ps
+          WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
+          ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
+          LIMIT 1
+        ), pv.prix_vente)`
+      : 'pv.prix_vente';
+    const variantStockExpr = snapshotEnabled
+      ? `(
+          SELECT COALESCE(SUM(ps.quantite), 0) FROM product_snapshot ps
+          WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
+        )`
+      : 'pv.stock_quantity';
+    // Sort the full result set by the same default offer displayed on its cards.
+    const displayPriceExpr = `CASE WHEN p.has_variants <> 0 AND p.is_obligatoire_variant = 1 THEN COALESCE((
+      SELECT COALESCE(prix_vente, 0) FROM (
+        SELECT pv.id, pv.variant_type, pv.variant_name,
+               ${variantPriceExpr} AS prix_vente, ${variantStockExpr} AS stock_quantity
+        FROM product_variants pv
+        WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
+      ) effective_variants
+      ORDER BY ${DEFAULT_VARIANT_ORDER_SQL} LIMIT 1
+    ), ${priceExpr}) ELSE ${priceExpr} END`;
+    const offerPriceExpr = `(${displayPriceExpr}) * (
+      CASE WHEN p.pourcentage_promo > 0 AND p.pourcentage_promo <> 100
+           THEN 1 - p.pourcentage_promo / 100 ELSE 1 END
+    )`;
     const anyStockExpr = snapshotEnabled
       ? `(
           SELECT COALESCE(SUM(ps.quantite), 0)
@@ -291,13 +319,14 @@ router.get('/', async (req, res, next) => {
     // Build ORDER BY clause
     await ensureCategoryProductOrderSchema(pool);
     const categoryOrder = CATEGORY_PRODUCT_ORDER_SQL;
-    let orderBy = categoryOrder;
+    const defaultOrder = categoryBrandPriceOrderSql(offerPriceExpr);
+    let orderBy;
     switch (sort) {
       case 'price_asc':
-        orderBy = `${priceExpr} ASC`;
+        orderBy = `${offerPriceExpr} ASC, p.id ASC`;
         break;
       case 'price_desc':
-        orderBy = `${priceExpr} DESC`;
+        orderBy = `${offerPriceExpr} DESC, p.id ASC`;
         break;
       case 'promo':
         orderBy = `p.pourcentage_promo DESC, ${categoryOrder}`;
@@ -307,11 +336,9 @@ router.get('/', async (req, res, next) => {
         orderBy = 'p.created_at DESC';
         break;
       case 'newest':
-        orderBy = categoryOrder;
-        break;
       case 'category':
       default:
-        orderBy = categoryOrder;
+        orderBy = defaultOrder;
         break;
     }
 
@@ -425,52 +452,22 @@ router.get('/', async (req, res, next) => {
       let otherVariants = [];
 
       if (r.has_variants) {
-        const variantsQuery = snapshotEnabled
-          ? `
+        const variantsQuery = `
             SELECT 
               pv.id,
               pv.variant_name,
               pv.color_name,
               pv.variant_type,
-              COALESCE((
-                SELECT NULLIF(ps.prix_vente, 0)
-                FROM product_snapshot ps
-                WHERE ps.variant_id = pv.id
-                  AND COALESCE(ps.en_validation, 0) <> 0
-                ORDER BY CASE WHEN ps.quantite > 0 THEN 0 ELSE 1 END, ps.created_at ASC, ps.id ASC
-                LIMIT 1
-              ), pv.prix_vente) as prix_vente,
+              ${variantPriceExpr} AS prix_vente,
               pv.remise_client,
               pv.remise_artisan,
               pv.remise_promoteur,
-              COALESCE((
-                SELECT COALESCE(SUM(ps.quantite), 0)
-                FROM product_snapshot ps
-                WHERE ps.variant_id = pv.id
-                  AND COALESCE(ps.en_validation, 0) <> 0
-              ), pv.stock_quantity) as stock_quantity,
+              ${variantStockExpr} AS stock_quantity,
               pv.image_url
             FROM product_variants pv
             WHERE pv.product_id = ?
               AND COALESCE(pv.is_deleted, 0) = 0
-            ORDER BY pv.variant_type, pv.variant_name
-          `
-          : `
-            SELECT 
-              id,
-              variant_name,
-              color_name,
-              variant_type,
-              prix_vente,
-              remise_client,
-              remise_artisan,
-              remise_promoteur,
-              stock_quantity,
-              image_url
-            FROM product_variants
-            WHERE product_id = ?
-              AND COALESCE(is_deleted, 0) = 0
-            ORDER BY variant_type, variant_name
+            ORDER BY pv.variant_type, pv.variant_name, pv.id
           `;
 
         const [variantsData] = await pool.query(variantsQuery, [r.id]);

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Formik, Form, Field } from 'formik';
+import { Pencil } from 'lucide-react';
 import * as Yup from 'yup';
 import type { Contact } from '../types';
 import { useCreateContactMutation, useUpdateContactMutation } from '../store/api/contactsApi';
 import { useCreateContactGroupMutation, useGetContactGroupsQuery } from '../store/api/contactGroupsApi';
-import { showSuccess, showError } from '../utils/notifications';
+import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 
@@ -70,16 +71,17 @@ interface ContactFormModalProps {
   initialValues?: Partial<Contact>;
   onContactAdded?: (contact: Contact) => void;
   defaultIsCharge?: boolean;
+  confirmBalanceEdit?: boolean;
 }
 
-const ContactFormModal: React.FC<ContactFormModalProps> = ({
-  isOpen,
+const ContactForm: React.FC<Omit<ContactFormModalProps, 'isOpen'>> = ({
   onClose,
   contactType,
   clientSubTab,
   initialValues,
   onContactAdded,
   defaultIsCharge = false,
+  confirmBalanceEdit = false,
 }) => {
   const [createContact] = useCreateContactMutation();
   const [updateContact] = useUpdateContactMutation();
@@ -87,8 +89,24 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   const [createContactGroup] = useCreateContactGroupMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isEmployee = currentUser?.role === 'Employé';
+  const [balanceEditConfirmed, setBalanceEditConfirmed] = useState(false);
+  const balanceInputRef = useRef<HTMLInputElement>(null);
+  const requiresBalanceConfirmation = confirmBalanceEdit && Boolean(initialValues?.id);
+  const isBalanceLocked = isEmployee || (requiresBalanceConfirmation && !balanceEditConfirmed);
+  const balanceLabel = contactType === 'Client' ? 'Solde à recevoir' : 'Solde à payer';
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (balanceEditConfirmed) balanceInputRef.current?.focus();
+  }, [balanceEditConfirmed]);
+
+  const confirmBalanceChange = async () => {
+    const result = await showConfirmation(
+      `Voulez-vous modifier le ${balanceLabel.toLowerCase()} ?`,
+      `Modifier le ${balanceLabel.toLowerCase()}`,
+      'Oui, modifier',
+    );
+    if (result.isConfirmed) setBalanceEditConfirmed(true);
+  };
 
   const defaultValues = {
     societe: initialValues?.societe ?? '',
@@ -171,7 +189,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 result = await updateContact({
                   id: initialValues.id,
                   updated_by: actorId,
-                  ...contactData
+                  ...contactData,
+                  solde: isBalanceLocked || (requiresBalanceConfirmation && contactData.solde === Number(defaultValues.solde ?? 0))
+                    ? undefined : contactData.solde,
                 }).unwrap();
                 showSuccess(`${contactType} modifié avec succès!`);
               } else {
@@ -201,7 +221,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             }
           }}
         >
-          {({ errors, touched, values, setFieldValue }) => (
+          {({ errors, touched, values, setFieldValue, isSubmitting }) => (
             <Form className="space-y-4">
               {/* Checkbox isSolde - en haut (clients seulement) */}
               {contactType === 'Client' && (
@@ -542,17 +562,32 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 {/* Solde */}
                 <div>
                   <label htmlFor="solde" className="block text-sm font-medium text-gray-700 mb-1">
-                    {contactType === 'Client' ? 'Solde à recevoir *' : 'Solde à payer (optionnel)'}
+                    {balanceLabel}{contactType === 'Client' ? ' *' : ' (optionnel)'}
                   </label>
-                  <Field
-                    id="solde"
-                    name="solde"
-                    type="number"
-                    step="0.01"
-                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none ${isEmployee ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
-                    disabled={isEmployee}
-                    placeholder="0.00"
-                  />
+                  <div className="flex gap-2">
+                    <Field
+                      innerRef={balanceInputRef}
+                      id="solde"
+                      name="solde"
+                      type="number"
+                      step="0.01"
+                      className={`min-w-0 flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none ${isBalanceLocked ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
+                      disabled={isBalanceLocked}
+                      placeholder="0.00"
+                    />
+                    {requiresBalanceConfirmation && !isEmployee && !balanceEditConfirmed && (
+                      <button
+                        type="button"
+                        onClick={confirmBalanceChange}
+                        disabled={isSubmitting}
+                        aria-label={`Modifier le ${balanceLabel.toLowerCase()}`}
+                        title={`Modifier le ${balanceLabel.toLowerCase()}`}
+                        className="grid min-h-11 min-w-11 place-items-center rounded-md border border-blue-200 text-blue-700 hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                   {errors.solde && touched.solde && (
                     <p className="text-red-500 text-xs mt-1">{errors.solde}</p>
                   )}
@@ -585,6 +620,10 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     </div>
   );
 };
+
+const ContactFormModal: React.FC<ContactFormModalProps> = ({ isOpen, ...props }) => (
+  isOpen ? <ContactForm key={`${props.contactType}:${props.initialValues?.id ?? 'new'}`} {...props} /> : null
+);
 
 export default ContactFormModal;
    

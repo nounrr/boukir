@@ -1,4 +1,5 @@
 import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
+import { confirmBonExceptionAuthorization } from '../utils/confirmBonExceptionAuthorization';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -6,7 +7,6 @@ import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
-import { api } from '../store/api/apiSlice';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
   import ContactFormModal from '../components/ContactFormModal';
@@ -19,6 +19,7 @@ import { api } from '../store/api/apiSlice';
   import ComptantBatchPrintModal from '../components/ComptantBatchPrintModal';
   import SearchableSelect from '../components/SearchableSelect';
   import { 
+    bonsApi,
     useGetBonsByTypePagedQuery,
     useDeleteBonMutation, 
     useUpdateBonLivreMutation,
@@ -31,16 +32,17 @@ import { api } from '../store/api/apiSlice';
     useUpdateCommandeInclusEnCaisseMutation,
     useUpdateAvoirInclusEnCaisseMutation
   } from '../store/api/bonsApi';
-  import { 
-    useGetAllClientsQuery, 
-  useGetAllFournisseursQuery
-  } from '../store/api/contactsApi';
+import { useBonContactDirectory } from '../hooks/useBonContactDirectory';
+import { bonContactSearchLabel } from '../utils/bonContactSearch';
+import ContactSoldeCumuleHint from '../components/ContactSoldeCumuleHint';
 import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { isProductNonCalcule } from '../utils/productNonCalcule';
 import { toCommandeDuplicateItem } from '../utils/bonDuplication';
 import { DESIGNATION_LANG_OPTIONS, type DesignationLang } from '../utils/designationLang';
 import {
   useGetComptantPaymentsQuery,
+  useGetComptantPaymentVerificationAccessQuery,
+  useVerifyComptantPaymentMutation,
   useCreateComptantPaymentMutation,
   useDeleteComptantPaymentMutation
 } from '../store/api/comptantApi';
@@ -49,7 +51,7 @@ import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
   import { uploadBonPdf } from '../utils/uploads';
-  import { formatDateTimeWithHour } from '../utils/dateUtils';
+  import { formatDateInputToMySQL, formatDateTimeWithHour, getCurrentDateTimeInput } from '../utils/dateUtils';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
   import { getBonNumeroDisplay } from '../utils/numero';
@@ -160,6 +162,17 @@ const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye' |
   tab === 'ComptantNonPaye' ? 'Comptant' : tab === 'VendreFournisseur' ? 'Sortie' : tab === 'AvoirVendreFournisseur' ? 'Avoir' : tab
 );
 
+const isComptantPaymentPending = (bon: {
+  non_paye?: boolean | number | string | null;
+  reste?: number | string | null;
+  montant_total?: number | string | null;
+  statut?: string | null;
+}) => {
+  const statut = String(bon.statut ?? '').trim().toLowerCase();
+  return Number(bon.non_paye) === 1 && bon.reste != null && Number(bon.reste) === 0 &&
+    Number(bon.montant_total) > 0 && !statut.startsWith('annul') && statut !== 'avoir';
+};
+
 const normalizeHumanName = (value: unknown) => {
   return String(value ?? '')
     .toLowerCase()
@@ -224,6 +237,7 @@ const BonsPage = () => {
   const [searchInput, setSearchInput] = useState(() => String(restoredListState?.searchInput ?? restoredListState?.searchTerm ?? ''));
   const [searchTerm, setSearchTerm] = useState(() => String(restoredListState?.searchTerm ?? ''));
   const [statusFilter, setStatusFilter] = useState<string[]>(() => Array.isArray(restoredListState?.statusFilter) ? restoredListState.statusFilter : []);
+  const [unassignedVehicleOnly, setUnassignedVehicleOnly] = useState(() => restoredListState?.unassignedVehicleOnly === true);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isNewSupplierModalOpen, setIsNewSupplierModalOpen] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
@@ -426,7 +440,7 @@ const BonsPage = () => {
 
   // RTK Query hooks
   // Load only the current tab from the backend with server-side pagination/search.
-  const { data: bonsResponse, isLoading: bonsLoading, refetch: refetchBons } = useGetBonsByTypePagedQuery({
+  const { data: lastBonsResponse, currentData, isLoading, isFetching, refetch: refetchBons } = useGetBonsByTypePagedQuery({
     type: currentTab,
     page: currentPage,
     limit: itemsPerPage,
@@ -435,22 +449,44 @@ const BonsPage = () => {
     sortBy: backendSortBy,
     sortDir: sortDirection,
     paymentState: backendPaymentState,
+    vehiculeId: effectiveCurrentTab === 'Vehicule' && unassignedVehicleOnly ? 'unassigned' : undefined,
   });
+  const requiresCurrentBons = isComptantTab || effectiveCurrentTab === 'Vehicule';
+  const bonsResponse = requiresCurrentBons ? currentData : lastBonsResponse;
+  const bonsLoading = isLoading || (requiresCurrentBons && isFetching && !currentData);
   const bons = bonsResponse?.data || [];
   const bonsPagination = bonsResponse?.pagination;
   // Les lignes des bons contiennent déjà variante, unité choisie et unité de base.
   // L'impression ne doit donc pas télécharger tout le catalogue produits + unités.
   const needsReferenceData = anyModalOpen && !isThermalPrintModalOpen && !isPrintModalOpen;
-  const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery(undefined, { skip: !needsReferenceData });
-  const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery(undefined, { skip: !needsReferenceData });
+  const { clients, fournisseurs: suppliers, isLoading: contactsLoading, isError: contactsError, refetch: refetchContacts } =
+    useBonContactDirectory(!needsReferenceData);
+  const duplicateClientOptions = useMemo(() => clients.map(contact => {
+    const blocked = duplicateType !== 'avoirClient' && isContactBlocked(contact);
+    return {
+      value: String(contact.id),
+      label: bonContactSearchLabel(contact) + (blocked ? ' - Client bloqué' : ''),
+      disabled: blocked,
+    };
+  }), [clients, duplicateType]);
+  const duplicateSupplierOptions = useMemo(() => suppliers.map(contact => ({
+    value: String(contact.id),
+    label: bonContactSearchLabel(contact),
+  })), [suppliers]);
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery(undefined, { skip: !needsReferenceData });
   const safeRefetchProducts = useCallback(() => {
     if (!needsReferenceData) return;
     void refetchProducts();
   }, [needsReferenceData, refetchProducts]);
-  const { data: comptantPayments = [] } = useGetComptantPaymentsQuery(selectedComptantForPayments?.id, {
+  const { currentData: comptantPayments = [], isFetching: isFetchingComptantPayments } = useGetComptantPaymentsQuery(selectedComptantForPayments?.id, {
     skip: !selectedComptantForPayments?.id
   });
+  const { data: comptantVerificationAccess } = useGetComptantPaymentVerificationAccessQuery(undefined, {
+    skip: !isUnpaidComptantTab,
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
+  });
+  const canVerifyComptantPayment = currentUser?.role === 'PDG' || comptantVerificationAccess?.allowed === true;
   // Snapshot-expanded products (with historic prix_achat/cout_revient per bon de commande)
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !needsReferenceData });
   const [deleteBonMutation] = useDeleteBonMutation();
@@ -481,6 +517,7 @@ const BonsPage = () => {
   const [updateAvoirInclusEnCaisse] = useUpdateAvoirInclusEnCaisseMutation();
   const [createComptantPayment, { isLoading: isCreatingComptantPayment }] = useCreateComptantPaymentMutation();
   const [deleteComptantPayment] = useDeleteComptantPaymentMutation();
+  const [verifyComptantPayment, { isLoading: isVerifyingComptantPayment }] = useVerifyComptantPaymentMutation();
   // Bon links API: record duplications
   const [createBonLink] = useCreateBonLinkMutation();
   const [getBonLinksBatch] = useGetBonLinksBatchMutation();
@@ -666,7 +703,7 @@ const BonsPage = () => {
     }
   };
   const refreshAfterStatusChange = useCallback(() => {
-    dispatch(api.util.invalidateTags(['Product', 'Contact', { type: 'Bon', id: 'LIST' }]));
+    dispatch(bonsApi.util.invalidateTags(['Product', 'Contact', { type: 'Bon', id: 'LIST' }]));
     void refetchBons();
     safeRefetchProducts();
   }, [dispatch, refetchBons, safeRefetchProducts]);
@@ -727,7 +764,10 @@ const BonsPage = () => {
         return;
       }
       
-      await updateBonStatus({ id: bon.id, statut, type: bon.type || effectiveCurrentTab }).unwrap();
+      const update = await confirmBonExceptionAuthorization(confirmed => updateBonStatus({
+        id: bon.id, statut, type: bon.type || effectiveCurrentTab, use_exception_authorization: confirmed,
+      }).unwrap());
+      if (!update.saved) return;
       showSuccess(`Statut mis à jour: ${statut}`);
       // IMPORTANT: refresh list and stock/products after any status change.
       refreshAfterStatusChange();
@@ -1560,6 +1600,11 @@ const BonsPage = () => {
   // Pagination
   const totalItems = bonsPagination?.total ?? sortedBons.length;
   const totalPages = bonsPagination?.totalPages ?? Math.ceil(totalItems / itemsPerPage);
+  useEffect(() => {
+    if (isUnpaidComptantTab && bonsPagination && currentPage > Math.max(1, totalPages)) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [bonsPagination, currentPage, isUnpaidComptantTab, totalPages]);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedBons = sortedBons;
@@ -1605,6 +1650,7 @@ const BonsPage = () => {
       searchInput,
       searchTerm,
       statusFilter,
+      unassignedVehicleOnly,
       sortField,
       sortDirection,
       windowScrollX: window.scrollX,
@@ -1612,7 +1658,7 @@ const BonsPage = () => {
       tableScrollTop: container?.scrollTop ?? 0,
       tableScrollLeft: container?.scrollLeft ?? 0,
     };
-  }, [currentPage, currentTab, itemsPerPage, searchInput, searchTerm, sortDirection, sortField, statusFilter]);
+  }, [currentPage, currentTab, itemsPerPage, searchInput, searchTerm, sortDirection, sortField, statusFilter, unassignedVehicleOnly]);
 
   const refreshFirstBonsPageAfterCreate = useCallback(() => {
     if (currentTab === 'ComptantNonPaye') {
@@ -2162,7 +2208,7 @@ const BonsPage = () => {
   const openComptantPaymentsModal = (bon: any) => {
     setSelectedComptantForPayments(bon);
     setNewComptantPaymentAmount('');
-    setNewComptantPaymentDate(formatMySQLToDateTimeInput(toMySQLDateTime(new Date())) || '');
+    setNewComptantPaymentDate(getCurrentDateTimeInput());
     setNewComptantPaymentNote('');
     setIsComptantPaymentsModalOpen(true);
   };
@@ -2197,7 +2243,7 @@ const BonsPage = () => {
         : prev
     );
     dispatch(
-      api.util.updateQueryData(
+      bonsApi.util.updateQueryData(
         'getBonsByTypePaged',
         {
           type: currentTab,
@@ -2265,10 +2311,31 @@ const BonsPage = () => {
 
       setNewComptantPaymentAmount('');
       setNewComptantPaymentNote('');
-      setNewComptantPaymentDate(formatMySQLToDateTimeInput(toMySQLDateTime(new Date())) || '');
-      showSuccess('Paiement ajouté au bon comptant non payé.');
+      setNewComptantPaymentDate(getCurrentDateTimeInput());
+      showSuccess('Paiement enregistré. Le bon attend la vérification du règlement.');
     } catch (error: any) {
       showError(error?.data?.message || error?.message || 'Erreur lors de l\'ajout du paiement.');
+    }
+  };
+
+  const handleVerifyComptantPayment = async () => {
+    const bon = selectedComptantForPayments;
+    if (!bon || !canVerifyComptantPayment || !isComptantPaymentPending(bon)) return;
+    const confirmation = await showConfirmation(
+      `Confirmer le règlement intégral du bon ${getDisplayNumero(bon)} et le déplacer dans Comptant payé ?`,
+      'Vérifier le règlement',
+      'Confirmer le règlement',
+    );
+    if (!confirmation.isConfirmed) return;
+
+    try {
+      const result = await verifyComptantPayment(Number(bon.id)).unwrap();
+      applyUpdatedComptantBonPaymentState(result.bon);
+      togglePrintSelection(bon, false);
+      closeComptantPaymentsModal();
+      showSuccess('Règlement vérifié. Le bon est dans Comptant payé.');
+    } catch (error) {
+      showError((error as { data?: { message?: string } })?.data?.message || 'Impossible de vérifier ce règlement.');
     }
   };
 
@@ -2678,7 +2745,11 @@ const BonsPage = () => {
         }
         
         // Créer le bon directement via l'API
-        const created = await createBon({ type: newBonData.type, ...newBonData }).unwrap();
+        const creation = await confirmBonExceptionAuthorization(confirmed => createBon({
+          type: newBonData.type, ...newBonData, use_exception_authorization: confirmed,
+        }).unwrap());
+        if (!creation.saved) return;
+        const created = creation.result;
         try {
           // Try to record duplication link (best-effort)
           const sourceType = selectedBonForDuplicate.type || currentTab;
@@ -2728,7 +2799,7 @@ const BonsPage = () => {
   return (
       <div className="p-6">
         {/* Loading indicator */}
-        {(bonsLoading || clientsLoading || suppliersLoading || productsLoading) && (
+        {(bonsLoading || contactsLoading || productsLoading) && (
           <div className="flex justify-center items-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             <span className="ml-2 text-gray-600">Chargement des données...</span>
@@ -2905,6 +2976,23 @@ const BonsPage = () => {
                 <button type="button" className="px-2 py-0.5 bg-gray-100 rounded text-xs hover:bg-gray-200" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout</button>
               </div>
             </div>
+
+            {effectiveCurrentTab === 'Vehicule' && (
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                Affectation
+                <select
+                  value={unassignedVehicleOnly ? 'unassigned' : 'all'}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setUnassignedVehicleOnly(event.target.value === 'unassigned');
+                  }}
+                  className="rounded-md border border-gray-300 px-2 py-2 text-sm"
+                >
+                  <option value="all">Tous les bons</option>
+                  <option value="unassigned">Non affecté</option>
+                </select>
+              </label>
+            )}
 
             {isUnpaidComptantTab && (
               <div className="flex items-center gap-2 px-3 py-2 border border-yellow-200 rounded-md bg-yellow-50 text-sm font-medium text-yellow-800">
@@ -3220,7 +3308,20 @@ const BonsPage = () => {
                           </button>;
                         })()}</td>
                       </>}
-                      <td className="px-4 py-2 text-sm"><div>{getDisplayNumero(bon)}</div><DocumentSaisieCheckbox document={bon} type={bon.type || effectiveCurrentTab} /></td>
+                      <td className="px-4 py-2 text-sm">
+                        <div>{getDisplayNumero(bon)}</div>
+                        {isUnpaidComptantTab && isComptantPaymentPending(bon) && (
+                          <button
+                            type="button"
+                            onClick={() => openComptantPaymentsModal(bon)}
+                            className="my-1 inline-flex rounded-full bg-purple-100 px-2 py-1 text-left text-xs font-semibold text-purple-800 hover:bg-purple-200"
+                            title="Voir le règlement de ce bon"
+                          >
+                            Réglé · À vérifier
+                          </button>
+                        )}
+                        <DocumentSaisieCheckbox document={bon} type={bon.type || effectiveCurrentTab} />
+                      </td>
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at || bon.date_creation)}</div>
                       </td>
@@ -4286,7 +4387,11 @@ const BonsPage = () => {
                 );
               })()}
 
-              <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 mb-5">
+              {isComptantPaymentPending(selectedComptantForPayments) ? (
+                <p className="mb-5 rounded-lg bg-purple-100 p-3 text-sm font-medium text-purple-800">
+                  Le montant est réglé en totalité. Le bon attend la vérification du règlement.
+                </p>
+              ) : <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 mb-5">
                 <div className="text-sm font-medium text-gray-800 mb-3">Ajouter un paiement</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <input
@@ -4322,7 +4427,7 @@ const BonsPage = () => {
                     Ajouter paiement
                   </button>
                 </div>
-              </div>
+              </div>}
 
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -4362,6 +4467,18 @@ const BonsPage = () => {
                   </tbody>
                 </table>
               </div>
+              {canVerifyComptantPayment && isComptantPaymentPending(selectedComptantForPayments) && (
+                <div className="mt-5 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleVerifyComptantPayment}
+                    disabled={isFetchingComptantPayments || !getComptantPaymentRows(comptantPayments).length || isVerifyingComptantPayment}
+                    className="rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800 disabled:opacity-60"
+                  >
+                    Vérifier le règlement
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -5504,16 +5621,7 @@ const BonsPage = () => {
                     </label>
                     <SearchableSelect
                       id="client-select"
-                      options={clients.map((client: any) => {
-                        const reference = client.reference ? `(${client.reference})` : '';
-                        const blocked = duplicateType !== 'avoirClient' && isContactBlocked(client);
-                        return {
-                          value: client.id.toString(),
-                          label: `${client.nom_complet} ${reference}${blocked ? ' - Client bloque' : ''}`,
-                          data: { ...client, disabledReason: blocked ? 'Client bloque' : undefined },
-                          disabled: blocked,
-                        };
-                      })}
+                      options={duplicateClientOptions}
                       value={selectedContactForDuplicate}
                       onChange={(value) => {
                         const selectedClient = (clients as any[]).find((client: any) => String(client?.id) === String(value));
@@ -5523,9 +5631,15 @@ const BonsPage = () => {
                         }
                         setSelectedContactForDuplicate(value);
                       }}
-                      placeholder="Rechercher un client..."
+                      placeholder={contactsLoading ? "Chargement des contacts…" : "Rechercher un client…"}
                       className="w-full"
                     />
+                    {contactsError && (
+                      <p className="mt-2 text-xs text-red-700" role="status">
+                        Annuaire indisponible. <button type="button" className="underline" onClick={() => refetchContacts()}>Réessayer</button>
+                      </p>
+                    )}
+                    <ContactSoldeCumuleHint contactId={selectedContactForDuplicate} contactType="Client" />
                   </div>
                 )}
 
@@ -5536,19 +5650,18 @@ const BonsPage = () => {
                     </label>
                     <SearchableSelect
                       id="fournisseur-select"
-                      options={suppliers.map((supplier: any) => {
-                        const reference = supplier.reference ? `(${supplier.reference})` : '';
-                        return {
-                          value: supplier.id.toString(),
-                          label: `${supplier.nom_complet} ${reference}`,
-                          data: supplier,
-                        };
-                      })}
+                      options={duplicateSupplierOptions}
                       value={selectedContactForDuplicate}
                       onChange={(value) => setSelectedContactForDuplicate(value)}
-                      placeholder="Rechercher un fournisseur..."
+                      placeholder={contactsLoading ? "Chargement des contacts…" : "Rechercher un fournisseur…"}
                       className="w-full"
                     />
+                    {contactsError && (
+                      <p className="mt-2 text-xs text-red-700" role="status">
+                        Annuaire indisponible. <button type="button" className="underline" onClick={() => refetchContacts()}>Réessayer</button>
+                      </p>
+                    )}
+                    <ContactSoldeCumuleHint contactId={selectedContactForDuplicate} contactType="Fournisseur" />
                   </div>
                 )}
 

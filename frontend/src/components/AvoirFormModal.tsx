@@ -1,17 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { Check, Plus } from 'lucide-react';
 import { useCreateBonMutation } from '../store/api/bonsApi';
 import { generateBonReference } from '../utils/referenceUtils';
 import { showSuccess, showError } from '../utils/notifications';
 import { formatDateInputToMySQL, getCurrentDateTimeInput } from '../utils/dateUtils';
-import { useContactSoldeCumule } from '../hooks/useContactSoldeCumule';
+import ContactSoldeCumuleHint from './ContactSoldeCumuleHint';
 import type { RootState } from '../store';
 import type { Bon, Contact } from '../types';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
 import ContactFormModal from './ContactFormModal';
+import SearchableSelect from './SearchableSelect';
+import { useBonContactDirectory } from '../hooks/useBonContactDirectory';
+import { bonContactSearchLabel } from '../utils/bonContactSearch';
 
 interface AvoirFormModalProps {
   isOpen: boolean;
@@ -19,36 +22,6 @@ interface AvoirFormModalProps {
   bonOrigine?: any; // Le bon à partir duquel on crée l'avoir (optionnel maintenant)
   onAvoirCreated?: (avoir: any) => void;
 }
-
-const ContactSoldeCumuleHint: React.FC<{
-  contactId?: string | number | null;
-  contactType: 'Client' | 'Fournisseur';
-  colorClassName?: string;
-  labelClassName?: string;
-  valueClassName?: string;
-}> = ({
-  contactId,
-  contactType,
-  colorClassName = 'bg-blue-50',
-  labelClassName = 'text-blue-700',
-  valueClassName = 'text-blue-800',
-}) => {
-  const numericId = contactId ? Number(contactId) : null;
-  const { soldeCumule, contact, isLoading } = useContactSoldeCumule(numericId, contactType);
-
-  if (!numericId) return null;
-
-  const hasValue = contact && Number.isFinite(Number(soldeCumule));
-
-  return (
-    <div className={`mt-2 p-2 rounded ${colorClassName}`}>
-      <span className={`text-sm font-medium ${labelClassName}`}>Solde cumule: </span>
-      <span className={`text-sm font-semibold ${valueClassName}`}>
-        {isLoading ? 'Chargement...' : hasValue ? `${Number(soldeCumule).toFixed(2)} DH` : '-'}
-      </span>
-    </div>
-  );
-};
 
 const validationSchema = Yup.object({
   type_avoir: Yup.string().required('Type d\'avoir requis'),
@@ -106,12 +79,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   const bons = useSelector((state: RootState) => state.bons.bons.filter(
     (bon: Bon) => bon.type === 'Commande' || bon.type === 'Sortie' || bon.type === 'Comptant'
   ));
-  const fournisseurs = useSelector((state: RootState) => 
-    state.contacts.contacts.filter((contact: Contact) => contact.type === 'Fournisseur')
-  );
-  const clients = useSelector((state: RootState) => 
-    state.contacts.contacts.filter((contact: Contact) => contact.type === 'Client')
-  );
+  const { clients, fournisseurs, isLoading, isError, refetch } = useBonContactDirectory(!isOpen || typeAvoir === 'lie');
+  const clientOptions = useMemo(() => clients.map(contact => ({
+    value: String(contact.id),
+    label: bonContactSearchLabel(contact),
+  })), [clients]);
+  const fournisseurOptions = useMemo(() => fournisseurs.map(contact => ({
+    value: String(contact.id),
+    label: bonContactSearchLabel(contact),
+  })), [fournisseurs]);
 
   useEffect(() => {
     if (bonOrigine) {
@@ -422,6 +398,11 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
           >
             {({ values, setFieldValue }) => (
               <Form className="space-y-6">
+                {isError && typeAvoir !== 'lie' && (
+                  <p className="text-xs text-red-700" role="status">
+                    Annuaire indisponible. <button type="button" className="underline" onClick={() => refetch()}>Réessayer</button>
+                  </p>
+                )}
                 {/* Type d'avoir */}
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div 
@@ -520,19 +501,14 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                           <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
                             Client *
                           </label>
-                          <Field
-                            as="select"
+                          <SearchableSelect
                             id="client_id"
-                            name="client_id"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="">Sélectionnez un client</option>
-                            {clients.map((c: Contact) => (
-                              <option key={c.id} value={c.id}>
-                                {c.nom_complet} {c.reference ? `(${c.reference})` : ''}
-                              </option>
-                            ))}
-                          </Field>
+                            options={clientOptions}
+                            value={values.client_id ? String(values.client_id) : ''}
+                            onChange={(id) => setFieldValue('client_id', id)}
+                            placeholder={isLoading ? 'Chargement des contacts…' : 'Sélectionnez un client'}
+                            autoOpenOnFocus
+                          />
                           <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
                           {values.client_id && <ContactSoldeCumuleHint contactId={values.client_id} contactType="Client" />}
                         </div>
@@ -556,19 +532,14 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                           <label htmlFor="fournisseur_id" className="block text-sm font-medium text-gray-700 mb-1">
                             Fournisseur *
                           </label>
-                          <Field
-                            as="select"
+                          <SearchableSelect
                             id="fournisseur_id"
-                            name="fournisseur_id"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="">Sélectionnez un fournisseur</option>
-                            {fournisseurs.map((f: Contact) => (
-                              <option key={f.id} value={f.id}>
-                                {f.nom_complet} {f.reference ? `(${f.reference})` : ''}
-                              </option>
-                            ))}
-                          </Field>
+                            options={fournisseurOptions}
+                            value={values.fournisseur_id ? String(values.fournisseur_id) : ''}
+                            onChange={(id) => setFieldValue('fournisseur_id', id)}
+                            placeholder={isLoading ? 'Chargement des contacts…' : 'Sélectionnez un fournisseur'}
+                            autoOpenOnFocus
+                          />
                           <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
                           {values.fournisseur_id && (
                             <ContactSoldeCumuleHint
@@ -650,19 +621,14 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                         <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
                           Client *
                         </label>
-                        <Field
-                          as="select"
+                        <SearchableSelect
                           id="client_id"
-                          name="client_id"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        >
-                          <option value="">Sélectionnez un client</option>
-                          {clients.map((c: Contact) => (
-                            <option key={c.id} value={c.id}>
-                              {c.nom_complet} {c.reference ? `(${c.reference})` : ''}
-                            </option>
-                          ))}
-                        </Field>
+                          options={clientOptions}
+                          value={values.client_id ? String(values.client_id) : ''}
+                          onChange={(id) => setFieldValue('client_id', id)}
+                          placeholder={isLoading ? 'Chargement des contacts…' : 'Sélectionnez un client'}
+                          autoOpenOnFocus
+                        />
                         <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
                         {values.client_id && <ContactSoldeCumuleHint contactId={values.client_id} contactType="Client" />}
                       </div>
@@ -735,19 +701,14 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                         <label htmlFor="fournisseur_id" className="block text-sm font-medium text-gray-700 mb-1">
                           Fournisseur *
                         </label>
-                        <Field
-                          as="select"
+                        <SearchableSelect
                           id="fournisseur_id"
-                          name="fournisseur_id"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        >
-                          <option value="">Sélectionnez un fournisseur</option>
-                          {fournisseurs.map((f: Contact) => (
-                            <option key={f.id} value={f.id}>
-                              {f.nom_complet} {f.reference ? `(${f.reference})` : ''}
-                            </option>
-                          ))}
-                        </Field>
+                          options={fournisseurOptions}
+                          value={values.fournisseur_id ? String(values.fournisseur_id) : ''}
+                          onChange={(id) => setFieldValue('fournisseur_id', id)}
+                          placeholder={isLoading ? 'Chargement des contacts…' : 'Sélectionnez un fournisseur'}
+                          autoOpenOnFocus
+                        />
                         <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
                         {values.fournisseur_id && (
                           <ContactSoldeCumuleHint

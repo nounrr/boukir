@@ -21,6 +21,7 @@ import ContactPrintModal from '../components/ContactPrintModal';
 import MobileContactPrintModal from '../components/MobileContactPrintModal';
 import { useMobilePrintModal } from '../hooks/useMobilePrintModal';
 import ContactFormModal from '../components/ContactFormModal';
+import ContactArchiveButton from '../components/ContactArchiveButton';
 import ContactGroupCreateModal from '../components/ContactGroupCreateModal';
 import ContactGroupManageModal from '../components/ContactGroupManageModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
@@ -2390,6 +2391,7 @@ const ChargesListPage: React.FC = () => {
                             >
                               <Edit className="w-4 h-4" />
                             </button>
+                            {currentUser?.role === 'PDG' && <ContactArchiveButton id={f.id} name={f.nom_complet || f.societe || 'Contact #' + f.id} />}
                             {currentUser?.role === 'PDG' && (
                               <button
                                 type="button"
@@ -2435,7 +2437,7 @@ const ChargesListPage: React.FC = () => {
                   <div className="flex flex-wrap gap-2 border-t border-gray-100 p-3">
                     <Link to={`/charges-copy/${f.id}`} onClick={() => handleRowClick(f.id, false)} className="inline-flex min-h-10 flex-1 min-w-[90px] items-center justify-center rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Voir détails</Link>
                     <button type="button" onClick={() => handleEdit(f)} className="rounded-lg border border-violet-200 px-3 py-2 text-sm font-medium text-violet-700"><Edit className="inline h-4 w-4 mr-1" />Modifier</button>
-                    {currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="inline h-4 w-4 mr-1" />Supprimer</button>}
+                    {currentUser?.role === 'PDG' && <ContactArchiveButton id={f.id} name={f.nom_complet || f.societe || 'Contact #' + f.id} compact={false} />}{currentUser?.role === 'PDG' && <button type="button" onClick={() => handleDelete(f)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700"><Trash2 className="inline h-4 w-4 mr-1" />Supprimer</button>}
                   </div>
                 </article>
               ))}
@@ -2477,6 +2479,7 @@ const ChargesListPage: React.FC = () => {
           setEditingContact(null);
         }}
         contactType="Client"
+        confirmBalanceEdit
         initialValues={editingContact || undefined}
         defaultIsCharge={true}
         onContactAdded={() => {
