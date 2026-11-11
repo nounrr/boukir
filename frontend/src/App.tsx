@@ -29,12 +29,12 @@ const EmployeeSelfPage = React.lazy(() => import('./pages/EmployeeSelfPage'));
 const EmployeeArchivePage = React.lazy(() => import('./pages/EmployeeArchivePage'));
 const EmployeeDocumentsPage = React.lazy(() => import('./pages/EmployeeDocumentsPage'));
 const StockDepot2Page = React.lazy(() => import('./pages/StockDepot2Page'));
-const ClientsCopyPage = React.lazy(() => import('./pages/client copy'));
-const ClientCopyDetailPage = React.lazy(() => import('./pages/client copy').then(m => ({ default: m.ClientDetailPage })));
-const FournisseursCopyPage = React.lazy(() => import('./pages/fournisseur copy'));
-const FournisseurCopyDetailPage = React.lazy(() => import('./pages/fournisseur copy').then(m => ({ default: m.FournisseurDetailPage })));
-const ChargesCopyPage = React.lazy(() => import('./pages/charge copy'));
-const ChargeCopyDetailPage = React.lazy(() => import('./pages/charge copy').then(m => ({ default: m.ChargeDetailPage })));
+const ClientPage = React.lazy(() => import('./pages/ClientPage'));
+const ClientDetailPage = React.lazy(() => import('./pages/ClientPage').then(m => ({ default: m.ClientDetailPage })));
+const FournisseurPage = React.lazy(() => import('./pages/FournisseurPage'));
+const FournisseurDetailPage = React.lazy(() => import('./pages/FournisseurPage').then(m => ({ default: m.FournisseurDetailPage })));
+const ChargePage = React.lazy(() => import('./pages/ChargePage'));
+const ChargeDetailPage = React.lazy(() => import('./pages/ChargePage').then(m => ({ default: m.ChargeDetailPage })));
 const GarantiesPage = React.lazy(() => import('./pages/GarantiesPage'));
 const BonCreatePage = React.lazy(() => import('./pages/BonCreatePage'));
 const VehiculesPage = React.lazy(() => import('./pages/VehiculesPage'));
@@ -103,7 +103,7 @@ const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode; tabletCompact
 };
 
 // Composant pour initialiser l'app
-function ContactCopyRedirect({ to }: { to: string }) {
+function ContactPageRedirect({ to }: { to: string }) {
   const { id } = useParams();
   const { search, hash, state } = useLocation();
   const pathname = id ? `${to}/${encodeURIComponent(id)}` : to;
@@ -413,52 +413,52 @@ const AppContent: React.FC = () => {
           }
         />
 
-        <Route path="/clients-copy" element={
+        <Route path="/clients" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <ClientsCopyPage />
+              <ClientPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
-        <Route path="/clients-copy/:id" element={
+        <Route path="/clients/:id" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <ClientCopyDetailPage />
+              <ClientDetailPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
-        <Route path="/fournisseurs-copy" element={
+        <Route path="/fournisseurs" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <FournisseursCopyPage />
+              <FournisseurPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
-        <Route path="/fournisseurs-copy/:id" element={
+        <Route path="/fournisseurs/:id" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>
-              <FournisseurCopyDetailPage />
+              <FournisseurDetailPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
-        <Route path="/charges-copy" element={
+        <Route path="/charges" element={
           <ProtectedRoute requiredRoles={['PDG']}>
             <LayoutWithAccessCheck>
-              <ChargesCopyPage />
+              <ChargePage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
-        <Route path="/charges-copy/:id" element={
+        <Route path="/charges/:id" element={
           <ProtectedRoute requiredRoles={['PDG']}>
             <LayoutWithAccessCheck>
-              <ChargeCopyDetailPage />
+              <ChargeDetailPage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
 
-        <Route path="/clients/:id?" element={<ContactCopyRedirect to="/clients-copy" />} />
-        <Route path="/fournisseurs/:id?" element={<ContactCopyRedirect to="/fournisseurs-copy" />} />
-        <Route path="/charges/:id?" element={<ContactCopyRedirect to="/charges-copy" />} />
+        <Route path="/clients-copy/:id?" element={<ContactPageRedirect to="/clients" />} />
+        <Route path="/fournisseurs-copy/:id?" element={<ContactPageRedirect to="/fournisseurs" />} />
+        <Route path="/charges-copy/:id?" element={<ContactPageRedirect to="/charges" />} />
 
         <Route
           path="/garanties"
@@ -471,7 +471,7 @@ const AppContent: React.FC = () => {
           }
         />
 
-        <Route path="/contacts-archiver" element={<Navigate to="/clients-copy?tab=archives" replace />} />
+        <Route path="/contacts-archiver" element={<Navigate to="/clients?tab=archives" replace />} />
 
         <Route
           path="/bons"

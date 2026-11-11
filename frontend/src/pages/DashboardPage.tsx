@@ -149,7 +149,7 @@ const DashboardPage: React.FC = () => {
       {user?.role === 'PDG' && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
         <p className="text-sm font-semibold text-amber-950">Accès rapide aux tiers</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {[['Client copy', '/clients-copy'], ['Fournisseur copy', '/fournisseurs-copy'], ['Charge copy', '/charges-copy']].map(([label, path]) =>
+          {[['Client', '/clients'], ['Fournisseur', '/fournisseurs'], ['Charge', '/charges']].map(([label, path]) =>
             <button key={path} type="button" onClick={() => navigate(path)} className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100">{label}</button>
           )}
         </div>
@@ -201,7 +201,7 @@ const DashboardPage: React.FC = () => {
 
         {showTodayReminders && <button
           type="button"
-          onClick={() => navigate('/clients-copy')}
+          onClick={() => navigate('/clients')}
           className="w-full text-left bg-white rounded-lg border border-amber-200 shadow p-6 cursor-pointer hover:border-amber-300 hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
         >
           <div className="flex items-center">
@@ -287,7 +287,7 @@ const DashboardPage: React.FC = () => {
                 <button
                   key={client.id}
                   type="button"
-                  onClick={() => navigate(`/clients-copy/${client.id}`)}
+                  onClick={() => navigate(`/clients/${client.id}`)}
                   className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-amber-50/60 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:items-center sm:px-5"
                 >
                   <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">

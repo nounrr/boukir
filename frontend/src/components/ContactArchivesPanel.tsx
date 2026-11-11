@@ -7,9 +7,9 @@ import { formatDateDMY } from '../utils/dateUtils';
 import ContactArchiveButton from './ContactArchiveButton';
 
 const detailPaths = {
-  client: '/clients-copy',
-  fournisseur: '/fournisseurs-copy',
-  charge: '/charges-copy',
+  client: '/clients',
+  fournisseur: '/fournisseurs',
+  charge: '/charges',
 };
 
 export default function ContactArchivesPanel() {

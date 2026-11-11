@@ -60,7 +60,7 @@ export const PAGE_PERMISSION_GROUPS = Object.freeze([
     key: 'clients',
     label: 'Clients · commentaires & rappels',
     page: 'Fiches contacts',
-    href: '/clients-copy',
+    href: '/clients',
     description:
       "Collaboration sur les fiches clients : commentaires internes et rappels de suivi.",
     legacyPage: '/employees/client-collaboration-permissions',

@@ -101,9 +101,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
     {
       title: 'Tiers',
       items: [
-        { name: 'Client copy', href: '/clients-copy', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
-        { name: 'Fournisseur copy', href: '/fournisseurs-copy', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
-        { name: 'Charge copy', href: '/charges-copy', icon: Users, show: user?.role === 'PDG' },
+        { name: 'Client', href: '/clients', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Fournisseur', href: '/fournisseurs', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Charge', href: '/charges', icon: Users, show: user?.role === 'PDG' },
         { name: 'Garanties', href: '/garanties', icon: ShieldCheck, show: user?.role === 'PDG' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'Employé' },
       ],

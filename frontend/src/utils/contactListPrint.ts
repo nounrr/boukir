@@ -7,6 +7,7 @@ type PrintContactListOptions = {
   totalCumule: number;
   fmt: (value: number) => string;
   filters?: string[];
+  printWindow?: Window | null;
 };
 
 const escapeHtml = (value: unknown) =>
@@ -17,8 +18,7 @@ const escapeHtml = (value: unknown) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-export const printContactList = ({ title, rows, totalRows, totalCumule, fmt, filters = [] }: PrintContactListOptions) => {
-  const printWindow = window.open('', '_blank');
+export const printContactList = ({ title, rows, totalRows, totalCumule, fmt, filters = [], printWindow = window.open('', '_blank') }: PrintContactListOptions) => {
   if (!printWindow) return;
 
   const generatedAt = new Date().toLocaleString('fr-FR');
