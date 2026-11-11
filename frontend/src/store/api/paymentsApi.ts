@@ -1,5 +1,6 @@
 import { api } from './apiSlice';
 import type { Payment, CreatePaymentData } from '../../types';
+import type { AppDispatch } from '../index';
 
 type PaymentsPagedArgs = {
   page: number;
@@ -59,7 +60,7 @@ export const paymentsApi = api.injectEndpoints({
     }),
 
     getPaymentsPaged: builder.query<PaymentsPagedResponse, PaymentsPagedArgs>({
-      query: (params) => ({ url: '/payments/paged', params }),
+      query: (params) => ({ url: '/payments/paged', params, timeout: 15000 }),
       providesTags: ['Payment'],
     }),
 
@@ -157,6 +158,16 @@ export const paymentsApi = api.injectEndpoints({
     }),
   }),
 });
+
+// A refetch can reuse an older in-flight GET. Wait for it before requesting
+// the post-mutation list, independently of delayed invalidation in the shared API.
+export async function refreshPaymentsPage(dispatch: AppDispatch, args: PaymentsPagedArgs) {
+  await dispatch(paymentsApi.util.getRunningQueryThunk('getPaymentsPaged', args));
+  return dispatch(paymentsApi.endpoints.getPaymentsPaged.initiate(args, {
+    subscribe: false,
+    forceRefetch: true,
+  })).unwrap();
+}
 
 export const {
   useGetPaymentsQuery,

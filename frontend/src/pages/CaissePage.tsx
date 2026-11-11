@@ -41,7 +41,7 @@ import { canModifyPayments } from '../utils/permissions';
 import { formatDatabaseDateTimeLiteral, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
-import { paymentsApi, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useCreateMultiClientChequeMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import { paymentsApi, refreshPaymentsPage, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useCreateMultiClientChequeMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import type { MultiClientChequeData } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
@@ -183,8 +183,12 @@ const CaissePage = () => {
   }), [currentPage, itemsPerPage, searchTerm, dateFilter, modeFilter, statusFilter, paymentSortBy, sortDirection]);
   const {
     data: paymentsPagedResponse,
-    refetch: refetchPayments,
-  } = useGetPaymentsPagedQuery(paymentsQueryArgs);
+    isFetching: isFetchingPayments,
+  } = useGetPaymentsPagedQuery(paymentsQueryArgs, {
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const { data: paymentsForHistory, isError: isPaymentHistoryError, refetch: refetchPaymentHistory } =
     useGetPaymentsQuery(undefined, { skip: !isPrintModalOpen });
   const skipRemiseBalances = !isCreateModalOpen || !loadRemiseBalances;
@@ -193,6 +197,29 @@ const CaissePage = () => {
   const { data: directContactBalances = EMPTY_REMISE_ROWS, isFetching: isLoadingDirectRemise, isError: isDirectRemiseError, refetch: refetchDirectRemise } =
     useGetDirectContactRemiseBalancesQuery(undefined, { skip: skipRemiseBalances });
   const payments = paymentsPagedResponse?.data || [];
+  const [paymentRefreshError, setPaymentRefreshError] = useState(false);
+
+  const synchronizePayments = async (showNewest = false) => {
+    const args = showNewest
+      ? { page: 1, limit: itemsPerPage, sortBy: 'numero' as const, sortDir: 'desc' as const }
+      : paymentsQueryArgs;
+    if (showNewest) {
+      setSearchTerm('');
+      setSearchInput('');
+      setDateFilter('');
+      setStatusFilter([]);
+      setModeFilter('all');
+      setSortField('numero');
+      setSortDirection('desc');
+      setCurrentPage(1);
+    }
+    try {
+      await refreshPaymentsPage(dispatch, args);
+      setPaymentRefreshError(false);
+    } catch {
+      setPaymentRefreshError(true);
+    }
+  };
   const [createPayment] = useCreatePaymentMutation();
   const [createMultiClientCheque] = useCreateMultiClientChequeMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
@@ -746,7 +773,7 @@ const CaissePage = () => {
   const handleMultiClientChequeSave = async (data: MultiClientChequeData) => {
     await createMultiClientCheque(data).unwrap();
     setIsMultiClientChequeOpen(false);
-    setCurrentPage(1);
+    await synchronizePayments(true);
     showSuccess('Chèque réparti et enregistré pour chaque client.');
   };
 
@@ -829,38 +856,41 @@ const CaissePage = () => {
     setIsPrintModalOpen(true);
   };
 
-  // Change payment statut helper (only change statut via table actions)
+  const statusRequests = useRef(new Set<number>());
+  const [pendingStatusIds, setPendingStatusIds] = useState<Set<number>>(new Set());
+
   const changePaymentStatus = async (paymentId: number, newStatut: 'En attente'|'Validé'|'Refusé'|'Annulé') => {
-    // Autoriser le "déverrouillage" (Validé -> En attente) uniquement pour PDG/ManagerPlus
-    const current = (payments || []).find((p: any) => Number(p?.id) === Number(paymentId));
+    if (statusRequests.current.has(paymentId)) return;
+    const current = payments.find(payment => Number(payment.id) === Number(paymentId));
     const currentStatut = normalizePaymentStatut(current?.statut);
+    if (currentStatut === newStatut) return;
     if (currentStatut === 'Validé' && newStatut === 'En attente' && !isPdgOrManagerPlus) {
       showError("Seuls PDG/ManagerPlus peuvent remettre un paiement Validé en 'En attente'.");
       return;
     }
 
-    const optimisticPagedPatch = dispatch(
-      paymentsApi.util.updateQueryData('getPaymentsPaged', paymentsQueryArgs, (draft) => {
-        const payment = draft.data.find((item) => Number(item.id) === Number(paymentId));
-        if (payment) payment.statut = newStatut;
-      })
-    );
-    const optimisticHistoryPatch = dispatch(
-      paymentsApi.util.updateQueryData('getPayments', undefined, (draft) => {
-        const payment = draft.find((item) => Number(item.id) === Number(paymentId));
-        if (payment) payment.statut = newStatut;
-      })
-    );
-
+    statusRequests.current.add(paymentId);
+    setPendingStatusIds(new Set(statusRequests.current));
     try {
-      await changePaymentStatusApi({ id: paymentId, statut: newStatut }).unwrap();
-      await refetchPayments();
-      showSuccess(`Statut mis à jour: ${newStatut}`);
-    } catch (err: any) {
-      optimisticPagedPatch.undo();
-      optimisticHistoryPatch.undo();
-      console.error('Erreur mise à jour statut:', err);
-      showError(err?.data?.message || err?.message || 'Erreur lors de la mise à jour du statut');
+      const result = await changePaymentStatusApi({ id: paymentId, statut: newStatut }).unwrap();
+      showSuccess(`Statut mis à jour : ${newStatut}`);
+      await synchronizePayments();
+      const confirmed = result.data ?? { statut: newStatut };
+      dispatch(paymentsApi.util.updateQueryData('getPaymentsPaged', paymentsQueryArgs, draft => {
+        const payment = draft.data.find(item => Number(item.id) === Number(paymentId));
+        if (payment) Object.assign(payment, confirmed);
+      }));
+      dispatch(paymentsApi.util.updateQueryData('getPayments', undefined, draft => {
+        const payment = draft.find(item => Number(item.id) === Number(paymentId));
+        if (payment) Object.assign(payment, confirmed);
+      }));
+      setSelectedPayment(payment => payment && Number(payment.id) === Number(paymentId)
+        ? { ...payment, ...confirmed } : payment);
+    } catch (error: any) {
+      showError(error?.data?.message || error?.message || 'Erreur lors de la mise à jour du statut');
+    } finally {
+      statusRequests.current.delete(paymentId);
+      setPendingStatusIds(new Set(statusRequests.current));
     }
   };
 
@@ -1217,7 +1247,10 @@ const paymentValidationSchema = Yup.object({
     };
   };
 
+  const paymentSaveInProgress = useRef(false);
   const handleSubmit = async (values: any) => {
+    if (paymentSaveInProgress.current) return;
+    paymentSaveInProgress.current = true;
     try {
       const parseBonValue = (raw: any): { bonId: number | null; bonType: string | null } => {
         const s = String(raw ?? '').trim();
@@ -1399,6 +1432,7 @@ const paymentValidationSchema = Yup.object({
       if (selectedPayment) {
   const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = paymentData;
         await updatePaymentApi({ id: selectedPayment.id, updated_by: user?.id || 1, ...rest }).unwrap();
+        await synchronizePayments();
         showSuccess('Paiement mis à jour avec succès');
         // Fermer le modal après modification
         setIsCreateModalOpen(false);
@@ -1493,6 +1527,7 @@ const paymentValidationSchema = Yup.object({
           createdPayments.push(created);
           void createdPayments.length;
         }
+  await synchronizePayments(true);
   showSuccess('Paiement enregistré avec succès !');
   // Fermer le modal et réinitialiser les champs et l'image
   setIsCreateModalOpen(false);
@@ -1506,6 +1541,9 @@ const paymentValidationSchema = Yup.object({
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
       showError('Erreur lors de la sauvegarde du paiement');
+      await synchronizePayments();
+    } finally {
+      paymentSaveInProgress.current = false;
     }
   };
 
@@ -1691,7 +1729,7 @@ const paymentValidationSchema = Yup.object({
                 onClick={() => changePaymentStatus(payment.id, 'Validé')}
                 className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'}`}
                 title="Valider"
-                disabled={payment.statut === 'Validé'}
+                disabled={pendingStatusIds.has(payment.id) || payment.statut === 'Validé'}
               >
                 <Check size={18} />
               </button>
@@ -1736,7 +1774,7 @@ const paymentValidationSchema = Yup.object({
                       <button
                         onClick={() => { changePaymentStatus(payment.id, 'En attente'); setOpenMenuPaymentId(null); }}
                         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-600"
-                        disabled={payment.statut === 'En attente'}
+                        disabled={pendingStatusIds.has(payment.id) || payment.statut === 'En attente'}
                       >
                         <Clock size={16} /> Attente
                       </button>
@@ -1748,7 +1786,7 @@ const paymentValidationSchema = Yup.object({
                         <button
                           onClick={() => { changePaymentStatus(payment.id, 'Refusé'); setOpenMenuPaymentId(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-orange-600"
-                          disabled={payment.statut === 'Refusé'}
+                          disabled={pendingStatusIds.has(payment.id) || payment.statut === 'Refusé'}
                         >
                           <X size={16} /> Refuser
                         </button>
@@ -1757,7 +1795,7 @@ const paymentValidationSchema = Yup.object({
                         <button
                           onClick={() => { changePaymentStatus(payment.id, 'Annulé'); setOpenMenuPaymentId(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
-                          disabled={payment.statut === 'Annulé'}
+                          disabled={pendingStatusIds.has(payment.id) || payment.statut === 'Annulé'}
                         >
                           <XCircle size={16} /> Annuler
                         </button>
@@ -2420,23 +2458,23 @@ const paymentValidationSchema = Yup.object({
                   {/* Changement de statut condensé */}
                   <div className="flex items-center gap-1 ml-auto">
                     {isPdgOrManagerPlus && (
-                      <button onClick={() => changePaymentStatus(payment.id, 'En attente')} className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-400'}`} title="En attente">
+                      <button disabled={pendingStatusIds.has(payment.id)} onClick={() => changePaymentStatus(payment.id, 'En attente')} className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-400'}`} title="En attente">
                         <Clock size={18} />
                       </button>
                     )}
                     {user?.role === 'Employé' ? (
-                      <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
+                      <button disabled={pendingStatusIds.has(payment.id)} onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
                         <XCircle size={18} />
                       </button>
                     ) : isPdgOrManagerPlus ? (
                       <>
-                        <button onClick={() => changePaymentStatus(payment.id, 'Validé')} className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-400'}`} title="Valider">
+                        <button disabled={pendingStatusIds.has(payment.id)} onClick={() => changePaymentStatus(payment.id, 'Validé')} className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-400'}`} title="Valider">
                           <Check size={18} />
                         </button>
-                        <button onClick={() => changePaymentStatus(payment.id, 'Refusé')} className={`p-1 rounded ${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-400'}`} title="Refuser">
+                        <button disabled={pendingStatusIds.has(payment.id)} onClick={() => changePaymentStatus(payment.id, 'Refusé')} className={`p-1 rounded ${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-400'}`} title="Refuser">
                           <X size={18} />
                         </button>
-                        <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
+                        <button disabled={pendingStatusIds.has(payment.id)} onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
                           <XCircle size={18} />
                         </button>
                       </>
@@ -2509,6 +2547,13 @@ const paymentValidationSchema = Yup.object({
         />
       )}
 
+      {paymentRefreshError && (
+        <div role="alert" className="fixed bottom-4 left-1/2 z-[60] w-[min(95vw,560px)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 shadow-lg">
+          L’opération est enregistrée, mais la liste n’a pas pu être actualisée.
+          <button type="button" disabled={isFetchingPayments} onClick={() => synchronizePayments()} className="ml-2 underline disabled:opacity-50">Réessayer</button>
+        </div>
+      )}
+
       {/* Modal de création/édition */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
@@ -2538,7 +2583,7 @@ const paymentValidationSchema = Yup.object({
               validationSchema={paymentValidationSchema}
               onSubmit={handleSubmit}
             >
-              {({ values, setFieldValue }) => {
+              {({ values, setFieldValue, isSubmitting }) => {
                 const isFournisseurPayment = values.type_paiement === 'Fournisseur';
                 const isRemisePayment = values.mode_paiement === 'Remise';
                 const canUseIgnoredRemise =
@@ -3370,7 +3415,8 @@ const paymentValidationSchema = Yup.object({
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                      disabled={isSubmitting}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
                     >
                       {selectedPayment ? 'Mettre à jour' : 'Enregistrer et continuer'}
                     </button>

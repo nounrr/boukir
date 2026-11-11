@@ -11,6 +11,7 @@ import { insertBonLivraisons, validateBonItems } from '../utils/bonItems.js';
 import {
   BonAuthorizationError,
   bonAuthorizationErrorPayload,
+  isStatusCounted,
   recordBonExceptionAuthorizationUsage,
   reserveBonExceptionAuthorizations,
 } from '../utils/bonExceptionAuthorization.js';
