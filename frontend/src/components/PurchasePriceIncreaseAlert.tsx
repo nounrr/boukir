@@ -24,8 +24,10 @@ export default function PurchasePriceIncreaseAlert({ productId, variantId, unitI
   if (!result) return null;
   return <div role="alert" className="mt-2 min-w-[210px] rounded border border-red-300 bg-red-50 p-2 text-xs text-red-800">
     <strong>Prix d’achat supérieur de {fmt(result.percentage)} %.</strong>
-    <div>À l’enregistrement, les prix de vente par unité de base seront :</div>
+    <div>À l’enregistrement, les prix par unité de base seront :</div>
     <div>Prix vente : {fmt(result.previous_sale_price)} → {fmt(result.sale_price)} DH</div>
     <div>Prix vente 2 : {fmt(result.previous_sale_price_2)} → {fmt(result.sale_price_2)} DH</div>
+    <div>Prix gros : {fmt(result.previous_wholesale_price)} → {fmt(result.wholesale_price)} DH</div>
+    <div>Coût de revient : {fmt(result.previous_cost_price)} → {fmt(result.cost_price)} DH</div>
   </div>;
 }

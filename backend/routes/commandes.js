@@ -328,11 +328,23 @@ router.post('/', verifyToken, async (req, res) => {
       }
       for (const { item, increase } of increases.values()) {
         if (item.variant_id) {
-          await connection.query('UPDATE product_variants SET prix_achat = ?, prix_vente = ?, prix_vente_2 = ? WHERE id = ? AND product_id = ?',
-            [increase.purchase_price, increase.sale_price, increase.sale_price_2, item.variant_id, item.product_id]);
+          await connection.query(
+            `UPDATE product_variants
+             SET prix_achat = ?, prix_vente = ?, prix_vente_2 = ?, prix_gros = ?, cout_revient = ?,
+                 prix_gros_pourcentage = ?, cout_revient_pourcentage = ?
+             WHERE id = ? AND product_id = ?`,
+            [increase.purchase_price, increase.sale_price, increase.sale_price_2, increase.wholesale_price,
+              increase.cost_price, increase.wholesale_percentage, increase.cost_percentage, item.variant_id, item.product_id]
+          );
         } else {
-          await connection.query('UPDATE products SET prix_achat = ?, prix_vente = ?, prix_vente_2 = ? WHERE id = ?',
-            [increase.purchase_price, increase.sale_price, increase.sale_price_2, item.product_id]);
+          await connection.query(
+            `UPDATE products
+             SET prix_achat = ?, prix_vente = ?, prix_vente_2 = ?, prix_gros = ?, cout_revient = ?,
+                 prix_gros_pourcentage = ?, cout_revient_pourcentage = ?
+             WHERE id = ?`,
+            [increase.purchase_price, increase.sale_price, increase.sale_price_2, increase.wholesale_price,
+              increase.cost_price, increase.wholesale_percentage, increase.cost_percentage, item.product_id]
+          );
         }
       }
     }
