@@ -84,3 +84,10 @@ L’adresse de réception de la pointeuse utilise `https://boukirdiamond.com/api
 Pour une adresse générée avant ce correctif, remplacer seulement le domaine `backoffice.boukirdiamond.com` par `boukirdiamond.com` conserve le même secret et la même configuration serveur. Le premier enregistrement et les régénérations futures utilisent automatiquement le domaine public.
 
 Le test sans événement utilise une reconnaissance refusée (`type=face_2`) du bon appareil. Le serveur la valide puis répond sans insérer de passage. Un secret erroné doit recevoir 401. La validation d’un véritable pointage nécessite toujours une reconnaissance physique sur la pointeuse.
+
+
+## Format du statut sur OS-V500.2106
+
+Les passages réels de ce firmware contiennent `attendance: { attendanceId: 1, attendanceStatus: "Entrée" }` ou le même objet avec l’identifiant 2 pour la sortie. Le connecteur extrait `attendanceId` et applique la correspondance des codes configurée dans l’application. Il continue d’accepter les codes simples des autres variantes du SDK. Les libellés traduits ne sont jamais utilisés pour deviner un sens.
+
+Les passages dont le statut avait été enregistré comme `[object Object]` peuvent être réparés en les rapprochant des archives réelles de la pointeuse. Le rapprochement doit utiliser l’appareil, l’identifiant de la personne, le timestamp milliseconde et la méthode de reconnaissance, sans déduire une alternance entrée/sortie.

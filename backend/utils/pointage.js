@@ -10,6 +10,21 @@ export function matchesPointageToken(supplied, expected) {
   return timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
 }
 
+// V5 firmware sends either a scalar code or { attendanceId, attendanceStatus }.
+// The ID is authoritative; translated labels must never determine the direction.
+export function normalizeWdlinkAttendance(value) {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    value = Object.hasOwn(value, 'attendanceId') ? value.attendanceId : null;
+  }
+  if (value == null) return '';
+  if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new Error('Statut de pointage invalide');
+  }
+  const code = String(value).trim();
+  if (code.length > 32) throw new Error('Statut de pointage invalide');
+  return code;
+}
+
 // HTTP LAN V5.1.14, section 2.13. Never retain photos or biometric templates.
 export function normalizeWdlinkPassage(body, config) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Passage invalide');
@@ -25,8 +40,7 @@ export function normalizeWdlinkPassage(body, config) {
   if (!/^\d{13}$/.test(rawTime)) throw new Error('Horodatage milliseconde invalide');
   const timestamp = Number(rawTime);
   if (timestamp < Date.UTC(2020, 0, 1) || timestamp > Date.now() + 86400000) throw new Error('Date de pointage invalide');
-  const attendance = body.attendance == null ? '' : String(body.attendance);
-  if (attendance.length > 32) throw new Error('Statut de pointage invalide');
+  const attendance = normalizeWdlinkAttendance(body.attendance);
   const direction = (Object.hasOwn(config.attendanceMap || {}, attendance) ? config.attendanceMap[attendance] : null) || config.direction || 'inconnu';
   if (!['entree', 'sortie', 'inconnu'].includes(direction)) throw new Error('Configuration entrée/sortie invalide');
   const date = new Date(timestamp);

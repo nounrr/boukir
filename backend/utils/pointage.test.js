@@ -21,6 +21,22 @@ test('SDK face/fingerprint callbacks keep exact local day/time and explicit atte
   assert.equal(normalizeWdlinkPassage(passage, { ...config, attendanceMap: {}, direction: 'sortie' }).direction, 'sortie');
 });
 
+test('OS-V500.2106 attendance objects use attendanceId and share scalar deduplication keys', () => {
+  for (const [id, direction] of [[1, 'entree'], [2, 'sortie']]) {
+    const event = normalizeWdlinkPassage({ ...passage, attendance: { attendanceId: id, attendanceStatus: 'Translated label' } }, config);
+    assert.equal(event.attendance, String(id));
+    assert.equal(event.direction, direction);
+    assert.equal(event.eventKey, normalizeWdlinkPassage({ ...passage, attendance: String(id) }, config).eventKey);
+  }
+  assert.equal(normalizeWdlinkPassage({ ...passage, attendance: { attendanceId: '2', attendanceStatus: 'Entrée' } }, config).direction, 'sortie');
+  for (const value of [null, {}, { attendanceStatus: 'Sortie' }]) {
+    assert.equal(normalizeWdlinkPassage({ ...passage, attendance: value }, config).direction, 'inconnu');
+  }
+  for (const value of [[], true, { attendanceId: {} }, { attendanceId: 'x'.repeat(33) }]) {
+    assert.throws(() => normalizeWdlinkPassage({ ...passage, attendance: value }, config), /Statut de pointage invalide/);
+  }
+});
+
 test('failed recognition, strangers and liveness failures never become attendance', () => {
   for (const patch of [{ type: 'face_2' }, { type: 'finger_2' }, { identifyType: '2' }, { aliveType: '2' }, { personId: 'STRANGERBABY' }]) {
     assert.equal(normalizeWdlinkPassage({ ...passage, ...patch }, config), null);
