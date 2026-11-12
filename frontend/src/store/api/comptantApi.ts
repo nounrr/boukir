@@ -34,6 +34,11 @@ export const comptantApi = apiSlice.injectEndpoints({
       providesTags: ['Auth', 'PagePermissions'],
     }),
 
+    getComptantPaymentCompletion: builder.query<{ employee_id: number | null; employee_name: string | null; completed_at: string | null }, number>({
+      query: id => `/comptant/${id}/paiements/verification-info`,
+      keepUnusedDataFor: 0,
+    }),
+
     verifyComptantPayment: builder.mutation<
       { bon: { id: number; reste: number; non_paye: number; montant_paye: number } },
       number
@@ -134,6 +139,7 @@ export const {
   useGetComptantPaymentsQuery,
   useGetComptantPaymentVerificationAccessQuery,
   useVerifyComptantPaymentMutation,
+  useLazyGetComptantPaymentCompletionQuery,
   useCreateComptantPaymentMutation,
   useUpdateComptantPaymentMutation,
   useDeleteComptantPaymentMutation,

@@ -44,6 +44,7 @@ import {
   useGetComptantPaymentsQuery,
   useGetComptantPaymentVerificationAccessQuery,
   useVerifyComptantPaymentMutation,
+  useLazyGetComptantPaymentCompletionQuery,
   useCreateComptantPaymentMutation,
   useDeleteComptantPaymentMutation
 } from '../store/api/comptantApi';
@@ -519,6 +520,9 @@ const BonsPage = () => {
   const [createComptantPayment, { isLoading: isCreatingComptantPayment }] = useCreateComptantPaymentMutation();
   const [deleteComptantPayment] = useDeleteComptantPaymentMutation();
   const [verifyComptantPayment, { isLoading: isVerifyingComptantPayment }] = useVerifyComptantPaymentMutation();
+  const [loadComptantCompletion] = useLazyGetComptantPaymentCompletionQuery();
+  const comptantVerificationLock = useRef(false);
+  const [isPreparingComptantVerification, setIsPreparingComptantVerification] = useState(false);
   // Bon links API: record duplications
   const [createBonLink] = useCreateBonLinkMutation();
   const [getBonLinksBatch] = useGetBonLinksBatchMutation();
@@ -2329,15 +2333,21 @@ const BonsPage = () => {
   };
 
   const handleVerifyComptantPayment = async (bon = selectedComptantForPayments) => {
-    if (!bon || !canVerifyComptantPayment || !isComptantPaymentPending(bon) || isVerifyingComptantPayment) return;
-    const confirmation = await showConfirmation(
-      `Confirmer le règlement intégral du bon ${getDisplayNumero(bon)} et le déplacer dans Comptant payé ?`,
-      'Vérifier le règlement',
-      'Confirmer le règlement',
-    );
-    if (!confirmation.isConfirmed) return;
-
+    if (!bon || !canVerifyComptantPayment || !isComptantPaymentPending(bon) || isVerifyingComptantPayment || comptantVerificationLock.current) return;
+    comptantVerificationLock.current = true;
+    setIsPreparingComptantVerification(true);
     try {
+      const completion = await loadComptantCompletion(Number(bon.id), false).unwrap();
+      const author = completion.employee_name || (completion.employee_id ? `Employé n° ${completion.employee_id}` : null);
+      const note = author
+        ? `Note : paiement complété par ${author}${completion.completed_at ? ` le ${formatDateTimeWithHour(completion.completed_at)}` : ''}.`
+        : 'Note : l’auteur du règlement complet n’a pas été enregistré pour ce bon ancien.';
+      const confirmation = await showConfirmation(
+        `${note}\n\nConfirmer le règlement intégral du bon ${getDisplayNumero(bon)} et le déplacer dans Comptant payé ?`,
+        'Vérifier le règlement',
+        'Confirmer le règlement',
+      );
+      if (!confirmation.isConfirmed) return;
       const result = await verifyComptantPayment(Number(bon.id)).unwrap();
       applyUpdatedComptantBonPaymentState(result.bon);
       togglePrintSelection(bon, false);
@@ -2345,6 +2355,9 @@ const BonsPage = () => {
       showSuccess('Règlement vérifié. Le bon est dans Comptant payé.');
     } catch (error) {
       showError((error as { data?: { message?: string } })?.data?.message || 'Impossible de vérifier ce règlement.');
+    } finally {
+      comptantVerificationLock.current = false;
+      setIsPreparingComptantVerification(false);
     }
   };
 
@@ -3724,7 +3737,7 @@ const BonsPage = () => {
                             <button
                               type="button"
                               onClick={() => handleVerifyComptantPayment(bon)}
-                              disabled={isVerifyingComptantPayment}
+                              disabled={isVerifyingComptantPayment || isPreparingComptantVerification}
                               className="rounded p-1 text-purple-700 hover:bg-purple-50 hover:text-purple-900 disabled:opacity-50"
                               title="Payer le bon"
                               aria-label="Payer le bon"
@@ -4493,7 +4506,7 @@ const BonsPage = () => {
                   <button
                     type="button"
                   onClick={() => handleVerifyComptantPayment()}
-                    disabled={isFetchingComptantPayments || !getComptantPaymentRows(comptantPayments).length || isVerifyingComptantPayment}
+                    disabled={isFetchingComptantPayments || !getComptantPaymentRows(comptantPayments).length || isVerifyingComptantPayment || isPreparingComptantVerification}
                     className="rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800 disabled:opacity-60"
                   >
                     Vérifier le règlement

@@ -1,3 +1,4 @@
+import { ensureComptantPaymentCompletionSchema, trackComptantPaymentCompletion } from '../utils/comptantPaymentCompletion.js';
 import { saveBonGerantNumber } from '../utils/bonContactNumbers.js';
 import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
@@ -97,6 +98,7 @@ async function ensureBonsComptantModePaiementColumn() {
 const comptantSchemaReady = (async () => {
   await Promise.all([
     ensureComptantPaymentsTable(),
+    ensureComptantPaymentCompletionSchema(),
     ensureBonsComptantMontantIgnorerColumn(),
   ]);
   await ensureBonsComptantModePaiementColumn();
@@ -180,7 +182,7 @@ async function assertComptantPaymentsWithinTotal(db, bonComptantId, montantTotal
   }
 }
 
-async function syncComptantBonReste(db, bonId, montantTotal, requiresVerification = true) {
+async function syncComptantBonReste(db, bonId, montantTotal, requiresVerification = true, completionActorId = null) {
   const montantPaye = await sumComptantBonPayments(db, bonId);
   const reste = Math.max(0, roundMoney(roundMoney(montantTotal) - montantPaye));
   // Les règlements soumis à vérification restent dans Non payé une fois complets.
@@ -189,6 +191,7 @@ async function syncComptantBonReste(db, bonId, montantTotal, requiresVerificatio
     'UPDATE bons_comptant SET reste = ?, non_paye = ?, updated_at = NOW() WHERE id = ?',
     [reste, nonPaye, bonId]
   );
+  await trackComptantPaymentCompletion(db, bonId, reste, montantTotal, completionActorId);
   return { reste, non_paye: nonPaye };
 }
 
@@ -477,6 +480,20 @@ router.get('/paiements/verification-access', verifyToken, async (req, res, next)
   } catch (error) { next(error); }
 });
 
+router.get('/:id/paiements/verification-info', verifyToken, async (req, res, next) => {
+  try {
+    if (!(await loadComptantPaymentVerificationAccess(req.user))) return res.status(403).json({ message: 'Vous n’êtes pas autorisé à vérifier les règlements.' });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: 'Bon comptant invalide.' });
+    await comptantSchemaReady;
+    const [rows] = await pool.execute(`SELECT b.reglement_complete_par AS employee_id,
+      e.nom_complet AS employee_name, b.reglement_complete_le AS completed_at
+      FROM bons_comptant b LEFT JOIN employees e ON e.id = b.reglement_complete_par WHERE b.id = ?`, [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Bon comptant introuvable.' });
+    res.set('Cache-Control', 'no-store').json(rows[0]);
+  } catch (error) { next(error); }
+});
+
 router.post('/:id/paiements/verification', verifyToken, async (req, res, next) => {
   const bonId = Number(req.params.id);
   if (!Number.isSafeInteger(bonId) || bonId <= 0) {
@@ -560,7 +577,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
     const montant = Number(req.body?.montant || 0);
     const datePaiement = normalizeSqlDateTime(req.body?.date_paiement);
     const note = req.body?.note ? String(req.body.note) : null;
-    const createdBy = req.body?.created_by != null ? Number(req.body.created_by) : (req.user?.id ?? null);
+    const createdBy = req.user?.id ?? null;
 
     if (!Number.isFinite(bonId) || bonId <= 0) {
       await connection.rollback();
@@ -576,7 +593,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
     }
 
     const [bonRows] = await connection.execute(
-      'SELECT id, montant_total, statut FROM bons_comptant WHERE id = ? FOR UPDATE',
+      'SELECT id, montant_total, statut, reste FROM bons_comptant WHERE id = ? FOR UPDATE',
       [bonId]
     );
     if (!Array.isArray(bonRows) || !bonRows.length) {
@@ -604,7 +621,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
       [bonId, montant, datePaiement, note, createdBy]
     );
 
-    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total, req.user?.role !== 'PDG');
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total, req.user?.role !== 'PDG', req.user?.id);
     const montantPaye = Math.max(0, Number((Number(bon.montant_total || 0) - reste).toFixed(2)));
 
     const [rows] = await connection.execute(
@@ -664,7 +681,7 @@ router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
     }
 
     const [bonRows] = await connection.execute(
-      'SELECT id, montant_total, statut FROM bons_comptant WHERE id = ? FOR UPDATE',
+      'SELECT id, montant_total, statut, reste FROM bons_comptant WHERE id = ? FOR UPDATE',
       [bonId]
     );
     if (!Array.isArray(bonRows) || !bonRows.length) {
@@ -717,7 +734,7 @@ router.put('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
       [montant, datePaiement, note, updatedBy, paymentId, bonId]
     );
 
-    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total, req.user?.role !== 'PDG');
+    const { reste, non_paye } = await syncComptantBonReste(connection, bonId, bon.montant_total, req.user?.role !== 'PDG', Number(bon.reste) > 0 ? req.user?.id : null);
     const montantTotal = Number(bon.montant_total || 0);
     const montantPaye = Math.max(0, Number((montantTotal - reste).toFixed(2)));
     const [updatedRows] = await connection.execute(
@@ -1027,7 +1044,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
           await connection.rollback();
           return res.status(400).json({ message: 'Paiement initial invalide' });
         }
-        paymentValues.push([comptantId, montantPaiement, datePaiement, notePaiement, 'Validé', created_by ?? null]);
+        paymentValues.push([comptantId, montantPaiement, datePaiement, notePaiement, 'Validé', req.user?.id ?? null]);
       }
       await connection.query(
         `INSERT INTO paiement_boncomptant_nonpaye
@@ -1038,7 +1055,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     }
 
     if (nonPayeRequested) {
-      await syncComptantBonReste(connection, comptantId, montantTotalForPayments, req.user?.role !== 'PDG');
+      await syncComptantBonReste(connection, comptantId, montantTotalForPayments, req.user?.role !== 'PDG', req.user?.id);
     } else {
       await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [comptantId]);
     }
@@ -1313,7 +1330,7 @@ router.put('/:id', async (req, res) => {
         const montantPaiement = Number(paiement?.montant || 0);
         const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
         const notePaiement = paiement?.note ? String(paiement.note) : null;
-        const createdBy = paiement?.created_by != null ? Number(paiement.created_by) : (req.user?.id ?? null);
+        const createdBy = req.user?.id ?? null;
 
         if (!(montantPaiement > 0) || !datePaiement) {
           await connection.rollback();
@@ -1332,7 +1349,7 @@ router.put('/:id', async (req, res) => {
     if (shouldPreservePaymentHistory) {
       const pdgCompletesPayment = req.user?.role === 'PDG' && (paymentsNeedAdjustment || nextNonPayePayments.length > 0);
       const requiresVerification = !pdgCompletesPayment && (wasUnpaid || paymentsNeedAdjustment || nextNonPayePayments.length > 0);
-      await syncComptantBonReste(connection, id, montantTotalForPayments, requiresVerification);
+      await syncComptantBonReste(connection, id, montantTotalForPayments, requiresVerification, Number(oldBon.reste) > 0 || nextNonPayePayments.length ? req.user?.id : null);
     } else {
       await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
       await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [id]);

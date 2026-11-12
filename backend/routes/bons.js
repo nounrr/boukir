@@ -1026,8 +1026,14 @@ router.get('/paged/:type', async (req, res) => {
     };
     const orderExpr = sortMap[sortBy] || sortMap.numero;
     const needsIdTieBreaker = orderExpr !== 'b.id';
-    const innerOrderSql = `${orderExpr} ${sortDir}${needsIdTieBreaker ? `, b.id ${sortDir}` : ''}`;
-    const outerOrderSql = `page_rows.__page_sort ${sortDir}${needsIdTieBreaker ? `, page_rows.id ${sortDir}` : ''}`;
+    // Apply verification priority before LIMIT so pending bons from every page come first.
+    const verificationPriority = type === 'Comptant' && paymentState === 'unpaid'
+      ? `CASE WHEN b.reste = 0 AND b.montant_total > 0
+          AND LOWER(TRIM(COALESCE(b.statut, ''))) NOT LIKE 'annul%'
+          AND LOWER(TRIM(COALESCE(b.statut, ''))) <> 'avoir' THEN 1 ELSE 0 END`
+      : null;
+    const innerOrderSql = `${verificationPriority ? '__verification_priority DESC, ' : ''}${orderExpr} ${sortDir}${needsIdTieBreaker ? `, b.id ${sortDir}` : ''}`;
+    const outerOrderSql = `${verificationPriority ? 'page_rows.__verification_priority DESC, ' : ''}page_rows.__page_sort ${sortDir}${needsIdTieBreaker ? `, page_rows.id ${sortDir}` : ''}`;
 
     // Le COUNT et la page sont indépendants. En production, les lancer en
     // parallèle évite un aller-retour complet vers MySQL.
@@ -1039,7 +1045,7 @@ router.get('/paged/:type', async (req, res) => {
       pool.query(
         `SELECT b.*, ${cfg.selectExtra}, ${buildItemsSql(cfg, { includeHistoricalAverage: false })}
          FROM (
-           SELECT b.id, ${orderExpr} AS __page_sort
+           SELECT b.id, ${orderExpr} AS __page_sort${verificationPriority ? `, ${verificationPriority} AS __verification_priority` : ''}
            FROM ${cfg.table} b
            ${cfg.joins}
            ${whereSql}
