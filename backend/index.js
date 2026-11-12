@@ -1,3 +1,5 @@
+import facturesRouter from './routes/factures.js';
+import { ensureFactureSchema } from './utils/factures.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -163,6 +165,7 @@ async function ensureSchemas() {
   await ensureSalePriceCorrectionPermissionSchema();
   await ensurePdgBoardSchema();
   await ensureProjetsSchema();
+  await ensureFactureSchema();
   await ensurePaymentModesAndSaisieSchema();
   await ensureClientEcheancierSchema();
   await ensureContactArchiveSchema();
@@ -462,6 +465,7 @@ app.use('/api', employeSalairesRouter);
 app.use('/api/absences', absencesRouter);
 app.use('/api/pdg-board', pdgBoardRouter);
 app.use('/api/projets', projetsRouter);
+app.use('/api/factures', facturesRouter);
 
 app.use('/api/audit', auditRouter);
 app.use('/api/bon-links', bonLinksRouter);

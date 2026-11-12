@@ -1,3 +1,4 @@
+import { useGetFacturesAccessQuery } from '../../store/api/facturesApi';
 import { useGetProjetsAccessQuery } from '../../store/api/projetsApi';
 import React from 'react';
 import { NavLink } from 'react-router-dom';
@@ -62,6 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
   const [pageSearch, setPageSearch] = React.useState('');
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const { user } = useAuth();
+  const { data: factureAccess } = useGetFacturesAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: projetAccess } = useGetProjetsAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
   const isChefChauffeur = user?.role === 'ChefChauffeur';
@@ -95,6 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
         { name: 'Notes & tâches PDG', href: '/pdg-board', icon: ListTodo, show: user?.role === 'PDG' },
         { name: 'Projets', href: '/projets', icon: FolderKanban, show: projetAccess?.allowed === true },
+        { name: 'Factures', href: '/factures', icon: FileText, show: factureAccess?.allowed === true },
         { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
       ],
     },

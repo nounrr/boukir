@@ -74,6 +74,7 @@ const ChangePasswordPage = React.lazy(() => import('./pages/ChangePasswordPage')
 const ProductNameCorrectionsPage = React.lazy(() => import('./pages/ProductNameCorrectionsPage'));
 const UiSettingsPage = React.lazy(() => import('./pages/UiSettingsPage'));
 const PdgBoardPage = React.lazy(() => import('./pages/PdgBoardPage'));
+const FacturesPage = React.lazy(() => import('./pages/FacturesPage'));
 const ProjetsPage = React.lazy(() => import('./pages/ProjetsPage'));
 const SolverPrixAchatPage = React.lazy(() => import('./pages/SolverPrixAchatPage'));
 const SolverCategoriePage = React.lazy(() => import('./pages/SolverCategoriePage'));
@@ -698,6 +699,7 @@ const AppContent: React.FC = () => {
           }
         />
 
+        <Route path="/factures" element={<ProtectedRoute><LayoutWithAccessCheck><FacturesPage /></LayoutWithAccessCheck></ProtectedRoute>} />
         <Route
           path="/projets"
           element={

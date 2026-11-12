@@ -43,6 +43,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   if (user?.role === 'ChefChauffeur' && !employeeAllowed) {
     const allowed =
       location.pathname === '/bons' ||
+      location.pathname === '/factures' ||
       location.pathname === '/projets' || // La page vérifie sa permission dédiée côté serveur.
       location.pathname === '/products/archived' || // Accès vérifié par la page et l'API.
       location.pathname === '/vehicules' ||

@@ -1,3 +1,4 @@
+import { ensureFactureSchema } from './factures.js';
 import { ensureProjetPermissionSchema } from './projetPermissions.js';
 import pool from '../db/pool.js';
 import { normalizePermissionFlag } from './clientCollaborationPermissions.js';
@@ -24,6 +25,11 @@ import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmp
  *  3. rien d'autre : l'API et l'ecran PDG s'adaptent automatiquement.
  */
 export const PAGE_PERMISSION_GROUPS = Object.freeze([
+  {
+    key: 'factures', label: 'Factures', page: 'Factures', href: '/factures',
+    description: 'Factures clients : fichiers, montants, mois et échéances.',
+    permissions: [{ key: 'view', column: 'acces_factures', label: 'Accéder à la page Factures', description: 'Consulter, joindre et modifier les factures clients.' }],
+  },
   {
     key: 'projets', label: 'Projets', page: 'Projets', href: '/projets',
     description: 'Accès à l’espace projets : devis, avances, bons, charges et situations. Le mot de passe spécial reste obligatoire.',
@@ -343,6 +349,7 @@ export function parsePagePermissionUpdate(body, employee) {
 
 /** Garantit que toutes les colonnes du registre existent avant lecture. */
 export async function ensurePagePermissionSchema(db = pool) {
+  await ensureFactureSchema(db);
   await ensureProjetPermissionSchema(db);
   await ensureEmployeePagePermissionSchema(db);
   await ensureInternalPricePermissionSchema(db);

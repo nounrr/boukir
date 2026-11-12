@@ -1,3 +1,4 @@
+import { useGetFacturesAccessQuery } from '../../store/api/facturesApi';
 import { useGetProjetsAccessQuery } from '../../store/api/projetsApi';
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
@@ -27,6 +28,7 @@ interface MobileBottomNavProps {
 
 const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false }) => {
   const { user } = useAuth();
+  const { data: factureAccess } = useGetFacturesAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: projetAccess } = useGetProjetsAccessQuery(undefined, { skip: !user?.role, pollingInterval: 30000, refetchOnFocus: true });
   const { data: deliveryAccess } = useDeliveryAccessQuery(undefined, { skip: !user, pollingInterval: 30000, refetchOnFocus: true });
   const navigate = useNavigate();
@@ -58,6 +60,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Bons', to: '/bons', show: true },
         { name: 'Produits archivés', to: '/products/archived', show: canViewArchivedProducts },
         { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
+        { name: 'Factures', to: '/factures', show: factureAccess?.allowed === true },
         { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
         { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
@@ -73,6 +76,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Accueil', to: '/dashboard', show: true },
         { name: 'Notes & tâches PDG', to: '/pdg-board', show: user?.role === 'PDG' },
         { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
+        { name: 'Factures', to: '/factures', show: factureAccess?.allowed === true },
       ],
     },
     {
@@ -95,6 +99,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       items: [
         { name: 'Bons', to: '/bons', show: true },
         { name: 'Projets', to: '/projets', show: projetAccess?.allowed === true },
+        { name: 'Factures', to: '/factures', show: factureAccess?.allowed === true },
         { name: 'Livraisons', to: '/livraisons', show: deliveryAccess?.allowed === true },
         { name: 'Stats livraisons', to: '/livraisons/statistiques', show: deliveryAccess?.allowed === true },
         { name: 'Véhicules', to: '/vehicules', show: true },
