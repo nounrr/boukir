@@ -1,6 +1,6 @@
 # Connexion de la pointeuse Wdlink au VPS
 
-L’appareil annoncé est une **WDU505PROFP**, installé au magasin, et l’application tourne sur un VPS Hostinger. L’intégration préparée utilise les callbacks HTTP du SDK fourni. La compatibilité du firmware de cette référence avec l’API LAN V5 doit encore être vérifiée sur l’appareil.
+L’appareil annoncé est une **WDU505PROFP**, installé au magasin, et l’application tourne sur un VPS Hostinger. L’intégration préparée utilise les callbacks HTTP du SDK fourni. La connexion locale a été vérifiée sur le firmware `OS-V500.2106` ; plusieurs paramètres diffèrent de la documentation générique. La réception complète d’un passage réel sur le VPS reste à valider.
 
 ## Fonctionnement préparé
 
@@ -21,7 +21,7 @@ Une fois la version déployée, ouvrir **Pointage & absences → Paramètres de 
 - Codes des statuts entrée et sortie, à confirmer sur l’appareil.
 - Sens de secours, laissé « à confirmer » par défaut.
 
-Le premier enregistrement génère une adresse de réception sur `https://backoffice.boukirdiamond.com`. Copier cette adresse dans la configuration callback de la pointeuse au magasin. Le secret de cette adresse n’est affiché qu’à sa génération et seul son hash est conservé dans la table de configuration. Une sauvegarde ordinaire conserve l’adresse existante ; « Remplacer l’adresse de réception » ou un changement de numéro de série en génère une nouvelle et invalide l’ancienne. Reporter alors la nouvelle adresse dans l’appareil.
+Le premier enregistrement génère une adresse de réception sur `https://boukirdiamond.com` (le domaine public qui partage le même backend). Copier cette adresse dans la configuration callback de la pointeuse au magasin. Le secret de cette adresse n’est affiché qu’à sa génération et seul son hash est conservé dans la table de configuration. Une sauvegarde ordinaire conserve l’adresse existante ; « Remplacer l’adresse de réception » ou un changement de numéro de série en génère une nouvelle et invalide l’ancienne. Reporter alors la nouvelle adresse dans l’appareil.
 
 Les paramètres sont enregistrés dans MySQL, ils persistent après redémarrage du serveur. Les tables `pointage_device_config`, `pointage_identities` et `pointage_events` sont créées à la première utilisation ; le compte MySQL doit pouvoir créer des tables. Le formulaire de configuration est réservé au PDG, et le journal et les associations au droit de gestion des absences.
 
@@ -35,7 +35,7 @@ Une configuration initiale par variables d’environnement reste disponible si a
 
 Source locale : `sdk wdlink/API(http)-20261112T165618Z-1-001/API(http)/DEVICE LAN VERSION INTERFACE DOCUMENT V5.1.14.docx`, sections 2.13 et 2.34.
 
-Depuis un ordinateur sur le même réseau local que la pointeuse, l’API documentée permet de configurer le callback avec `POST http://IP_APPAREIL:8090/setIdentifyCallBack` en formulaire `application/x-www-form-urlencoded`, avec les champs `pass` (mot de passe appareil) et `url` (adresse HTTPS de réception). Vérifier la réponse de succès sur le firmware réel. Ne pas appeler les interfaces de remise à zéro, suppression ou mise à jour du SDK.
+Depuis un ordinateur sur le même réseau local que la pointeuse, l’API documentée permet de configurer le callback avec `POST http://IP_APPAREIL:8090/setIdentifyCallBack` en formulaire `application/x-www-form-urlencoded`, avec le mot de passe appareil `pass`. Sur le firmware `OS-V500.2106` testé, le champ de l’adresse est **`callbackUrl`**, et non `url`. Ajouter `base64Enable=1` pour désactiver les photos dans le callback. La configuration et sa relecture par `GET /device/callback` ont été vérifiées sur cet appareil. Ne pas appeler les interfaces de remise à zéro, suppression ou mise à jour du SDK.
 
 Le callback attendu contient `deviceKey`, `personId`, `time` (timestamp Unix en millisecondes), `type` (`face_0`, `finger_0`, etc.) et éventuellement `attendance`. Le serveur répond exactement `{"result":1,"success":true}` après enregistrement. Selon la section 2.13, l’appareil renvoie les callbacks non acquittés toutes les dix minutes. Les événements doivent réellement être enregistrés avant cette réponse ; en cas d’erreur SQL, le serveur renvoie un échec pour permettre la reprise.
 
@@ -65,3 +65,22 @@ Les autres codes restent « Sens à confirmer ». Pour un appareil physiquement 
 ## Vérification locale du code
 
 `node --test backend/utils/pointage.test.js` couvre la normalisation du SDK, les changements de jour au Maroc, les rejets, l’authentification machine, la déduplication, la reprise après erreur SQL et l’absence de stockage biométrique, les paramètres modifiables réservés au PDG et la rotation du secret de callback. Ces tests utilisent une base simulée ; le test avec MySQL et la pointeuse reste requis avant mise en service.
+
+
+## Observations sur le firmware OS-V500.2106
+
+- Numéro de série relevé : `E03C1CB9EF325611` ; IP locale constatée : `192.168.110.187`.
+- La lecture des statuts fonctionne avec **GET** `/device/getAttendanceStatus` et le paramètre `pass`, contrairement au POST indiqué dans le document générique.
+- L’activation fonctionne avec POST `/device/setAttendanceStatus`, `enable=2`, `method=1` et la liste JSON des statuts. Les codes ont été conservés. Les libellés des heures supplémentaires ont été raccourcis pour respecter la limite de 32 caractères imposée par le firmware.
+- L’appareil a confirmé l’enregistrement du callback HTTPS. Sa relecture correspond à l’adresse générée par l’application ; aucun secret de cette adresse n’est enregistré dans ce guide.
+- Le test du récepteur sur le domaine du backoffice a reçu une erreur Nginx **400 No required SSL certificate was sent**. Cette erreur intervient avant le backend. Le domaine public `boukirdiamond.com` utilise déjà le même backend et accepte ce callback sans certificat client. Le générateur utilise désormais ce domaine, tout en conservant le secret d’authentification et la protection mTLS du backoffice.
+- Aucun faux passage n’a été inséré pour tester la liaison. Un passage réel et le renvoi après coupure réseau restent à vérifier après correction du VPS.
+
+
+## Domaine de réception et protection du backoffice
+
+L’adresse de réception de la pointeuse utilise `https://boukirdiamond.com/api/pointage/wdlink/callback/SECRET`. Le backoffice reste accessible à `https://backoffice.boukirdiamond.com`, avec sa vérification de certificat client inchangée. Les deux domaines atteignent le même backend sur `127.0.0.1:3011`.
+
+Pour une adresse générée avant ce correctif, remplacer seulement le domaine `backoffice.boukirdiamond.com` par `boukirdiamond.com` conserve le même secret et la même configuration serveur. Le premier enregistrement et les régénérations futures utilisent automatiquement le domaine public.
+
+Le test sans événement utilise une reconnaissance refusée (`type=face_2`) du bon appareil. Le serveur la valide puis répond sans insérer de passage. Un secret erroné doit recevoir 401. La validation d’un véritable pointage nécessite toujours une reconnaissance physique sur la pointeuse.

@@ -88,7 +88,7 @@ export function createPointageRouters(db = pool, providedConfig) {
       res.json({ device_key: config?.deviceKey || '', timezone: config?.timezone || 'Africa/Casablanca',
         direction: config?.direction || 'inconnu', attendance_map: config?.attendanceMap || {},
         local_ip: config?.localIp || '', firmware: config?.firmware || '', configured: Boolean(config),
-        public_origin: 'https://backoffice.boukirdiamond.com' });
+        public_origin: 'https://boukirdiamond.com' });
     } catch (error) { next(error); }
   });
   admin.put('/config', requireRole('PDG'), async (req, res, next) => {
@@ -118,7 +118,7 @@ export function createPointageRouters(db = pool, providedConfig) {
       [parsed.deviceKey, hash, parsed.timezone, parsed.direction, JSON.stringify(parsed.attendanceMap), body.local_ip.trim(), body.firmware.trim(), req.user.id]);
       await conn.commit();
       res.set('Cache-Control', 'no-store');
-      res.json({ saved: true, callback_url: token ? `https://backoffice.boukirdiamond.com/api/pointage/wdlink/callback/${token}` : null });
+      res.json({ saved: true, callback_url: token ? `https://boukirdiamond.com/api/pointage/wdlink/callback/${token}` : null });
     } catch (error) { if (conn) await conn.rollback(); next(error); }
     finally { conn?.release(); }
   });

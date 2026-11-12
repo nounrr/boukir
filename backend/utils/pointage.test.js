@@ -119,7 +119,7 @@ test('PDG settings persist editable connection fields, hide secrets and rotate c
   assert.equal((await fetch(`${url}/admin/config`, { headers: { 'x-test-role': 'Manager' } })).status, 403);
   assert.equal((await save({ ...settings, direction: 'guess' })).status, 400);
   const first = await (await save()).json();
-  assert.match(first.callback_url, /^https:\/\/backoffice\.boukirdiamond\.com\/api\/pointage\/wdlink\/callback\/[A-Za-z0-9_-]{43}$/);
+  assert.match(first.callback_url, /^https:\/\/boukirdiamond\.com\/api\/pointage\/wdlink\/callback\/[A-Za-z0-9_-]{43}$/);
   const token = first.callback_url.split('/').at(-1);
   assert.notEqual(row.callback_token_hash, token);
   const stored = await (await fetch(`${url}/admin/config`)).json();

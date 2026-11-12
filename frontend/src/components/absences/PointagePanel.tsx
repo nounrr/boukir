@@ -40,7 +40,7 @@ function DeviceSettings() {
   if (isLoading) return <p role="status" className="p-4">Chargement des paramètres…</p>;
   if (isError) return <p role="alert" className="p-4 text-red-700">Paramètres indisponibles. <button type="button" onClick={refetch} className="underline">Réessayer</button></p>;
   return <div className="space-y-4 border-b border-slate-200 bg-slate-50 p-4">
-    <div><h3 className="font-semibold">Connexion Wdlink WDU505PROFP</h3><p className="mt-1 text-sm text-slate-600">Modifiez ces paramètres au magasin. L’appareil enverra ses passages à backoffice.boukirdiamond.com. L’enregistrement des paramètres ne confirme pas encore la connexion physique.</p></div>
+    <div><h3 className="font-semibold">Connexion Wdlink WDU505PROFP</h3><p className="mt-1 text-sm text-slate-600">Modifiez ces paramètres au magasin. L’appareil enverra ses passages à boukirdiamond.com. L’enregistrement des paramètres ne confirme pas encore la connexion physique.</p></div>
     <form onSubmit={event => { event.preventDefault(); submit(); }} className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-xs font-semibold">Numéro de série / deviceKey<input required pattern="[A-Za-z0-9_-]+" maxLength={64} value={form.device_key} onChange={e => setForm({ ...form, device_key: e.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
