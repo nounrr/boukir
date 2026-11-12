@@ -1,3 +1,5 @@
+import { CLIENT_DETAIL_AUDIT_PREFIX } from './modificationSource.js';
+
 const TABLE_BY_TYPE = {
   Sortie: 'bons_sortie', SortieVendreFournisseur: 'bons_sortie',
   Comptant: 'bons_comptant', Commande: 'bons_commande', Charge: 'bons_charge',
@@ -8,7 +10,7 @@ const TABLE_BY_TYPE = {
 
 // Only return attribution for documents already selected by contact/pagination.
 // Use audit IDs to break ties when two edits have the same timestamp.
-export async function attachContactHistoryModification(db, documents) {
+export async function attachContactHistoryModification(db, documents, { clientDetailOnly = false } = {}) {
   const groups = new Map();
   for (const document of documents) {
     document.last_modified_by_name = null;
@@ -27,6 +29,7 @@ export async function attachContactHistoryModification(db, documents) {
     conditions.push(`(a.table_name = ? AND JSON_UNQUOTE(JSON_EXTRACT(a.pk, '$.id')) IN (${[...ids].map(() => '?').join(',')}))`);
     params.push(table, ...[...ids].map(String));
   }
+  if (clientDetailOnly) params.push(`${CLIENT_DETAIL_AUDIT_PREFIX}%`);
   let rows;
   try {
     [rows] = await db.query(`
@@ -36,6 +39,7 @@ export async function attachContactHistoryModification(db, documents) {
       FROM audit_logs a
       LEFT JOIN employees e ON e.id = a.user_id
       WHERE a.operation IN ('I', 'U') AND (${conditions.join(' OR ')})
+        ${clientDetailOnly ? 'AND a.request_id LIKE ?' : ''}
       ORDER BY a.id DESC
     `, params);
   } catch (error) {
@@ -51,6 +55,7 @@ export async function attachContactHistoryModification(db, documents) {
   const byDocument = new Map();
   for (const row of rows) {
     if (row.operation !== 'U') continue;
+    if (clientDetailOnly && !row.request_id?.startsWith(CLIENT_DETAIL_AUDIT_PREFIX)) continue;
     if (row.request_id != null && creationRequests.has(JSON.stringify([row.table_name, row.document_id, row.request_id]))) continue;
     const key = `${row.table_name}:${row.document_id}`;
     if (!byDocument.has(key)) byDocument.set(key, row);

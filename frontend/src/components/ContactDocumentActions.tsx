@@ -5,7 +5,7 @@ import { useMatch } from 'react-router-dom';
 import ClientHistoryCorrectionDialog from './ClientHistoryCorrectionDialog';
 import type { HistoryCorrectionDocument } from './ClientHistoryCorrectionDialog';
 import DocumentSaisieCheckbox from './DocumentSaisieCheckbox';
-import DocumentModificationAuthor, { DocumentModificationNote } from './DocumentModificationAuthor';
+import { DocumentModificationNote } from './DocumentModificationAuthor';
 import { useAuth } from '../hooks/redux';
 import { useLazyGetBonForEditingQuery } from '../store/api/bonsApi';
 import { canModifyBons, canModifyPayments } from '../utils/permissions';
@@ -75,7 +75,7 @@ export default function ContactDocumentActions({ document, type }: {
   };
 
   return <>
-    <DocumentModificationNote document={document} />
+    <DocumentModificationNote document={document} compact />
     <DocumentSaisieCheckbox document={document} type={bonType} />
     {canCorrect && <button
       type="button"
@@ -108,9 +108,7 @@ export default function ContactDocumentActions({ document, type }: {
         }
       }}
     ><Edit className="h-3.5 w-3.5" />{isFetching ? 'Chargement…' : 'Modifier'}</button>}
-    {editableTypes.has(bonType) && <span className="mt-1 block font-sans text-xs text-gray-500 md:hidden">
-      Modifié par : <DocumentModificationAuthor document={document} />
-    </span>}
+
     {bon && createPortal(<Suspense fallback={
       <div role="status" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 text-white">Chargement du formulaire…</div>
     }>

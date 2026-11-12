@@ -46,3 +46,6 @@ env/
 
 # Etat local des seeders (ids crees, sert au --revert)
 backend/scripts/*.manifest.json
+
+# SDK constructeur volumineux : conserver uniquement en local
+/sdk wdlink/

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AbsenceLoadError from '../components/absences/AbsenceLoadError';
+import PointagePanel from '../components/absences/PointagePanel';
 import {
   AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock, Loader2, Pencil,
   Plus, Search, ShieldCheck, Trash2, TrendingDown, UserRound, Users, X,
@@ -555,6 +556,8 @@ const AbsencesPage: React.FC = () => {
           )}
         </div>
       </header>
+
+      {canManage && <PointagePanel canConfigure={isPDG} />}
 
       {isPDG && showAccess && <AccessPanel />}
 

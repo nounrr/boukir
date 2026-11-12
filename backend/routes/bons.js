@@ -19,7 +19,7 @@ router.get('/:type/:id/modification', async (req, res, next) => {
   }
   try {
     const document = { id, type: req.params.type };
-    await attachContactHistoryModification(pool, [document]);
+    await attachContactHistoryModification(pool, [document], { clientDetailOnly: req.query.source === 'client-detail' });
     res.set('Cache-Control', 'no-store').json({
       last_modified_by_name: document.last_modified_by_name,
       last_modified_at: document.last_modified_at,

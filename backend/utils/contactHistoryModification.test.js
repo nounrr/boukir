@@ -105,3 +105,19 @@ test('SQL attribution excludes creation and resolves edits in the same second', 
     await pool.end();
   }
 });
+
+test('client detail attribution excludes edits from Bons and legacy records', async () => {
+  const documents = [{ type: 'Sortie', id: 12 }, { type: 'Sortie', id: 13 }];
+  await attachContactHistoryModification({ query: async (sql, params) => {
+    assert.match(sql, /a.request_id LIKE \?/);
+    assert.equal(params.at(-1), 'client-detail:%');
+    return [[
+      { operation: 'U', request_id: 'bon-page', table_name: 'bons_sortie', document_id: '12', last_modified_by_name: 'Bons editor' },
+      { operation: 'U', request_id: 'client-detail:recent', table_name: 'bons_sortie', document_id: '12', last_modified_by_name: 'Client editor' },
+      { operation: 'U', request_id: 'client-detail:older', table_name: 'bons_sortie', document_id: '12', last_modified_by_name: 'Older client editor' },
+      { operation: 'U', request_id: null, table_name: 'bons_sortie', document_id: '13', last_modified_by_name: 'Legacy editor' },
+    ]];
+  } }, documents, { clientDetailOnly: true });
+  assert.equal(documents[0].last_modified_by_name, 'Client editor');
+  assert.equal(documents[1].last_modified_by_name, null);
+});

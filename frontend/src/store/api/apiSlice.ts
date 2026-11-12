@@ -1,5 +1,6 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { AuthState } from '../../types';
+import { isClientDetailPath } from '../../utils/modificationSource';
 import { logout } from '../slices/authSlice';
 
 const safeResponseHandler = async (response: Response) => {
@@ -27,9 +28,12 @@ const safeResponseHandler = async (response: Response) => {
 const fetchApi = fetchBaseQuery({
   baseUrl: '/api',
   responseHandler: safeResponseHandler,
-  prepareHeaders: (headers, { getState }) => {
+  prepareHeaders: (headers, { getState, type }) => {
     const token = (getState() as { auth?: AuthState }).auth?.token;
     if (token) headers.set('authorization', `Bearer ${token}`);
+    if (type === 'mutation' && typeof window !== 'undefined' && isClientDetailPath(window.location.pathname)) {
+      headers.set('x-modification-source', 'client-detail');
+    }
     return headers;
   },
 });
@@ -50,7 +54,7 @@ export const api = createApi({
     }
     return result;
   },
-  tagTypes: ['Auth', 'Employee', 'ClientCollaborationPermissions', 'MaalemReviewPermissions', 'MaalemReview', 'Product', 'Contact', 'ContactDirectory', 'ContactGroup', 'ContactComment', 'Dashboard', 'Bon', 'Payment', 'Category', 'MaalemCategory', 'MaalemProfile', 'Service', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'ComptantPayment', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce', 'Ecommerce', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'FondCaisse', 'FondCaissePermissions', 'StatsDetailsPermissions', 'PagePermissions', 'SalePriceCorrectionAccess', 'SalePriceCorrectionRequest', 'ImageEnhancement', 'AccessSchedule', 'UiSettings', 'PricePurchaseSolver', 'DepotStock', 'PhotoShoot', 'ProductNameCorrection', 'SlowMovingStock', 'Absence', 'AbsencePermissions', 'Delivery', 'DeliveryAccess', 'PdgBoard', 'Projet', 'FixedCharge'],
+  tagTypes: ['Pointage', 'Auth', 'Employee', 'ClientCollaborationPermissions', 'MaalemReviewPermissions', 'MaalemReview', 'Product', 'Contact', 'ContactDirectory', 'ContactGroup', 'ContactComment', 'Dashboard', 'Bon', 'Payment', 'Category', 'MaalemCategory', 'MaalemProfile', 'Service', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'ComptantPayment', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce', 'Ecommerce', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'FondCaisse', 'FondCaissePermissions', 'StatsDetailsPermissions', 'PagePermissions', 'SalePriceCorrectionAccess', 'SalePriceCorrectionRequest', 'ImageEnhancement', 'AccessSchedule', 'UiSettings', 'PricePurchaseSolver', 'DepotStock', 'PhotoShoot', 'ProductNameCorrection', 'SlowMovingStock', 'Absence', 'AbsencePermissions', 'Delivery', 'DeliveryAccess', 'PdgBoard', 'Projet', 'FixedCharge'],
   endpoints: () => ({}),
 });
 

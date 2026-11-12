@@ -1,0 +1,67 @@
+# Connexion de la pointeuse Wdlink au VPS
+
+L’appareil annoncé est une **WDU505PROFP**, installé au magasin, et l’application tourne sur un VPS Hostinger. L’intégration préparée utilise les callbacks HTTP du SDK fourni. La compatibilité du firmware de cette référence avec l’API LAN V5 doit encore être vérifiée sur l’appareil.
+
+## Fonctionnement préparé
+
+La pointeuse envoie chaque reconnaissance au serveur. Le serveur conserve l’identifiant sur l’appareil, l’employé associé, la date et l’heure, le mode de reconnaissance et le sens du passage. Les renvois identiques ne créent aucun doublon. Les passages reçus avant l’association à un employé sont conservés et rattachés lors de l’association.
+
+Le journal et le formulaire d’association sont dans « Pointage & absences », pour les personnes ayant le droit de gestion des absences. Les absences et les retenues manuelles restent indépendantes. Aucun calcul de salaire ne repose sur ces nouveaux passages.
+
+Les photos, empreintes et modèles biométriques restent sur l’appareil : le récepteur ne les enregistre pas. L’enrôlement des employés se fait pour cette première version sur la pointeuse. Il n’y a pas encore de synchronisation automatique des employés ni de récupération des archives antérieures à la configuration du callback.
+
+## Paramètres dans l’application
+
+Une fois la version déployée, ouvrir **Pointage & absences → Paramètres de la pointeuse** avec le compte PDG. Les paramètres restent modifiables depuis l’application :
+
+- Numéro de série (`deviceKey`) de la pointeuse.
+- IP locale au magasin, conservée comme référence pour le réglage local.
+- Firmware, conservé comme référence pour confirmer la compatibilité.
+- Fuseau horaire, initialement `Africa/Casablanca`.
+- Codes des statuts entrée et sortie, à confirmer sur l’appareil.
+- Sens de secours, laissé « à confirmer » par défaut.
+
+Le premier enregistrement génère une adresse de réception sur `https://backoffice.boukirdiamond.com`. Copier cette adresse dans la configuration callback de la pointeuse au magasin. Le secret de cette adresse n’est affiché qu’à sa génération et seul son hash est conservé dans la table de configuration. Une sauvegarde ordinaire conserve l’adresse existante ; « Remplacer l’adresse de réception » ou un changement de numéro de série en génère une nouvelle et invalide l’ancienne. Reporter alors la nouvelle adresse dans l’appareil.
+
+Les paramètres sont enregistrés dans MySQL, ils persistent après redémarrage du serveur. Les tables `pointage_device_config`, `pointage_identities` et `pointage_events` sont créées à la première utilisation ; le compte MySQL doit pouvoir créer des tables. Le formulaire de configuration est réservé au PDG, et le journal et les associations au droit de gestion des absences.
+
+L’adresse de réception contient un secret d’accès machine. Le backend ne journalise pas cette route ; masquer également son chemin dans les journaux du proxy du VPS, par exemple `access_log off;` dans le bloc Nginx dédié. Ne pas exposer directement le port de la pointeuse sur Internet.
+
+Le magasin doit pouvoir joindre le domaine public du VPS en HTTPS. Le VPS n’a pas besoin d’initier une connexion à l’adresse privée de l’appareil pour recevoir ses nouveaux passages. La prise en charge HTTPS/certificat du firmware doit être vérifiée. Si elle ne fonctionne pas, prévoir une passerelle locale ou un VPN.
+
+Une configuration initiale par variables d’environnement reste disponible si aucun paramètre n’a été enregistré dans l’application : `WDLINK_DEVICE_KEY`, `WDLINK_CALLBACK_TOKEN` (secret aléatoire base64url de 43 caractères minimum), `WDLINK_TIMEZONE`, `WDLINK_DIRECTION` et `WDLINK_ATTENDANCE_MAP` (objet JSON). Les réglages enregistrés dans l’application sont prioritaires.
+
+## Configuration de l’appareil après vérification du firmware
+
+Source locale : `sdk wdlink/API(http)-20261112T165618Z-1-001/API(http)/DEVICE LAN VERSION INTERFACE DOCUMENT V5.1.14.docx`, sections 2.13 et 2.34.
+
+Depuis un ordinateur sur le même réseau local que la pointeuse, l’API documentée permet de configurer le callback avec `POST http://IP_APPAREIL:8090/setIdentifyCallBack` en formulaire `application/x-www-form-urlencoded`, avec les champs `pass` (mot de passe appareil) et `url` (adresse HTTPS de réception). Vérifier la réponse de succès sur le firmware réel. Ne pas appeler les interfaces de remise à zéro, suppression ou mise à jour du SDK.
+
+Le callback attendu contient `deviceKey`, `personId`, `time` (timestamp Unix en millisecondes), `type` (`face_0`, `finger_0`, etc.) et éventuellement `attendance`. Le serveur répond exactement `{"result":1,"success":true}` après enregistrement. Selon la section 2.13, l’appareil renvoie les callbacks non acquittés toutes les dix minutes. Les événements doivent réellement être enregistrés avant cette réponse ; en cas d’erreur SQL, le serveur renvoie un échec pour permettre la reprise.
+
+Vérifier l’heure et le fuseau de l’appareil par un passage réel. Le serveur traite `time` comme un timestamp Unix et en déduit le jour et l’heure en `Africa/Casablanca`. Un firmware qui envoie une heure locale déguisée en timestamp nécessite un adaptateur confirmé par ce test.
+
+## Sens des passages
+
+Le champ `type=face_0` indique une reconnaissance réussie ; le suffixe 0 n’indique pas une entrée. Le sens dépend des statuts de présence réellement configurés sur l’appareil.
+
+Après confirmation que le statut 1 signifie entrée et le statut 2 sortie, renseigner ces codes dans les paramètres de l’application. L’équivalent pour le mode de configuration par environnement est :
+
+```dotenv
+WDLINK_ATTENDANCE_MAP={"1":"entree","2":"sortie"}
+```
+
+Les autres codes restent « Sens à confirmer ». Pour un appareil physiquement dédié à un seul sens, `WDLINK_DIRECTION=entree` ou `sortie` permet ce classement de secours. Aucun basculement automatique « premier scan entrée, deuxième sortie » n’est appliqué : les pauses et les scans répétés rendraient cette supposition ambiguë.
+
+## Vérification sur place
+
+1. Confirmer la version du firmware, l’adresse IP locale et le numéro de série de la WDU505PROFP.
+2. Déployer les fichiers backend et frontend, redémarrer le backend puis renseigner les paramètres dans l’application.
+3. Vérifier l’accès HTTPS depuis le magasin et définir le callback sur l’appareil.
+4. Enrôler un employé sur la pointeuse puis associer son `personId` dans la page Pointage & absences.
+5. Faire une entrée et une sortie par visage puis empreinte. Comparer date, heure et sens avec l’affichage de l’appareil.
+6. Couper puis rétablir Internet au magasin et vérifier le renvoi sans doublons. La conservation hors ligne dépend du firmware et de sa capacité ; elle reste à valider sur cet appareil.
+
+## Vérification locale du code
+
+`node --test backend/utils/pointage.test.js` couvre la normalisation du SDK, les changements de jour au Maroc, les rejets, l’authentification machine, la déduplication, la reprise après erreur SQL et l’absence de stockage biométrique, les paramètres modifiables réservés au PDG et la rotation du secret de callback. Ces tests utilisent une base simulée ; le test avec MySQL et la pointeuse reste requis avant mise en service.

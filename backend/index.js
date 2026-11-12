@@ -8,7 +8,6 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { createServer } from 'http';
-import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 
 import { initializeSocketServer } from './socket/socketServer.js';
@@ -88,6 +87,8 @@ import talonsRouter from './routes/talons.js';
 import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
 import absencesRouter from './routes/absences.js';
+import { auditRequestId } from './utils/modificationSource.js';
+import pointageRouter, { wdlinkCallbackRouter } from './routes/pointage.js';
 import pdgBoardRouter from './routes/pdgBoard.js';
 import projetsRouter from './routes/projets.js';
 import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
@@ -194,6 +195,8 @@ app.use(
   express.urlencoded({ extended: false, limit: '1mb' }),
   cmiGatewayRouter
 );
+// Wdlink authenticates with its dedicated callback secret, before JWT/logging.
+app.use('/api/pointage/wdlink/callback', wdlinkCallbackRouter);
 app.use(cors(corsOptions));
 // Handle preflight requests for all routes
 app.options('*', cors(corsOptions));
@@ -211,7 +214,7 @@ app.use((req, _res, next) => {
       // requests replace this with the verified JWT identity below; guests
       // are intentionally recorded with a null employee id.
       userId: (req.user && req.user.id) || null,
-      requestId: req.headers['x-request-id'] || randomUUID(),
+      requestId: auditRequestId(req.headers),
     },
     () => next()
   );
@@ -463,6 +466,7 @@ app.use('/api/fond-caisse', fondCaisseRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
 app.use('/api/absences', absencesRouter);
+app.use('/api/pointage', pointageRouter);
 app.use('/api/pdg-board', pdgBoardRouter);
 app.use('/api/projets', projetsRouter);
 app.use('/api/factures', facturesRouter);

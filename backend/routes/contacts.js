@@ -1648,7 +1648,7 @@ router.get('/:id/history', async (req, res) => {
         payments,
       };
       const ledger = buildContactLedger(contact, documents, remises, req.query);
-      await attachContactHistoryModification(pool, Object.keys(documents).filter(key => key !== 'payments').flatMap(key => ledger[key]));
+      await attachContactHistoryModification(pool, Object.keys(documents).filter(key => key !== 'payments').flatMap(key => ledger[key]), { clientDetailOnly: contact.type === 'Client' });
       return res.json(ledger);
     }
 
@@ -1860,7 +1860,7 @@ router.get('/:id/history', async (req, res) => {
       avoirsFournisseur: keepDocs(normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF')),
       avoirsClientVendreFournisseur: keepDocs(normalizeItems(avoirsClientVendreFournisseur, 'AvoirClientVendreFournisseur', 'AVV')),
     };
-    await attachContactHistoryModification(pool, Object.values(historyDocuments).flat());
+    await attachContactHistoryModification(pool, Object.values(historyDocuments).flat(), { clientDetailOnly: contact.type === 'Client' });
 
     res.json({
       contactId,

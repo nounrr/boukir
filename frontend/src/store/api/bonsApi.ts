@@ -74,8 +74,8 @@ export const bonsApi = api.injectEndpoints({
     getBonModification: builder.query<{
       last_modified_by_name: string | null;
       last_modified_at: string | null;
-    }, { id: number; type: string }>({
-      query: ({ id, type }) => `/bons/${type}/${id}/modification`,
+    }, { id: number; type: string; source?: 'client-detail' }>({
+      query: ({ id, type, source }) => ({ url: `/bons/${type}/${id}/modification`, params: source ? { source } : undefined }),
       providesTags: ['Bon'],
       keepUnusedDataFor: 0,
     }),
