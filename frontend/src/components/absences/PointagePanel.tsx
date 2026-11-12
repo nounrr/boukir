@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useGetPointageConfigQuery, useSavePointageConfigMutation, useGetPointageStatusQuery, useGetPointageEventsQuery, useLinkPointageIdentityMutation } from '../../store/api/pointageApi';
 import { useGetAbsenceEmployeesQuery } from '../../store/api/absencesApi';
+import PointagePhoto from './PointagePhoto';
 import { showError, showSuccess } from '../../utils/notifications';
 
 const localMonth = () => {
@@ -99,9 +100,9 @@ export default function PointagePanel({ canConfigure = false }: { canConfigure?:
       {employeesError && <p role="alert" className="text-sm text-red-700">Liste des employés indisponible. Actualisez la page pour réessayer.</p>}
     </div>}
     {isError ? <p role="alert" className="p-4 text-sm text-red-700">Impossible de charger les pointages. <button type="button" onClick={refetch} className="underline">Réessayer</button></p> : isFetching && !data ? <p role="status" className="p-4 text-sm text-slate-600">Chargement des pointages…</p> : <>
-      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Employé', 'Jour', 'Heure', 'Passage', 'Identification'].map(label => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">
-        {(data?.data || []).map(event => <tr key={event.id}><td className="px-4 py-3">{event.nom_complet || (event.employe_id ? `Employé #${event.employe_id}` : <button type="button" onClick={() => setPersonId(event.person_id)} className="text-amber-800 underline">À associer : {event.person_id}</button>)}</td><td className="px-4 py-3">{event.date_pointage}</td><td className="px-4 py-3 font-semibold">{event.heure_pointage}</td><td className="px-4 py-3">{directionLabels[event.direction]}</td><td className="px-4 py-3">{methodLabel(event.method)}</td></tr>)}
-        {!data?.data.length && <tr><td colSpan={5} className="p-6 text-center text-slate-500">Aucun passage reçu pour ce mois.</td></tr>}
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Photo', 'Employé', 'Jour', 'Heure', 'Passage', 'Identification'].map(label => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">
+        {(data?.data || []).map(event => <tr key={event.id}><td className="px-4 py-3"><PointagePhoto eventId={event.id} available={Boolean(event.has_photo)} /></td><td className="px-4 py-3">{event.nom_complet || (event.employe_id ? `Employé #${event.employe_id}` : <button type="button" onClick={() => setPersonId(event.person_id)} className="text-amber-800 underline">À associer : {event.person_id}</button>)}</td><td className="px-4 py-3">{event.date_pointage}</td><td className="px-4 py-3 font-semibold">{event.heure_pointage}</td><td className="px-4 py-3">{directionLabels[event.direction]}</td><td className="px-4 py-3">{methodLabel(event.method)}</td></tr>)}
+        {!data?.data.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">Aucun passage reçu pour ce mois.</td></tr>}
       </tbody></table></div>
       <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm"><span>{data?.pagination.total || 0} passages · Page {page}</span><div className="flex gap-3"><button type="button" disabled={page === 1 || isFetching} onClick={() => setPage(p => p - 1)} className="disabled:opacity-40">Précédent</button><button type="button" disabled={isFetching || page * 100 >= (data?.pagination.total || 0)} onClick={() => setPage(p => p + 1)} className="disabled:opacity-40">Suivant</button></div></div>
     </>}

@@ -20,6 +20,7 @@ stub('../../store/api/pointageApi.ts', {
 });
 stub('../../store/api/absencesApi.ts', { useGetAbsenceEmployeesQuery: () => ({ data: [] }) });
 stub('../../utils/notifications.ts', {});
+stub('../../hooks/redux.ts', { useAuth: () => ({ token: 'test-token' }) });
 const Panel = require('./PointagePanel.tsx').default;
 const render = canConfigure => renderToStaticMarkup(React.createElement(Panel, { canConfigure }));
 
@@ -32,6 +33,8 @@ test('pointage journal shows correct days, entry/exit and unmatched identity wit
   const html = render(true);
   for (const content of ['Employé Test', '2026-11-12', '08:02:00', '18:01:00', 'Entrée', 'Sortie', 'Visage', 'Empreinte', 'Sens à confirmer', 'À associer : new-43']) assert.ok(html.includes(content));
   assert.match(html, /Paramètres de la pointeuse/);
+  assert.match(html, /<th[^>]*>Photo<\/th>/);
+  assert.match(html, /Sans photo/);
   assert.doesNotMatch(render(false), /Paramètres de la pointeuse/);
 });
 

@@ -1,5 +1,6 @@
 import { Router, json } from 'express';
 import pool from '../db/pool.js';
+import { decodePointagePhoto, savePointagePhoto } from '../utils/pointagePhotos.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { verifyToken, requireRole } from '../middleware/auth.js';
 import { requireAbsencePermission } from '../utils/absencePermissions.js';
@@ -24,7 +25,7 @@ export function readWdlinkConfig(env = process.env) {
 
 export function createPointageRouters(db = pool, providedConfig) {
   const callback = Router();
-  callback.use(json({ limit: '1mb' }));
+  callback.use(json({ limit: '4mb' }));
   const admin = Router();
   let ready;
   function ensureSchema() {
@@ -57,7 +58,11 @@ export function createPointageRouters(db = pool, providedConfig) {
     try { event = normalizeWdlinkPassage(req.body, config); }
     catch { return res.status(400).json({ result: 0, success: false }); }
     try {
-      if (event) { await ensureSchema(); await savePointageEvent(db, event); }
+      if (event) {
+        await ensureSchema();
+        await savePointageEvent(db, event);
+        await savePointagePhoto(db, event.eventKey, decodePointagePhoto(req.body.base64));
+      }
       // Exact acknowledgement required by SDK section 2.13; only after durable insertion.
       return res.json({ result: 1, success: true });
     } catch {
@@ -156,6 +161,18 @@ export function createPointageRouters(db = pool, providedConfig) {
     } catch (error) { if (conn) await conn.rollback(); next(error); }
     finally { conn?.release(); }
   });
+  admin.get('/events/:id/photo', async (req, res, next) => {
+    const id = Number(req.params.id);
+    if (!/^\d+$/.test(req.params.id) || !Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Pointage invalide.' });
+    }
+    try {
+      const [[photo]] = await db.query('SELECT mime, image FROM pointage_event_photos WHERE event_id = ? LIMIT 1', [id]);
+      if (!photo || !['image/jpeg', 'image/png'].includes(photo.mime)) return res.status(404).json({ message: 'Photo indisponible.' });
+      res.set({ 'Content-Type': photo.mime, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
+      res.send(photo.image);
+    } catch (error) { next(error); }
+  });
   admin.get('/events', async (req, res, next) => {
     const month = String(req.query.month || '');
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || Number(month.slice(0, 4)) < 2020) {
@@ -170,7 +187,8 @@ export function createPointageRouters(db = pool, providedConfig) {
       const [[count]] = await db.query(`SELECT COUNT(*) AS total FROM pointage_events p WHERE ${where}`, params);
       const [rows] = await db.query(`SELECT p.id, p.device_key, p.person_id, p.employe_id, e.nom_complet,
         DATE_FORMAT(p.local_date, '%Y-%m-%d') AS date_pointage, TIME_FORMAT(p.local_time, '%H:%i:%s') AS heure_pointage,
-        p.timezone, p.method, p.direction, p.attendance, p.received_at
+        p.timezone, p.method, p.direction, p.attendance, p.received_at,
+        EXISTS(SELECT 1 FROM pointage_event_photos photo WHERE photo.event_id = p.id) AS has_photo
         FROM pointage_events p LEFT JOIN employees e ON e.id = p.employe_id
         WHERE ${where} ORDER BY p.occurred_at_utc DESC, p.id DESC LIMIT 100 OFFSET ?`, [...params, (page - 1) * 100]);
       res.json({ data: rows, pagination: { page, limit: 100, total: Number(count.total) } });

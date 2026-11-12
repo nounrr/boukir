@@ -10,6 +10,7 @@ export interface PointageStatus {
 }
 export interface PointageEvent {
   id: number;
+  has_photo?: boolean | number;
   device_key: string;
   person_id: string;
   employe_id: number | null;

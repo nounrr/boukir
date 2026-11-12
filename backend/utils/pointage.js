@@ -1,3 +1,4 @@
+import { ensurePointagePhotoSchema } from './pointagePhotos.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 export function validPointageId(value) {
@@ -25,7 +26,7 @@ export function normalizeWdlinkAttendance(value) {
   return code;
 }
 
-// HTTP LAN V5.1.14, section 2.13. Never retain photos or biometric templates.
+// HTTP LAN V5.1.14, section 2.13. Keep photos separate from ledger metadata; never retain biometric templates.
 export function normalizeWdlinkPassage(body, config) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Passage invalide');
   if (body.deviceKey !== config.deviceKey) throw new Error('Appareil inconnu');
@@ -84,6 +85,7 @@ export async function ensurePointageSchema(db) {
     UNIQUE KEY uniq_pointage_event (event_key), KEY idx_pointage_day (local_date, employe_id),
     KEY idx_pointage_person (device_key, person_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await ensurePointagePhotoSchema(db);
 }
 
 export async function savePointageEvent(db, event) {

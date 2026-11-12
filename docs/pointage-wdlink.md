@@ -8,7 +8,7 @@ La pointeuse envoie chaque reconnaissance au serveur. Le serveur conserve l’id
 
 Le journal et le formulaire d’association sont dans « Pointage & absences », pour les personnes ayant le droit de gestion des absences. Les absences et les retenues manuelles restent indépendantes. Aucun calcul de salaire ne repose sur ces nouveaux passages.
 
-Les photos, empreintes et modèles biométriques restent sur l’appareil : le récepteur ne les enregistre pas. L’enrôlement des employés se fait pour cette première version sur la pointeuse. Il n’y a pas encore de synchronisation automatique des employés ni de récupération des archives antérieures à la configuration du callback.
+Les empreintes et modèles biométriques restent sur l’appareil. À la demande de l’utilisateur, les photos capturées lors des passages sont conservées séparément dans la table privée `pointage_event_photos` et accessibles uniquement avec les droits de gestion du pointage. L’enrôlement des employés se fait pour cette première version sur la pointeuse. Il n’y a pas encore de synchronisation automatique des employés ni de récupération des archives antérieures à la configuration du callback.
 
 ## Paramètres dans l’application
 
@@ -35,7 +35,7 @@ Une configuration initiale par variables d’environnement reste disponible si a
 
 Source locale : `sdk wdlink/API(http)-20261112T165618Z-1-001/API(http)/DEVICE LAN VERSION INTERFACE DOCUMENT V5.1.14.docx`, sections 2.13 et 2.34.
 
-Depuis un ordinateur sur le même réseau local que la pointeuse, l’API documentée permet de configurer le callback avec `POST http://IP_APPAREIL:8090/setIdentifyCallBack` en formulaire `application/x-www-form-urlencoded`, avec le mot de passe appareil `pass`. Sur le firmware `OS-V500.2106` testé, le champ de l’adresse est **`callbackUrl`**, et non `url`. Ajouter `base64Enable=1` pour désactiver les photos dans le callback. La configuration et sa relecture par `GET /device/callback` ont été vérifiées sur cet appareil. Ne pas appeler les interfaces de remise à zéro, suppression ou mise à jour du SDK.
+Depuis un ordinateur sur le même réseau local que la pointeuse, l’API documentée permet de configurer le callback avec `POST http://IP_APPAREIL:8090/setIdentifyCallBack` en formulaire `application/x-www-form-urlencoded`, avec le mot de passe appareil `pass`. Sur le firmware `OS-V500.2106` testé, le champ de l’adresse est **`callbackUrl`**, et non `url`. Ajouter `base64Enable=2` pour transmettre la photo capturée dans le callback lorsque l’affichage des photos est activé. La configuration et sa relecture par `GET /device/callback` ont été vérifiées sur cet appareil. Ne pas appeler les interfaces de remise à zéro, suppression ou mise à jour du SDK.
 
 Le callback attendu contient `deviceKey`, `personId`, `time` (timestamp Unix en millisecondes), `type` (`face_0`, `finger_0`, etc.) et éventuellement `attendance`. Le serveur répond exactement `{"result":1,"success":true}` après enregistrement. Selon la section 2.13, l’appareil renvoie les callbacks non acquittés toutes les dix minutes. Les événements doivent réellement être enregistrés avant cette réponse ; en cas d’erreur SQL, le serveur renvoie un échec pour permettre la reprise.
 
@@ -64,7 +64,7 @@ Les autres codes restent « Sens à confirmer ». Pour un appareil physiquement 
 
 ## Vérification locale du code
 
-`node --test backend/utils/pointage.test.js` couvre la normalisation du SDK, les changements de jour au Maroc, les rejets, l’authentification machine, la déduplication, la reprise après erreur SQL et l’absence de stockage biométrique, les paramètres modifiables réservés au PDG et la rotation du secret de callback. Ces tests utilisent une base simulée ; le test avec MySQL et la pointeuse reste requis avant mise en service.
+`node --test backend/utils/pointage.test.js` couvre la normalisation du SDK, les changements de jour au Maroc, les rejets, l’authentification machine, la déduplication, la reprise après erreur SQL et l’absence de modèles biométriques dans les données du journal, les paramètres modifiables réservés au PDG et la rotation du secret de callback. Ces tests utilisent une base simulée ; le test avec MySQL et la pointeuse reste requis avant mise en service.
 
 
 ## Observations sur le firmware OS-V500.2106
@@ -91,3 +91,12 @@ Le test sans événement utilise une reconnaissance refusée (`type=face_2`) du 
 Les passages réels de ce firmware contiennent `attendance: { attendanceId: 1, attendanceStatus: "Entrée" }` ou le même objet avec l’identifiant 2 pour la sortie. Le connecteur extrait `attendanceId` et applique la correspondance des codes configurée dans l’application. Il continue d’accepter les codes simples des autres variantes du SDK. Les libellés traduits ne sont jamais utilisés pour deviner un sens.
 
 Les passages dont le statut avait été enregistré comme `[object Object]` peuvent être réparés en les rapprochant des archives réelles de la pointeuse. Le rapprochement doit utiliser l’appareil, l’identifiant de la personne, le timestamp milliseconde et la méthode de reconnaissance, sans déduire une alternance entrée/sortie.
+
+
+## Photos des passages
+
+La colonne Photo du journal affiche les photos JPEG/PNG capturées au pointage. Un clic agrandit la miniature. La route `GET /api/pointage/events/:id/photo` exige un JWT valide et le droit de gestion des absences/pointages ; aucune image n’est publiée dans le répertoire public des uploads. Les réponses interdisent le cache.
+
+Les images sont limitées à 2 Mo et 4096 pixels par côté. Le callback accepte un JSON de 4 Mo pour contenir l’image base64 ; la route Nginx de callback doit également autoriser `client_max_body_size 4m`. La photo est enregistrée séparément des événements ; une répétition du même callback ne crée pas de deuxième photo. Les chemins/URLs d’images envoyés par l’appareil ne sont jamais téléchargés par le VPS.
+
+Sur la pointeuse, `POST /setIdentifyCallBack` avec `pass`, `callbackUrl` et `base64Enable=2` active l’envoi des photos. Les nouveaux passages peuvent alors apporter leur photo. Les anciens passages restent sans photo tant qu’aucune archive réelle correspondante n’a été récupérée. Aucun modèle d’empreinte ou de reconnaissance faciale n’est importé.
