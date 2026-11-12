@@ -3,7 +3,7 @@ import ClientNoResponseCheckbox from '../components/ClientNoResponseCheckbox';
 import ClientChequesEcheancierButton from '../components/ClientChequesEcheancierButton';
 import ContactDocumentActions from '../components/ContactDocumentActions';
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Mail, MapPin, Building2,
@@ -41,6 +41,8 @@ import ContactCommentsSection from '../components/contactComments/ContactComment
 import { useGetContactCommentCountsQuery } from '../store/api/contactCommentsApi';
 import { ReminderBadge, ReminderEditor, ReminderModal } from '../components/reminders/ReminderEditor';
 import { useGetMyClientCollaborationPermissionsQuery } from '../store/api/clientCollaborationPermissionsApi';
+
+const EMPTY_HISTORY_DATA: any[] = [];
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -173,7 +175,7 @@ const groupDisplayItems = (items: any[]): GroupedDisplayItem[] => {
   return Array.from(groups.values());
 };
 
-const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix, accentClass, hoverClass, itemBorderClass = 'border-blue-200' }) => {
+const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = EMPTY_HISTORY_DATA, prefix, accentClass, hoverClass, itemBorderClass = 'border-blue-200' }) => {
   const { data: uiSettings } = useGetUiSettingsQuery();
   const styleKeyByPrefix: Record<string, string> = {
     SOR: 'bon_sortie',
@@ -320,7 +322,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
   );
 };
 
-const MobileBonCards: React.FC<Pick<BonTableProps, 'bons' | 'detail' | 'products' | 'prefix'>> = ({ bons, detail, products = [], prefix }) => (
+const MobileBonCards: React.FC<Pick<BonTableProps, 'bons' | 'detail' | 'products' | 'prefix'>> = ({ bons, detail, products = EMPTY_HISTORY_DATA, prefix }) => (
   <div className="space-y-3 p-3 md:hidden">
     {bons.map(b => {
       const items: any[] = Array.isArray(b.items) ? b.items.filter((i: any) => i && i.id) : [];
@@ -761,7 +763,11 @@ const BON_META: Record<string, { label: string; badgeClass: string; accentClass:
   avoir:    { label: 'Avoir',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-black', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-100', styleKey: 'bon_avoir_client' },
 };
 
-const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], remises = [], visibleIds, showInitialRow = true, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
+// A checkbox only invalidates its document/line; expensive cells keep their rendered tree.
+const HistoryRenderPart = React.memo(({ render }: { revision: object; selection: string; render: () => React.ReactNode }) => <>{render()}</>,
+  (previous, next) => previous.revision === next.revision && previous.selection === next.selection);
+
+const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = EMPTY_HISTORY_DATA, remises = EMPTY_HISTORY_DATA, visibleIds, showInitialRow = true, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
   const showRemiseInputs = !!remiseEditor?.showRemiseMode;
   const selectionMode = !!onToggleSelect;
   const { data: uiSettings } = useGetUiSettingsQuery();
@@ -796,6 +802,22 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
     }
     return keys;
   }, [rows, visibleIds, detail]);
+
+  const documentLayout = useMemo(() => {
+    let index = 0;
+    return rows.flatMap((row, idx) => {
+      const rowId = `${row.kind}-${row.data.id}`;
+      if (visibleIds && !visibleIds.has(rowId)) return [];
+      const items = row.kind === 'paiement' ? [] : (row.data.items || []).filter((item: any) => item?.id);
+      const itemKeys = row.kind === 'paiement' ? [] : Array.from({ length: Math.max(1, items.length) }, (_, i) => `${rowId}-item-${i}`);
+      const start = index;
+      index += detail && items.length ? groupDisplayItems(items).length : 1;
+      return [{ row, idx, rowId, itemKeys, start }];
+    });
+  }, [rows, visibleIds, detail]);
+  const rowRenderRevision = useMemo(() => ({}), [rows, detail, visibleIds, products, remises, uiSettings,
+    soldeCumuleMap, remiseCumuleMap, onToggleSelect, onToggleItem, onToggleAllItems,
+    Boolean(onCompletDragEnd), remiseEditor?.showRemiseMode, remiseEditor?.remisePrices, remiseEditor?.setItemPrice]);
 
   const allVisibleSelected = selectionMode && visibleRowIds.length > 0 && visibleRowIds.every(id => selectedIds?.has(id));
   const allItemsSelected = detail && !!onToggleAllItems && visibleItemKeys.length > 0 && visibleItemKeys.every(k => selectedItemIds?.has(k));
@@ -884,11 +906,11 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
         </tr>
         )}
 
-        {(() => {
-          let dragIndex = 0;
-          return rows.map((row, idx) => {
-          const rowId = `${row.kind}-${row.data.id}`;
-          if (visibleIds && !visibleIds.has(rowId)) return null;
+        {documentLayout.map(({ row, idx, rowId, itemKeys, start }) => (
+          <HistoryRenderPart key={rowId} revision={rowRenderRevision}
+            selection={`${selectedIds?.has(rowId) ?? false}:${itemKeys.map(key => selectedItemIds?.has(key) ? '1' : '0').join('')}`}
+            render={() => {
+              let dragIndex = start;
           const isSelected = selectedIds?.has(rowId) ?? false;
           const rowBg = isSelected ? 'bg-blue-100' : '';
 
@@ -1087,23 +1109,11 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           return (
             <React.Fragment key={`${bonKey}-${idx}`}>
               {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx) => {
-                const qte = Number(item.quantite ?? 0);
-                const pu = Number(item.prix_unitaire ?? 0);
-                const total = Number(item.total ?? (qte * pu));
-                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
-                const variantLabel = getHistoryVariantLabel(item, products);
-                const unitLabel = getHistoryUnitLabel(item, products);
                 const sourceKeys = sourceIndices.map((sourceIdx) => `${bonKey}-item-${sourceIdx}`);
                 const lastItemSoldeKey = sourceKeys[sourceKeys.length - 1];
                 const itemSelected = sourceKeys.every((key) => selectedItemIds?.has(key));
-                const remiseAbonne = sourceItems.reduce((sum, src) => {
-                  return sum + getDisplayRemiseAbonneTotal(row.kind, src, remises, b.id);
-                }, 0);
-                const remiseClient = sourceItems.reduce((sum, src) => {
-                  return sum + getDisplayRemiseClientTotal(src, remises, b.id);
-                }, 0);
-                const soldeRemise = remiseCumuleMap.get(lastItemSoldeKey);
                 const rowIndex = dragIndex++;
+                return <HistoryRenderPart key={lastItemSoldeKey} revision={rowRenderRevision} selection={`${isSelected}:${itemSelected}`} render={() => {
                 return (
                   <Draggable key={lastItemSoldeKey} draggableId={lastItemSoldeKey} index={rowIndex} isDragDisabled>
                     {(dragProvided) => (
@@ -1118,10 +1128,25 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     )}
                     {selectionMode && (
                       <td className="px-2 py-2 text-center">
-                        <input type="checkbox" checked={itemSelected} onChange={() => sourceKeys.forEach((key) => onToggleItem?.(key))}
+                        <input type="checkbox" checked={itemSelected} onChange={() => onToggleAllItems?.(sourceKeys)}
                           className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 cursor-pointer" />
                       </td>
                     )}
+                    <HistoryRenderPart revision={rowRenderRevision} selection="content" render={() => {
+                const qte = Number(item.quantite ?? 0);
+                const pu = Number(item.prix_unitaire ?? 0);
+                const total = Number(item.total ?? (qte * pu));
+                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
+                const variantLabel = getHistoryVariantLabel(item, products);
+                const unitLabel = getHistoryUnitLabel(item, products);
+                const remiseAbonne = sourceItems.reduce((sum, src) => {
+                  return sum + getDisplayRemiseAbonneTotal(row.kind, src, remises, b.id);
+                }, 0);
+                const remiseClient = sourceItems.reduce((sum, src) => {
+                  return sum + getDisplayRemiseClientTotal(src, remises, b.id);
+                }, 0);
+                const soldeRemise = remiseCumuleMap.get(lastItemSoldeKey);
+                      return <>
                     <td className="px-4 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                     </td>
@@ -1232,15 +1257,18 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                         : null}
                     </td>
                     {detail && <td className="px-3 py-2 whitespace-nowrap"><DocumentModificationAuthor document={b} /></td>}
+                      </>;
+                    }} />
                   </tr>
                     )}
                   </Draggable>
                 );
+                }} />;
               })}
             </React.Fragment>
           );
-          });
-        })()}
+            }} />
+        ))}
         {dropProvided.placeholder}
       </tbody>
         )}
@@ -1250,7 +1278,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
   );
 };
 
-const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, showInitialRow = true, selectedIds, onToggleSelect, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
+const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = EMPTY_HISTORY_DATA, visibleIds, showInitialRow = true, selectedIds, onToggleSelect, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
   const balances = detail ? buildSoldeCumuleDetail(rows, soldeInitial) : buildSoldeCumule(rows, soldeInitial);
   const displayed = rows.filter(row => !visibleIds || visibleIds.has(`${row.kind}-${row.data.id}`));
   const dragIndexForRow = (rowIndex: number) => displayed.slice(0, rowIndex).reduce((count, row) => {
@@ -1291,6 +1319,13 @@ type PageTab = 'complet' | 'sorties' | 'avoirs' | 'paiements';
 
 const ClientDetailPage: React.FC = () => {
   const isMobileDetail = useMobilePrintModal();
+  const [isCompactHistory, setIsCompactHistory] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsCompactHistory(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const [mobileHistoryClientId, setMobileHistoryClientId] = useState<number | null>(null);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1314,7 +1349,7 @@ const ClientDetailPage: React.FC = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const [maalemRemiseOverride, setMaalemRemiseOverride] = useState<boolean | null>(null);
   const { currentData: history, isLoading: loadingHistory, isFetching: fetchingHistory, isError: historyError, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
-  const { data: products = [] } = useGetProductsQuery();
+  const { data: products = EMPTY_HISTORY_DATA } = useGetProductsQuery();
   const isLoading = loadingContact || loadingHistory || (!contact && fetchingContact) || (!history && fetchingHistory);
 
   useEffect(() => {
@@ -1660,53 +1695,53 @@ const ClientDetailPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleAll = (ids: string[]) => {
-    const allSelected = ids.every(id => selectedIds.has(id));
+  const toggleAll = useCallback((ids: string[]) => {
     setSelectedIds(prev => {
+      const allSelected = ids.every(key => prev.has(key));
       const next = new Set(prev);
-      if (allSelected) ids.forEach(id => next.delete(id));
-      else ids.forEach(id => next.add(id));
+      ids.forEach(key => allSelected ? next.delete(key) : next.add(key));
       return next;
     });
-  };
+  }, []);
 
-  const toggleItem = (key: string) => {
+  const toggleItem = useCallback((key: string) => {
     setSelectedItemIds(prev => {
       const next = new Set(prev);
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
-  };
+  }, []);
 
-  const toggleAllItems = (keys: string[]) => {
-    const allSelected = keys.every(k => selectedItemIds.has(k));
+  const toggleAllItems = useCallback((keys: string[]) => {
     setSelectedItemIds(prev => {
+      const allSelected = keys.every(key => prev.has(key));
       const next = new Set(prev);
-      if (allSelected) keys.forEach(k => next.delete(k));
-      else keys.forEach(k => next.add(k));
+      keys.forEach(key => allSelected ? next.delete(key) : next.add(key));
       return next;
     });
-  };
+  }, []);
 
   const hasSelectionScopedPrint = selectedIds.size > 0 || selectedItemIds.size > 0;
   const hasScopedPrint = hasDateFilter || hasSelectionScopedPrint;
 
+  const needsPrintHistory = printOpen || (isMobileDetail && mobileHistoryClientId !== clientId);
   const printProductHistory = useMemo(() => {
-    if (!history || !contact) return [];
+    if (!needsPrintHistory || !history || !contact) return [];
     // soldeCumuleMap calculé sur TOUTES les données (solde cumulé pas recalculé)
     const allRows = buildCompletRows(history);
     const soldeCumuleMap = buildSoldeCumuleDetail(allRows, contact.solde ?? 0);
     const dateFilteredRows = allRows
       .filter(row => !hasDateFilter || inDateRange(getRowDate(row)));
     // rows affichés = filtrés par date ET par sélection (si sélection active)
+    const selectedItemBonKeys = new Set(Array.from(selectedItemIds, key => key.slice(0, key.lastIndexOf('-item-'))));
     const rows = dateFilteredRows.filter(row => {
       const rowKey = `${row.kind}-${row.data.id}`;
       // item-level selection prend priorité sur bon-level
@@ -1714,8 +1749,7 @@ const ClientDetailPage: React.FC = () => {
         if (row.kind === 'paiement') {
           return selectedIds.has(rowKey);
         }
-        const itemPrefix = `${rowKey}-item-`;
-        return Array.from(selectedItemIds).some((itemId) => itemId.startsWith(itemPrefix));
+        return selectedItemBonKeys.has(rowKey);
       }
       if (selectedIds.size > 0) {
         if (!selectedIds.has(rowKey)) return false;
@@ -1810,10 +1844,10 @@ const ClientDetailPage: React.FC = () => {
       else if (type === 'paiement' || type === 'avoir') scopedSolde += amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
-  }, [history, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint, products]);
+  }, [needsPrintHistory, history, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint, products]);
 
   const printTotals = useMemo(() => {
-    if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
+    if (!needsPrintHistory || !history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
     const includeInitialInDebit = !hasSelectionScopedPrint;
     const initialSoldeForDebit = Math.abs(Number(contact.solde ?? 0) || 0);
     const totalQty = printProductHistory
@@ -1838,7 +1872,7 @@ const ClientDetailPage: React.FC = () => {
       totalDebit: totalVentes + (includeInitialInDebit ? initialSoldeForDebit : 0),
       totalCredit: totalPaiements + totalAvoirs,
     };
-  }, [history, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
+  }, [needsPrintHistory, history, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
 
 
 
@@ -2113,12 +2147,12 @@ const ClientDetailPage: React.FC = () => {
           {tab === 'complet' && (
             completRows.length === 0
               ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucune opération"} />
-              : <><div className="hidden md:block overflow-x-auto"><CompletTable
+              : <>{!isCompactHistory && <div className="hidden md:block overflow-x-auto"><CompletTable
                   rows={completRows}
                   detail={detailEnabled}
                   soldeInitial={contact?.solde ?? 0}
                   products={products}
-                  remises={history?.remises ?? []}
+                  remises={history?.remises ?? EMPTY_HISTORY_DATA}
                   visibleIds={visibleIds}
                   showInitialRow={!hasDateFilter}
                   selectedIds={selectedIds}
@@ -2129,7 +2163,7 @@ const ClientDetailPage: React.FC = () => {
                   onToggleAllItems={toggleAllItems}
                   onCompletDragEnd={handleCompletDragEnd}
                   remiseEditor={remiseEditor}
-                /></div><MobileCompletCards rows={completRows} detail={detailEnabled} soldeInitial={contact?.solde ?? 0} products={products} remises={history?.remises ?? []} visibleIds={visibleIds} showInitialRow={!hasDateFilter} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onToggleAllItems={toggleAllItems} onCompletDragEnd={handleCompletDragEnd} remiseEditor={remiseEditor} /></>
+                /></div>}{isCompactHistory && <MobileCompletCards rows={completRows} detail={detailEnabled} soldeInitial={contact?.solde ?? 0} products={products} remises={history?.remises ?? EMPTY_HISTORY_DATA} visibleIds={visibleIds} showInitialRow={!hasDateFilter} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onToggleAllItems={toggleAllItems} onCompletDragEnd={handleCompletDragEnd} remiseEditor={remiseEditor} />}</>
           )}
 
           {/* ── Bons Sortie ── */}

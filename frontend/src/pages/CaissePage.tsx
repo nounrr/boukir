@@ -41,7 +41,7 @@ import { canModifyPayments } from '../utils/permissions';
 import { formatDatabaseDateTimeLiteral, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
-import { paymentsApi, refreshPaymentsPage, useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useCreateMultiClientChequeMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import { paymentsApi, refreshPaymentsPage, useGetPaymentsPagedQuery, useCreatePaymentMutation, useCreateMultiClientChequeMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import type { MultiClientChequeData } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
@@ -189,8 +189,6 @@ const CaissePage = () => {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
-  const { data: paymentsForHistory, isError: isPaymentHistoryError, refetch: refetchPaymentHistory } =
-    useGetPaymentsQuery(undefined, { skip: !isPrintModalOpen });
   const skipRemiseBalances = !isCreateModalOpen || !loadRemiseBalances;
   const { data: clientRemisesRaw = EMPTY_REMISE_ROWS, isFetching: isLoadingRemiseAccounts, isError: isRemiseAccountsError, refetch: refetchRemiseAccounts } =
     useGetClientRemisesQuery(undefined, { skip: skipRemiseBalances });
@@ -3611,9 +3609,6 @@ const paymentValidationSchema = Yup.object({
           payment={selectedPayment}
           client={selectedPayment.type_paiement === 'Client' ? clients.find(c => c.id === selectedPayment.contact_id) : undefined}
           fournisseur={selectedPayment.type_paiement === 'Fournisseur' ? fournisseurs.find(f => f.id === selectedPayment.contact_id) : undefined}
-          allPayments={paymentsForHistory}
-          historyError={isPaymentHistoryError}
-          onRetryHistory={refetchPaymentHistory}
         />
       )}
 

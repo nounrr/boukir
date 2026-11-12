@@ -70,7 +70,7 @@ export const paymentsApi = api.injectEndpoints({
     }),
 
     getPaymentPrintBalance: builder.query<PaymentPrintBalance, number>({
-      query: (id) => ({ url: `/payments/${id}/print-balance` }),
+      query: (id) => ({ url: `/payments/${id}/print-balance`, timeout: 15000 }),
       providesTags: (_result, _error, id) => [{ type: 'Payment', id }, 'Contact'],
     }),
 

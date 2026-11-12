@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Printer, Download } from 'lucide-react';
 import PaymentPrintTemplate from './PaymentPrintTemplate';
-import { useGetPaymentPrintBonsContextQuery } from '../store/api/bonsApi';
+import { useGetPaymentPrintBalanceQuery } from '../store/api/paymentsApi';
 
 interface PaymentPrintModalProps {
   isOpen: boolean;
@@ -11,9 +11,6 @@ interface PaymentPrintModalProps {
   payment: any;
   client?: any;
   fournisseur?: any;
-  allPayments?: any[]; // Tous les paiements pour le calcul du solde
-  historyError: boolean;
-  onRetryHistory: () => void;
 }
 
 const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
@@ -22,22 +19,15 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
   payment,
   client,
   fournisseur,
-  allPayments,
-  historyError,
-  onRetryHistory,
 }) => {
   const [size, setSize] = useState<'A4' | 'A5'>('A5');
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  // Récupérer les bons nécessaires pour le calcul du solde cumulé (comme ContactsPage)
-  const { data: bonsContext, isError: bonsError, refetch: retryBons } = useGetPaymentPrintBonsContextQuery(undefined, { skip: !isOpen });
-  const isReady = Boolean(allPayments && bonsContext);
-  const sorties = bonsContext?.sorties || [];
-  const comptants = bonsContext?.comptants || [];
-  const commandes = bonsContext?.commandes || [];
-  const avoirsClient = bonsContext?.avoirsClient || [];
-  const avoirsFournisseur = bonsContext?.avoirsFournisseur || [];
+  // Le serveur calcule le solde historique du paiement sans charger tout le journal.
+  const { currentData: printBalance, isError: balanceError, refetch: retryBalance } =
+    useGetPaymentPrintBalanceQuery(Number(payment?.id), { skip: !isOpen || !payment?.id });
+  const isReady = Boolean(printBalance);
 
   if (!isOpen) return null;
 
@@ -182,11 +172,8 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
         <div className="flex-1 overflow-auto bg-gray-100 p-4">
           {!isReady ? (
             <p className="p-4 text-center text-sm text-gray-700" role="status">
-              {historyError || bonsError ? (
-                <>Historique indisponible. <button type="button" className="underline" onClick={() => {
-                  if (historyError) onRetryHistory();
-                  if (bonsError) retryBons();
-                }}>Réessayer</button></>
+              {balanceError ? (
+                <>Historique indisponible. <button type="button" className="underline" onClick={() => { retryBalance(); }}>Réessayer</button></>
               ) : 'Chargement de l’historique…'}
             </p>
           ) : (
@@ -201,12 +188,6 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
                 client={client} 
                 fournisseur={fournisseur} 
                 size={size} 
-                allPayments={allPayments}
-                bonsSorties={sorties}
-                bonsComptants={comptants}
-                bonsCommandes={commandes}
-                bonsAvoirsClient={avoirsClient}
-                bonsAvoirsFournisseur={avoirsFournisseur}
               />
             </div>
           </div>
