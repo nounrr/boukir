@@ -132,6 +132,7 @@ import { ensureUiSettingsTable } from './utils/uiSettings.js';
 import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
 import { ensureAbsenceSchema } from './utils/absences.js';
 import { ensureFondCaissePermissionSchema } from './utils/fondCaissePermissions.js';
+import { ensureNotificationSchema } from './utils/ensureNotificationSchema.js';
 import { ensureStatsDetailsPermissionSchema } from './utils/statsDetailsPermissions.js';
 import { ensureSalePriceCorrectionPermissionSchema } from './utils/salePriceCorrectionPermissions.js';
 import { ensurePdgBoardSchema } from './db/ensurePdgBoardSchema.js';
@@ -164,6 +165,7 @@ async function ensureSchemas() {
   await ensureAccessScheduleTables();
   await ensureAbsenceSchema();
   await ensureFondCaissePermissionSchema();
+  await ensureNotificationSchema();
   await ensureStatsDetailsPermissionSchema();
   await ensureSalePriceCorrectionPermissionSchema();
   await ensurePdgBoardSchema();

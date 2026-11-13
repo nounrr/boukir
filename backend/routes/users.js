@@ -588,6 +588,7 @@ router.post('/request-artisan', async (req, res, next) => {
       return res.status(401).json({ message: 'Token invalide' });
     }
 
+    const requestedType = req.body?.type_compte === 'Promoteur' ? 'Promoteur' : 'Artisan';
     await connection.beginTransaction();
 
     const [rows] = await connection.query(
@@ -643,11 +644,11 @@ router.post('/request-artisan', async (req, res, next) => {
     await connection.query(
       `UPDATE contacts
        SET demande_artisan = TRUE,
-           type_compte_demande = 'Artisan',
+           type_compte_demande = ?,
            artisan_approuve = FALSE,
            updated_at = NOW()
        WHERE id = ?`,
-      [user.id]
+      [requestedType, user.id]
     );
 
     await connection.commit();

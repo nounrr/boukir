@@ -515,21 +515,27 @@ function createServiceRequest({
         actorName,
       ]
     );
-    deliveries = await enqueueOperationalNotifications(connection, {
-      serviceRequestId: requestId,
-      event: OPERATIONAL_NOTIFICATION_EVENTS.CREATED,
-      audiences: ['CLIENT'],
-      versionKey: `created:${requestId}`,
-      context: {
-        id: requestId,
-        request_number: requestNumber,
-        requester_contact_id: contactId,
-        client_phone: contact.telephone,
-        client_locale: contact.locale,
-        service_name: service?.nom || explicitCategory?.nom || validation.value.title,
-        service_name_ar: service?.nom_ar || explicitCategory?.nom_ar || validation.value.title,
-      },
-    });
+    try {
+      deliveries = await enqueueOperationalNotifications(connection, {
+        serviceRequestId: requestId,
+        event: OPERATIONAL_NOTIFICATION_EVENTS.CREATED,
+        audiences: ['CLIENT'],
+        versionKey: `created:${requestId}`,
+        context: {
+          id: requestId,
+          request_number: requestNumber,
+          requester_contact_id: contactId,
+          client_phone: contact.telephone,
+          client_locale: contact.locale,
+          service_name: service?.nom || explicitCategory?.nom || validation.value.title,
+          service_name_ar: service?.nom_ar || explicitCategory?.nom_ar || validation.value.title,
+        },
+      });
+    } catch (notificationError) {
+      // The request itself is saved; only the confirmation notification is lost (logged for the team).
+      console.error('Service request notification could not be queued:', notificationError?.message || notificationError);
+      deliveries = [];
+    }
     await connection.commit();
     committed = true;
     await dispatchOperationalNotificationsSafely(deliveries);
