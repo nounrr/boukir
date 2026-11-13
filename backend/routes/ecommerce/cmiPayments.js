@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import pool from '../../db/pool.js';
+import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../../middleware/auth.js';
+import { contactLocale, notifyCustomer, soldePaymentMessage } from '../../utils/customerNotify.js';
+import { getContactSoldeCumule } from '../../utils/soldeCumule.js';
+import { ensureSoldePaymentSchema, isSoldeOid, makeSoldeOid, processSoldeResult, validateSoldeAmount } from '../../utils/soldePayment.js';
 import {
   buildCmiPaymentForm,
   cmiAmountsMatch,
@@ -89,6 +94,14 @@ function pick(params, key, maxLength) {
   return String(value).slice(0, maxLength);
 }
 
+// "Payer mon solde": the same result page, flagged solde=1 (the apps read the status and go back to the balance).
+function soldeResultUrl(config, { lang, status, oid }) {
+  const safeLang = ['fr', 'ar', 'en', 'zh'].includes(lang) ? lang : 'fr';
+  const query = new URLSearchParams({ status, solde: '1' });
+  if (oid) query.set('oid', oid);
+  return `${config.shopPublicUrl}/${safeLang}/checkout/payment-result?${query.toString()}`;
+}
+
 function resultUrl(config, { lang, status, orderNumber }) {
   const safeLang = ['fr', 'ar', 'en', 'zh'].includes(lang) ? lang : 'fr';
   const query = new URLSearchParams({ status });
@@ -153,6 +166,18 @@ async function processCmiResult(params, source) {
 
   const result = { hashValid, approved, orderFound: false, amountValid: false, order: null, lang, oid };
   if (!hashValid || !oid) return result;
+
+  if (isSoldeOid(oid)) {
+    await ensureSoldePaymentSchema(pool);
+    const solde = await processSoldeResult(pool, params, { source, approved, oid, hashValid, lang });
+    if (solde.payment?.first) {
+      void (async () => {
+        const locale = await contactLocale(solde.payment.contact_id);
+        await notifyCustomer(solde.payment.contact_id, { kind: 'order', ...soldePaymentMessage({ amount: solde.payment.amount, locale }), href: '/balance' });
+      })().catch(() => {});
+    }
+    return solde;
+  }
 
   await ensureCmiPaymentSchema();
   const connection = await pool.getConnection();
@@ -304,6 +329,7 @@ async function handleBrowserReturn(req, res, expectedStatus) {
       // Ex. test de certification "clé de hachage invalide" (3D-1004) : on affiche un échec.
       status = 'failed';
     }
+    if (result.solde) return res.redirect(303, soldeResultUrl(config, { lang: result.lang, status, oid: result.oid }));
     const orderNumber = result.order?.order_number
       || (status === 'failed' ? await findOrderNumberByOid(result.oid) : null);
     return res.redirect(303, resultUrl(config, { lang: result.lang, status, orderNumber }));
@@ -421,6 +447,64 @@ router.post('/orders/:orderNumber/pay', async (req, res, next) => {
 
     const payment = await createCmiPaymentForOrder(pool, order, { locale: req.body?.locale });
     res.json({ cmi_payment: { url: payment.url, fields: payment.fields } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function customerIdFromToken(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return null;
+  try {
+    return jwt.verify(token, getJwtSecret())?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// POST /api/ecommerce/payments/cmi/solde { amount?, locale } -> signed CMI form to pay (part of) the credit balance by card
+router.post('/solde', async (req, res, next) => {
+  try {
+    const contactId = customerIdFromToken(req);
+    if (!contactId) return res.status(401).json({ message: 'Authentification requise' });
+    if (!isCmiConfigured()) {
+      return res.status(503).json({ message: 'Paiement par carte indisponible', error_type: 'CMI_NOT_CONFIGURED' });
+    }
+    const [rows] = await pool.query(
+      'SELECT id, nom_complet, email, telephone, is_solde, shipping_address_line1, shipping_city FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [contactId]
+    );
+    const contact = rows[0];
+    if (!contact) return res.status(404).json({ message: 'Utilisateur introuvable' });
+    if (!Number(contact.is_solde)) {
+      return res.status(403).json({ message: 'Votre compte n\'est pas autorisé à payer en solde', error_type: 'SOLDE_NOT_ALLOWED' });
+    }
+
+    const owed = await getContactSoldeCumule(pool, contactId);
+    const check = validateSoldeAmount({ requested: req.body?.amount, owed });
+    if (!check.ok) return res.status(check.status).json({ message: check.message, error_type: check.error_type, owed: Math.round(owed * 100) / 100, min: check.min });
+
+    await ensureSoldePaymentSchema(pool);
+    const config = getCmiConfig();
+    const oid = makeSoldeOid(contactId);
+    const lang = normalizeCmiLang(req.body?.locale);
+    const form = buildCmiPaymentForm({
+      oid,
+      amount: check.amount,
+      locale: req.body?.locale,
+      customerName: contact.nom_complet,
+      customerEmail: contact.email,
+      customerPhone: contact.telephone,
+      address: contact.shipping_address_line1,
+      city: contact.shipping_city,
+      shopUrl: soldeResultUrl(config, { lang, status: 'cancel', oid }),
+    }, config);
+    await pool.query(
+      "INSERT INTO solde_payment_transactions (contact_id, oid, amount, currency, status) VALUES (?, ?, ?, ?, 'initiated')",
+      [contactId, oid, check.amount, config.currency]
+    );
+    res.json({ cmi_payment: { url: form.url, fields: form.fields }, oid, amount: check.amount, owed: Math.round(owed * 100) / 100 });
   } catch (err) {
     next(err);
   }

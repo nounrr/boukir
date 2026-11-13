@@ -45,6 +45,19 @@ export function remiseCreditedMessage({ amount, total, locale }) {
   }[lang];
 }
 
+/** Message sent when a card payment of the credit balance was accepted by the bank. */
+export function soldePaymentMessage({ amount, locale }) {
+  const lang = pickLang(locale);
+  const a = money(amount);
+  return {
+    fr: { title: 'Paiement reçu', body: `Votre paiement de ${a} a été accepté. Il sera validé par notre équipe.` },
+    en: { title: 'Payment received', body: `Your payment of ${a} was accepted. Our team will validate it.` },
+    es: { title: 'Pago recibido', body: `Su pago de ${a} fue aceptado. Nuestro equipo lo validará.` },
+    ar: { title: 'تم استلام الدفعة', body: `تم قبول دفعتك بقيمة ${a}. سيتحقق منها فريقنا.` },
+    zh: { title: '已收到付款', body: `您的 ${a} 付款已被接受，我们的团队将进行确认。` },
+  }[lang];
+}
+
 const ROLE_NAME = {
   Promoteur: { fr: 'Promoteur', en: 'Promoter', es: 'Promotor', ar: 'مروّج', zh: '开发商' },
   Artisan: { fr: 'Artisan', en: 'Artisan', es: 'Artesano', ar: 'حرفي', zh: '工匠' },
