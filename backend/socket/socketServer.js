@@ -107,6 +107,8 @@ export function initializeSocketServer(httpServer) {
 
     // Join user to their personal room
     socket.join(`user:${socket.user.id}`);
+    // Customers (contacts) also join a room of their own: employee and contact ids share the same numbers.
+    if (socket.user.type === 'contact') socket.join(`contact:${socket.user.id}`);
 
     // Every backoffice employee role receives cash-register updates.
     // E-commerce contacts are intentionally excluded from this room.
@@ -205,6 +207,12 @@ export function emitCashRegisterChange(data) {
   }
   io.to('cash-register-notifications').emit('cash-register:changed', data);
   console.log('Cash-register change emitted to all employee roles:', data);
+}
+
+/** Emit an event to one e-commerce customer (all of their open apps). */
+export function emitToContact(contactId, event, data) {
+  if (!io) return;
+  io.to(`contact:${contactId}`).emit(event, data);
 }
 
 /**

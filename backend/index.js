@@ -23,6 +23,7 @@ import jwt from 'jsonwebtoken';
 import employeesRouter from './routes/employees.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
+import pushTokensRouter from './routes/pushTokens.js';
 
 import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
@@ -398,6 +399,7 @@ app.get('/api/db/info', requireRole('PDG'), (_req, res) => {
 // Routes
 app.use('/api/employees', employeesRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/users/auth', pushTokensRouter); // customer phones' push tokens
 app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 
 app.use('/api/categories', categoriesRouter);

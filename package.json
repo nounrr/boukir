@@ -8,6 +8,7 @@
     "server": "node backend/index.js",
     "dev:full": "concurrently \"npm:server\" \"npm:dev\"",
     "db:ping": "node backend/scripts/db-ping.js",
+    "db:check": "node backend/scripts/check-schema.js",
     "db:migrate": "node backend/scripts/run-migrations.js run",
     "db:migrate:one": "node backend/scripts/run-single-migration.js",
     "db:migrate:list": "node backend/scripts/run-migrations.js list",

@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
 import { emitToPDG } from '../socket/socketServer.js';
+import { accountRequestMessage, contactLocale, notifyCustomer } from '../utils/customerNotify.js';
 import { getWhtspStatus, isWhtspServiceConfigured, sendWhtspMedia, sendWhtspText } from '../utils/whtspService.js';
 import { requireRole } from '../middleware/auth.js';
 
@@ -153,6 +154,10 @@ router.post('/artisan-requests/:id/approve', requireRole('PDG'), async (req, res
 
     await connection.commit();
 
+    void contactLocale(contact.id)
+      .then((locale) => notifyCustomer(contact.id, { kind: 'account', ...accountRequestMessage({ approved: true, role: approvedType, locale }), href: '/account' }))
+      .catch(() => {});
+
     // Emit socket event to PDG users
     emitToPDG('artisan-request:approved', {
       contact_id: parseInt(id),
@@ -185,7 +190,7 @@ router.post('/artisan-requests/:id/reject', requireRole('PDG'), async (req, res,
     await connection.beginTransaction();
 
     const [contacts] = await connection.query(
-      `SELECT id, demande_artisan, artisan_approuve FROM contacts WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE`,
+      `SELECT id, demande_artisan, artisan_approuve, type_compte_demande FROM contacts WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE`,
       [id]
     );
 
@@ -210,6 +215,10 @@ router.post('/artisan-requests/:id/reject', requireRole('PDG'), async (req, res,
     );
 
     await connection.commit();
+
+    void contactLocale(Number(id))
+      .then((locale) => notifyCustomer(Number(id), { kind: 'account', ...accountRequestMessage({ approved: false, role: contacts[0].type_compte_demande || 'Artisan', locale }), href: '/account' }))
+      .catch(() => {});
 
     // Emit socket event to PDG users
     emitToPDG('artisan-request:rejected', {

@@ -14,6 +14,7 @@ import { getStoreLocation, haversineDistanceKm, normalizeLatLng } from '../../ut
 import { isCmiConfigured } from '../../utils/cmiPayment.js';
 import { cmiOrderToken, createCmiPaymentForOrder } from './cmiPayments.js';
 import { unitFromRow, unitSellingPrice } from '../../utils/unitPrice.js';
+import { contactLocale, notifyCustomer, orderStatusMessage, remiseCreditedMessage } from '../../utils/customerNotify.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -3183,6 +3184,24 @@ router.put('/:id/status', async (req, res, next) => {
     const earned_remise_amount = await awardEcommerceOrderRemise(connection, updatedOrder);
 
     await connection.commit();
+
+    // Tell the customer (live in the app + phone push). Fire-and-forget: never blocks or fails the update.
+    if (updatedOrder?.user_id) {
+      const customerId = updatedOrder.user_id;
+      const newStatus = status || currentOrder.status;
+      void (async () => {
+        const locale = await contactLocale(customerId);
+        const [numRows] = await pool.query('SELECT order_number FROM ecommerce_orders WHERE id = ?', [orderId]);
+        const number = numRows?.[0]?.order_number || `#${orderId}`;
+        if (newStatus !== currentOrder.status) {
+          await notifyCustomer(customerId, { kind: newStatus === 'delivered' ? 'delivered' : 'order', ...orderStatusMessage({ number, status: newStatus, locale }), href: `/orders/${orderId}`, data: { order_id: orderId, status: newStatus } });
+        }
+        if (earned_remise_amount > 0) {
+          const [bal] = await pool.query('SELECT remise_balance FROM contacts WHERE id = ?', [customerId]);
+          await notifyCustomer(customerId, { kind: 'remise', ...remiseCreditedMessage({ amount: earned_remise_amount, total: Number(bal?.[0]?.remise_balance || 0), locale }), href: '/balance', data: { order_id: orderId } });
+        }
+      })().catch((error) => console.warn('Order notification failed:', error?.message || error));
+    }
 
     res.json({
       message: 'Commande mise à jour avec succès',

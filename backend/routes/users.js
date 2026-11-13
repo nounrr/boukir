@@ -1194,7 +1194,7 @@ router.get('/me', async (req, res, next) => {
               shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
               societe, ice, is_company, is_solde,
               plafond, montant_garantie, numero_garantie,
-              demande_artisan, artisan_approuve,
+              demande_artisan, artisan_approuve, type_compte_demande,
               COALESCE(remise_balance, 0) AS remise_balance
        FROM contacts WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
       [decoded.id]
@@ -1267,6 +1267,7 @@ router.get('/me', async (req, res, next) => {
         created_at: user.created_at,
         demande_artisan: !!user.demande_artisan,
         artisan_approuve: !!user.artisan_approuve,
+        type_compte_demande: user.type_compte_demande || null,
         remise_balance: Number(user.remise_balance || 0),
         maalem_profile,
       },
