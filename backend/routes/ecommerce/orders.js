@@ -15,6 +15,7 @@ import { isCmiConfigured } from '../../utils/cmiPayment.js';
 import { cmiOrderToken, createCmiPaymentForOrder } from './cmiPayments.js';
 import { unitFromRow, unitSellingPrice } from '../../utils/unitPrice.js';
 import { contactLocale, notifyCustomer, orderStatusMessage, remiseCreditedMessage } from '../../utils/customerNotify.js';
+import { loadStatementDocument, STATEMENT_DOCUMENT_SOURCES } from '../../utils/statementDocument.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -2769,6 +2770,26 @@ router.get('/solde', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+// GET /api/ecommerce/orders/solde/documents/:source/:id
+// The lines of one document of the signed-in customer's credit statement (store purchase, credit note, payment):
+// products with quantity, unit price, discount and total, like the customer sheet in the back-office. Own documents only.
+router.get('/solde/documents/:source/:id', async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Authentification requise' });
+    const source = String(req.params.source || '').toUpperCase();
+    const id = Number.parseInt(String(req.params.id), 10);
+    if (!STATEMENT_DOCUMENT_SOURCES.includes(source) || !Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Document invalide' });
+    }
+    const result = await loadStatementDocument(pool, source, id, userId);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    return res.json(result.document);
+  } catch (err) {
+    return next(err);
   }
 });
 
