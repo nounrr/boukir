@@ -133,6 +133,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Accès commentaires & rappels', to: '/employees/client-collaboration-permissions', show: user?.role === 'PDG' },
         { name: 'Permissions avis Maalem', to: '/employees/maalem-review-permissions', show: user?.role === 'PDG' },
         { name: 'Client', to: '/clients', show: user?.role !== 'Employé' },
+        { name: 'Clients e-commerce', to: '/clients-ecommerce', show: user?.role === 'PDG' },
         { name: 'Fournisseur', to: '/fournisseurs', show: user?.role !== 'Employé' },
         { name: 'Charge', to: '/charges', show: user?.role === 'PDG' },
         { name: 'Paramètres UI', to: '/settings/ui', show: user?.role === 'PDG' },

@@ -31,6 +31,7 @@ const EmployeeArchivePage = React.lazy(() => import('./pages/EmployeeArchivePage
 const EmployeeDocumentsPage = React.lazy(() => import('./pages/EmployeeDocumentsPage'));
 const StockDepot2Page = React.lazy(() => import('./pages/StockDepot2Page'));
 const ClientPage = React.lazy(() => import('./pages/ClientPage'));
+const EcommerceClientsPage = React.lazy(() => import('./pages/EcommerceClientsPage'));
 const ClientDetailPage = React.lazy(() => import('./pages/ClientPage').then(m => ({ default: m.ClientDetailPage })));
 const FournisseurPage = React.lazy(() => import('./pages/FournisseurPage'));
 const FournisseurDetailPage = React.lazy(() => import('./pages/FournisseurPage').then(m => ({ default: m.FournisseurDetailPage })));
@@ -424,6 +425,13 @@ const AppContent: React.FC = () => {
           }
         />
 
+        <Route path="/clients-ecommerce" element={
+          <ProtectedRoute requiredRole="PDG">
+            <LayoutWithAccessCheck>
+              <EcommerceClientsPage />
+            </LayoutWithAccessCheck>
+          </ProtectedRoute>
+        } />
         <Route path="/clients" element={
           <ProtectedRoute forbiddenRoles={['Employé']}>
             <LayoutWithAccessCheck>

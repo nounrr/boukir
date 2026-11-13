@@ -59,14 +59,14 @@ const getMediaPayloadFromUrl = async (rawUrl) => {
 };
 
 // GET /api/notifications/count - Get count of pending artisan requests (PDG only)
-router.get('/count', async (req, res, next) => {
+router.get('/count', requireRole('PDG'), async (req, res, next) => {
   try {
     const [result] = await pool.query(
       `SELECT COUNT(*) as count 
        FROM contacts 
        WHERE demande_artisan = TRUE 
-         AND artisan_approuve = FALSE 
-         AND deleted_at IS NULL`
+         AND COALESCE(artisan_approuve, 0) = 0
+         AND deleted_at IS NULL AND archived_at IS NULL`
     );
 
     res.json({
@@ -79,20 +79,20 @@ router.get('/count', async (req, res, next) => {
 });
 
 // GET /api/notifications/artisan-requests - Get recent pending requests (PDG only)
-router.get('/artisan-requests', async (req, res, next) => {
+router.get('/artisan-requests', requireRole('PDG'), async (req, res, next) => {
   try {
-    const { limit = 5 } = req.query;
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(req.query.limit) || 5)));
 
     const [requests] = await pool.query(
       `SELECT 
         id, nom_complet, prenom, nom, email, telephone, avatar_url, created_at, type_compte_demande
        FROM contacts 
        WHERE demande_artisan = TRUE 
-         AND artisan_approuve = FALSE 
-         AND deleted_at IS NULL
+         AND COALESCE(artisan_approuve, 0) = 0
+         AND deleted_at IS NULL AND archived_at IS NULL
        ORDER BY created_at DESC
        LIMIT ?`,
-      [parseInt(limit)]
+      [limit]
     );
 
     res.json(requests);
@@ -103,40 +103,52 @@ router.get('/artisan-requests', async (req, res, next) => {
 });
 
 // POST /api/notifications/artisan-requests/:id/approve - Approve artisan request (PDG only)
-router.post('/artisan-requests/:id/approve', async (req, res, next) => {
+router.post('/artisan-requests/:id/approve', requireRole('PDG'), async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
-    const { id } = req.params;
-    const { note } = req.body;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: 'Identifiant invalide' });
+    const { note } = req.body || {};
 
     await connection.beginTransaction();
 
     const [contacts] = await connection.query(
       `SELECT id, nom_complet, email, demande_artisan, artisan_approuve, type_compte_demande
-       FROM contacts WHERE id = ? AND deleted_at IS NULL`,
+       FROM contacts WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE`,
       [id]
     );
 
     if (contacts.length === 0) {
+      await connection.rollback();
       return res.status(404).json({ message: 'Utilisateur introuvable' });
     }
 
     const contact = contacts[0];
 
-    if (!contact.demande_artisan || contact.artisan_approuve) {
+    if (!Number(contact.demande_artisan) || Number(contact.artisan_approuve)) {
+      await connection.rollback();
       return res.status(400).json({ message: 'Demande déjà traitée ou inexistante' });
+    }
+
+    const requestedType = contact.type_compte_demande || 'Artisan';
+    const approvedType = requestedType === 'Artisan/Promoteur' ? 'Artisan' : requestedType;
+    if (!['Artisan', 'Promoteur'].includes(approvedType)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Type de compte demandé invalide' });
     }
 
     await connection.query(
       `UPDATE contacts 
        SET artisan_approuve = TRUE,
            artisan_approuve_le = NOW(),
+           artisan_approuve_par = ?,
+           demande_artisan = FALSE,
            artisan_note_admin = ?,
-           type_compte = COALESCE(type_compte_demande, 'Artisan'),
+           type_compte = ?,
            type_compte_demande = NULL,
            updated_at = NOW()
        WHERE id = ?`,
-      [note || null, id]
+      [req.user.id, note || null, approvedType, id]
     );
 
     await connection.commit();
@@ -163,26 +175,34 @@ router.post('/artisan-requests/:id/approve', async (req, res, next) => {
 });
 
 // POST /api/notifications/artisan-requests/:id/reject - Reject artisan request (PDG only)
-router.post('/artisan-requests/:id/reject', async (req, res, next) => {
+router.post('/artisan-requests/:id/reject', requireRole('PDG'), async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
-    const { id } = req.params;
-    const { note } = req.body;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: 'Identifiant invalide' });
+    const { note } = req.body || {};
 
     await connection.beginTransaction();
 
     const [contacts] = await connection.query(
-      `SELECT id, demande_artisan FROM contacts WHERE id = ? AND deleted_at IS NULL`,
+      `SELECT id, demande_artisan, artisan_approuve FROM contacts WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE`,
       [id]
     );
 
     if (contacts.length === 0) {
+      await connection.rollback();
       return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+
+    if (!Number(contacts[0].demande_artisan) || Number(contacts[0].artisan_approuve)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Demande déjà traitée ou inexistante' });
     }
 
     await connection.query(
       `UPDATE contacts 
        SET demande_artisan = FALSE,
+           type_compte_demande = NULL,
            artisan_note_admin = ?,
            updated_at = NOW()
        WHERE id = ?`,

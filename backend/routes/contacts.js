@@ -4,6 +4,7 @@ import { correctValidatedClientBon } from '../utils/clientHistoryCorrection.js';
 import { requireRoles } from '../middleware/auth.js';
 import { getClientCreditState } from '../utils/bonExceptionAuthorization.js';
 import express from 'express';
+import ecommerceClientsRouter from './ecommerceClients.js';
 import bcrypt from 'bcryptjs';
 import pool from '../db/pool.js';
 import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
@@ -16,6 +17,7 @@ import { attachContactHistoryModification } from '../utils/contactHistoryModific
 import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, clientChequeEcheancierListSql, tomorrowInCasablanca, parsePlafondEcheance } from '../utils/clientEcheancier.js';
 
 const router = express.Router();
+router.use('/ecommerce-clients', ecommerceClientsRouter);
 const GROUPED_CONTACT_COUNT_SQL = `COUNT(*) - COUNT(NULLIF(c.group_id, 0)) + COUNT(DISTINCT NULLIF(c.group_id, 0))`;
 
 const REMINDER_RESPONSE_FIELDS = [
