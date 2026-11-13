@@ -160,6 +160,9 @@ export async function ensureContactsCheckoutColumns(db = pool) {
 
 export async function ensureEcommerceOrdersRemiseColumns(db = pool) {
   await withSchemaLock(db, async (connection) => {
+    if (!(await columnExists(connection, 'ecommerce_orders', 'remise_manually_set'))) {
+      await execDdlWithRetry(connection, `ALTER TABLE ecommerce_orders ADD COLUMN remise_manually_set TINYINT(1) NOT NULL DEFAULT 0`);
+    }
     if (!(await columnExists(connection, 'ecommerce_orders', 'remise_earned_amount'))) {
       await execDdlWithRetry(connection, `ALTER TABLE ecommerce_orders ADD COLUMN remise_earned_amount DECIMAL(10,2) NOT NULL DEFAULT 0`);
     }

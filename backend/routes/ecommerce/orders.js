@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
+import { awardEcommerceOrderRemise } from '../../utils/ecommerceOrderRemise.js';
 import {
-  computeOrderItemRemiseBreakdown,
   ensureContactsCheckoutColumns,
   ensureContactsRemiseBalance,
   ensureEcommerceOrderItemsRemiseColumns,
@@ -3076,6 +3076,7 @@ router.put('/:id/status', async (req, res, next) => {
         updates.push('shipped_at = NOW()');
       } else if (status === 'delivered') {
         updates.push('delivered_at = NOW()');
+        updates.push('confirmed_at = COALESCE(confirmed_at, NOW())');
       } else if (status === 'cancelled') {
         updates.push('cancelled_at = NOW()');
       }
@@ -3146,31 +3147,16 @@ router.put('/:id/status', async (req, res, next) => {
       WHERE id = ?
     `, params);
 
-    // Award remise balance when order is confirmed + paid (authenticated users only)
-    // Idempotent by setting ecommerce_orders.remise_earned_at once.
+    // Read the latest eligibility and manual remise settings while holding the order lock.
     const [updatedRows] = await connection.query(
-      `
-      SELECT
-        id,
-        user_id,
-        status,
-        payment_status,
-        payment_method,
-        is_solde,
-        solde_amount,
-        confirmed_at,
-        total_amount,
-        remise_used_amount,
-        remise_earned_at
-      FROM ecommerce_orders
-      WHERE id = ?
-      LIMIT 1
-      `,
+      `SELECT id, user_id, status, payment_status, payment_method, is_solde,
+              solde_amount, confirmed_at, total_amount, remise_used_amount,
+              remise_earned_at, remise_earned_amount, remise_manually_set
+       FROM ecommerce_orders WHERE id = ? LIMIT 1`,
       [orderId]
     );
 
     const updatedOrder = updatedRows[0];
-    let earned_remise_amount = 0;
 
     // Solde: when an admin confirms a solde order, book the debt once in the ledger.
     // We keep solde info on the order itself (legacy-friendly fields).
@@ -3194,47 +3180,7 @@ router.put('/:id/status', async (req, res, next) => {
       }
     }
 
-    if (updatedOrder?.user_id && updatedOrder.payment_status === 'paid' && updatedOrder.confirmed_at !== null && !updatedOrder.remise_earned_at) {
-      const [urows] = await connection.query(
-        `SELECT type_compte FROM contacts WHERE id = ? LIMIT 1`,
-        [updatedOrder.user_id]
-      );
-      const typeCompte = urows?.[0]?.type_compte || 'Client';
-
-      // Compute per-item remise breakdown (snapshot on order items)
-      const breakdown = await computeOrderItemRemiseBreakdown(connection, orderId, typeCompte);
-      earned_remise_amount = Number(breakdown.total || 0);
-
-      // Try to mark order as awarded (idempotent)
-      const [awardRes] = await connection.query(
-        `UPDATE ecommerce_orders
-         SET remise_earned_amount = ?, remise_earned_at = NOW(), updated_at = NOW()
-         WHERE id = ? AND remise_earned_at IS NULL`,
-        [earned_remise_amount, orderId]
-      );
-
-      if (awardRes.affectedRows === 1) {
-        // Persist per-item details
-        for (const it of breakdown.items) {
-          await connection.query(
-            `UPDATE ecommerce_order_items
-             SET remise_percent_applied = ?, remise_amount = ?
-             WHERE id = ? AND order_id = ?`,
-            [it.remise_percent_applied, it.remise_amount, it.order_item_id, orderId]
-          );
-        }
-
-        // Credit contact balance (only when > 0)
-        if (earned_remise_amount > 0) {
-          await connection.query(
-            `UPDATE contacts
-             SET remise_balance = remise_balance + ?
-             WHERE id = ?`,
-            [earned_remise_amount, updatedOrder.user_id]
-          );
-        }
-      }
-    }
+    const earned_remise_amount = await awardEcommerceOrderRemise(connection, updatedOrder);
 
     await connection.commit();
 
@@ -3290,7 +3236,7 @@ router.put('/:id/remises', async (req, res, next) => {
 
     const [orders] = await connection.query(
       `
-      SELECT id, user_id, remise_earned_at, remise_earned_amount
+      SELECT id, user_id, status, payment_status, confirmed_at, remise_earned_at, remise_earned_amount, remise_manually_set
       FROM ecommerce_orders
       WHERE id = ?
       FOR UPDATE
@@ -3376,20 +3322,22 @@ router.put('/:id/remises', async (req, res, next) => {
 
     // Keep order aggregate in sync for backoffice display
     await connection.query(
-      `UPDATE ecommerce_orders SET remise_earned_amount = ?, updated_at = NOW() WHERE id = ?`,
+      `UPDATE ecommerce_orders SET remise_earned_amount = ?, remise_manually_set = 1, updated_at = NOW() WHERE id = ?`,
       [newTotal, orderId]
     );
 
-    // If the order already impacted contact balance, reconcile delta
+    // Reconcile an existing credit, or credit a paid/fulfilled legacy order for the first time.
+    let balanceDelta = 0;
     if (order?.user_id && order?.remise_earned_at && delta !== 0) {
       await connection.query(
-        `
-        UPDATE contacts
-        SET remise_balance = GREATEST(0, remise_balance + ?)
-        WHERE id = ?
-        `,
+        `UPDATE contacts SET remise_balance = GREATEST(0, remise_balance + ?) WHERE id = ?`,
         [delta, order.user_id]
       );
+      balanceDelta = delta;
+    } else if (!order.remise_earned_at) {
+      balanceDelta = await awardEcommerceOrderRemise(connection, {
+        ...order, remise_earned_amount: newTotal, remise_manually_set: 1,
+      });
     }
 
     await connection.commit();
@@ -3425,7 +3373,7 @@ router.put('/:id/remises', async (req, res, next) => {
       message: 'Remises mises à jour',
       order_id: orderId,
       remise_earned_amount: newTotal,
-      remise_balance_delta: delta,
+      remise_balance_delta: balanceDelta,
       items: (updatedItems || []).map((it) => ({
         ...it,
         unit_price: Number(it.unit_price),
