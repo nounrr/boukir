@@ -88,6 +88,7 @@ import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
 import absencesRouter from './routes/absences.js';
 import { auditRequestId } from './utils/modificationSource.js';
+import inventoryCountingRouter, { inventoryCountPublicRouter } from './routes/inventoryCounting.js';
 import pointageRouter, { wdlinkCallbackRouter } from './routes/pointage.js';
 import pdgBoardRouter from './routes/pdgBoard.js';
 import projetsRouter from './routes/projets.js';
@@ -219,6 +220,9 @@ app.use((req, _res, next) => {
     () => next()
   );
 });
+
+// A counting link is its own capability. Finish before JWT/access logging.
+app.use('/api/inventory-count/public', inventoryCountPublicRouter);
 
 // Optional authentication middleware (for public routes that benefit from auth data)
 const optionalAuth = (req, res, next) => {
@@ -481,6 +485,7 @@ app.use('/api/livraisons', livraisonsRouter);
 app.use('/api/delivery-runs', deliveryRunsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/inventory', inventoryRouter);
+app.use('/api/inventory-count', inventoryCountingRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/page-permissions', pagePermissionsRouter);
 app.use('/api/calc', calcRouter);

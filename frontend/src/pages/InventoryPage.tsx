@@ -1,3 +1,4 @@
+import InventoryCountPanel from '../components/inventory/InventoryCountPanel';
 import { filterInternalPriceFields } from '../utils/internalPrices';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, DollarSign, Download, Package, Search, TrendingUp, X } from 'lucide-react';
@@ -448,6 +449,8 @@ const InventoryPage: React.FC = () => {
             {filterDate ? `Date : ${filterDate}` : 'Toutes les dates'}
           </div>
         </header>
+
+        <InventoryCountPanel canManage={canCreate} />
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="inventory-filter-title">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

@@ -156,3 +156,42 @@ try {
 
 ---
 Besoin d'aide pour activer l'enregistrement en DB directement dans le code ? Je peux ajouter la logique et une migration automatique côté backend.
+
+
+## Comptage partagé par lien
+
+Dans `/inventaire`, le bloc **Comptages par lien** permet au PDG ou ManagerPlus
+ de créer un comptage et de copier son lien spécial. Cette page e-commerce
+ `/fr/comptage/<jeton>` ne figure dans aucun menu, ne demande pas de compte et
+ demande d’abord le nom complet. Le lien doit être partagé aux personnes qui
+ participent au comptage ; son remplacement invalide immédiatement l’ancien.
+ Le lien brut est affiché uniquement lors de sa génération, son empreinte est
+ conservée en base. Une clôture bloque les saisies tout en conservant les données.
+
+La recherche inclut les produits et variantes actifs, indépendamment du stock
+ ou de leur publication dans la boutique. Les quantités acceptent zéro et trois
+ décimales, avec point ou virgule. Chaque enregistrement volontaire s’ajoute aux
+ précédents, y compris pour le même produit et la même personne. Une nouvelle
+ tentative réseau du même enregistrement ne le duplique pas. Les noms déclarés
+ sont regroupés après normalisation des espaces et de la casse.
+
+Le tableau présente les totaux par produit ou variante et les quantités par
+ personne. L’historique conserve chaque saisie avec sa date. Les produits et
+ variantes sont distincts. Ce comptage ne modifie pas le stock réel.
+
+Les tables `inventory_count_sessions` et `inventory_count_entries` sont créées
+ automatiquement au premier accès. Les routes publiques sont limitées à la
+ lecture du titre, la recherche du catalogue sans prix/stock et l’ajout de saisies :
+ `GET /api/inventory-count/public/:token`, `GET .../:token/products`,
+ `POST .../:token/entries`. La consultation des résultats reste authentifiée
+ sous `/api/inventory-count/sessions`. La page est exclue de l’indexation et
+ utilise une politique `no-referrer`. En production, désactiver les journaux
+ d’accès Nginx pour cette page et le préfixe API public afin de ne pas conserver
+ les liens de participation.
+
+Validation : `node --test backend/utils/inventoryCounting.test.js
+ frontend/src/components/inventory/InventoryCountPanel.test.cjs`, puis dans
+ `ecom`, `node --test tests/inventory-count-form.test.cjs`.
+ Avec une connexion MySQL configurée, `node backend/scripts/test-inventory-count-mysql.mjs`
+ vérifie les vraies requêtes sur des tables temporaires, sans écrire dans les
+ données de production.
