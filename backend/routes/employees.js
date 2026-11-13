@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
+import { ensurePointageRequirementSchema } from '../utils/pointageRequirements.js';
 import { verifyToken, requireRole } from '../middleware/auth.js';
 import { grantClientPlafondAuthorizations } from '../utils/bonExceptionAuthorization.js';
 import { normalizeEmployeePagePermissions, requireEmployeePagePermission } from '../utils/employeePagePermissions.js';
@@ -16,6 +17,9 @@ import {
 const router = Router();
 
 router.use(verifyToken);
+router.use(async (_req, _res, next) => {
+  try { await ensurePointageRequirementSchema(pool); next(); } catch (error) { next(error); }
+});
 
 // Helper: convert undefined, null, or empty/whitespace-only strings to null; trim strings
 function clean(value) {
@@ -40,7 +44,7 @@ function parseAuthorizationCount(value, fieldName) {
 }
 
 const EMPLOYEE_SELECT = `
-  id, nom_complet, cin, date_embauche, role, salaire,
+  id, nom_complet, cin, date_embauche, role, salaire, pointage_obligatoire,
   bon_plafond_autorisations, bon_client_bloque_autorisations,
   created_by, updated_by, created_at, updated_at
 `;

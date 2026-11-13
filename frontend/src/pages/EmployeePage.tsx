@@ -9,6 +9,7 @@ import {
   useGetEmployeeSalaireEntriesQueryServer,
   useUpdateEmployeeSalaireEntryMutationServer,
 } from '../store/api/employeesApi.server';
+import { useSetEmployeePointageRequirementMutation } from '../store/api/pointageApi';
 import { useGetEmployeeDocsQuery, useGetDocumentTypesQuery } from '../store/api/employeeDocsApi';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
@@ -20,6 +21,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+
+const EmployeePointageCheckbox: React.FC<{ employee: Employee; editable: boolean }> = ({ employee, editable }) => {
+  const [setRequirement, { isLoading }] = useSetEmployeePointageRequirementMutation();
+  const checked = employee.pointage_obligatoire === true || Number(employee.pointage_obligatoire) === 1;
+  return <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700" title="L’obligation commence le jour de son activation.">
+    <input type="checkbox" aria-label={`Pointage obligatoire pour ${employee.nom_complet || employee.cin}`} checked={checked} disabled={!editable || isLoading} className="h-4 w-4 rounded border-slate-300 accent-blue-600 disabled:opacity-50" onChange={async event => {
+      try { await setRequirement({ id: employee.id, obligatoire: event.target.checked }).unwrap(); }
+      catch (error) { showError((error as { data?: { message?: string } })?.data?.message || 'Impossible de modifier le pointage obligatoire.'); }
+    }} />
+    {isLoading ? 'Enregistrement…' : checked ? 'Obligatoire' : 'Facultatif'}
+  </label>;
+};
 
 // Composant pour afficher les statistiques de documents d'un employé
 const EmployeeDocsStats: React.FC<{ employeeId: number }> = ({ employeeId }) => {
@@ -687,12 +700,13 @@ const EmployeePage: React.FC = () => { // NOSONAR
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
           {user?.role === 'PDG' ? 'Gestion des Employés' : 'Employés'}
         </h1>
         {(user?.role === 'PDG' || canAccessEmployeePage(user, 'archives')) && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {user?.role === 'PDG' && <Link to="/employees/pointage-settings" className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Clock size={18} /> Paramètres de la pointeuse</Link>}
             <Link 
               to="/employees/archive"
               className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors"
@@ -716,6 +730,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
           </div>
         )}
       </div>
+
+      <p className="mb-4 text-sm text-slate-600">Cochez « Pointage obligatoire » pour suivre chaque jour les entrées et sorties de l’employé, à partir de la date d’activation.</p>
 
       {/* Search */}
       <div className="mb-6">
@@ -782,7 +798,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -790,6 +806,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom Complet</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'embauche</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pointage obligatoire</th>
               {canViewSalaryDetails && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
               )}
@@ -848,6 +865,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       <span className="text-gray-400 text-sm">-</span>
                     )}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap"><EmployeePointageCheckbox employee={employee} editable={user?.role === 'PDG'} /></td>
                   {canViewSalaryDetails && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
@@ -924,7 +942,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                 {/* Accordéon avec statistiques et aperçu des documents - PDG seulement */}
                 {user?.role === 'PDG' && expandedEmployee === employee.id && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 bg-gray-50 border-t">
+                    <td colSpan={8 + Number(canViewSalaryDetails) + Number(user?.role === 'PDG')} className="px-6 py-4 bg-gray-50 border-t">
                       <EmployeeAccordionContent employee={employee} selectedMonth={selectedMonth} salaryMap={salaryMap} />
                     </td>
                   </tr>

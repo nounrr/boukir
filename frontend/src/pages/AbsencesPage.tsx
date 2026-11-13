@@ -457,6 +457,7 @@ const AbsencesPage: React.FC = () => {
   const canSee = canManage || Boolean(permissions?.statistiques);
 
   const [month, setMonth] = useState(currentMonthKey());
+  const [view, setView] = useState<'daily' | 'manual'>('daily');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Absence | null>(null);
   const [showAccess, setShowAccess] = useState(false);
@@ -524,7 +525,7 @@ const AbsencesPage: React.FC = () => {
           <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-blue-700"><CalendarDays className="h-4 w-4" /> Ressources humaines</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Pointage & absences</h1>
           <p className="mt-2 max-w-2xl text-sm text-gray-600">
-            Retrouvez les journées d’absence, les retards et les retenues de votre équipe.
+            Suivez les entrées, les sorties et les heures de travail de votre équipe, jour par jour.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -557,9 +558,15 @@ const AbsencesPage: React.FC = () => {
         </div>
       </header>
 
-      {canManage && <PointagePanel canConfigure={isPDG} />}
-
       {isPDG && showAccess && <AccessPanel />}
+
+      {canManage && <nav aria-label="Registres de présence" className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        <button type="button" aria-pressed={view === 'daily'} onClick={() => setView('daily')} className={`rounded-lg px-4 py-2.5 text-sm font-bold ${view === 'daily' ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>Présences du mois</button>
+        <button type="button" aria-pressed={view === 'manual'} onClick={() => setView('manual')} className={`rounded-lg px-4 py-2.5 text-sm font-bold ${view === 'manual' ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>Absences saisies</button>
+      </nav>}
+      {canManage && view === 'daily' && <PointagePanel month={month} onMonthChange={setMonth} canConfigure={isPDG} />}
+
+      {(!canManage || view === 'manual') && <>
 
       {isError ? <AbsenceLoadError message="Les absences n’ont pas pu être chargées. Réessayez pour consulter les données du mois." onRetry={refetch} /> : isLoading ? <div role="status" className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Chargement du récapitulatif…</div> : <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={CalendarDays} label="Absences du mois" value={String(totals.total)} accent="blue" />
@@ -668,6 +675,8 @@ const AbsencesPage: React.FC = () => {
       </section>
 
       <p className="flex items-start gap-2 px-1 text-xs leading-relaxed text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> Retenue : {fmtMAD(penaliteJour)} par journée entière, au prorata pour une absence partielle. Les montants sont reportés sur les salaires, les charges et le chiffre d’affaires.</p>
+
+      </>}
 
       {showModal && canManage && (
         <AbsenceFormModal

@@ -30,6 +30,7 @@ export interface AuthState {
 // Types pour les employés
 export interface Employee {
   id: number;
+  pointage_obligatoire?: boolean | number;
   nom_complet?: string | null;
   cin: string;
   date_embauche?: string | null;

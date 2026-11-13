@@ -1,111 +1,74 @@
-import React, { useEffect, useState } from 'react';
-import { useGetPointageConfigQuery, useSavePointageConfigMutation, useGetPointageStatusQuery, useGetPointageEventsQuery, useLinkPointageIdentityMutation } from '../../store/api/pointageApi';
-import { useGetAbsenceEmployeesQuery } from '../../store/api/absencesApi';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CalendarDays, CheckCircle2, Clock, Loader2, Users } from 'lucide-react';
+import { useGetDailyPresenceQuery } from '../../store/api/pointageApi';
+import type { DailyPresenceRow, DailyPresenceStatus } from '../../store/api/pointageApi';
 import PointagePhoto from './PointagePhoto';
-import { showError, showSuccess } from '../../utils/notifications';
+import PointageRawJournal from './PointageRawJournal';
 
-const localMonth = () => {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit',
-  }).formatToParts(new Date()).map(part => [part.type, part.value]));
-  return `${parts.year}-${parts.month}`;
+const statusLabels = { absent: 'Absent', present: 'Présent', termine: 'Travail terminé' };
+const statusStyles = { absent: 'bg-rose-50 text-rose-800 ring-rose-200', present: 'bg-blue-50 text-blue-800 ring-blue-200', termine: 'bg-emerald-50 text-emerald-800 ring-emerald-200' };
+const anomalyLabels: Record<string, string> = { sortie_sans_entree: 'Sortie sans entrée', sortie_manquante: 'Sortie manquante', sens_inconnu: 'Sens de passage à confirmer' };
+export const durationLabel = (minutes: number) => {
+  const total = Math.max(0, Math.floor(minutes || 0));
+  return `${Math.floor(total / 60)} h ${String(total % 60).padStart(2, '0')}`;
 };
-const directionLabels = { entree: 'Entrée', sortie: 'Sortie', inconnu: 'Sens à confirmer' };
-const methodLabels: Record<string, string> = { face: 'Visage', finger: 'Empreinte', faceAndFinger: 'Visage + empreinte', card: 'Carte' };
-const methodLabel = (method: string) => methodLabels[method] || method;
+const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' });
 
-function DeviceSettings() {
-  const { data, isLoading, isError, refetch } = useGetPointageConfigQuery();
-  const [save, { isLoading: saving }] = useSavePointageConfigMutation();
-  const [form, setForm] = useState({ device_key: '', local_ip: '', firmware: '', timezone: 'Africa/Casablanca', direction: 'inconnu' as 'entree' | 'sortie' | 'inconnu' });
-  const [entryCode, setEntryCode] = useState('');
-  const [exitCode, setExitCode] = useState('');
-  const [callbackUrl, setCallbackUrl] = useState('');
-  useEffect(() => {
-    if (!data) return;
-    setForm({ device_key: data.device_key, local_ip: data.local_ip, firmware: data.firmware, timezone: data.timezone, direction: data.direction });
-    setEntryCode(Object.entries(data.attendance_map).find(([, value]) => value === 'entree')?.[0] || '');
-    setExitCode(Object.entries(data.attendance_map).find(([, value]) => value === 'sortie')?.[0] || '');
-  }, [data]);
-  const submit = async (rotate = false) => {
-    if (entryCode.trim() && entryCode.trim() === exitCode.trim()) { showError('Utilisez deux codes différents pour l’entrée et la sortie.'); return; }
-    try {
-      const attendance_map: Record<string, string> = Object.create(null);
-      if (entryCode.trim()) attendance_map[entryCode.trim()] = 'entree';
-      if (exitCode.trim()) attendance_map[exitCode.trim()] = 'sortie';
-      const result = await save({ ...form, attendance_map, rotate_token: rotate }).unwrap();
-      if (result.callback_url) setCallbackUrl(result.callback_url);
-      showSuccess('Paramètres de la pointeuse enregistrés.');
-    } catch (error) { showError((error as { data?: { message?: string } })?.data?.message || 'Enregistrement impossible. Réessayez.'); }
-  };
-  if (isLoading) return <p role="status" className="p-4">Chargement des paramètres…</p>;
-  if (isError) return <p role="alert" className="p-4 text-red-700">Paramètres indisponibles. <button type="button" onClick={refetch} className="underline">Réessayer</button></p>;
-  return <div className="space-y-4 border-b border-slate-200 bg-slate-50 p-4">
-    <div><h3 className="font-semibold">Connexion Wdlink WDU505PROFP</h3><p className="mt-1 text-sm text-slate-600">Modifiez ces paramètres au magasin. L’appareil enverra ses passages à boukirdiamond.com. L’enregistrement des paramètres ne confirme pas encore la connexion physique.</p></div>
-    <form onSubmit={event => { event.preventDefault(); submit(); }} className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <label className="text-xs font-semibold">Numéro de série / deviceKey<input required pattern="[A-Za-z0-9_-]+" maxLength={64} value={form.device_key} onChange={e => setForm({ ...form, device_key: e.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-        <label className="text-xs font-semibold">IP locale au magasin (pour le réglage)<input maxLength={64} placeholder="192.168.1.…" value={form.local_ip} onChange={e => setForm({ ...form, local_ip: e.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-        <label className="text-xs font-semibold">Version du firmware<input maxLength={120} value={form.firmware} onChange={e => setForm({ ...form, firmware: e.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-        <label className="text-xs font-semibold">Fuseau horaire<input required value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-        <label className="text-xs font-semibold">Code de statut « Entrée »<input maxLength={32} placeholder="À vérifier sur l’appareil" value={entryCode} onChange={e => setEntryCode(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-        <label className="text-xs font-semibold">Code de statut « Sortie »<input maxLength={32} placeholder="À vérifier sur l’appareil" value={exitCode} onChange={e => setExitCode(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-        <label className="text-xs font-semibold">Si aucun code ne correspond<select value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value as typeof form.direction })} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="inconnu">Laisser le sens à confirmer</option><option value="entree">Appareil dédié aux entrées</option><option value="sortie">Appareil dédié aux sorties</option></select></label>
-      </div>
-      <div className="flex flex-wrap gap-3"><button disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Enregistrement…' : 'Enregistrer les paramètres'}</button>
-        {data?.configured && <button type="button" disabled={saving || !form.device_key} onClick={() => submit(true)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50">Remplacer l’adresse de réception</button>}</div>
-      <p className="text-xs text-slate-600">Une nouvelle adresse remplace immédiatement l’ancienne : il faudra la reporter dans la pointeuse. L’IP locale et le firmware servent de référence pour le réglage au magasin.</p>
-    </form>
-    {callbackUrl && <label className="block text-sm font-semibold">Adresse à copier dans le callback de l’appareil<textarea readOnly rows={3} value={callbackUrl} className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-xs" /><span className="mt-1 block text-xs font-normal text-amber-800">Copiez cette adresse maintenant : son secret sera masqué à la prochaine ouverture.</span></label>}
-  </div>;
+export function DailyPresenceTable({ rows }: { rows: DailyPresenceRow[] }) {
+  return <><p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500 sm:hidden">Faites défiler le tableau horizontalement pour voir les horaires et les heures travaillées.</p><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-600"><tr>{['Jour', 'Employé', 'Entrée / sortie', 'Présence', 'Temps de travail'].map(label => <th key={label} scope="col" className="whitespace-nowrap px-4 py-3 font-bold">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">
+    {rows.map(row => <tr key={row.key} className="align-top hover:bg-slate-50/70">
+      <td className="whitespace-nowrap px-4 py-4 font-semibold capitalize text-slate-800">{dateLabel(row.date_pointage)}</td>
+      <td className="min-w-[160px] px-4 py-4"><p className="font-semibold text-slate-900">{row.nom_complet || row.cin || `Employé #${row.employe_id}`}</p><p className="mt-1 text-xs text-slate-500">{row.role || row.cin}{row.obligatoire ? ' · Pointage obligatoire' : ''}</p><span className={`mt-2 inline-flex rounded-md px-2 py-1 text-xs font-bold ring-1 ring-inset sm:hidden ${statusStyles[row.statut]}`}>{statusLabels[row.statut]}</span></td>
+      <td className="min-w-[200px] px-4 py-3">
+        {row.entree ? <div className="space-y-2"><div className="flex items-center gap-3"><div className="min-w-[120px]"><span className="mr-3 text-xs text-slate-500">Entrée</span><time className="font-semibold tabular-nums">{row.entree}</time></div>{row.entree_event_id && row.entree_has_photo && <div className="[&>button>img]:h-9 [&>button>img]:w-9"><PointagePhoto eventId={row.entree_event_id} available /></div>}</div>
+          {row.sortie ? <div className="flex items-center gap-3"><div className="min-w-[120px]"><span className="mr-3 text-xs text-slate-500">Sortie</span><time className="font-semibold tabular-nums">{row.sortie}</time></div>{row.sortie_event_id && row.sortie_has_photo && <div className="[&>button>img]:h-9 [&>button>img]:w-9"><PointagePhoto eventId={row.sortie_event_id} available /></div>}</div> : <p className="text-xs text-slate-500">{row.anomalies.includes('sortie_manquante') ? 'Sortie manquante' : row.statut === 'present' ? 'Sortie attendue' : 'Aucune sortie enregistrée'}</p>}
+        </div> : <div><p className="text-xs text-slate-500">Aucune entrée enregistrée</p>{row.sortie && <p className="mt-1 text-xs text-amber-800">Sortie reçue : <time className="tabular-nums">{row.sortie}</time></p>}</div>}
+      </td>
+      <td className="min-w-[170px] px-4 py-4"><span className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-bold ring-1 ring-inset ${statusStyles[row.statut]}`}>{statusLabels[row.statut]}</span>
+        {row.anomalies.map(anomaly => <p key={anomaly} className="mt-2 text-xs text-amber-800">{anomalyLabels[anomaly] || anomaly}</p>)}
+        {row.absence_saisie && <p title={row.absence_saisie.motif || undefined} className="mt-2 text-xs text-slate-500">Absence saisie : {row.absence_saisie.type_absence === 'totale' ? 'journée entière' : 'partielle'}</p>}
+      </td>
+      <td className="whitespace-nowrap px-4 py-4"><p className="font-bold tabular-nums text-slate-900">{durationLabel(row.temps_travail_minutes)}</p>{row.temps_en_cours && <p className="mt-1 text-xs text-blue-700">En cours</p>}</td>
+    </tr>)}
+  </tbody></table></div></>;
 }
 
-export default function PointagePanel({ canConfigure = false }: { canConfigure?: boolean }) {
-  const [month, setMonth] = useState(localMonth);
-  const [page, setPage] = useState(1);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [personId, setPersonId] = useState('');
+export default function PointagePanel({ month, onMonthChange, canConfigure = false }: { month: string; onMonthChange: (month: string) => void; canConfigure?: boolean }) {
+  const [day, setDay] = useState('');
   const [employeeId, setEmployeeId] = useState('');
-  const { data: status, isError: statusError, refetch: retryStatus } = useGetPointageStatusQuery(undefined, { pollingInterval: 30000 });
-  const { currentData: data, isFetching, isError, refetch } = useGetPointageEventsQuery({ month, page }, { pollingInterval: 30000 });
-  const { data: employees = [], isError: employeesError } = useGetAbsenceEmployeesQuery();
-  const [linkIdentity, { isLoading: linking }] = useLinkPointageIdentityMutation();
-  const link = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!status?.device_key) return;
-    try {
-      await linkIdentity({ device_key: status.device_key, person_id: personId.trim(), employe_id: Number(employeeId) }).unwrap();
-      setPersonId(''); setEmployeeId(''); showSuccess('Identifiant associé à l’employé.');
-    } catch (error) {
-      showError((error as { data?: { message?: string } })?.data?.message || 'Association impossible. Réessayez.');
-    }
-  };
-  return <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Pointages de la pointeuse">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-      <div><h2 className="font-bold text-slate-900">Passages de la pointeuse</h2><p className="mt-1 text-sm text-slate-600">Date et heure des entrées et sorties · {status?.timezone || 'Africa/Casablanca'}</p></div>
-      <label className="text-sm font-semibold">Mois <input aria-label="Mois des pointages" type="month" value={month} onChange={e => { if (e.target.value) { setMonth(e.target.value); setPage(1); } }} className="ml-2 rounded-lg border border-slate-300 px-3 py-2" /></label>
-      {canConfigure && <button type="button" onClick={() => setSettingsOpen(value => !value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">{settingsOpen ? 'Fermer les paramètres' : 'Paramètres de la pointeuse'}</button>}
-      <button type="button" disabled={isFetching} onClick={() => { refetch(); retryStatus(); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50">Actualiser</button>
-    </div>
-    {canConfigure && settingsOpen && <DeviceSettings />}
-    {statusError && <p role="alert" className="p-4 text-sm text-red-700">Impossible de vérifier la connexion de la pointeuse. <button type="button" onClick={retryStatus} className="underline">Réessayer</button></p>}
-    {status && !status.configured && <p className="bg-amber-50 p-4 text-sm text-amber-900">La connexion Wdlink reste à configurer. Les passages apparaîtront ici après la connexion de l’appareil.</p>}
-    {status?.configured && <div className="space-y-3 border-b border-slate-200 p-4">
-      <p className="text-sm text-slate-600">Appareil : {status.device_key} · Fuseau : {status.timezone}. Associez l’identifiant enregistré sur la pointeuse à son employé.</p>
-      <form onSubmit={link} className="flex flex-wrap items-end gap-3">
-        <label className="text-xs font-semibold text-slate-600">Identifiant sur l’appareil<input required maxLength={64} pattern="[A-Za-z0-9_-]+" value={personId} onChange={e => setPersonId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
-        <label className="text-xs font-semibold text-slate-600">Employé<select required value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">Sélectionner</option>{employees.map(e => <option key={e.id} value={e.id}>{e.nom_complet || e.cin || `Employé #${e.id}`}</option>)}</select></label>
-        <button disabled={linking || employeesError} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{linking ? 'Association…' : 'Associer'}</button>
-      </form>
-      {employeesError && <p role="alert" className="text-sm text-red-700">Liste des employés indisponible. Actualisez la page pour réessayer.</p>}
-    </div>}
-    {isError ? <p role="alert" className="p-4 text-sm text-red-700">Impossible de charger les pointages. <button type="button" onClick={refetch} className="underline">Réessayer</button></p> : isFetching && !data ? <p role="status" className="p-4 text-sm text-slate-600">Chargement des pointages…</p> : <>
-      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Photo', 'Employé', 'Jour', 'Heure', 'Passage', 'Identification'].map(label => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">
-        {(data?.data || []).map(event => <tr key={event.id}><td className="px-4 py-3"><PointagePhoto eventId={event.id} available={Boolean(event.has_photo)} /></td><td className="px-4 py-3">{event.nom_complet || (event.employe_id ? `Employé #${event.employe_id}` : <button type="button" onClick={() => setPersonId(event.person_id)} className="text-amber-800 underline">À associer : {event.person_id}</button>)}</td><td className="px-4 py-3">{event.date_pointage}</td><td className="px-4 py-3 font-semibold">{event.heure_pointage}</td><td className="px-4 py-3">{directionLabels[event.direction]}</td><td className="px-4 py-3">{methodLabel(event.method)}</td></tr>)}
-        {!data?.data.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">Aucun passage reçu pour ce mois.</td></tr>}
-      </tbody></table></div>
-      <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm"><span>{data?.pagination.total || 0} passages · Page {page}</span><div className="flex gap-3"><button type="button" disabled={page === 1 || isFetching} onClick={() => setPage(p => p - 1)} className="disabled:opacity-40">Précédent</button><button type="button" disabled={isFetching || page * 100 >= (data?.pagination.total || 0)} onClick={() => setPage(p => p + 1)} className="disabled:opacity-40">Suivant</button></div></div>
-    </>}
-    <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">Les passages sont conservés sans modifier automatiquement les absences ni les retenues. Un sens non configuré reste à confirmer.</p>
-  </section>;
+  const [status, setStatus] = useState<DailyPresenceStatus | ''>('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [showRaw, setShowRaw] = useState(false);
+  useEffect(() => { setDay(''); setPage(1); }, [month]);
+  const { currentData: data, isFetching, isError, refetch } = useGetDailyPresenceQuery({ month, day: day.startsWith(month) ? day || undefined : undefined, employe_id: employeeId ? Number(employeeId) : undefined, status: status || undefined, search: search.trim() || undefined, page }, { pollingInterval: 30000 });
+  const filter = (change: () => void) => { change(); setPage(1); };
+  const clear = () => { setDay(''); setEmployeeId(''); setStatus(''); setSearch(''); setPage(1); };
+  const filtered = Boolean(day || employeeId || status || search);
+  const inputClass = 'mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900';
+  const summary = data?.summary;
+  return <div className="space-y-4">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Présences quotidiennes">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4 sm:p-5"><div><h2 className="font-bold text-slate-900">Présences du mois</h2><p className="mt-1 text-sm text-slate-600">Une ligne par employé et par jour · {data?.timezone || 'Africa/Casablanca'}</p></div><button type="button" disabled={isFetching} onClick={() => refetch()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50">{isFetching && <Loader2 size={14} className="animate-spin" />}Actualiser</button></div>
+      <div className="grid gap-3 border-b border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="text-xs font-semibold text-slate-600">Mois<input aria-label="Mois des présences" type="month" value={month} max={data?.today.slice(0, 7)} onChange={event => { if (event.target.value) { setDay(''); setPage(1); onMonthChange(event.target.value); } }} className={inputClass} /></label>
+        <label className="text-xs font-semibold text-slate-600">Jour<input aria-label="Jour des présences" type="date" min={`${month}-01`} max={data?.today?.startsWith(month) ? data.today : `${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()}`} value={day} onChange={event => filter(() => setDay(event.target.value))} className={inputClass} /></label>
+        <label className="text-xs font-semibold text-slate-600">Employé<select value={employeeId} onChange={event => filter(() => setEmployeeId(event.target.value))} className={inputClass}><option value="">Tous les employés</option>{data?.employees.map(employee => <option key={employee.id} value={employee.id}>{employee.nom_complet || employee.cin}</option>)}</select></label>
+        <label className="text-xs font-semibold text-slate-600">Présence<select value={status} onChange={event => filter(() => setStatus(event.target.value as DailyPresenceStatus | ''))} className={inputClass}><option value="">Tous les statuts</option><option value="absent">Absent</option><option value="present">Présent</option><option value="termine">Travail terminé</option></select></label>
+        <label className="text-xs font-semibold text-slate-600">Recherche<input type="search" value={search} onChange={event => filter(() => setSearch(event.target.value))} placeholder="Nom ou CIN…" className={inputClass} /></label>
+      </div>
+      {filtered && <div className="border-b border-slate-100 px-4 py-2"><button type="button" onClick={clear} className="text-xs font-semibold text-blue-700 underline">Effacer les filtres</button></div>}
+      {isError ? <p role="alert" className="p-6 text-sm text-red-700">Impossible de charger les présences. <button type="button" onClick={() => refetch()} className="underline">Réessayer</button></p> : !data ? <p role="status" className="p-6 text-sm text-slate-600">Chargement des présences…</p> : <>
+        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 border-b border-slate-200 lg:grid-cols-4 lg:divide-y-0">
+          {[{ label: 'Absents', value: summary?.absent || 0, style: 'text-rose-700', icon: Users }, { label: 'Présents', value: summary?.present || 0, style: 'text-blue-700', icon: CalendarDays }, { label: 'Travail terminé', value: summary?.termine || 0, style: 'text-emerald-700', icon: CheckCircle2 }, { label: 'Temps de travail', value: durationLabel(summary?.temps_travail_minutes || 0), style: 'text-slate-900', icon: Clock }].map(metric => <div key={metric.label} className="px-4 py-4"><p className="flex items-center gap-2 text-xs font-semibold text-slate-500"><metric.icon size={14} />{metric.label}</p><p className={`mt-2 text-xl font-bold tabular-nums ${metric.style}`}>{metric.value}</p></div>)}
+        </div>
+        {data.unassigned_count > 0 && <p className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">{data.unassigned_count} passage(s) sans employé associé. <button type="button" onClick={() => setShowRaw(true)} className="font-semibold underline">Consulter les passages détaillés</button><> · <Link to="/employees/pointage-settings" className="font-semibold underline">Associer les identifiants</Link></></p>}
+        {data.data.length ? <DailyPresenceTable rows={data.data} /> : <div className="p-8 text-center"><Users className="mx-auto h-8 w-8 text-slate-400" /><p className="mt-3 font-semibold text-slate-800">Aucune présence pour cette sélection</p><p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">{filtered ? 'Essayez un autre jour, un autre employé ou effacez les filtres.' : 'Les employés avec « Pointage obligatoire » apparaissent chaque jour à partir de l’activation. Les passages associés apparaissent également ici.'}</p>{canConfigure && <Link to="/employees" className="mt-4 inline-block text-sm font-semibold text-blue-700 underline">Choisir les employés obligés de pointer</Link>}</div>}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm"><span className="text-slate-600">{data.pagination.total} journée(s) employé · Page {data.pagination.page}</span><div className="flex gap-3"><button type="button" disabled={page <= 1 || isFetching} onClick={() => setPage(value => value - 1)} className="rounded border border-slate-300 px-3 py-1.5 disabled:opacity-40">Précédent</button><button type="button" disabled={isFetching || page * data.pagination.limit >= data.pagination.total} onClick={() => setPage(value => value + 1)} className="rounded border border-slate-300 px-3 py-1.5 disabled:opacity-40">Suivant</button></div></div>
+      </>}
+    </section>
+    <div className="flex flex-wrap items-center justify-between gap-3 px-1"><p className="max-w-3xl text-xs leading-relaxed text-slate-500">Absent avant l’entrée, présent pendant le travail, puis travail terminé après la sortie. Les heures suivent les paires entrée/sortie ; une sortie manquante reste signalée.</p><div className="flex flex-wrap gap-4"><Link to="/employees/pointage-settings" className="whitespace-nowrap text-sm font-semibold text-blue-700 underline">Associer un identifiant</Link><button type="button" aria-expanded={showRaw} onClick={() => setShowRaw(value => !value)} className="whitespace-nowrap text-sm font-semibold text-blue-700 underline">{showRaw ? 'Masquer les passages détaillés' : 'Passages détaillés'}</button></div></div>
+    {showRaw && <PointageRawJournal key={month} month={month} />}
+  </div>;
 }

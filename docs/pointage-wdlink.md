@@ -100,3 +100,22 @@ La colonne Photo du journal affiche les photos JPEG/PNG capturées au pointage. 
 Les images sont limitées à 2 Mo et 4096 pixels par côté. Le callback accepte un JSON de 4 Mo pour contenir l’image base64 ; la route Nginx de callback doit également autoriser `client_max_body_size 4m`. La photo est enregistrée séparément des événements ; une répétition du même callback ne crée pas de deuxième photo. Les chemins/URLs d’images envoyés par l’appareil ne sont jamais téléchargés par le VPS.
 
 Sur la pointeuse, `POST /setIdentifyCallBack` avec `pass`, `callbackUrl` et `base64Enable=2` active l’envoi des photos. Les nouveaux passages peuvent alors apporter leur photo. Les anciens passages restent sans photo tant qu’aucune archive réelle correspondante n’a été récupérée. Aucun modèle d’empreinte ou de reconnaissance faciale n’est importé.
+
+
+## Registre quotidien et employés obligés de pointer
+
+Dans **Employés**, le PDG coche **Pointage obligatoire** sur les personnes concernées. L’activation commence au jour courant, dans le fuseau de la pointeuse ; elle ne crée pas d’absences rétroactives. La désactivation termine l’obligation au début du jour courant, tout en conservant les périodes passées dans `pointage_requirement_periods`. Aucun employé n’est coché automatiquement lors de l’installation.
+
+Les réglages de l’appareil et l’association des identifiants sont séparés dans **Employés → Paramètres de la pointeuse** (`/employees/pointage-settings`). Les paramètres de connexion restent réservés au PDG ; les personnes autorisées à gérer les absences conservent l’association des identifiants.
+
+La page **Pointage & absences** affiche par défaut **Présences du mois**, avec une ligne par employé et par date. Les employés obligés sont affichés chaque jour jusqu’à aujourd’hui, à partir de leur activation et de leur embauche. Les journées avec de vrais passages associés ou une absence saisie sont également conservées, même sans obligation. Les jours futurs ne sont pas marqués absents. Aucun calendrier de jours de repos n’est défini à ce stade : l’obligation s’applique à chaque jour calendaire de sa période.
+
+- **Absent** : aucune entrée enregistrée pour la journée.
+- **Présent** : une entrée ouvre une période de travail ; la sortie est encore attendue.
+- **Travail terminé** : une sortie clôt la dernière période de travail.
+
+La même cellule regroupe l’entrée et la sortie, avec les photos disponibles. Le temps de travail additionne les paires entrée/sortie ; les scans répétés dans le même sens ne redémarrent pas le compteur. Une période ouverte compte en direct uniquement pour aujourd’hui. Une sortie manquante sur une journée passée est signalée et aucun temps jusqu’au lendemain n’est inventé. Les durées utilisent les timestamps UTC pour rester correctes lors d’un changement d’heure.
+
+Les filtres portent sur le mois, le jour, l’employé, l’état de présence et le nom/CIN. Les passages sans employé associé sont signalés dans **Passages détaillés** et ne sont attribués à personne par supposition. Les absences et retenues déjà saisies restent accessibles dans **Absences saisies**. Le registre automatique ne crée ni ne supprime de retenue sur salaire.
+
+Les colonnes et tables nécessaires sont créées à la première utilisation, via `ensurePointageRequirementSchema` : `employees.pointage_obligatoire` (défaut 0) et `pointage_requirement_periods`. Le compte MySQL du backend doit pouvoir créer une table et ajouter une colonne. Le registre est calculé depuis ces périodes et les vrais passages ; il ne nécessite pas de tâche planifiée à minuit.

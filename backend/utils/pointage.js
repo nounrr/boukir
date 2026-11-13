@@ -1,3 +1,4 @@
+import { ensurePointageRequirementSchema } from './pointageRequirements.js';
 import { ensurePointagePhotoSchema } from './pointagePhotos.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
@@ -60,6 +61,7 @@ export function normalizeWdlinkPassage(body, config) {
 }
 
 export async function ensurePointageSchema(db) {
+  await ensurePointageRequirementSchema(db);
   await db.query(`CREATE TABLE IF NOT EXISTS pointage_device_config (
     id INT NOT NULL PRIMARY KEY, device_key VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     callback_token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

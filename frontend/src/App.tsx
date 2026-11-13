@@ -21,6 +21,7 @@ import { AccessWarningPopup } from './components/AccessWarningPopup';
 // avant l'affichage de n'importe quelle page (xlsx/jspdf/recharts inclus).
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const EmployeePage = React.lazy(() => import('./pages/EmployeePage'));
+const PointageSettingsPage = React.lazy(() => import('./pages/PointageSettingsPage'));
 const ClientCollaborationPermissionsPage = React.lazy(() => import('./pages/ClientCollaborationPermissionsPage'));
 const PagePermissionsPage = React.lazy(() => import('./pages/PagePermissionsPage'));
 const InternalPricePermissionsPage = React.lazy(() => import('./pages/InternalPricePermissionsPage'));
@@ -202,6 +203,15 @@ const AppContent: React.FC = () => {
               <LayoutWithAccessCheck>
                 <EmployeePage />
               </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/employees/pointage-settings"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck><PointageSettingsPage /></LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />

@@ -1,5 +1,8 @@
 import { Router, json } from 'express';
 import pool from '../db/pool.js';
+import { buildDailyPresence, isCalendarDate } from '../utils/pointageDaily.js';
+import { pointageLocalDay, setPointageRequirement } from '../utils/pointageRequirements.js';
+import { ensureAbsenceSchema } from '../utils/absences.js';
 import { decodePointagePhoto, savePointagePhoto } from '../utils/pointagePhotos.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { verifyToken, requireRole } from '../middleware/auth.js';
@@ -76,6 +79,72 @@ export function createPointageRouters(db = pool, providedConfig) {
   admin.use(verifyToken, requireAbsencePermission('gestion'));
   admin.use(async (_req, _res, next) => {
     try { await ensureSchema(); next(); } catch (error) { next(error); }
+  });
+  admin.patch('/employees/:id/requirement', requireRole('PDG'), async (req, res, next) => {
+    const id = Number(req.params.id);
+    if (!/^\d+$/.test(req.params.id) || !Number.isSafeInteger(id) || id <= 0 || typeof req.body?.obligatoire !== 'boolean') {
+      return res.status(400).json({ message: 'Employé et case obligatoire valides requis.' });
+    }
+    try {
+      const config = await getConfig();
+      const today = pointageLocalDay(new Date(), config?.timezone || 'Africa/Casablanca');
+      res.json(await setPointageRequirement(db, id, req.body.obligatoire, req.user.id, today));
+    } catch (error) { if (error.status) return res.status(error.status).json({ message: error.message }); next(error); }
+  });
+  admin.get('/daily', async (req, res, next) => {
+    try {
+      const config = await getConfig();
+      const timezone = config?.timezone || 'Africa/Casablanca';
+      const now = new Date(), today = pointageLocalDay(now, timezone);
+      const month = String(req.query.month || today.slice(0, 7));
+      const day = req.query.day ? String(req.query.day) : '';
+      const status = req.query.status ? String(req.query.status) : '';
+      const employeeId = req.query.employe_id == null || req.query.employe_id === '' ? null : Number(req.query.employe_id);
+      const search = String(req.query.search || '').trim();
+      const page = Number(req.query.page || 1), limit = 50;
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || Number(month.slice(0, 4)) < 2020
+          || (day && (!isCalendarDate(day) || !day.startsWith(month + '-')))
+          || (status && !['absent', 'present', 'termine'].includes(status))
+          || (employeeId !== null && (!Number.isSafeInteger(employeeId) || employeeId <= 0))
+          || search.length > 200 || !Number.isSafeInteger(page) || page < 1 || page > 100000) {
+        return res.status(400).json({ message: 'Filtres de présence invalides.' });
+      }
+      await ensureAbsenceSchema(db);
+      const from = month + '-01';
+      const [employeesResult, periodsResult, eventsResult, absencesResult] = await Promise.all([
+        db.query(`SELECT id, nom_complet, cin, role, pointage_obligatoire,
+          DATE_FORMAT(date_embauche, '%Y-%m-%d') AS date_embauche,
+          DATE_FORMAT(deleted_at, '%Y-%m-%d') AS deleted_at FROM employees`),
+        db.query(`SELECT employe_id, DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+          DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date FROM pointage_requirement_periods
+          WHERE start_date < DATE_ADD(?, INTERVAL 1 MONTH) AND (end_date IS NULL OR end_date >= ?)`, [from, from]),
+        db.query(`SELECT p.id, p.employe_id, p.direction,
+          DATE_FORMAT(p.local_date, '%Y-%m-%d') AS local_date, TIME_FORMAT(p.local_time, '%H:%i:%s') AS local_time,
+          DATE_FORMAT(p.occurred_at_utc, '%Y-%m-%d %H:%i:%s.%f') AS occurred_at_utc,
+          EXISTS(SELECT 1 FROM pointage_event_photos photo WHERE photo.event_id = p.id) AS has_photo
+          FROM pointage_events p WHERE p.local_date >= ? AND p.local_date < DATE_ADD(?, INTERVAL 1 MONTH)`, [from, from]),
+        db.query(`SELECT id, employe_id, DATE_FORMAT(date_absence, '%Y-%m-%d') AS date_absence, type_absence, motif
+          FROM employe_absences WHERE date_absence >= ? AND date_absence < DATE_ADD(?, INTERVAL 1 MONTH)`, [from, from]),
+      ]);
+      const report = buildDailyPresence({ month, employees: employeesResult[0], periods: periodsResult[0],
+        events: eventsResult[0], absences: absencesResult[0], now, timezone });
+      const needle = search.toLocaleLowerCase('fr');
+      const filtered = report.data.filter(row => (!day || row.date_pointage === day)
+        && (employeeId === null || row.employe_id === employeeId)
+        && (!needle || `${row.nom_complet || ''} ${row.cin} ${row.role || ''}`.toLocaleLowerCase('fr').includes(needle)));
+      const summary = filtered.reduce((totals, row) => {
+        totals[row.statut]++; totals.temps_travail_minutes += row.temps_travail_minutes; return totals;
+      }, { absent: 0, present: 0, termine: 0, temps_travail_minutes: 0 });
+      const visible = status ? filtered.filter(row => row.statut === status) : filtered;
+      const displayedIds = new Set(report.data.map(row => row.employe_id));
+      res.set('Cache-Control', 'no-store');
+      res.json({ ...report, data: visible.slice((page - 1) * limit, page * limit),
+        pagination: { page, limit, total: visible.length }, summary,
+        employees: employeesResult[0].filter(employee => !employee.deleted_at || displayedIds.has(Number(employee.id)))
+          .map(employee => ({ id: Number(employee.id), nom_complet: employee.nom_complet, cin: employee.cin }))
+          .sort((a, b) => (a.nom_complet || a.cin).localeCompare(b.nom_complet || b.cin, 'fr')),
+      });
+    } catch (error) { next(error); }
   });
   admin.get('/status', async (_req, res, next) => {
     try {

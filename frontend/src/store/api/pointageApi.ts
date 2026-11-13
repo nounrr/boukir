@@ -30,8 +30,37 @@ export interface PointageDeviceConfig {
   configured?: boolean;
   public_origin?: string;
 }
+export type DailyPresenceStatus = 'absent' | 'present' | 'termine';
+export interface DailyPresenceRow {
+  key: string; employe_id: number; nom_complet: string | null; cin: string; role: string | null;
+  date_pointage: string; obligatoire: boolean; statut: DailyPresenceStatus;
+  entree: string | null; sortie: string | null; temps_travail_minutes: number; temps_en_cours: boolean;
+  entree_event_id: number | null; sortie_event_id: number | null;
+  entree_has_photo: boolean; sortie_has_photo: boolean;
+  anomalies: string[]; passages_count: number;
+  absence_saisie: { id: number; type_absence: string; motif: string | null } | null;
+}
+export interface DailyPresenceArgs {
+  month: string; day?: string; employe_id?: number; status?: DailyPresenceStatus; search?: string; page?: number;
+}
+export interface DailyPresenceResponse {
+  data: DailyPresenceRow[];
+  today: string; timezone: string;
+  pagination: { page: number; limit: number; total: number };
+  summary: { absent: number; present: number; termine: number; temps_travail_minutes: number };
+  employees: Array<{ id: number; nom_complet: string | null; cin: string }>;
+  unassigned_count: number;
+}
 export const pointageApi = api.injectEndpoints({
   endpoints: builder => ({
+    getDailyPresence: builder.query<DailyPresenceResponse, DailyPresenceArgs>({
+      query: params => ({ url: '/pointage/daily', params, timeout: 15000 }),
+      providesTags: ['Pointage', 'Employee', 'Absence'],
+    }),
+    setEmployeePointageRequirement: builder.mutation<{ employe_id: number; pointage_obligatoire: boolean; depuis: string }, { id: number; obligatoire: boolean }>({
+      query: ({ id, obligatoire }) => ({ url: `/pointage/employees/${id}/requirement`, method: 'PATCH', body: { obligatoire } }),
+      invalidatesTags: ['Pointage', 'Employee'],
+    }),
     getPointageConfig: builder.query<PointageDeviceConfig, void>({
       query: () => ({ url: '/pointage/config', timeout: 15000 }), providesTags: ['Pointage'],
     }),
@@ -49,4 +78,4 @@ export const pointageApi = api.injectEndpoints({
     }),
   }),
 });
-export const { useGetPointageConfigQuery, useSavePointageConfigMutation, useGetPointageStatusQuery, useGetPointageEventsQuery, useLinkPointageIdentityMutation } = pointageApi;
+export const { useGetDailyPresenceQuery, useSetEmployeePointageRequirementMutation, useGetPointageConfigQuery, useSavePointageConfigMutation, useGetPointageStatusQuery, useGetPointageEventsQuery, useLinkPointageIdentityMutation } = pointageApi;

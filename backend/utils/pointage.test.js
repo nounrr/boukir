@@ -75,7 +75,7 @@ test('HTTP receiver authenticates, acknowledges only durable saves, and retries 
       if (fail) throw new Error('offline');
       saved.add(params[0]);
     }
-    return [{}];
+    return [[]];
   } };
   const { callback, admin } = createPointageRouters(db, () => config);
   const app = express();
