@@ -19,7 +19,7 @@ test('order messages follow the customer language and a delivery asks for the co
 });
 
 test('remise and account-request messages', () => {
-  assert.equal(remiseCreditedMessage({ amount: 12.5, total: 40, locale: 'fr' }).body, '+12,50 DH ajoutés à votre solde remise. Total : 40,00 DH.');
+  assert.equal(remiseCreditedMessage({ amount: 12.5, total: 40, locale: 'fr' }).body, '+12,50 DH ajoutés à vos points gagnés. Total : 40,00 DH.');
   assert.equal(accountRequestMessage({ approved: true, role: 'Promoteur', locale: 'en' }).title, 'Account approved');
   assert.match(accountRequestMessage({ approved: false, role: 'Artisan', locale: 'fr' }).body, /Artisan/);
 });

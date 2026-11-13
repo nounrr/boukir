@@ -37,11 +37,11 @@ export function remiseCreditedMessage({ amount, total, locale }) {
   const a = money(amount);
   const tot = money(total);
   return {
-    fr: { title: 'Remise créditée', body: `+${a} ajoutés à votre solde remise. Total : ${tot}.` },
-    en: { title: 'Discount credited', body: `+${a} added to your discount balance. Total: ${tot}.` },
-    es: { title: 'Descuento abonado', body: `+${a} añadidos a su saldo de descuento. Total: ${tot}.` },
-    ar: { title: 'تمت إضافة التخفيض', body: `+${a} أُضيفت إلى رصيد التخفيض. المجموع: ${tot}.` },
-    zh: { title: '折扣已到账', body: `折扣余额增加 ${a}，合计 ${tot}。` },
+    fr: { title: 'Points crédités', body: `+${a} ajoutés à vos points gagnés. Total : ${tot}.` },
+    en: { title: 'Points credited', body: `+${a} added to your points won. Total: ${tot}.` },
+    es: { title: 'Puntos abonados', body: `+${a} añadidos a sus puntos ganados. Total: ${tot}.` },
+    ar: { title: 'تمت إضافة النقاط', body: `+${a} أُضيفت إلى نقاطك المكتسبة. المجموع: ${tot}.` },
+    zh: { title: '积分已到账', body: `积分增加 ${a}，合计 ${tot}。` },
   }[lang];
 }
 
