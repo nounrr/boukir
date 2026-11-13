@@ -1,12 +1,15 @@
 import { ensureProductCategoriesSchema } from '../utils/productCategories.js';
 import { Router } from 'express';
-import { ensureCategoryProductOrderSchema, parseProductOrder, sameProductOrder } from '../utils/categoryProductOrder.js';
+import { ensureCategoryProductOrderSchema, parseProductOrder, sameProductOrder, categoryBrandPriceOrderSql } from '../utils/categoryProductOrder.js';
+import { ecommerceOfferPriceSql, hasProductSnapshotTable } from '../utils/ecommerceOfferPrice.js';
 
-const productsSql = `SELECT p.id, p.reference_2 AS reference, p.designation, p.image_url
+const productsSql = (price, manual = true) => `SELECT p.id, p.reference_2 AS reference, p.designation, p.image_url,
+    b.nom AS brand_name, p.ecom_published, ${price} AS offer_price
   FROM products p LEFT JOIN category_product_order pco ON pco.product_id = p.id AND pco.category_id = ?
+  LEFT JOIN brands b ON b.id = p.brand_id
   WHERE (p.categorie_id = ? OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)) AND COALESCE(p.is_deleted, 0) = 0
     AND COALESCE(p.non_stockable, 0) = 0 AND COALESCE(p.est_service, 0) = 0
-  ORDER BY pco.position IS NULL ASC, pco.position ASC, p.designation ASC, p.id ASC`;
+  ORDER BY ${categoryBrandPriceOrderSql(price, { manual, groupCategory: false })}`;
 
 export function createCategoryProductOrderRouter(db, onSaved = async () => {}) {
   const router = Router();
@@ -22,8 +25,11 @@ export function createCategoryProductOrderRouter(db, onSaved = async () => {}) {
       if (!Number.isSafeInteger(categoryId) || categoryId <= 0) return res.status(400).json({ message: 'Catégorie invalide.' });
       await ensureProductCategoriesSchema(db);
       await ensureCategoryProductOrderSchema(db);
-      const [rows] = await db.query(productsSql, [categoryId, categoryId, categoryId]);
-      res.json({ products: rows, order: rows.map(row => Number(row.id)) });
+      const price = ecommerceOfferPriceSql(await hasProductSnapshotTable(db));
+      const params = [categoryId, categoryId, categoryId];
+      const [rows] = await db.query(productsSql(price), params);
+      const [automaticRows] = await db.query(productsSql(price, false), params);
+      res.json({ products: rows, order: rows.map(row => Number(row.id)), automatic_order: automaticRows.map(row => Number(row.id)) });
     } catch (error) { next(error); }
   });
   router.put('/:categoryId', async (req, res, next) => {
@@ -42,7 +48,8 @@ export function createCategoryProductOrderRouter(db, onSaved = async () => {}) {
         await connection.rollback();
         return res.status(404).json({ message: 'Catégorie introuvable.' });
       }
-      const [rows] = await connection.query(`${productsSql} FOR UPDATE`, [categoryId, categoryId, categoryId]);
+      const price = ecommerceOfferPriceSql(await hasProductSnapshotTable(db));
+      const [rows] = await connection.query(`${productsSql(price)} FOR UPDATE`, [categoryId, categoryId, categoryId]);
       const current = rows.map(row => Number(row.id));
       const members = new Set(current);
       if (!sameProductOrder(current, expected) || ids.length !== current.length || ids.some(id => !members.has(id))) {

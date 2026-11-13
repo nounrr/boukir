@@ -9,8 +9,12 @@ function database() {
   const query = async (sql, params) => {
     state.queries.push(sql);
     if (sql.startsWith('CREATE TABLE')) return [[]];
+    if (sql.includes('information_schema.tables')) return [[{ cnt: 0 }]];
     if (sql.startsWith('SELECT id FROM categories')) return [[{ id: 7 }]];
-    if (sql.startsWith('SELECT p.id')) return [state.order.map(id => ({ id, designation: `Produit ${id}` }))];
+    if (sql.startsWith('SELECT p.id')) {
+      const order = sql.includes('pco.position ASC') ? state.order : [3, 2, 1];
+      return [order.map(id => ({ id, designation: `Produit ${id}` }))];
+    }
     if (sql.startsWith('DELETE')) { state.order = []; return [{}]; }
     if (sql.startsWith('INSERT')) {
       if (state.failInsert) throw new Error('write failed');
@@ -48,14 +52,16 @@ test('loads all category products and persists a drag order with cache invalidat
   const db = database();
   let invalidation;
   await run(t, db, async (url, put) => {
-    assert.deepEqual((await (await fetch(url)).json()).order, [1, 2, 3]);
+    const loaded = await (await fetch(url)).json();
+    assert.deepEqual(loaded.order, [1, 2, 3]);
+    assert.deepEqual(loaded.automatic_order, [3, 2, 1]);
     const response = await put({ product_ids: [3, 1, 2], expected_order: [1, 2, 3] });
     assert.equal(response.status, 200);
     assert.deepEqual((await response.json()).order, [3, 1, 2]);
     assert.deepEqual((await (await fetch(url)).json()).order, [3, 1, 2]);
     assert.equal(db.state.commits, 1);
     assert.deepEqual(invalidation, [3, 7]);
-    assert.ok(db.state.queries.some(sql => sql.includes('p.categorie_id = ?') && sql.includes('pco.position ASC') && !sql.includes('LIMIT')));
+    assert.ok(db.state.queries.some(sql => sql.includes('p.categorie_id = ?') && sql.includes('pco.position ASC') && !/LIMIT\s+\?/.test(sql)));
   }, 'Manager', async (...args) => { invalidation = args; });
 });
 

@@ -10,10 +10,19 @@ export default function CategoryProductOrderModal({ categoryId, categoryName, on
   const { currentData: data, isFetching, isError, refetch } = useGetCategoryProductOrderQuery(categoryId, { refetchOnMountOrArgChange: true });
   const [saveOrder, { isLoading: saving }] = useSaveCategoryProductOrderMutation();
   const [products, setProducts] = useState<CategoryOrderedProduct[]>([]);
-  useEffect(() => { if (data) setProducts(data.products); }, [data]);
+  const [sort, setSort] = useState('shop');
+  useEffect(() => { if (data) { setProducts(data.products); setSort('shop'); } }, [data]);
+  const applySort = (value: string) => {
+    if (!data || saving || isFetching) return;
+    setSort(value);
+    const order = value === 'automatic' ? data.automatic_order : data.order;
+    const byId = new Map(data.products.map(product => [product.id, product]));
+    setProducts(order.map(id => byId.get(id)).filter((product): product is CategoryOrderedProduct => Boolean(product)));
+  };
   const changed = Boolean(data && products.some((product, index) => product.id !== data.order[index]));
   const move = (from: number, to: number) => {
     if (saving || to < 0 || to >= products.length || from === to) return;
+    setSort('manual');
     setProducts(previous => {
       const next = [...previous];
       const [product] = next.splice(from, 1);
@@ -37,8 +46,17 @@ export default function CategoryProductOrderModal({ categoryId, categoryName, on
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Classer les produits · {categoryName}</DialogTitle>
-          <DialogDescription>Glissez les produits de « {categoryName} » à la position souhaitée, puis enregistrez. Chaque catégorie possède son propre classement de produits, appliqué sur le site e-commerce.</DialogDescription>
+          <DialogDescription>Préparez le tri, puis glissez les produits à la position souhaitée et enregistrez. Ce classement sera prioritaire dans l’affichage par défaut du shop pour cette catégorie. Les produits non publiés restent masqués sur le shop.</DialogDescription>
         </DialogHeader>
+        <div className="space-y-1">
+          <label htmlFor="category-product-sort" className="text-sm font-medium">Trier la liste avant de classer</label>
+          <select id="category-product-sort" value={sort} onChange={event => applySort(event.target.value)} disabled={!data || saving || isFetching || isError} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-40">
+            <option value="shop">Classement actuel du shop</option>
+            <option value="automatic">Catégorie → marque (Kerakoll en premier) → prix décroissant</option>
+            {sort === 'manual' && <option value="manual">Classement manuel en cours</option>}
+          </select>
+          <p className="text-xs text-gray-500">Le tri prépare la liste. Cliquez sur « Enregistrer le classement » pour l’appliquer au shop.</p>
+        </div>
         {isError ? <div role="alert" className="text-red-700">Impossible de charger les produits. <button type="button" onClick={() => void refetch()} className="underline">Réessayer</button></div>
           : isFetching ? <div className="flex items-center gap-2 py-8"><LoaderCircle className="animate-spin" /> Chargement…</div>
           : !products.length ? <p className="py-8 text-gray-500">Aucun produit stockable dans cette catégorie.</p>
@@ -50,7 +68,8 @@ export default function CategoryProductOrderModal({ categoryId, categoryName, on
                     <span {...drag.dragHandleProps} aria-label={`Déplacer ${product.designation}`} className="cursor-grab touch-none text-gray-400"><GripVertical size={20} /></span>
                     <span className="w-8 text-sm text-gray-500">{index + 1}</span>
                     {product.image_url && <img src={toBackendUrl(product.image_url)} alt="" className="h-10 w-10 rounded object-contain" loading="lazy" />}
-                    <div className="min-w-0 flex-1"><p className="text-sm font-medium">{product.designation}</p><p className="text-xs text-gray-500">Réf. {product.reference || product.id}</p></div>
+                    <div className="min-w-0 flex-1"><p className="text-sm font-medium">{product.designation}</p><p className="text-xs text-gray-500">Réf. {product.reference || product.id}{product.brand_name ? ` · ${product.brand_name}` : ''}{!Number(product.ecom_published) ? ' · Non publié' : ''}</p></div>
+                    <span className="whitespace-nowrap text-sm text-gray-600">{product.offer_price == null ? '—' : `${Number(product.offer_price).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`}</span>
                     <button type="button" aria-label={`Monter ${product.designation}`} disabled={saving || index === 0} onClick={() => move(index, index - 1)} className="p-1 disabled:opacity-30"><ArrowUp size={16} /></button>
                     <button type="button" aria-label={`Descendre ${product.designation}`} disabled={saving || index === products.length - 1} onClick={() => move(index, index + 1)} className="p-1 disabled:opacity-30"><ArrowDown size={16} /></button>
                   </div>}

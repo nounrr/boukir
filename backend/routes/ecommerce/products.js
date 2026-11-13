@@ -1,3 +1,4 @@
+import { ecommerceOfferPriceSql, hasProductSnapshotTable } from '../../utils/ecommerceOfferPrice.js';
 import { ensureProductCategoriesSchema } from '../../utils/productCategories.js';
 import { Router } from 'express';
 import pool from '../../db/pool.js';
@@ -13,22 +14,6 @@ const router = Router();
 router.use('/sitemap', createProductSitemapRouter(pool));
 router.use('/catalog-pages', createCatalogPagesRouter(pool));
 
-let _hasProductSnapshotTableCache = null;
-async function hasProductSnapshotTable(db) {
-  if (_hasProductSnapshotTableCache !== null) return _hasProductSnapshotTableCache;
-  try {
-    const [rows] = await db.query(
-      `SELECT COUNT(*) AS cnt
-       FROM information_schema.tables
-       WHERE table_schema = DATABASE()
-         AND table_name = 'product_snapshot'`
-    );
-    _hasProductSnapshotTableCache = Number(rows?.[0]?.cnt || 0) > 0;
-  } catch (e) {
-    _hasProductSnapshotTableCache = false;
-  }
-  return _hasProductSnapshotTableCache;
-}
 // UI-only limit to avoid leaking real stock while keeping good UX.
 // Real stock is enforced on cart/checkout.
 const PURCHASE_LIMIT = 20;
@@ -117,20 +102,7 @@ router.get('/', async (req, res, next) => {
           WHERE ps.variant_id = pv.id AND COALESCE(ps.en_validation, 0) <> 0
         )`
       : 'pv.stock_quantity';
-    // Sort the full result set by the same default offer displayed on its cards.
-    const displayPriceExpr = `CASE WHEN p.has_variants <> 0 AND p.is_obligatoire_variant = 1 THEN COALESCE((
-      SELECT COALESCE(prix_vente, 0) FROM (
-        SELECT pv.id, pv.variant_type, pv.variant_name,
-               ${variantPriceExpr} AS prix_vente, ${variantStockExpr} AS stock_quantity
-        FROM product_variants pv
-        WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0
-      ) effective_variants
-      ORDER BY ${DEFAULT_VARIANT_ORDER_SQL} LIMIT 1
-    ), ${priceExpr}) ELSE ${priceExpr} END`;
-    const offerPriceExpr = `(${displayPriceExpr}) * (
-      CASE WHEN p.pourcentage_promo > 0 AND p.pourcentage_promo <> 100
-           THEN 1 - p.pourcentage_promo / 100 ELSE 1 END
-    )`;
+    const offerPriceExpr = ecommerceOfferPriceSql(snapshotEnabled);
     const anyStockExpr = snapshotEnabled
       ? `(
           SELECT COALESCE(SUM(ps.quantite), 0)
@@ -319,7 +291,13 @@ router.get('/', async (req, res, next) => {
     // Build ORDER BY clause
     await ensureCategoryProductOrderSchema(pool);
     const categoryOrder = CATEGORY_PRODUCT_ORDER_SQL;
-    const defaultOrder = categoryBrandPriceOrderSql(offerPriceExpr);
+    // A single selected category also owns the order of its secondary members.
+    const selectedCategories = String(category_id || '').split(',').map(Number).filter(id => Number.isSafeInteger(id) && id > 0);
+    const orderingCategoryId = selectedCategories.length === 1 ? selectedCategories[0] : null;
+    const productOrderJoin = orderingCategoryId
+      ? `LEFT JOIN category_product_order pco ON pco.product_id = p.id AND pco.category_id = ${orderingCategoryId}`
+      : CATEGORY_PRODUCT_ORDER_JOIN;
+    const defaultOrder = categoryBrandPriceOrderSql(offerPriceExpr, { groupCategory: !orderingCategoryId });
     let orderBy;
     switch (sort) {
       case 'price_asc':
@@ -383,7 +361,7 @@ router.get('/', async (req, res, next) => {
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.categorie_id = c.id
-      ${CATEGORY_PRODUCT_ORDER_JOIN}
+      ${productOrderJoin}
       WHERE ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?

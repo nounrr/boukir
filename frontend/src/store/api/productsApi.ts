@@ -1,7 +1,7 @@
 import { api } from './apiSlice';
 import type { Product, CreateProductData, ProductImageTarget } from '../../types';
 
-export interface CategoryOrderedProduct { id: number; reference: string | null; designation: string; image_url: string | null }
+export interface CategoryOrderedProduct { id: number; reference: string | null; designation: string; image_url: string | null; brand_name: string | null; offer_price: number | string | null; ecom_published: number | boolean }
 
 export type SalePriceSource = 'snapshot' | 'variant' | 'product';
 
@@ -75,7 +75,7 @@ export interface SalePriceCorrectionsResponse {
 // API réelle vers le backend Express (/api/products)
 const productsApi = api.injectEndpoints({
   endpoints: (builder) => ({
-    getCategoryProductOrder: builder.query<{ products: CategoryOrderedProduct[]; order: number[] }, number>({
+    getCategoryProductOrder: builder.query<{ products: CategoryOrderedProduct[]; order: number[]; automatic_order: number[] }, number>({
       query: (categoryId) => `/products/category-order/${categoryId}`,
       providesTags: ['Product'],
     }),
