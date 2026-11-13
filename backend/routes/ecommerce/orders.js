@@ -3198,7 +3198,7 @@ router.put('/:id/status', async (req, res, next) => {
         }
         if (earned_remise_amount > 0) {
           const [bal] = await pool.query('SELECT remise_balance FROM contacts WHERE id = ?', [customerId]);
-          await notifyCustomer(customerId, { kind: 'remise', ...remiseCreditedMessage({ amount: earned_remise_amount, total: Number(bal?.[0]?.remise_balance || 0), locale }), href: '/balance', data: { order_id: orderId } });
+          await notifyCustomer(customerId, { kind: 'remise', ...remiseCreditedMessage({ amount: earned_remise_amount, total: Number(bal?.[0]?.remise_balance || 0), locale }), href: '/remise', data: { order_id: orderId } });
         }
       })().catch((error) => console.warn('Order notification failed:', error?.message || error));
     }
