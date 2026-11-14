@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { CheckCircle2, FileSpreadsheet, Search } from 'lucide-react';
+import { CheckCircle2, Download, FileSpreadsheet, Search } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useApplyCategoryExcelMutation, usePreviewCategoryExcelMutation } from '../store/api/categoryExcelApi';
@@ -106,6 +106,7 @@ export default function CategoryExcelPage() {
   const [preview, setPreview] = useState<CategoryExcelPreview | null>(null);
   const [error, setError] = useState('');
   const [updated, setUpdated] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [analyze, { isLoading: analyzing }] = usePreviewCategoryExcelMutation();
   const [apply, { isLoading: applying }] = useApplyCategoryExcelMutation();
   const busy = analyzing || applying;
@@ -124,6 +125,34 @@ export default function CategoryExcelPage() {
       });
     } catch (cause) {
       setError(errorMessage(cause, 'Impossible d’analyser ce fichier Excel.'));
+    }
+  }
+
+  async function handleDownloadProblems() {
+    if (!preview || downloading) return;
+    setError('');
+    setDownloading(true);
+    try {
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.utils.book_new();
+      const headers = ['Feuille source', 'Ligne Excel', 'Produit', 'Variante', 'ID produit', 'Catégorie actuelle', 'Catégorie cible', 'Motif'];
+      for (const [name, rows] of [
+        ['Produits non reconnus', preview.unknownProducts],
+        ['Catégories non reconnues', preview.unknownCategories],
+      ] as const) {
+        const sheet = XLSX.utils.aoa_to_sheet([
+          headers,
+          ...rows.map(row => [row.sheet, row.row, row.product, row.variant, row.productId ?? '', row.current ?? '', row.target, row.reason ?? '']),
+        ]);
+        sheet['!cols'] = [18, 12, 48, 28, 14, 32, 32, 60].map(wch => ({ wch }));
+        sheet['!autofilter'] = { ref: sheet['!ref']! };
+        XLSX.utils.book_append_sheet(workbook, sheet, name);
+      }
+      XLSX.writeFile(workbook, `categorie-excel-problemes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      setError('Impossible de télécharger le fichier des problèmes. Réessayez.');
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -197,9 +226,15 @@ export default function CategoryExcelPage() {
               <h2 className="font-semibold text-gray-900">{numberFormat.format(preview.totalRows)} lignes analysées</h2>
               <p className="mt-1 text-sm text-gray-600">{numberFormat.format(preview.updates)} {preview.updates === 1 ? 'produit à corriger' : 'produits à corriger'}</p>
             </div>
-            <Button disabled={!preview.updates || busy} onClick={handleApply} className="bg-emerald-700 hover:bg-emerald-800">
-              {applying ? 'Correction en cours…' : 'Corriger'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" disabled={busy || downloading} onClick={handleDownloadProblems}>
+                <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+                {downloading ? 'Téléchargement…' : 'Télécharger les problèmes'}
+              </Button>
+              <Button disabled={!preview.updates || busy} onClick={handleApply} className="bg-emerald-700 hover:bg-emerald-800">
+                {applying ? 'Correction en cours…' : 'Corriger'}
+              </Button>
+            </div>
           </div>
           <Tabs defaultValue="recognized">
             <TabsList aria-label="Résultats du rapprochement" className="h-auto flex-wrap justify-start gap-1">
