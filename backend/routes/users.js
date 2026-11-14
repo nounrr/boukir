@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import multer from 'multer';
+import fs from 'node:fs/promises';
+import { normalizeProfileAvatar, avatarForProviderLogin, saveProfileAvatar } from '../utils/profileAvatar.js';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
 import { getJwtSecret } from '../middleware/auth.js';
@@ -16,6 +19,30 @@ import { parseMaalemRegistrationIntent } from '../utils/maalemRegistration.js';
 import { consumeMaalemActivationToken } from '../utils/maalemTeamCreation.js';
 
 const router = Router();
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 20 },
+  fileFilter: (_req, file, callback) => {
+    if (!['avatar', 'image', 'photo', 'file'].includes(file.fieldname)) {
+      return callback(Object.assign(new Error('Champ photo invalide : utilisez avatar, image, photo ou file.'), { status: 400 }));
+    }
+    callback(null, true);
+  },
+}).any();
+function receiveProfileAvatar(req, res, next) {
+  try {
+    const token = String(req.headers.authorization || '').replace(/^Bearer /, '');
+    const decoded = jwt.verify(token, getJwtSecret());
+    if (!decoded.id) throw new Error('Token invalide');
+  } catch {
+    return res.status(401).json({ message: 'Authentification requise' });
+  }
+  avatarUpload(req, res, error => {
+    if (error) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ message: error.code === 'LIMIT_FILE_SIZE' ? 'La photo dépasse 5 Mo.' : error.message });
+    req.file = req.files?.[0];
+    next();
+  });
+}
 
 // Ensure contacts has remise_balance column (used as "remise points" balance)
 ensureContactsRemiseBalance().catch(e => console.error('ensureContactsRemiseBalance:', e));
@@ -785,17 +812,18 @@ router.post('/google', async (req, res, next) => {
         });
       }
 
-      // Update user info from Google
+      // Preserve a photo already saved on the shared customer profile.
+      const nextAvatar = avatarForProviderLogin(user.avatar_url, avatar_url);
       await connection.query(
         `UPDATE contacts
          SET avatar_url = ?, email_verified = TRUE, locale = ?,
              last_login_at = NOW(), last_login_ip = ?,
              provider_access_token = ?, login_attempts = 0, locked_until = NULL
          WHERE id = ?`,
-        [avatar_url, locale || 'fr', clientIp, access_token || null, user.id]
+        [nextAvatar, locale || 'fr', clientIp, access_token || null, user.id]
       );
 
-      user.avatar_url = avatar_url;
+      user.avatar_url = nextAvatar;
       user.email_verified = true;
       user.locale = locale || 'fr';
     } else {
@@ -1056,16 +1084,17 @@ router.post('/facebook', async (req, res, next) => {
       }
 
       // Update user info from Facebook
+      const nextAvatar = avatarForProviderLogin(user.avatar_url, avatar_url);
       await connection.query(
         `UPDATE contacts
          SET avatar_url = ?, email_verified = TRUE,
              last_login_at = NOW(), last_login_ip = ?,
              provider_access_token = ?, login_attempts = 0, locked_until = NULL
          WHERE id = ?`,
-        [avatar_url, clientIp, accessToken, user.id]
+        [nextAvatar, clientIp, accessToken, user.id]
       );
 
-      user.avatar_url = avatar_url;
+      user.avatar_url = nextAvatar;
       user.email_verified = true;
     } else {
       // Check if email exists with different auth method
@@ -1274,8 +1303,10 @@ router.get('/me', async (req, res, next) => {
 
 // ==================== UPDATE CURRENT USER PROFILE ====================
 // PUT /api/users/auth/me - Update authenticated user's profile (no email changes)
-router.put('/me', async (req, res, next) => {
+router.put('/me', receiveProfileAvatar, async (req, res, next) => {
   const connection = await pool.getConnection();
+  let savedAvatar;
+  let committed = false;
   try {
     const authHeader = req.headers['authorization'] || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -1329,8 +1360,17 @@ router.put('/me', async (req, res, next) => {
 
     const updates = [];
     const params = [];
+    if (req.file) {
+      savedAvatar = await saveProfileAvatar(req.file, current.id);
+      updates.push('avatar_url = ?');
+      params.push(savedAvatar.publicUrl);
+    } else if (Object.prototype.hasOwnProperty.call(req.body || {}, 'avatar_url')) {
+      updates.push('avatar_url = ?');
+      params.push(normalizeProfileAvatar(req.body.avatar_url));
+    }
 
     const allowed = {
+      // avatar_url is validated separately above and included in allowed_fields.
       prenom: 'prenom',
       nom: 'nom',
       telephone: 'telephone',
@@ -1371,7 +1411,7 @@ router.put('/me', async (req, res, next) => {
       await connection.rollback();
       return res.status(400).json({
         message: 'Aucune mise à jour fournie',
-        allowed_fields: Object.keys(allowed),
+        allowed_fields: [...Object.keys(allowed), 'avatar_url'],
       });
     }
 
@@ -1384,6 +1424,7 @@ router.put('/me', async (req, res, next) => {
     );
 
     await connection.commit();
+    committed = true;
 
     // Return fresh profile (same shape as GET /me)
     const [users] = await pool.query(
@@ -1432,6 +1473,7 @@ router.put('/me', async (req, res, next) => {
       },
     });
   } catch (err) {
+    if (savedAvatar && !committed) await fs.unlink(savedAvatar.absolutePath).catch(() => {});
     try {
       await connection.rollback();
     } catch (e) {
