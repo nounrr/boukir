@@ -8,7 +8,8 @@ import {
   ensureEcommerceOrdersRemiseColumns,
   ensureProductRemiseColumns
 } from '../../utils/ensureRemiseSchema.js';
-import { getContactSoldeCumule, phone9Sql } from '../../utils/soldeCumule.js';
+import { phone9Sql } from '../../utils/soldeCumule.js';
+import { getEcommerceCredit, projectEcommerceCredit } from '../../utils/ecommerceCredit.js';
 import { calculateEcommerceShipping } from '../../utils/ecommerceShipping.js';
 import { getStoreLocation, haversineDistanceKm, normalizeLatLng } from '../../utils/geo.js';
 import { isCmiConfigured } from '../../utils/cmiPayment.js';
@@ -1654,14 +1655,11 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
         });
       }
 
-      const plafond = soldeRows?.[0]?.plafond == null ? null : Number(soldeRows?.[0]?.plafond);
-      const garantie = soldeRows?.[0]?.montant_garantie == null ? null : Number(soldeRows?.[0]?.montant_garantie);
-      const limits = [plafond, garantie].filter((value) => Number.isFinite(value) && value > 0);
-      if (limits.length > 0) {
-        const soldeCumule = await getContactSoldeCumule(connection, userId);
-        const projected = Math.round((soldeCumule + soldeAmount) * 100) / 100;
-        const limit = Math.round(Math.min(...limits) * 100) / 100;
-        if (projected - limit > 0.000001) {
+      const credit = await getEcommerceCredit(connection, { id: userId, ...soldeRows[0] });
+      const { plafond, montant_garantie: garantie, limite_solde: limit, solde_cumule: soldeCumule } = credit;
+      if (limit != null) {
+        const { projected, exceeded } = projectEcommerceCredit(credit, soldeAmount);
+        if (exceeded) {
           await connection.rollback();
           return res.status(403).json({
             message: 'Limite de solde dépassée',
@@ -1670,6 +1668,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
             montant_garantie: garantie,
             limite_solde: limit,
             solde_cumule: soldeCumule,
+            solde_available: credit.solde_available,
             solde_amount: soldeAmount,
             solde_projected: projected,
           });

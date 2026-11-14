@@ -10,7 +10,7 @@ import {
   ensureContactsCheckoutColumns,
   ensureContactsRemiseBalance,
 } from '../utils/ensureRemiseSchema.js';
-import { getContactSoldeCumule } from '../utils/soldeCumule.js';
+import { getEcommerceCredit } from '../utils/ecommerceCredit.js';
 import { findMaalemProfileByContactId } from '../utils/maalemProfile.js';
 import { parseMaalemRegistrationIntent } from '../utils/maalemRegistration.js';
 import { consumeMaalemActivationToken } from '../utils/maalemTeamCreation.js';
@@ -1212,17 +1212,8 @@ router.get('/me', async (req, res, next) => {
       return res.status(403).json({ message: 'Compte désactivé' });
     }
 
-    // Useful for checkout: use the smallest active value between plafond and garantie.
-    const plafond = user.plafond == null ? null : Number(user.plafond);
-    const montant_garantie = user.montant_garantie == null ? null : Number(user.montant_garantie);
-    const creditLimits = [plafond, montant_garantie]
-      .filter((value) => Number.isFinite(value) && value > 0);
-    const limite_solde = creditLimits.length > 0 ? Math.min(...creditLimits) : null;
-    const solde_cumule = await getContactSoldeCumule(pool, user.id);
-    const solde_available =
-      limite_solde != null
-        ? Math.max(0, Math.round((limite_solde - solde_cumule) * 100) / 100)
-        : null;
+    const { plafond, montant_garantie, limite_solde, solde_cumule, solde_available } =
+      await getEcommerceCredit(pool, user);
     const maalem_profile = await findMaalemProfileByContactId(pool, user.id);
 
     if (debug) {
