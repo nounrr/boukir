@@ -4,7 +4,7 @@ import pool from '../../db/pool.js';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../../middleware/auth.js';
 import { contactLocale, notifyCustomer, soldePaymentMessage } from '../../utils/customerNotify.js';
-import { getContactSoldeCumule } from '../../utils/soldeCumule.js';
+import { getStatementBalance } from '../../utils/statementBalance.js';
 import { ensureSoldePaymentSchema, isSoldeOid, makeSoldeOid, processSoldeResult, validateSoldeAmount } from '../../utils/soldePayment.js';
 import {
   buildCmiPaymentForm,
@@ -481,7 +481,7 @@ router.post('/solde', async (req, res, next) => {
       return res.status(403).json({ message: 'Votre compte n\'est pas autorisé à payer en solde', error_type: 'SOLDE_NOT_ALLOWED' });
     }
 
-    const owed = await getContactSoldeCumule(pool, contactId);
+    const owed = await getStatementBalance(pool, contactId);
     const check = validateSoldeAmount({ requested: req.body?.amount, owed });
     if (!check.ok) return res.status(check.status).json({ message: check.message, error_type: check.error_type, owed: Math.round(owed * 100) / 100, min: check.min });
 
