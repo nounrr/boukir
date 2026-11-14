@@ -1,4 +1,5 @@
 import { confirmBonExceptionAuthorization } from '../utils/confirmBonExceptionAuthorization';
+import { hasPlafondAuthorization } from '../utils/bonCreditAuthorization';
 import { historyFieldAttributes } from '../utils/historyDocumentEditing';
 import { meetsEmployeeSalePrice } from '../utils/employeeSalePrice';
 import { snapshotsForProductVariant } from '../utils/bonSnapshotIndex';
@@ -1231,7 +1232,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const showBonPrices = isProjectMode || showInternalPrices || !['Commande', 'AvoirFournisseur', 'Charge', 'AvoirCharge'].includes(currentTab);
   const formatPrixAchatOption = (value: any) => showInternalPrices ? formatPurchasePrice(value) : '';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
-  const { data: myBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, {
+  const { data: myBonAuthorizations, refetch: refetchMyBonAuthorizations } = useGetMyBonAuthorizationsQueryServer(undefined, {
     skip: !isOpen || isPDG,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
@@ -4637,6 +4638,19 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     const soldeCumule = getContactTotalCumule(client);
     const limite = creditLimit.amount;
     const nouveauSolde = soldeCumule + montantBon;
+
+    // A grant can be issued while this form is open. Recheck the connected
+    // employee's current global/client quota before refusing the modification.
+    // Final confirmation and atomic consumption remain in the backend save.
+    if ((soldeCumule > limite || nouveauSolde > limite) && user?.role !== 'PDG') {
+      try {
+        const authorizations = await refetchMyBonAuthorizations().unwrap();
+        if (hasPlafondAuthorization(authorizations, values.client_id)) return true;
+      } catch {
+        showError('Impossible de vérifier les autorisations de plafond. Réessayez.');
+        return false;
+      }
+    }
 
     // Si client déjà au-dessus de la limite
     if (soldeCumule > limite) {
