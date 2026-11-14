@@ -4,7 +4,7 @@ export type HistoryFilters = { from: string; to: string; search: string; operati
 export const historyOperation = (row: any): string => row.docKind || String(row.id ?? '').split('-')[0] || row.type;
 export const historyDocumentKey = (row: any): string => String(row.id ?? '').split('-item-')[0] || `${row.bon_numero}|${row.bon_date_iso}`;
 export const historyOperationLabels: Record<string, string> = {
-  sortie: 'Sorties', commande: 'Commandes', charge: 'Charges', comptant: 'Comptants',
+  sortie: 'Sorties', ecommerce: 'E-commerce', commande: 'Commandes', charge: 'Charges', comptant: 'Comptants',
   paiement: 'Paiements', avoir: 'Avoirs client', avoirClient: 'Avoirs',
   avoirFournisseur: 'Avoirs fournisseur', sortieVendreFournisseur: 'Vendre au fournisseur',
   avoirClientVendreFournisseur: 'Avoirs vendre fournisseur',
@@ -35,7 +35,7 @@ export function selectedContactHistory(rows: any[], selected: Set<string> | null
   if (selected === null) return rows;
   let balance = 0;
   return rows.filter(row => selected.has(String(row.id))).map(row => {
-    balance += contactHistorySign(row, kind) * (Number(row.total) || 0);
+    balance += contactHistorySign(row, kind) * (Number(row.balanceAmount ?? row.total) || 0);
     return { ...row, soldeCumulatif: balance };
   });
 }
@@ -50,6 +50,7 @@ export function contactHistoryTotals(rows: any[], kind: ContactHistoryKind) {
     const debit = kind === 'charge' ? sign > 0 : sign < 0;
     if (debit) totalDebit += amount;
     else totalCredit += amount;
+    if (kind === 'client' && row.type === 'produit') totalCredit += Number(row.settled_amount) || 0;
   }
   return { totalQty, totalAmount, totalDebit, totalCredit, finalSolde: Number(rows[rows.length - 1]?.soldeCumulatif ?? 0) };
 }

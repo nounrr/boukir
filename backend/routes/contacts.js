@@ -4,6 +4,7 @@ import { correctValidatedClientBon } from '../utils/clientHistoryCorrection.js';
 import { requireRoles } from '../middleware/auth.js';
 import { getClientCreditState } from '../utils/bonExceptionAuthorization.js';
 import express from 'express';
+import { ECOMMERCE_CONTACT_HISTORY_SQL, normalizeEcommerceHistory, ecommerceDebtSql } from '../utils/ecommerceContactHistory.js';
 import ecommerceClientsRouter from './ecommerceClients.js';
 import bcrypt from 'bcryptjs';
 import pool from '../db/pool.js';
@@ -165,7 +166,7 @@ const SINGLE_CONTACT_QUERY = () => `
       CASE
         WHEN c.type = 'Client' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
+            + COALESCE((SELECT SUM(${ecommerceDebtSql('o')}) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
         WHEN c.type = 'Fournisseur' THEN
@@ -248,7 +249,7 @@ const SINGLE_CONTACT_QUERY = () => `
               AND LOWER(TRIM(bs.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
-            SELECT SUM(o.total_amount)
+            SELECT SUM(${ecommerceDebtSql('o')})
             FROM ecommerce_orders o
             WHERE o.is_solde = 1
               AND o.status IN ('pending','confirmed','processing','shipped','delivered')
@@ -475,7 +476,7 @@ router.get('/', async (req, res) => {
           WHEN c.type = 'Client' THEN
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
-            + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
+            + COALESCE((SELECT SUM(${ecommerceDebtSql('o')}) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(${PAYMENT_TOTAL_SQL}) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
@@ -707,7 +708,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
         ),0)
         +
         COALESCE((
-            SELECT SUM(total_amount)
+            SELECT SUM(${ecommerceDebtSql('')})
             FROM ecommerce_orders
             WHERE is_solde = 1
               AND status IN ('pending','confirmed','processing','shipped','delivered')
@@ -1201,7 +1202,7 @@ router.get('/:id/history', async (req, res) => {
     const limit = Math.max(1, Math.min(30000, Number(req.query.limit || 30000) || 30000));
 
     const ledgerCollections = {
-      client: ['contact', 'sorties', 'avoirsClient', 'payments'],
+      client: ['contact', 'sorties', 'avoirsClient', 'payments', 'ecommerceOrders'],
       fournisseur: ['contact', 'commandes', 'sortiesVendreFournisseur', 'avoirsFournisseur', 'avoirsClientVendreFournisseur', 'payments'],
       charge: ['contact', 'charges', 'avoirsCharge', 'sorties', 'comptants', 'avoirsClient', 'payments'],
     };
@@ -1548,7 +1549,7 @@ router.get('/:id/history', async (req, res) => {
         ORDER BY ac.date_creation ASC, ac.id ASC
       `, [contactId]),
       queryForLedger('payments', 'SELECT * FROM payments WHERE contact_id = ? ORDER BY COALESCE(date_paiement, created_at) ASC, id ASC', [contactId]),
-      queryForLedger('ecommerceOrders', "SELECT * FROM ecommerce_orders WHERE user_id = ? ORDER BY created_at ASC, id ASC", [contactId]),
+      queryForLedger('ecommerceOrders', ECOMMERCE_CONTACT_HISTORY_SQL, [contactId]),
       queryForLedger('avoirsEcommerce', `
         SELECT ae.*
         FROM avoirs_ecommerce ae
@@ -1636,9 +1637,12 @@ router.get('/:id/history', async (req, res) => {
       };
     });
 
+    const ecommerceDocuments = contact.type === 'Client' ? normalizeEcommerceHistory(ecommerceOrders) : [];
+
     if (ledgerView) {
       const documents = {
         sorties: normalizeItems(sorties, 'Sortie', 'SOR'),
+        ecommerceOrders: ecommerceDocuments,
         comptants: normalizeItems(comptants, 'Comptant', 'COM'),
         charges: normalizeItems(charges, 'Charge', 'CHG'),
         avoirsCharge: normalizeItems(avoirsCharge, 'AvoirCharge', 'ACH'),
@@ -1692,6 +1696,7 @@ router.get('/:id/history', async (req, res) => {
 
     const docs = contact.type === 'Client'
       ? [
+          ...ecommerceDocuments,
           ...normalizeItems(sorties, 'Sortie', 'SOR').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(comptants, 'Comptant', 'COM').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(charges, 'Charge', 'CHG').filter((b) => isAllowedHistoryStatus(b.statut)),
@@ -1726,7 +1731,7 @@ router.get('/:id/history', async (req, res) => {
         const cost = isService ? 0 : (Number(it.cout_revient ?? it.prix_achat ?? 0) || 0);
         const remiseMontant = Number(it.remise_montant || 0) || 0;
         historyRows.push({
-          id: `${b.id}-${it.product_id}-${it.id ?? historyRows.length}`,
+          id: `${b.type === 'Ecommerce' ? 'Ecommerce-' : ''}${b.id}-${it.product_id}-${it.id ?? historyRows.length}`,
           bon_id: b.id,
           bon_numero: bonNumero(b),
           code_reglement: b.code_reglement,
@@ -1743,7 +1748,9 @@ router.get('/:id/history', async (req, res) => {
           mouvement: isNonCalcule ? 0 : (prixUnit - cost) * q,
           remise_unitaire: remiseMontant,
           remise_totale: remiseMontant * q,
-          benefice: isNonCalcule ? 0 : ((prixUnit - cost) * q) - (remiseMontant * q),
+          benefice: it.history_benefice ?? (isNonCalcule ? 0 : ((prixUnit - cost) * q) - (remiseMontant * q)),
+          balance_amount: b.type === 'Ecommerce' ? Number(it.balance_amount || 0) : undefined,
+          history_adjustment: it.history_adjustment || false,
           type: itemType,
           created_at: b.created_at,
           remise_pourcentage: Number(it.remise_pourcentage || 0) || 0,
@@ -1808,7 +1815,7 @@ router.get('/:id/history', async (req, res) => {
 
     for (const row of historyRows) {
       const amount = Number(row.total || 0) || 0;
-      if (!isSoldeNeutralRow(row)) soldeCumulatif += getHistoryAmountSigned(row, amount);
+      if (!isSoldeNeutralRow(row)) soldeCumulatif += getHistoryAmountSigned(row, row.bon_type === 'Ecommerce' ? Number(row.balance_amount || 0) : amount);
       if (row.type === 'produit') {
         totalVentes += amount;
         totalAmount += amount;
@@ -1853,6 +1860,7 @@ router.get('/:id/history', async (req, res) => {
     const keepDocs = (rows) => rows.filter((b) => selectedPage.docs.has(`${b.type}-${b.id}`));
     const historyDocuments = {
       sorties: keepDocs(normalizeItems(sorties, 'Sortie', 'SOR')),
+      ecommerceOrders: keepDocs(ecommerceDocuments),
       comptants: keepDocs(normalizeItems(comptants, 'Comptant', 'COM')),
       charges: keepDocs(normalizeItems(charges, 'Charge', 'CHG')),
       avoirsCharge: keepDocs(normalizeItems(avoirsCharge, 'AvoirCharge', 'ACH')),
@@ -1868,7 +1876,6 @@ router.get('/:id/history', async (req, res) => {
       contactId,
       ...historyDocuments,
       payments: selectedPage.rows.filter((r) => r.type === 'paiement').map((r) => payments.find((p) => `payment-${p.id}` === r.id)).filter(Boolean),
-      ecommerceOrders: [],
       avoirsEcommerce: [],
       remises,
       productHistoryRows: selectedPage.rows,

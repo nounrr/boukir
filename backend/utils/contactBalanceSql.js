@@ -1,3 +1,4 @@
+import { ecommerceDebtSql } from './ecommerceContactHistory.js';
 const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0)`;
 const SUPPLIER_PAYMENT_SUM_EXPR = `SUM(CASE WHEN COALESCE(payment, 0) = 1 THEN -(${PAYMENT_TOTAL_SQL}) ELSE ${PAYMENT_TOTAL_SQL} END)`;
 
@@ -44,7 +45,7 @@ LEFT JOIN (
 LEFT JOIN (
   SELECT
     c_link.id AS contact_id,
-    SUM(o.total_amount) AS total_ventes
+    SUM(${ecommerceDebtSql('o')}) AS total_ventes
   FROM ecommerce_orders o
   INNER JOIN contacts c_link
     ON o.user_id = c_link.id

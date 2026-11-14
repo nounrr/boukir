@@ -1,3 +1,4 @@
+import { ecommerceDebtSql } from './ecommerceContactHistory.js';
 // Utilities to compute a contact's cumulative balance ("solde_cumule")
 // using the same rules as backoffice contacts listing.
 
@@ -61,7 +62,7 @@ export async function getContactSoldeCumule(db, contactId) {
     LEFT JOIN (
       SELECT
         c_link.id AS contact_id,
-        SUM(o.total_amount) AS total_ventes
+        SUM(${ecommerceDebtSql('o')}) AS total_ventes
       FROM ecommerce_orders o
       INNER JOIN contacts c_link
         ON o.user_id = c_link.id

@@ -4,7 +4,7 @@ const n = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const round = value => Number(value.toFixed(3));
 const flag = value => value === true || value === 1 || value === '1' || value === 'true';
 const definitions = {
-  client: [['sorties', 'sortie', 1], ['avoirsClient', 'avoir', -1]],
+  client: [['sorties', 'sortie', 1], ['avoirsClient', 'avoir', -1], ['ecommerceOrders', 'ecommerce', 1]],
   fournisseur: [['commandes', 'commande', 1], ['sortiesVendreFournisseur', 'sortieVendreFournisseur', -1], ['avoirsFournisseur', 'avoirFournisseur', -1], ['avoirsClientVendreFournisseur', 'avoirClientVendreFournisseur', 1]],
   charge: [['charges', 'charge', 1], ['avoirsCharge', 'avoirCharge', -1], ['sorties', 'sortie', 1], ['comptants', 'comptant', 1], ['avoirsClient', 'avoirClient', -1]],
 };
@@ -66,24 +66,24 @@ export function buildContactLedger(contact, documents, remises, options = {}) {
     const bonTotal = n(data.montant_total ?? data.montant);
     const itemTotal = item => n(item.total ?? n(item.quantite) * n(item.prix_unitaire ?? item.prix_achat));
     const itemsSum = items.reduce((sum, item) => sum + itemTotal(item), 0);
-    if (!items.length) running += sign * bonTotal;
+    if (!items.length) running += sign * (row.kind === 'ecommerce' ? n(data.balance_amount) : bonTotal);
     items.forEach((item, index) => {
       // Preserve the detailed ledger's established amount rule, including zeroed lines.
-      const amount = itemsSum === 0 ? (index === items.length - 1 ? bonTotal : 0) : itemTotal(item);
+      const amount = row.kind === 'ecommerce' ? n(item.balance_amount) : itemsSum === 0 ? (index === items.length - 1 ? bonTotal : 0) : itemTotal(item);
       running += sign * amount;
       const qty = n(item.quantite);
       const price = n(item.prix_unitaire ?? item.prix_achat ?? item.prix);
       const discount = n(item.remise_montant) || price * n(item.remise_pourcentage) / 100;
       const legacyId = item.legacy_remise_client_id ?? item.legacyRemiseClientId;
       const direct = legacyId != null && legacyId !== '' ? 0 : round(qty * discount);
-      const tracked = view === 'client' ? trackedRemise(item, remiseByBon.get(Number(data.id)) ?? []) : 0;
+      const tracked = view === 'client' && row.kind !== 'ecommerce' ? trackedRemise(item, remiseByBon.get(Number(data.id)) ?? []) : 0;
       const remise = view === 'client'
-        ? Math.max(0, row.kind === 'sortie' ? direct - tracked : 0) + tracked
+        ? Math.max(0, ['sortie', 'ecommerce'].includes(row.kind) ? direct - tracked : 0) + tracked
         : n(item.remise_abonne) + n(item.remise_client) + (n(item.remise_montant) > 0 ? round(n(item.remise_montant) * (qty > 0 ? qty : 1)) : 0);
       if (remise > 0) remiseRunning += remise;
       item.ledgerBalance = round(running);
       item.ledgerRemiseBalance = round(remiseRunning);
-      item.ledgerBenefice = (flag(item.rappel_non_calcule) && row.kind !== 'commande') || flag(item.est_service) ? 0
+      item.ledgerBenefice = row.kind === 'ecommerce' ? n(item.history_benefice) : (flag(item.rappel_non_calcule) && row.kind !== 'commande') || flag(item.est_service) ? 0
         : round((price - n(item.cout_revient ?? item.prix_achat) - (n(item.remise_montant) > 0 ? n(item.remise_montant) : price * Math.max(0, n(item.remise_pourcentage)) / 100)) * qty);
       totalBenefice += item.ledgerBenefice;
     });
@@ -94,7 +94,7 @@ export function buildContactLedger(contact, documents, remises, options = {}) {
   const matchesItem = item => [item.reference, item.product_reference, item.designation, item.product_designation, item.variant_name, item.unit_name, item.product_id]
     .some(value => String(value ?? '').toLowerCase().includes(search));
   const tabCollections = {
-    sorties: ['sorties'], avoirs: view === 'charge' ? ['avoirsCharge', 'avoirsClient'] : view === 'fournisseur' ? ['avoirsFournisseur'] : ['avoirsClient'],
+    sorties: ['sorties'], ecommerce: ['ecommerceOrders'], avoirs: view === 'charge' ? ['avoirsCharge', 'avoirsClient'] : view === 'fournisseur' ? ['avoirsFournisseur'] : ['avoirsClient'],
     paiements: ['payments'], commandes: ['commandes'], charges: ['charges'], comptants: ['comptants'],
     sortiesVendreFournisseur: ['sortiesVendreFournisseur'], avoirsFournisseur: ['avoirsFournisseur'], avoirsClientVendreFournisseur: ['avoirsClientVendreFournisseur'],
     vendreFournisseur: ['sortiesVendreFournisseur'], avoirsVendreFournisseur: ['avoirsClientVendreFournisseur'],

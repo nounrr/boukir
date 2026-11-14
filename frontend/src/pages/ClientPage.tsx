@@ -352,10 +352,9 @@ const MobileBonCards: React.FC<Pick<BonTableProps, 'bons' | 'detail' | 'products
 //   avoir           → crédit (-)  on lui restitue
 //   paiement        → crédit (-)  il règle sa dette
 
-// Les bons comptant sont payés immédiatement : ils sont exclus du détail client
-// (onglet Complet) et du solde cumulé, côté frontend comme côté backend.
+// Les commandes e-commerce au comptant sont visibles mais restent neutres dans le solde.
 type CompletRow =
-  | { kind: 'sortie' | 'avoir'; date: number; data: any }
+  | { kind: 'sortie' | 'avoir' | 'ecommerce'; date: number; data: any }
   | { kind: 'paiement'; date: number; data: any };
 
 type RemiseSplit = {
@@ -369,6 +368,9 @@ function buildCompletRows(history: any): CompletRow[] {
     ...(history?.sorties ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'sortie' as const, date: new Date(d.date_creation).getTime(), data: d })),
+    ...(history?.ecommerceOrders ?? [])
+      .filter((b: any) => !isExcludedStatus(b.statut))
+      .map((d: any) => ({ kind: 'ecommerce' as const, date: new Date(d.date_creation).getTime(), data: d })),
     ...(history?.avoirsClient ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'avoir' as const, date: new Date(d.date_creation).getTime(), data: d })),
@@ -423,6 +425,10 @@ function getBonTotalForSolde(_kind: string, bon: any): number {
   return safeNum(bon?.montant_total ?? bon?.montant ?? 0);
 }
 
+function getBonBalanceAmount(kind: string, bon: any): number {
+  return kind === 'ecommerce' ? safeNum(bon?.balance_amount) : getBonTotalForSolde(kind, bon);
+}
+
 function isAnnuleStatut(value: any): boolean {
   const status = String(value ?? '').trim().toLowerCase();
   return status.startsWith('annul');
@@ -452,7 +458,8 @@ function getDirectRemiseTotal(item: any): number {
 // Remise Abonné (affichage) = remise directe du bon (sortie_items.remise_montant / remise_pourcentage)
 // MOINS la part déjà tracée dans item_remises (qui s'affiche en col Remise Client).
 function getDisplayRemiseAbonneTotal(kind: CompletRow['kind'], item: any, remises: any[] = [], bonId?: number | string): number {
-  if (kind !== 'sortie') return 0;
+  if (kind !== 'sortie' && kind !== 'ecommerce') return 0;
+  if (kind === 'ecommerce') return getDirectRemiseTotal(item);
   const direct = getDirectRemiseTotal(item);
   if (direct <= 0) return 0;
   if (!Array.isArray(remises) || remises.length === 0) return direct;
@@ -526,6 +533,7 @@ function findHistoryProduct(item: any, products: any[]): any {
 }
 
 function getHistoryVariantLabel(item: any, products: any[]): string {
+  if (item?.variant_name) return item.variant_name;
   const product = findHistoryProduct(item, products);
   const variantId = item?.variant_id ?? item?.variantId;
   if (!product || !variantId) return '—';
@@ -534,6 +542,7 @@ function getHistoryVariantLabel(item: any, products: any[]): string {
 }
 
 function getHistoryUnitLabel(item: any, products: any[]): string {
+  if (item?.unit_name) return item.unit_name;
   const product = findHistoryProduct(item, products);
   const unitId = item?.unit_id ?? item?.unitId;
   if (!product || !unitId) return '—';
@@ -578,6 +587,7 @@ function filterCompletRowsBySearch(rows: CompletRow[], products: any[], search: 
 
 function computeHistoryItemBenefice(item: any, products: any[]): number | null {
   if (!item) return null;
+  if (item.history_ecommerce && item.history_benefice != null) return safeNum(item.history_benefice);
   if (isProductNonCalcule(item, products)) return 0;
 
   const qte = Number(item.quantite ?? 0) || 0;
@@ -597,7 +607,7 @@ function computeHistoryItemBenefice(item: any, products: any[]): number | null {
 
 function getItemRemises(item: any, remises: any[]): RemiseSplit {
   const result: RemiseSplit = { abonne: 0, client: 0 };
-  if (!item || !Array.isArray(remises) || remises.length === 0) return result;
+  if (!item || item.history_ecommerce || !Array.isArray(remises) || remises.length === 0) return result;
 
   const bonIdItem = Number(item.bon_id);
   const prodIdItem = item.product_id != null ? Number(item.product_id) : null;
@@ -658,14 +668,14 @@ function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string,
   for (const row of rows) {
     const montant = row.kind === 'paiement'
       ? getPaymentTotalWithIgnored(row.data)
-      : getBonTotalForSolde(row.kind, row.data);
-    if (row.kind === 'sortie') {
+      : getBonBalanceAmount(row.kind, row.data);
+    if (row.kind === 'sortie' || row.kind === 'ecommerce') {
       running += montant;
     } else if (row.kind === 'avoir' || row.kind === 'paiement') {
       running -= montant;
     }
     const key = `${row.kind}-${row.data.id}`;
-    result.set(key, running);
+    result.set(key, Number(running.toFixed(3)));
   }
   return result;
 }
@@ -680,27 +690,27 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
     if (row.kind === 'paiement') {
       const montant = getPaymentTotalWithIgnored(row.data);
       running -= montant;
-      result.set(`paiement-${row.data.id}`, running);
+      result.set(`paiement-${row.data.id}`, Number(running.toFixed(3)));
     } else {
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
       if (items.length === 0) {
-        const montant = getBonTotalForSolde(row.kind, row.data);
-        if (row.kind === 'sortie') running += montant;
+        const montant = getBonBalanceAmount(row.kind, row.data);
+        if (row.kind === 'sortie' || row.kind === 'ecommerce') running += montant;
         else running -= montant;
-        result.set(`${row.kind}-${row.data.id}-item-0`, running);
+        result.set(`${row.kind}-${row.data.id}-item-0`, Number(running.toFixed(3)));
       } else {
-        const bonMontant = getBonTotalForSolde(row.kind, row.data);
+        const bonMontant = getBonBalanceAmount(row.kind, row.data);
         const itemsSum = items.reduce((s: number, i: any) => {
           return s + safeNum(i.total ?? (safeNum(i.quantite) * safeNum(i.prix_unitaire)));
         }, 0);
         items.forEach((item: any, iIdx: number) => {
           const rawTotal = safeNum(item.total ?? (safeNum(item.quantite) * safeNum(item.prix_unitaire)));
-          const total = itemsSum === 0
+          const total = row.kind === 'ecommerce' ? safeNum(item.balance_amount) : itemsSum === 0
             ? (iIdx === items.length - 1 ? bonMontant : 0)
             : rawTotal;
-          if (row.kind === 'sortie') running += total;
+          if (row.kind === 'sortie' || row.kind === 'ecommerce') running += total;
           else running -= total;
-          result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, running);
+          result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, Number(running.toFixed(3)));
         });
       }
     }
@@ -759,6 +769,7 @@ interface CompletTableProps {
 }
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string; styleKey: string }> = {
+  ecommerce: { label: 'E-commerce', badgeClass: 'bg-violet-100 text-violet-700', accentClass: 'text-violet-700', hoverClass: 'hover:bg-violet-100', itemBorderClass: 'border-violet-200', prefix: 'ECO', bgClass: 'colored-row bg-violet-50', styleKey: 'bon_ecommerce' },
   sortie:   { label: 'Sortie',   badgeClass: 'bg-blue-100 text-blue-700',    accentClass: 'text-blue-700',   hoverClass: 'hover:bg-blue-100',   itemBorderClass: 'border-blue-200',   prefix: 'SOR', bgClass: 'colored-row bg-blue-100', styleKey: 'bon_sortie' },
   avoir:    { label: 'Avoir',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-black', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-100', styleKey: 'bon_avoir_client' },
 };
@@ -1315,7 +1326,7 @@ const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeIn
 
 // ─── Client detail page ───────────────────────────────────────────────────────
 
-type PageTab = 'complet' | 'sorties' | 'avoirs' | 'paiements';
+type PageTab = 'complet' | 'sorties' | 'ecommerce' | 'avoirs' | 'paiements';
 
 const ClientDetailPage: React.FC = () => {
   const isMobileDetail = useMobilePrintModal();
@@ -1610,6 +1621,10 @@ const ClientDetailPage: React.FC = () => {
     () => filterHistoryBonsBySearch(sorties, products, normalizedProductSearch),
     [sorties, products, normalizedProductSearch]
   );
+  const filteredEcommerce = useMemo(
+    () => filterHistoryBonsBySearch((history?.ecommerceOrders ?? []).filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation)), products, normalizedProductSearch),
+    [history, products, normalizedProductSearch, filterFrom, filterTo]
+  );
   const filteredAvoirs = useMemo(
     () => filterHistoryBonsBySearch(avoirs, products, normalizedProductSearch),
     [avoirs, products, normalizedProductSearch]
@@ -1632,7 +1647,7 @@ const ClientDetailPage: React.FC = () => {
     const out: RemiseEligibleItem[] = [];
     for (const row of completRows) {
       if (row.kind === 'paiement') continue;
-      if (row.kind === 'avoir') continue;
+      if (row.kind !== 'sortie') continue;
       if (visibleIds && !visibleIds.has(`${row.kind}-${row.data.id}`)) continue;
       const bonId = Number(row.data.id);
       const bonType = 'Sortie' as const;
@@ -1687,6 +1702,7 @@ const ClientDetailPage: React.FC = () => {
   const tabs: { id: PageTab; label: string; count: number }[] = [
     { id: 'complet', label: 'Complet', count: visibleIds ? visibleIds.size : completRows.length },
     { id: 'sorties', label: 'Bons Sortie', count: filteredSorties.length },
+    { id: 'ecommerce', label: 'Bons E-commerce', count: filteredEcommerce.length },
     { id: 'avoirs', label: 'Avoirs Client', count: filteredAvoirs.length },
     { id: 'paiements', label: 'Paiements', count: paiements.length },
   ];
@@ -1761,7 +1777,7 @@ const ClientDetailPage: React.FC = () => {
     rows.forEach((row: CompletRow) => {
       const { kind, data } = row;
       const bonKey = `${kind}-${data.id}`;
-      const typeLabel = kind === 'sortie' ? 'produit' : kind === 'avoir' ? 'avoir' : 'paiement';
+      const typeLabel = (kind === 'sortie' || kind === 'ecommerce') ? 'produit' : kind === 'avoir' ? 'avoir' : 'paiement';
       const bonNum = data.numero ?? `${kind.substring(0,3).toUpperCase()}${String(data.id).padStart(2,'0')}`;
       const dateIso = data.date_creation ?? data.date_paiement ?? '';
       const adresseLivraison = data.adresse_livraison ?? '';
@@ -1801,6 +1817,10 @@ const ClientDetailPage: React.FC = () => {
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(`${kind}-${data.id}-item-0`) ?? 0),
           type: typeLabel,
+          bon_type: kind === 'ecommerce' ? 'Ecommerce' : undefined,
+          docKind: kind,
+          balanceAmount: kind === 'ecommerce' ? safeNum(data.balance_amount) : undefined,
+          settled_amount: kind === 'ecommerce' ? Math.max(0, safeNum(data.montant_total) - safeNum(data.balance_amount)) : 0,
         });
         return;
       }
@@ -1828,6 +1848,10 @@ const ClientDetailPage: React.FC = () => {
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(itemKey) ?? 0),
           type: typeLabel,
+          bon_type: kind === 'ecommerce' ? 'Ecommerce' : undefined,
+          docKind: kind,
+          balanceAmount: kind === 'ecommerce' ? safeNum(item.balance_amount) : undefined,
+          settled_amount: kind === 'ecommerce' ? safeNum(item.total) - safeNum(item.balance_amount) : 0,
         });
       });
     });
@@ -1839,7 +1863,7 @@ const ClientDetailPage: React.FC = () => {
     let scopedSolde = 0;
     return result.map((row: any) => {
       const type = String(row.type || '').toLowerCase();
-      const amount = Number(row.total ?? 0);
+      const amount = Number(row.balanceAmount ?? row.total ?? 0);
       if (type === 'produit') scopedSolde -= amount;
       else if (type === 'paiement' || type === 'avoir') scopedSolde += amount;
       return { ...row, soldeCumulatif: scopedSolde };
@@ -1870,7 +1894,7 @@ const ClientDetailPage: React.FC = () => {
       totalAmount: totalVentes,
       finalSolde,
       totalDebit: totalVentes + (includeInitialInDebit ? initialSoldeForDebit : 0),
-      totalCredit: totalPaiements + totalAvoirs,
+      totalCredit: totalPaiements + totalAvoirs + printProductHistory.reduce((sum: number, row: any) => sum + safeNum(row.settled_amount), 0),
     };
   }, [needsPrintHistory, history, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
 
@@ -1922,7 +1946,7 @@ const ClientDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
           totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
-          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties)' : '(Sorties + Solde initial)'}
+          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties + E-commerce)' : '(Sorties + E-commerce + Solde initial)'}
         />
     );
   }
@@ -2166,6 +2190,10 @@ const ClientDetailPage: React.FC = () => {
                 /></div>}{isCompactHistory && <MobileCompletCards rows={completRows} detail={detailEnabled} soldeInitial={contact?.solde ?? 0} products={products} remises={history?.remises ?? EMPTY_HISTORY_DATA} visibleIds={visibleIds} showInitialRow={!hasDateFilter} selectedIds={selectedIds} onToggleSelect={toggleSelect} selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onToggleAllItems={toggleAllItems} onCompletDragEnd={handleCompletDragEnd} remiseEditor={remiseEditor} />}</>
           )}
 
+          {tab === 'ecommerce' && (filteredEcommerce.length === 0
+            ? <div className="p-8 text-center text-gray-500">Aucun bon e-commerce</div>
+            : <><div className="hidden md:block overflow-x-auto"><BonTable bons={filteredEcommerce} detail={detailEnabled} products={products} prefix="ECO" accentClass="text-violet-700" hoverClass="hover:bg-violet-50" /></div><MobileBonCards bons={filteredEcommerce} detail={detailEnabled} products={products} prefix="ECO" /></>)}
+
           {/* ── Bons Sortie ── */}
           {tab === 'sorties' && (
             filteredSorties.length === 0
@@ -2283,7 +2311,7 @@ const ClientDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
           totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
-          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties)' : '(Sorties + Solde initial)'}
+          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties + E-commerce)' : '(Sorties + E-commerce + Solde initial)'}
         />
       )}
 
