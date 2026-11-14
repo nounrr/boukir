@@ -7,7 +7,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
-import { ensureCategoryColumns } from '../utils/ensureCategorySchema.js';
+import { ensureCategoryColumns, CATEGORY_ORDER_SQL } from '../utils/ensureCategorySchema.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import { requireRoles } from '../middleware/auth.js';
 
@@ -28,7 +28,7 @@ router.use(async (_req, _res, next) => {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const categoryImagesDir = path.join(__dirname, '..', 'uploads', 'categories');
-const CATEGORY_SELECT = 'id, nom, nom_ar, nom_en, nom_zh, description, image_url, ai_image_cost_usd, ai_image_cost_estimated, ai_image_model, ai_image_quality, parent_id, created_by, updated_by, created_at, updated_at';
+const CATEGORY_SELECT = 'id, nom, nom_ar, nom_en, nom_zh, description, image_url, ai_image_cost_usd, ai_image_cost_estimated, ai_image_model, ai_image_quality, parent_id, sort_order, created_by, updated_by, created_at, updated_at';
 const IMAGE_MODEL = 'gpt-image-2';
 const IMAGE_QUALITY = 'medium';
 const IMAGE_OUTPUT_ESTIMATE_USD = 0.053;
@@ -95,7 +95,7 @@ function toNullableNumber(value) {
 
 router.get('/', async (_req, res, next) => {
   try {
-    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories ORDER BY id DESC`);
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories ORDER BY ${CATEGORY_ORDER_SQL()}`);
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -159,6 +159,58 @@ router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Reorder siblings (drag & drop): every id in ordered_ids becomes a child of parent_id,
+// with sort_order = its position. Used both to reorder within a level and to move a
+// category to another level at a precise position.
+router.put('/reorder', async (req, res, next) => {
+  const parentId = toNullableNumber(req.body?.parent_id) ?? null;
+  const rawIds = Array.isArray(req.body?.ordered_ids) ? req.body.ordered_ids : null;
+  if (!rawIds || rawIds.length === 0) return res.status(400).json({ message: 'ordered_ids requis' });
+  const ids = rawIds.map(Number);
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+    return res.status(400).json({ message: 'ordered_ids invalides' });
+  }
+  if (parentId !== null && (!Number.isInteger(parentId) || parentId <= 0)) {
+    return res.status(400).json({ message: 'parent_id invalide' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    const [all] = await connection.query('SELECT id, parent_id FROM categories');
+    const parentOf = new Map(all.map((c) => [Number(c.id), c.parent_id == null ? null : Number(c.parent_id)]));
+    if (ids.some((id) => !parentOf.has(id))) return res.status(404).json({ message: 'Catégorie introuvable' });
+    if (parentId !== null) {
+      if (!parentOf.has(parentId)) return res.status(400).json({ message: 'Catégorie parente introuvable' });
+      // The new parent must not be one of the moved categories nor one of their descendants.
+      const moved = new Set(ids);
+      const seen = new Set();
+      for (let cur = parentId; cur != null && !seen.has(cur); cur = parentOf.get(cur)) {
+        if (moved.has(cur)) return res.status(400).json({ message: 'Impossible: cela créerait une référence circulaire' });
+        seen.add(cur);
+      }
+    }
+
+    const updatedBy = req.user?.id ?? null;
+    const now = new Date();
+    await connection.beginTransaction();
+    for (let i = 0; i < ids.length; i++) {
+      await connection.query(
+        'UPDATE categories SET parent_id = ?, sort_order = ?, updated_by = COALESCE(?, updated_by), updated_at = ? WHERE id = ?',
+        [parentId, i, updatedBy, now, ids[i]]
+      );
+    }
+    await connection.commit();
+
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories ORDER BY ${CATEGORY_ORDER_SQL()}`);
+    res.json(rows);
+  } catch (err) {
+    try { await connection.rollback(); } catch { /* ignore */ }
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
+
 router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
@@ -220,7 +272,10 @@ router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
     if (nom_en !== undefined) { fields.push('nom_en = ?'); values.push(nextEn); }
     if (nom_zh !== undefined) { fields.push('nom_zh = ?'); values.push(nextZh); }
     if (description !== undefined) { fields.push('description = ?'); values.push(normalizeNullableText(description)); }
-    if (parentId !== undefined) { fields.push('parent_id = ?'); values.push(parentId); }
+    if (parentId !== undefined) {
+      fields.push('parent_id = ?'); values.push(parentId);
+      if ((parentId ?? null) !== (currentCategory.parent_id ?? null)) fields.push('sort_order = NULL');
+    }
     if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(toNullableNumber(updated_by)); }
 
     const image_url_from_upload = req.file ? `/uploads/categories/${req.file.filename}` : null;

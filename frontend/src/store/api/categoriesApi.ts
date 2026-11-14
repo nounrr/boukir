@@ -66,6 +66,30 @@ export const categoriesApi = apiSlice.injectEndpoints({
         { type: 'Category', id: 'LIST' },
       ],
     }),
+    reorderCategories: builder.mutation<Category[], { parent_id: number | null; ordered_ids: number[] }>({
+      query: (body) => ({ url: '/categories/reorder', method: 'PUT', body }),
+      async onQueryStarted({ parent_id, ordered_ids }, { dispatch, queryFulfilled }) {
+        // Optimistic: move the rows immediately so the tree doesn't jump back during the request.
+        const patch = dispatch(
+          categoriesApi.util.updateQueryData('getCategories', undefined, (draft) => {
+            const position = new Map(ordered_ids.map((id, index) => [id, index]));
+            for (const cat of draft) {
+              const index = position.get(cat.id);
+              if (index !== undefined) {
+                cat.parent_id = parent_id;
+                cat.sort_order = index;
+              }
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: [{ type: 'Category', id: 'LIST' }],
+    }),
     deleteCategory: builder.mutation<{ success: boolean }, { id: number }>({
       query: ({ id }) => ({ url: `/categories/${id}`, method: 'DELETE' }),
       invalidatesTags: [{ type: 'Category', id: 'LIST' }, 'Category'],
@@ -83,6 +107,7 @@ export const {
   useUpdateCategoryMutation,
   useGenerateCategoryImageMutation,
   useDeleteCategoryMutation,
+  useReorderCategoriesMutation,
   useGetCategoryUsageQuery,
   useLazyGetCategoryUsageQuery,
 } = categoriesApi;

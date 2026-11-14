@@ -52,6 +52,12 @@ async function execDdlWithRetry(db, sql, maxAttempts = 6) {
   }
 }
 
+// Siblings are shown by manual sort_order first, then never-ordered ones alphabetically.
+export const CATEGORY_ORDER_SQL = (alias = '') => {
+  const p = alias ? `${alias}.` : '';
+  return `${p}sort_order IS NULL, ${p}sort_order, ${p}nom, ${p}id`;
+};
+
 export async function ensureCategoryColumns(db = pool) {
   if (ensureState.categoriesColumns.done) return;
   if (ensureState.categoriesColumns.inFlight) {
@@ -85,6 +91,9 @@ export async function ensureCategoryColumns(db = pool) {
       }
       if (!(await columnExists(connection, 'categories', 'ai_image_quality'))) {
         await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN ai_image_quality VARCHAR(16) NULL`);
+      }
+      if (!(await columnExists(connection, 'categories', 'sort_order'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN sort_order INT NULL`);
       }
     });
 

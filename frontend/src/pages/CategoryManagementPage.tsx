@@ -14,8 +14,19 @@ import {
 	useDeleteCategoryMutation,
 	useLazyGetCategoryUsageQuery,
 	useGenerateCategoryImageMutation,
+	useReorderCategoriesMutation,
 } from '../store/api/categoriesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+
+// Same order as the backend/shop: manual sort_order first, then never-ordered siblings alphabetically.
+const bySortOrder = (a: Category, b: Category) => {
+	const ao = a.sort_order ?? null;
+	const bo = b.sort_order ?? null;
+	if (ao !== null && bo !== null && ao !== bo) return ao - bo;
+	if (ao === null && bo !== null) return 1;
+	if (ao !== null && bo === null) return -1;
+	return String(a.nom || '').localeCompare(String(b.nom || '')) || a.id - b.id;
+};
 
 const CategoryManagementPage: React.FC = () => {
 	const { data: categories = [], isLoading } = useGetCategoriesQuery();
@@ -24,6 +35,7 @@ const CategoryManagementPage: React.FC = () => {
 	const [deleteCategory] = useDeleteCategoryMutation();
 	const [getUsage] = useLazyGetCategoryUsageQuery();
 	const [generateCategoryImage] = useGenerateCategoryImageMutation();
+	const [reorderCategories] = useReorderCategoriesMutation();
 	const userRole = useSelector((state: RootState) => state.auth.user?.role);
 	const canGenerateImage = ['PDG', 'Manager', 'ManagerPlus'].includes(userRole || '');
 	const [generatingImageId, setGeneratingImageId] = useState<number | null>(null);
@@ -59,9 +71,8 @@ const CategoryManagementPage: React.FC = () => {
 	// Build hierarchy recursively
 	const buildTree = (parentId: number | null): Category[] => {
 		return categories
-			.filter(cat => cat.parent_id === parentId)
-			.sort((a, b) => String(a.nom || '').localeCompare(String(b.nom || '')))
-			.map(cat => cat);
+			.filter(cat => (cat.parent_id ?? null) === parentId)
+			.sort(bySortOrder);
 	};
 
 	const hierarchy = useMemo(() => buildTree(null), [categories]);
@@ -214,6 +225,18 @@ const CategoryManagementPage: React.FC = () => {
 		}
 	};
 
+	// True when `candidateId` is `ancestorId` itself or lies somewhere below it.
+	const isInSubtree = (ancestorId: number, candidateId: number | null) => {
+		const seen = new Set<number>();
+		let cur: number | null = candidateId;
+		while (cur !== null && !seen.has(cur)) {
+			if (cur === ancestorId) return true;
+			seen.add(cur);
+			cur = categories.find(c => c.id === cur)?.parent_id ?? null;
+		}
+		return false;
+	};
+
 	const handleDrop = async (e: React.DragEvent, targetId: number) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -233,31 +256,35 @@ const CategoryManagementPage: React.FC = () => {
 			return;
 		}
 
-		try {
-			let newParentId: number | null = null;
+		const position = dragOver?.position ?? 'inside';
+		const newParentId: number | null = position === 'inside' ? targetId : (targetCat.parent_id ?? null);
 
-			if (dragOver?.position === 'inside') {
-				// Move inside target (become child)
-				newParentId = targetId;
-			} else {
-				// Move before/after target (become sibling)
-				newParentId = targetCat.parent_id || null;
-			}
+		if (isInSubtree(draggedCat.id, newParentId)) {
+			showError('Impossible de déplacer une catégorie dans une de ses sous-catégories');
+			setDragging(null);
+			setDragOver(null);
+			return;
+		}
 
-			// Update the dragged category
-			await updateCategory({
-				id: dragging,
-				parent_id: newParentId,
-				updated_by: 1,
-			}).unwrap();
-
-			showSuccess('Catégorie déplacée avec succès');
-		} catch (e: any) {
-			showError(e?.data?.message || e?.message || 'Erreur lors du déplacement');
+		// New ordered list of siblings under the destination parent, with the dragged category placed.
+		const siblings = buildTree(newParentId).filter(c => c.id !== draggedCat.id).map(c => c.id);
+		if (position === 'inside') {
+			siblings.push(draggedCat.id);
+		} else {
+			const targetIndex = siblings.indexOf(targetId);
+			siblings.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, draggedCat.id);
 		}
 
 		setDragging(null);
 		setDragOver(null);
+		if (position === 'inside') setExpanded(prev => ({ ...prev, [targetId]: true }));
+
+		try {
+			await reorderCategories({ parent_id: newParentId, ordered_ids: siblings }).unwrap();
+			showSuccess((draggedCat.parent_id ?? null) === newParentId ? 'Ordre des catégories mis à jour' : 'Catégorie déplacée avec succès');
+		} catch (e: any) {
+			showError(e?.data?.message || e?.message || 'Erreur lors du déplacement');
+		}
 	};
 
 	// Render category row
@@ -430,7 +457,7 @@ const CategoryManagementPage: React.FC = () => {
 							Organisation des Catégories
 						</h1>
 						<p className="text-sm text-gray-600 mt-1">
-							Glissez-déposez pour organiser la hiérarchie des catégories (niveaux illimités)
+							Glissez-déposez pour organiser la hiérarchie et l'ordre d'affichage des catégories (niveaux illimités)
 						</p>
 						{canGenerateImage && <p className="text-xs text-purple-700 mt-1">Image IA : environ {CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD par clic. Chaque génération est facturée.</p>}
 					</div>
@@ -444,7 +471,8 @@ const CategoryManagementPage: React.FC = () => {
 					<p className="font-medium mb-1">Comment organiser vos catégories :</p>
 					<ul className="list-disc list-inside space-y-1 ml-2">
 						<li>Glissez une catégorie <strong>au milieu</strong> d'une autre pour en faire une sous-catégorie</li>
-						<li>Glissez <strong>en haut ou en bas</strong> pour réordonner au même niveau</li>
+						<li>Glissez <strong>en haut ou en bas</strong> d'une catégorie pour la placer avant ou après : cet ordre est celui affiché dans le shop (sidebar des catégories et menu)</li>
+						<li>Les catégories jamais réordonnées restent triées par ordre alphabétique, après celles placées manuellement</li>
 						<li>Vous pouvez créer plusieurs niveaux de sous-catégories</li>
 						<li>Les catégories avec produits ne peuvent pas être supprimées</li>
 					</ul>

@@ -4,6 +4,7 @@ import { Router } from 'express';
 import pool from '../../db/pool.js';
 import { ensureCategoryProductOrderSchema, categoryBrandPriceOrderSql, CATEGORY_PRODUCT_ORDER_SQL, CATEGORY_PRODUCT_ORDER_JOIN } from '../../utils/categoryProductOrder.js';
 import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
+import { ensureCategoryColumns, CATEGORY_ORDER_SQL } from '../../utils/ensureCategorySchema.js';
 import { createProductSitemapRouter } from './productSitemap.js';
 import { createCatalogPagesRouter } from './catalogPages.js';
 import { DEFAULT_VARIANT_ORDER_SQL, prioritizeDefaultVariant } from '../../utils/ecommerceDefaultVariant.js';
@@ -581,10 +582,11 @@ router.get('/', async (req, res, next) => {
 
     // ===== GET FILTER METADATA =====
     // 1. Get ALL categories hierarchy (for header menu + filters)
+    await ensureCategoryColumns();
     const [allCategories] = await pool.query(`
-      SELECT id, nom, nom_ar, nom_en, nom_zh, parent_id
+      SELECT id, nom, nom_ar, nom_en, nom_zh, parent_id, sort_order
       FROM categories
-      ORDER BY parent_id, nom
+      ORDER BY ${CATEGORY_ORDER_SQL()}
     `);
 
     // Build category tree
@@ -599,6 +601,7 @@ router.get('/', async (req, res, next) => {
         nom_en: cat.nom_en,
         nom_zh: cat.nom_zh,
         parent_id: cat.parent_id,
+        sort_order: cat.sort_order,
         children: []
       };
     });

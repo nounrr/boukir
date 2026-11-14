@@ -179,6 +179,7 @@ export interface Category {
   ai_image_model?: string | null;
   ai_image_quality?: string | null;
   parent_id?: number | null;
+  sort_order?: number | null;
   created_by?: number;
   updated_by?: number;
   created_at: string;
