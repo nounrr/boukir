@@ -16,6 +16,7 @@ import { cmiOrderToken, createCmiPaymentForOrder } from './cmiPayments.js';
 import { unitFromRow, unitSellingPrice } from '../../utils/unitPrice.js';
 import { contactLocale, notifyCustomer, orderStatusMessage, remiseCreditedMessage } from '../../utils/customerNotify.js';
 import { loadStatementLines } from '../../utils/statementLines.js';
+import { sanitizeReturnUrl } from '../../utils/paymentReturn.js';
 import { STATEMENT_UNION_SQL } from '../../utils/statementBalance.js';
 
 async function ensureRemiseSchema() {
@@ -1923,7 +1924,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
           shipping_postal_code: effectiveShippingPostalCode,
           total_amount: totalAmount,
           remise_used_amount: remiseUsedAmount,
-        }, { locale: payment_locale });
+        }, { locale: payment_locale, returnUrl: sanitizeReturnUrl(req.body?.return_url) });
         cmiPayment = { url: payment.url, fields: payment.fields, token: payment.token };
       } catch (paymentErr) {
         // The order exists: the customer can retry the payment from the result page.

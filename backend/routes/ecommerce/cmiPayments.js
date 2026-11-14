@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../../middleware/auth.js';
 import { contactLocale, notifyCustomer, soldePaymentMessage } from '../../utils/customerNotify.js';
 import { getStatementBalance } from '../../utils/statementBalance.js';
+import { loadReturnUrl, sanitizeReturnUrl, saveReturnUrl, withParams } from '../../utils/paymentReturn.js';
 import { ensureSoldePaymentSchema, isSoldeOid, makeSoldeOid, processSoldeResult, validateSoldeAmount } from '../../utils/soldePayment.js';
 import {
   buildCmiPaymentForm,
@@ -117,7 +118,7 @@ function resultUrl(config, { lang, status, orderNumber }) {
  * Le 1er essai utilise le numéro de commande comme oid ; les essais suivants ajoutent "-2", "-3"...
  * (l'oid doit être unique côté CMI pour chaque transaction).
  */
-export async function createCmiPaymentForOrder(db, order, { locale } = {}) {
+export async function createCmiPaymentForOrder(db, order, { locale, returnUrl } = {}) {
   await ensureCmiPaymentSchema(db);
   const config = getCmiConfig();
   const amount = amountToPay(order);
@@ -141,7 +142,7 @@ export async function createCmiPaymentForOrder(db, order, { locale } = {}) {
     city: order.shipping_city,
     postalCode: order.shipping_postal_code,
     // Le bouton "Annuler" de la page CMI ramène le client sur la page résultat avec son jeton.
-    shopUrl: resultUrl(config, { lang, status: 'cancel', orderNumber: order.order_number }),
+    shopUrl: returnUrl ? withParams(returnUrl, { status: 'cancel', order: order.order_number, token }) : resultUrl(config, { lang, status: 'cancel', orderNumber: order.order_number }),
   }, config);
 
   await db.query(
@@ -150,6 +151,7 @@ export async function createCmiPaymentForOrder(db, order, { locale } = {}) {
     [order.id, oid, amount, config.currency]
   );
 
+  await saveReturnUrl(db, oid, returnUrl);
   return { ...form, oid, token };
 }
 
@@ -329,6 +331,12 @@ async function handleBrowserReturn(req, res, expectedStatus) {
       // Ex. test de certification "clé de hachage invalide" (3D-1004) : on affiche un échec.
       status = 'failed';
     }
+    // An app (e.g. the web build of the mobile app) can ask to be brought back to itself.
+    const appReturn = await loadReturnUrl(pool, result.oid);
+    if (appReturn) {
+      const orderRef = result.solde ? undefined : (result.order?.order_number || (status === 'failed' ? await findOrderNumberByOid(result.oid) : null));
+      return res.redirect(303, withParams(appReturn, { status, solde: result.solde ? '1' : undefined, oid: result.oid, order: orderRef || undefined, token: orderRef ? cmiOrderToken(orderRef, config) : undefined }));
+    }
     if (result.solde) return res.redirect(303, soldeResultUrl(config, { lang: result.lang, status, oid: result.oid }));
     const orderNumber = result.order?.order_number
       || (status === 'failed' ? await findOrderNumberByOid(result.oid) : null);
@@ -445,7 +453,7 @@ router.post('/orders/:orderNumber/pay', async (req, res, next) => {
       return res.status(409).json({ message: 'Aucun montant à payer', error_type: 'CMI_NOTHING_TO_PAY' });
     }
 
-    const payment = await createCmiPaymentForOrder(pool, order, { locale: req.body?.locale });
+    const payment = await createCmiPaymentForOrder(pool, order, { locale: req.body?.locale, returnUrl: sanitizeReturnUrl(req.body?.return_url) });
     res.json({ cmi_payment: { url: payment.url, fields: payment.fields } });
   } catch (err) {
     next(err);
@@ -489,6 +497,7 @@ router.post('/solde', async (req, res, next) => {
     const config = getCmiConfig();
     const oid = makeSoldeOid(contactId);
     const lang = normalizeCmiLang(req.body?.locale);
+    const returnUrl = sanitizeReturnUrl(req.body?.return_url);
     const form = buildCmiPaymentForm({
       oid,
       amount: check.amount,
@@ -498,12 +507,13 @@ router.post('/solde', async (req, res, next) => {
       customerPhone: contact.telephone,
       address: contact.shipping_address_line1,
       city: contact.shipping_city,
-      shopUrl: soldeResultUrl(config, { lang, status: 'cancel', oid }),
+      shopUrl: returnUrl ? withParams(returnUrl, { status: 'cancel', solde: '1', oid }) : soldeResultUrl(config, { lang, status: 'cancel', oid }),
     }, config);
     await pool.query(
       "INSERT INTO solde_payment_transactions (contact_id, oid, amount, currency, status) VALUES (?, ?, ?, ?, 'initiated')",
       [contactId, oid, check.amount, config.currency]
     );
+    await saveReturnUrl(pool, oid, returnUrl);
     res.json({ cmi_payment: { url: form.url, fields: form.fields }, oid, amount: check.amount, owed: Math.round(owed * 100) / 100 });
   } catch (err) {
     next(err);
