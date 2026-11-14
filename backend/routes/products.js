@@ -1,3 +1,4 @@
+import { stockNameValidationSql, hasNameCorrectionsTable, loadStockNameValidation } from '../utils/stockNameValidation.js';
 import { ensureProductCategoriesSchema, parseCategoryIds, validateProductCategories, loadProductCategories, saveProductCategories } from '../utils/productCategories.js';
 import { Router } from 'express';
 import { createCategoryProductOrderRouter } from './categoryProductOrder.js';
@@ -844,6 +845,8 @@ async function runProductSearch(query) {
     const { category_id, brand_id, missing_lang, type } = query;
     const sortBy = String(query.sortBy || 'id').trim();
     const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const unvalidatedNamesOnly = isMissingImageFilterEnabled(query.unvalidated_name);
+    const correctionsTableExists = unvalidatedNamesOnly && await hasNameCorrectionsTable(pool);
     const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
@@ -928,6 +931,8 @@ async function runProductSearch(query) {
       conditions.push('p.brand_id = ?');
       params.push(brand_id);
     }
+
+    if (correctionsTableExists) conditions.push(stockNameValidationSql({ missingImage: isMissingImageFilterEnabled(query.missing_image) }));
 
     if (isMissingImageFilterEnabled(query.missing_category)) {
       conditions.push('p.categorie_id IS NULL AND NOT EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id)');
@@ -1342,6 +1347,8 @@ async function runProductSearch(query) {
       }
     }
 
+    if (unvalidatedNamesOnly) await loadStockNameValidation(pool, products, correctionsTableExists);
+
     return {
       data: products,
       meta: {
@@ -1453,7 +1460,7 @@ export function appendStockDesignationRows(rows, product) {
   const productReference = String(product?.reference ?? product?.id ?? '').trim();
   const productStock = stockExportValues(product?.snapshot_quantite_total, product?.quantite);
 
-  rows.push({
+  if (!product.name_validation_filter || !product.name_validation_correct) rows.push({
     'Designation': product?.designation ?? '',
     'Variante': '',
     'Categorie': product?.categorie?.nom ?? '',
@@ -1470,6 +1477,7 @@ export function appendStockDesignationRows(rows, product) {
   if (!Array.isArray(product?.variants)) return;
 
   for (const variant of product.variants) {
+    if (product.name_validation_filter && variant.name_validation_correct) continue;
     const variantStock = stockExportValues(variant?.snapshot_quantite_total, variant?.stock_quantity);
     rows.push({
       'Designation': product?.designation ?? '',

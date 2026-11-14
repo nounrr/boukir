@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDocDefinition } from './stockPdf.js';
 
+test('stock PDF keeps unreviewed variants and hides their validated siblings', () => {
+  const table = buildDocDefinition([{
+    id: 2, designation: 'Parent validé', name_validation_filter: true, name_validation_correct: true,
+    variants: [{ id: 21, variant_name: 'Déjà correcte', name_validation_correct: true },
+      { id: 22, variant_name: 'À contrôler', name_validation_correct: false }],
+  }]).content[0].table;
+  assert.equal(table.body.length, 2);
+  const content = JSON.stringify(table.body);
+  assert.match(content, /À contrôler/);
+  assert.doesNotMatch(content, /Déjà correcte/);
+});
+
 test('employee stock PDF omits purchase, cost and wholesale columns, including snapshot prices', () => {
   const products = [{
     id: 1, designation: 'Produit', quantite: 3, prix_achat: 101, cout_revient: 111, prix_gros: 121,

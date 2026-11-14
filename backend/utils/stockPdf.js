@@ -111,9 +111,10 @@ function flattenProducts(products) {
   const rows = [];
   for (const product of products || []) {
     if (product.is_deleted === 1) continue;
-    rows.push(product);
+    if (!product.name_validation_filter || !product.name_validation_correct) rows.push(product);
     if (Array.isArray(product.variants)) {
       for (const variant of product.variants) {
+        if (product.name_validation_filter && variant.name_validation_correct) continue;
         const variantReference = String(variant.reference ?? variant.ref ?? '').trim();
         const parentReference = String(product.reference ?? product.id ?? '').trim();
         rows.push({

@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import * as XLSX from 'xlsx';
 import { createStockExcelBuffer } from './products.js';
 
+test('stock Excel exports only names without a Correct validation when the filter is enabled', () => {
+  const workbook = XLSX.read(createStockExcelBuffer([{
+    id: 2, designation: 'Parent validé', name_validation_filter: true, name_validation_correct: true,
+    variants: [{ id: 21, variant_name: 'Validée', name_validation_correct: true },
+      { id: 22, variant_name: 'À contrôler', name_validation_correct: false }],
+  }]), { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Stock);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].Variante, 'À contrôler');
+});
+
 test('stock Excel uses every snapshot total and falls back only when none exist', () => {
   const buffer = createStockExcelBuffer([
     {

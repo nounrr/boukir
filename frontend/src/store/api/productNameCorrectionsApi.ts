@@ -148,7 +148,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
           body,
         };
       },
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     replaceInitialProductNameCorrections: builder.mutation<
@@ -164,7 +164,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
           body,
         };
       },
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     rematchProductNameCorrections: builder.mutation<{ ok: boolean; checked: number }, void>({
@@ -172,7 +172,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         url: '/product-name-corrections/rematch',
         method: 'POST',
       }),
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     setProductNameCorrectionChecked: builder.mutation<
@@ -184,7 +184,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         method: 'PATCH',
         body: { checked },
       }),
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     bulkSetProductNameCorrectionsChecked: builder.mutation<
@@ -196,7 +196,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         method: 'PATCH',
         body,
       }),
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     replaceProductNameCorrectionNames: builder.mutation<
@@ -208,7 +208,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         method: 'PATCH',
         body,
       }),
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     translateProductNameCorrections: builder.mutation<
@@ -224,7 +224,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     updateProductCorrectionNames: builder.mutation<
@@ -245,7 +245,7 @@ export const productNameCorrectionsApi = api.injectEndpoints({
         method: 'PATCH',
         body,
       }),
-      invalidatesTags: ['ProductNameCorrection'],
+      invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
 
     applyProductNameCorrections: builder.mutation<

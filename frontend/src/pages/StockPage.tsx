@@ -1,3 +1,4 @@
+import { filterStockRowsByUnvalidatedName } from '../utils/stockNameValidation';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 ﻿
 import React, { useState, useMemo, useRef } from 'react';
@@ -72,6 +73,7 @@ const StockPage: React.FC = () => {
   const [missingImageOnly, setMissingImageOnly] = useState(false);
   const [missingCategoryOnly, setMissingCategoryOnly] = useState(false);
   const [missingBrandOnly, setMissingBrandOnly] = useState(false);
+  const [unvalidatedNameOnly, setUnvalidatedNameOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
@@ -95,6 +97,7 @@ const StockPage: React.FC = () => {
     missing_image: missingImageOnly || undefined,
     missing_category: missingCategoryOnly || undefined,
     missing_brand: missingBrandOnly || undefined,
+    unvalidated_name: unvalidatedNameOnly || undefined,
     type: productType,
     sortBy: sortMode === 'recent' ? 'id' : 'quantite',
     sortDir: sortMode === 'quantite_asc' ? 'asc' : 'desc',
@@ -576,6 +579,7 @@ const StockPage: React.FC = () => {
             cout_revient_moyen_snapshot: variant.cout_revient_moyen_snapshot ?? null,
             snapshot_display: variant.snapshot_display ?? null,
             isVariantRow: true,
+            name_validation_correct: variant.name_validation_correct,
             variant_image_url: variant.image_url || null,
           });
         });
@@ -585,8 +589,8 @@ const StockPage: React.FC = () => {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    return filterStockRowsByMissingImage(flattenedProducts, missingImageOnly);
-  }, [flattenedProducts, missingImageOnly]);
+    return filterStockRowsByUnvalidatedName(filterStockRowsByMissingImage(flattenedProducts, missingImageOnly), unvalidatedNameOnly);
+  }, [flattenedProducts, missingImageOnly, unvalidatedNameOnly]);
 
   const handleExportExcel = async () => {
     setIsExportingStockExcel(true);
@@ -603,6 +607,7 @@ const StockPage: React.FC = () => {
       if (missingImageOnly) params.set('missing_image', 'true');
       if (missingCategoryOnly) params.set('missing_category', 'true');
       if (missingBrandOnly) params.set('missing_brand', 'true');
+      if (unvalidatedNameOnly) params.set('unvalidated_name', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
       const resp = await fetch(`/api/products/stock-excel?${params.toString()}`, {
@@ -648,6 +653,7 @@ const StockPage: React.FC = () => {
       if (missingImageOnly) params.set('missing_image', 'true');
       if (missingCategoryOnly) params.set('missing_category', 'true');
       if (missingBrandOnly) params.set('missing_brand', 'true');
+      if (unvalidatedNameOnly) params.set('unvalidated_name', 'true');
       if (categoryLabel) params.set('category_label', categoryLabel);
 
       const resp = await fetch(`/api/products/stock-pdf?${params.toString()}`, {
@@ -683,7 +689,7 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, searchTerm2, priceTerm, filterCategory, missingImageOnly, missingCategoryOnly, missingBrandOnly, activeTab, itemsPerPage, sortMode]);
+  }, [searchTerm, searchTerm2, priceTerm, filterCategory, missingImageOnly, missingCategoryOnly, missingBrandOnly, unvalidatedNameOnly, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -1461,6 +1467,10 @@ const StockPage: React.FC = () => {
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
           <span className="whitespace-nowrap">Sans marque</span>
+        </label>
+        <label title="Produits et variantes sans validation Correct dans la page Correction des noms" className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-blue-500 ${unvalidatedNameOnly ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+          <input type="checkbox" checked={unvalidatedNameOnly} onChange={event => { setUnvalidatedNameOnly(event.target.checked); setCurrentPage(1); }} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+          <span className="whitespace-nowrap">Sans validation « Correct »</span>
         </label>
       </div>
 
