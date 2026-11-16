@@ -185,7 +185,7 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
                 <span className="mb-2 block text-sm font-medium text-gray-700">Image</span>
                 <div className="flex flex-col gap-3 rounded-lg border border-dashed border-gray-300 p-4 sm:flex-row sm:items-center">
                   <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
-                    {previewUrl ? <img src={previewUrl} alt="Aperçu du service" className="h-full w-full object-cover" /> : <ImagePlus className="h-8 w-8 text-gray-400" />}
+                    {previewUrl ? <img loading="lazy" decoding="async" src={previewUrl} alt="Aperçu du service" className="h-full w-full object-cover" /> : <ImagePlus className="h-8 w-8 text-gray-400" />}
                   </div>
                   <div className="space-y-2">
                     <input
@@ -404,7 +404,7 @@ const ServicesPage: React.FC = () => {
                     <tr key={service.id} className="hover:bg-gray-50">
                       <td className="px-5 py-4"><div className="flex items-center gap-3">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
-                          {service.image_url ? <img src={toBackendUrl(service.image_url)} alt="" className="h-full w-full object-cover" /> : <Wrench className="h-5 w-5 text-gray-400" />}
+                          {service.image_url ? <img loading="lazy" decoding="async" src={toBackendUrl(service.image_url)} alt="" className="h-full w-full object-cover" /> : <Wrench className="h-5 w-5 text-gray-400" />}
                         </div>
                         <div><div className="font-medium text-gray-900">{service.nom}</div><div dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</div></div>
                       </div></td>
@@ -427,7 +427,7 @@ const ServicesPage: React.FC = () => {
               {services.map((service) => (
                 <article key={service.id} className="space-y-3 p-4">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">{service.image_url ? <img src={toBackendUrl(service.image_url)} alt="" className="h-full w-full object-cover" /> : <Wrench className="h-5 w-5 text-gray-400" />}</div>
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">{service.image_url ? <img loading="lazy" decoding="async" src={toBackendUrl(service.image_url)} alt="" className="h-full w-full object-cover" /> : <Wrench className="h-5 w-5 text-gray-400" />}</div>
                     <div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><h2 className="font-semibold text-gray-900">{service.nom}</h2><div className="flex flex-col items-end gap-1"><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${service.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{service.is_active ? 'Actif' : 'Inactif'}</span><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${service.is_published ? 'bg-blue-100 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{service.is_published ? 'Publié' : 'Non publié'}</span></div></div><p dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</p></div>
                   </div>
                   <CategoryBadges categories={service.categories} />

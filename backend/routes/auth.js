@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import { ensureInternalPricePermissionSchema } from '../utils/internalPricePermissions.js';
 import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmployeePagePermissions } from '../utils/employeePagePermissions.js';
+import { CHARGE_PAGE_COLUMNS, ensureChargePermissionSchema, normalizeChargePermissions } from '../utils/chargePermissions.js';
 
 const router = Router();
 
@@ -64,6 +65,7 @@ router.post('/login', async (req, res, next) => {
   try {
     await ensureInternalPricePermissionSchema();
     await ensureEmployeePagePermissionSchema();
+    await ensureChargePermissionSchema();
     const { cin, password } = req.body;
     if (!cin || !password) return res.status(400).json({ message: 'CIN et mot de passe requis' });
     const attemptKey = loginAttemptKey(req, cin);
@@ -75,7 +77,7 @@ router.post('/login', async (req, res, next) => {
     }
     
     const [rows] = await pool.query(
-      `SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, ${Object.values(EMPLOYEE_PAGE_COLUMNS).join(', ')}, password, password_changed_at, password_change_required_week_start FROM employees WHERE cin = ? AND deleted_at IS NULL`,
+      `SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, ${Object.values(EMPLOYEE_PAGE_COLUMNS).join(', ')}, ${Object.values(CHARGE_PAGE_COLUMNS).join(', ')}, password, password_changed_at, password_change_required_week_start FROM employees WHERE cin = ? AND deleted_at IS NULL`,
       [cin]
     );
     const row = rows[0];
@@ -126,7 +128,7 @@ router.post('/login', async (req, res, next) => {
       : signToken(identity);
     
     res.json({ 
-      user: { ...user, employee_page_permissions: normalizeEmployeePagePermissions(row) },
+      user: { ...user, employee_page_permissions: normalizeEmployeePagePermissions(row), charge_permissions: normalizeChargePermissions(row) },
       token,
       password_change_required: passwordChangeRequired,
       access_info: {
@@ -142,10 +144,11 @@ router.get('/me', verifyToken, enforceWeeklyPasswordChange, async (req, res, nex
   try {
     await ensureInternalPricePermissionSchema();
     await ensureEmployeePagePermissionSchema();
+    await ensureChargePermissionSchema();
     const { id } = req.user || {};
     if (!isEmployeePasswordSession(req.user)) return res.status(401).json({ message: 'Non autorisé' });
     const [rows] = await pool.query(
-      `SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, ${Object.values(EMPLOYEE_PAGE_COLUMNS).join(', ')}, password_changed_at, password_change_required_week_start FROM employees WHERE id = ? AND deleted_at IS NULL`,
+      `SELECT id, nom_complet, cin, date_embauche, role, acces_prix_internes, ${Object.values(EMPLOYEE_PAGE_COLUMNS).join(', ')}, ${Object.values(CHARGE_PAGE_COLUMNS).join(', ')}, password_changed_at, password_change_required_week_start FROM employees WHERE id = ? AND deleted_at IS NULL`,
       [id]
     );
     const row = rows[0];
@@ -154,7 +157,7 @@ router.get('/me', verifyToken, enforceWeeklyPasswordChange, async (req, res, nex
       : null;
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
-    res.json({ ...user, employee_page_permissions: normalizeEmployeePagePermissions(row), password_change_required: req.weeklyPasswordState.required });
+    res.json({ ...user, employee_page_permissions: normalizeEmployeePagePermissions(row), charge_permissions: normalizeChargePermissions(row), password_change_required: req.weeklyPasswordState.required });
   } catch (err) { next(err); }
 });
 

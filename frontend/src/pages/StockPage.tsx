@@ -811,7 +811,7 @@ const StockPage: React.FC = () => {
             style={{ left, top, maxWidth: maxW, maxHeight: maxH }}
           >
             <div className="w-fit h-fit max-w-[420px] max-h-[320px] rounded-lg border border-gray-200 bg-white shadow-2xl overflow-hidden p-2">
-              <img
+              <img loading="lazy" decoding="async"
                 src={hoverPreview.url}
                 alt={hoverPreview.alt}
                 className="block max-w-full max-h-[304px] object-contain bg-white"
@@ -1726,7 +1726,7 @@ const StockPage: React.FC = () => {
                               }}
                               onMouseLeave={() => setHoverPreview(null)}
                             >
-                              <img
+                              <img loading="lazy" decoding="async"
                                 src={imgUrl}
                                 alt={product.designation}
                                 className={`object-cover rounded ${product.isVariantRow ? 'h-8 w-8' : 'h-10 w-10'}`}

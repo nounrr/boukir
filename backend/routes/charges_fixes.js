@@ -1,10 +1,11 @@
 import express from 'express';
 import pool from '../db/pool.js';
-import { requireRoles } from '../middleware/auth.js';
+import { requireChargePermission } from '../utils/chargePermissions.js';
 import { FIXED_CHARGES_SELECT, parseFixedCharge } from '../utils/fixedCharges.js';
 
 const router = express.Router();
-const canManage = requireRoles('PDG', 'ManagerPlus', 'Manager');
+// PDG ou employé autorisé (Autorisations par page > Charges > Modifier les charges fixes).
+const canManage = requireChargePermission('fixed');
 const handleError = (res, error) => {
   if (error.statusCode === 400) return res.status(400).json({ message: error.message });
   console.error('Charges fixes:', error);

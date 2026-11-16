@@ -461,14 +461,14 @@ const AppContent: React.FC = () => {
           </ProtectedRoute>
         } />
         <Route path="/charges" element={
-          <ProtectedRoute requiredRoles={['PDG']}>
+          <ProtectedRoute requiredRoles={['PDG']} chargePermission="view">
             <LayoutWithAccessCheck>
               <ChargePage />
             </LayoutWithAccessCheck>
           </ProtectedRoute>
         } />
         <Route path="/charges/:id" element={
-          <ProtectedRoute requiredRoles={['PDG']}>
+          <ProtectedRoute requiredRoles={['PDG']} chargePermission="view">
             <LayoutWithAccessCheck>
               <ChargeDetailPage />
             </LayoutWithAccessCheck>

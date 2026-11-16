@@ -7,6 +7,7 @@ export const EMPLOYEE_PAGE_COLUMNS = Object.freeze({
   salaries: 'acces_salaires_employes',
   salary_details: 'acces_details_salaires_employes',
   archives: 'acces_archives_employes',
+  edit: 'acces_modification_employes',
 });
 
 export function normalizeEmployeePagePermissions(user) {
@@ -17,7 +18,7 @@ export function normalizeEmployeePagePermissions(user) {
       ? user.role === 'ManagerPlus' && ['view', 'salaries'].includes(key)
       : normalizePermissionFlag(user[column]))),
   ]));
-  for (const key of ['documents', 'salaries', 'archives']) flags[key] &&= flags.view;
+  for (const key of ['documents', 'salaries', 'archives', 'edit']) flags[key] &&= flags.view;
   flags.salary_details &&= flags.salaries;
   return flags;
 }

@@ -5482,7 +5482,7 @@ const BonsPage = () => {
             client={(() => {
               if (!selectedBonForPDFPrint) return undefined;
               const bon = selectedBonForPDFPrint;
-              const found = clients.find(c => c.id === bon.client_id);
+              const found = clients.find(c => bon.client_id != null && String(c.id) === String(bon.client_id));
               if (!found && ((bon.type === 'Comptant' || effectiveCurrentTab === 'Comptant' || bon.type === 'AvoirComptant' || effectiveCurrentTab === 'AvoirComptant' || bon.type === 'Devis' || effectiveCurrentTab === 'Devis') && bon.client_nom)) {
                 return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
               }

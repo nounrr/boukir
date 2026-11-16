@@ -328,7 +328,9 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     return String(ecommerceRaw?.user_id ?? ecommerceRaw?.contact_id ?? bon?.client_id ?? bon?.contact_id ?? '').trim();
   })();
   const contactRefLabel = isSupplierDocument ? 'Ref fournisseur' : 'Ref client';
-  const tel = (bon?.phone ?? bon?.tel ?? bon?.telephone ?? (contact as any)?.telephone ?? (contact as any)?.tel ?? '') as string | undefined;
+  const tel = (bon?.phone ?? bon?.tel ?? bon?.telephone ?? (contact as any)?.telephone ?? (contact as any)?.tel ?? bon?.contact_telephone ?? '') as string | undefined;
+  const contactAdresse = String((contact as any)?.adresse ?? '').trim();
+  const contactIce = String((contact as any)?.ice ?? '').trim();
   const telephoneLabel = String(bon?.phone ?? '').trim() ? 'Numéro de chantier' : 'Téléphone';
   const adrLiv = (bon?.adresse_livraison || bon?.adresseLivraison || '') as string | undefined;
   const hasContactOrInfo = Boolean(contact || (tel && String(tel).trim()) || (adrLiv && String(adrLiv).trim()));
@@ -517,6 +519,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                       )}
                       {tel && String(tel).trim() && (
                         <div><span className="font-medium">{telephoneLabel}:</span> {String(tel).trim()}</div>
+                      )}
+                      {contactAdresse && (
+                        <div><span className="font-medium">Adresse:</span> {contactAdresse}</div>
+                      )}
+                      {contactIce && (
+                        <div><span className="font-medium">ICE:</span> {contactIce}</div>
                       )}
                     </div>
                   )}

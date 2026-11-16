@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { canAccessEmployeePage, canReadEmployeeData } from '../../utils/employeePagePermissions';
 import type { EmployeePagePermission } from '../../utils/employeePagePermissions';
+import { canAccessCharges } from '../../utils/chargePermissions';
 import { useAuth } from '../../hooks/redux';
 import type { Role } from '../../types';
 
@@ -11,6 +12,8 @@ interface ProtectedRouteProps {
   requiredRoles?: Role[];
   forbiddenRoles?: Role[];
   employeePermission?: EmployeePagePermission;
+  /** Page Charges : PDG ou employé autorisé (Autorisations par page). */
+  chargePermission?: 'view' | 'fixed';
   allowOwnEmployee?: boolean;
 }
 
@@ -20,6 +23,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requiredRoles,
   forbiddenRoles,
   employeePermission,
+  chargePermission,
   allowOwnEmployee = false,
 }) => {
   const { isAuthenticated, user, passwordChangeRequired } = useAuth();
@@ -34,13 +38,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  const chargeAllowed = chargePermission ? canAccessCharges(user, chargePermission) : false;
+
   // If password change is required, block access to all routes except the change-password page
   if (passwordChangeRequired && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
   }
 
   // ChefChauffeur: allow only Bons + Véhicules (and change-password)
-  if (user?.role === 'ChefChauffeur' && !employeeAllowed) {
+  if (user?.role === 'ChefChauffeur' && !employeeAllowed && !chargeAllowed) {
     const allowed =
       location.pathname === '/bons' ||
       location.pathname === '/factures' ||
@@ -54,6 +60,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     if (!allowed) {
       return <Navigate to="/bons" replace />;
     }
+  }
+
+  if (chargePermission && !chargeAllowed) {
+    return <div className="p-8 text-center text-red-700">Accès à la page Charges non autorisé.</div>;
   }
 
   if (employeePermission && !employeeAllowed) {
@@ -90,7 +100,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // Si des rôles sont requis et que l'utilisateur ne les a pas
-  if (allowedRoles && (!user?.role || !allowedRoles.includes(user.role as any))) {
+  if (allowedRoles && !chargeAllowed && (!user?.role || !allowedRoles.includes(user.role as any))) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">

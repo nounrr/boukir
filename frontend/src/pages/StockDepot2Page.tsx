@@ -363,7 +363,7 @@ const StockDepot2Page: React.FC = () => {
                   <tr key={row.depot_stock_snapshot_id} className="border-t hover:bg-gray-50">
                     <td className="px-4 py-3">
                       {imageSrc(row.image_url) ? (
-                        <img src={imageSrc(row.image_url) || ''} alt={row.designation} className="h-10 w-10 rounded object-cover" />
+                        <img loading="lazy" decoding="async" src={imageSrc(row.image_url) || ''} alt={row.designation} className="h-10 w-10 rounded object-cover" />
                       ) : (
                         <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
                           <Package className="w-5 h-5" />

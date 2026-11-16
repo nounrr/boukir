@@ -155,7 +155,7 @@ const BrandsPage: React.FC = () => {
                   >
                     <div className="relative h-10 w-10">
                       {brand.image_url ? (
-                        <img
+                        <img loading="lazy" decoding="async"
                           src={toBackendUrl(brand.image_url)}
                           alt={brand.nom}
                           className="h-10 w-10 object-contain rounded-full border"

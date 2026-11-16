@@ -459,7 +459,7 @@ const getInitials = (name?: string | null) => {
 const AvatarThumb = ({ name, avatarUrl, size = 'md' }: { name?: string | null; avatarUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) => {
   const dimensions = size === 'lg' ? 'h-16 w-16 text-lg' : size === 'sm' ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm';
   if (avatarUrl) {
-    return <img src={avatarUrl} alt={name || 'Photo de profil'} className={`${dimensions} shrink-0 rounded-full object-cover ring-1 ring-gray-200`} />;
+    return <img loading="lazy" decoding="async" src={avatarUrl} alt={name || 'Photo de profil'} className={`${dimensions} shrink-0 rounded-full object-cover ring-1 ring-gray-200`} />;
   }
   const paletteIndex = (name || '').length % AVATAR_INITIALS_PALETTE.length;
   return (
@@ -521,7 +521,7 @@ const DocumentPreviewModal: React.FC<{
           ) : !objectUrl ? (
             <div className="flex h-full items-center justify-center text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Chargement de l’aperçu…</div>
           ) : isImage ? (
-            <div className="flex h-full items-center justify-center p-4"><img src={objectUrl} alt={doc.name} className="max-h-full max-w-full object-contain" /></div>
+            <div className="flex h-full items-center justify-center p-4"><img loading="lazy" decoding="async" src={objectUrl} alt={doc.name} className="max-h-full max-w-full object-contain" /></div>
           ) : (
             <iframe src={objectUrl} title={doc.name} className="h-full w-full border-0" />
           )}

@@ -9,6 +9,7 @@ import { ensureInternalPricePermissionSchema } from './internalPricePermissions.
 import { ensureArchivedProductPermissionSchema } from './archivedProductPermissions.js';
 import { COMPTANT_PAYMENT_VERIFICATION_COLUMN, ensureComptantPaymentVerificationPermissionSchema } from './comptantPaymentVerificationPermissions.js';
 import { EMPLOYEE_PAGE_COLUMNS, ensureEmployeePagePermissionSchema, normalizeEmployeePagePermissions } from './employeePagePermissions.js';
+import { CHARGE_PAGE_COLUMNS, ensureChargePermissionSchema } from './chargePermissions.js';
 
 /**
  * Registre unique des autorisations par page.
@@ -47,6 +48,18 @@ export const PAGE_PERMISSION_GROUPS = Object.freeze([
       { key: 'salaries', column: EMPLOYEE_PAGE_COLUMNS.salaries, label: 'Versements de salaires', description: 'Consulter les montants versés, les notes et les statuts.', requires: 'view' },
       { key: 'salary_details', column: EMPLOYEE_PAGE_COLUMNS.salary_details, label: 'Salaires prévus et vue globale', description: 'Voir les salaires prévus, les calculs détaillés et la page Salaires.', requires: 'salaries' },
       { key: 'archives', column: EMPLOYEE_PAGE_COLUMNS.archives, label: 'Employés archivés', description: 'Consulter les employés archivés. La restauration reste réservée au PDG.', requires: 'view' },
+      { key: 'edit', column: EMPLOYEE_PAGE_COLUMNS.edit, label: 'Modifier les employés', description: 'Modifier nom, CIN et date d’embauche des employés (le salaire exige « Salaires prévus »). Rôle, mot de passe, autorisations et suppression restent réservés au PDG.', requires: 'view' },
+    ],
+  },
+  {
+    key: 'charges',
+    label: 'Charges · page et charges fixes',
+    page: 'Charges',
+    href: '/charges',
+    description: 'Accès à la page Charges et gestion des charges fixes mensuelles.',
+    permissions: [
+      { key: 'view', column: CHARGE_PAGE_COLUMNS.view, label: 'Accéder à la page Charges', description: 'Ouvrir la page Charges et consulter les charges fixes.' },
+      { key: 'fixed', column: CHARGE_PAGE_COLUMNS.fixed, label: 'Modifier les charges fixes', description: 'Ajouter, modifier et supprimer les charges fixes mensuelles.', requires: 'view' },
     ],
   },
   {
@@ -352,6 +365,7 @@ export async function ensurePagePermissionSchema(db = pool) {
   await ensureFactureSchema(db);
   await ensureProjetPermissionSchema(db);
   await ensureEmployeePagePermissionSchema(db);
+  await ensureChargePermissionSchema(db);
   await ensureInternalPricePermissionSchema(db);
   await ensureArchivedProductPermissionSchema(db);
   await ensureComptantPaymentVerificationPermissionSchema(db);

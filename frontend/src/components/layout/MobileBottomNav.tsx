@@ -16,6 +16,7 @@ import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees, CATEGORY_EXCEL_ROLES } from '../../utils/permissions';
 import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
+import { canAccessCharges } from '../../utils/chargePermissions';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyFondCaissePermissionsQuery } from '../../store/api/fondCaisseApi';
 import { useGetMyStatsDetailsPermissionsQuery } from '../../store/api/statsApi';
@@ -135,7 +136,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
         { name: 'Client', to: '/clients', show: user?.role !== 'Employé' },
         { name: 'Clients e-commerce', to: '/clients-ecommerce', show: user?.role === 'PDG' },
         { name: 'Fournisseur', to: '/fournisseurs', show: user?.role !== 'Employé' },
-        { name: 'Charge', to: '/charges', show: user?.role === 'PDG' },
+        { name: 'Charge', to: '/charges', show: canAccessCharges(user, 'view') },
         { name: 'Paramètres UI', to: '/settings/ui', show: user?.role === 'PDG' },
       ],
     },

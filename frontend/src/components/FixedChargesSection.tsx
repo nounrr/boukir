@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Edit, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
+import { canAccessCharges } from '../utils/chargePermissions';
 import { useGetFixedChargesQuery, useCreateFixedChargeMutation, useUpdateFixedChargeMutation, useDeleteFixedChargeMutation } from '../store/api/fixedChargesApi';
 import type { FixedCharge } from '../store/api/fixedChargesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
@@ -11,7 +12,7 @@ const dateLabel = (value: string | null) => value ? new Date(`${value}T12:00:00`
 
 export default function FixedChargesSection() {
   const { user } = useAuth();
-  const canManage = ['PDG', 'ManagerPlus', 'Manager'].includes(user?.role || '');
+  const canManage = canAccessCharges(user, 'fixed');
   const { data: charges = [], isLoading, isError, refetch } = useGetFixedChargesQuery();
   const [create, createState] = useCreateFixedChargeMutation();
   const [update, updateState] = useUpdateFixedChargeMutation();

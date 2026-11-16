@@ -1,6 +1,6 @@
 import type { User } from '../types';
 
-export type EmployeePagePermission = 'view' | 'documents' | 'salaries' | 'salary_details' | 'archives';
+export type EmployeePagePermission = 'view' | 'documents' | 'salaries' | 'salary_details' | 'archives' | 'edit';
 
 export function canAccessEmployeePage(user: User | null, permission: EmployeePagePermission): boolean {
   return Boolean(user?.role === 'PDG' || (user?.role && user.employee_page_permissions?.[permission]));

@@ -42,7 +42,7 @@ const MobileBonReader: React.FC<Props> = ({ bon, client, fournisseur, products, 
       const image = toBackendUrl(item.product_image_url || item.image_url || item.product?.image_url || product?.image_url);
       return <article key={item.id ?? index} className="rounded-2xl bg-white p-4 shadow-sm">
         <div className="flex items-start gap-3">
-          {includeProductImages && image && <img src={image} alt="" className="h-16 w-16 shrink-0 rounded-lg border border-slate-100 object-contain" />}
+          {includeProductImages && image && <img loading="lazy" decoding="async" src={image} alt="" className="h-16 w-16 shrink-0 rounded-lg border border-slate-100 object-contain" />}
           <div className="min-w-0"><p className="break-words font-semibold text-slate-900">{designation}</p>{(item.reference || product?.reference) && <p className="mt-1 text-xs text-slate-500">Réf. {item.reference || product?.reference}</p>}</div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-sm"><div><p className="text-xs text-slate-500">Quantité</p><p className="font-semibold">{number(item.quantite)}</p></div>{showPrices && <><div><p className="text-xs text-slate-500">Prix unitaire</p><p className="font-semibold">{money(item.prix_unitaire)}</p></div><div><p className="text-xs text-slate-500">Total</p><p className="font-bold text-blue-700">{money((Number(item.quantite) || 0) * (Number(item.prix_unitaire) || 0))}</p></div></>}</div>

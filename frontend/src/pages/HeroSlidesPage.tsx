@@ -985,7 +985,7 @@ const HeroSlidesPage: React.FC = () => {
                   {editing?.image_url && !imagePreviewUrl && (
                     <div className="mt-2">
                       <div className="text-xs text-gray-500 mb-1">Image actuelle</div>
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={editing.image_url}
                         alt={editing.image_alt || ''}
                         className="h-20 w-auto rounded border"
@@ -996,7 +996,7 @@ const HeroSlidesPage: React.FC = () => {
                   {imagePreviewUrl && (
                     <div className="mt-2">
                       <div className="text-xs text-gray-500 mb-1">Aperçu</div>
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={imagePreviewUrl}
                         alt="preview"
                         className="h-20 w-auto rounded border"

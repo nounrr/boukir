@@ -427,6 +427,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
   const { user } = useAuth();
   const canViewSalaries = canAccessEmployeePage(user, 'salaries');
   const canViewSalaryDetails = canAccessEmployeePage(user, 'salary_details');
+  const isPdg = user?.role === 'PDG';
+  const canEditEmployees = canAccessEmployeePage(user, 'edit');
   const canAddSalary = canViewSalaries && (user?.role === 'PDG' || user?.role === 'ManagerPlus');
   const navigate = useNavigate();
   const [isPasswordVerified, setIsPasswordVerified] = useState(false);
@@ -508,7 +510,16 @@ const EmployeePage: React.FC = () => { // NOSONAR
           bon_client_bloque_autorisations: Number(values.bon_client_bloque_autorisations || 0),
           password: values.password?.trim() || '',
         };
-        if (editingEmployee) {
+        if (editingEmployee && !isPdg) {
+          await updateEmployee({
+            id: editingEmployee.id,
+            cin: payload.cin,
+            nom_complet: payload.nom_complet,
+            date_embauche: payload.date_embauche,
+            salaire: canViewSalaryDetails ? payload.salaire : undefined,
+            updated_by: user?.id || 1,
+          }).unwrap();
+        } else if (editingEmployee) {
           await updateEmployee({
             id: editingEmployee.id,
             ...payload,
@@ -895,15 +906,17 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex gap-2 items-center">
-                      {user?.role === 'PDG' && (
+                      {(isPdg || (canEditEmployees && employee.role !== 'PDG')) && (
+                        <button
+                          onClick={() => handleEdit(employee)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="Modifier"
+                        >
+                          <Edit size={16} />
+                        </button>
+                      )}
+                      {isPdg && (
                         <>
-                          <button
-                            onClick={() => handleEdit(employee)}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Modifier"
-                          >
-                            <Edit size={16} />
-                          </button>
                           <button
                             onClick={() => handleDelete(employee.id)}
                             className="text-red-600 hover:text-red-900"
@@ -1029,6 +1042,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   )}
                 </div>
 
+                {(isPdg || canViewSalaryDetails) && (
                 <div>
                   <label htmlFor="salaire" className="block text-sm font-medium text-gray-700 mb-1">Salaire mensuel (MAD)</label>
                   <input
@@ -1045,6 +1059,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     <p className="text-red-500 text-sm mt-1">{String((formik.errors as any).salaire)}</p>
                   )}
                 </div>
+                )}
 
                 {user?.role === 'PDG' && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -1123,6 +1138,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   )}
                 </div>
 
+                {isPdg && (
                 <div>
                   <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
                   <select
@@ -1144,9 +1160,10 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     <p className="text-red-500 text-sm mt-1">{String(formik.errors.role)}</p>
                   )}
                 </div>
+                )}
 
-                {/* Password section */}
-                {editingEmployee ? (
+                {/* Password section (PDG seulement) */}
+                {isPdg && (editingEmployee ? (
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                       <input
@@ -1223,7 +1240,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       <p className="text-red-500 text-sm mt-1">{formik.errors.password}</p>
                     )}
                   </div>
-                )}
+                ))}
               </div>
 
               <div className="flex justify-end gap-2 mt-6">

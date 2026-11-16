@@ -304,10 +304,22 @@ router.post('/', requireRole('PDG'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/:id', requireRole('PDG'), async (req, res, next) => {
+router.put('/:id', requireEmployeePagePermission('edit'), async (req, res, next) => {
   let connection;
   try {
     const id = Number(req.params.id);
+    if (req.user?.role !== 'PDG') {
+      // Un employé autorisé ne modifie que l'identité : jamais le rôle, le mot de passe,
+      // les autorisations de bons, ni la fiche d'un PDG ; le salaire exige le droit dédié.
+      const forbidden = ['role', 'password', 'bon_plafond_autorisations', 'bon_client_bloque_autorisations']
+        .filter((key) => req.body?.[key] !== undefined);
+      if (req.body?.salaire !== undefined && !normalizeEmployeePagePermissions(req.user).salary_details) forbidden.push('salaire');
+      if (forbidden.length) {
+        return res.status(403).json({ message: `Modification réservée au PDG : ${forbidden.join(', ')}.` });
+      }
+      const [targetRows] = await pool.query('SELECT role FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
+      if (targetRows[0]?.role === 'PDG') return res.status(403).json({ message: 'La fiche du PDG est réservée au PDG.' });
+    }
     const {
       nom_complet, cin, date_embauche, role, salaire, password,
       bon_plafond_autorisations, bon_client_bloque_autorisations,

@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/redux';
 import { useDeliveryAccessQuery } from '../../store/api/deliveryRunsApi';
 import { canManageEmployees, CATEGORY_EXCEL_ROLES } from '../../utils/permissions';
 import { canAccessEmployeePage } from '../../utils/employeePagePermissions';
+import { canAccessCharges } from '../../utils/chargePermissions';
 import { canViewInternalPrices } from '../../utils/internalPrices';
 import { useGetMyMaalemReviewPermissionsQuery } from '../../store/api/maalemReviewPermissionsApi';
 import { useGetMyAbsencePermissionsQuery } from '../../store/api/absencesApi';
@@ -107,7 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
         { name: 'Client', href: '/clients', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
         { name: 'Clients e-commerce', href: '/clients-ecommerce', icon: Users, show: user?.role === 'PDG' },
         { name: 'Fournisseur', href: '/fournisseurs', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
-        { name: 'Charge', href: '/charges', icon: Users, show: user?.role === 'PDG' },
+        { name: 'Charge', href: '/charges', icon: Users, show: canAccessCharges(user, 'view') },
         { name: 'Garanties', href: '/garanties', icon: ShieldCheck, show: user?.role === 'PDG' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'Employé' },
       ],

@@ -341,7 +341,7 @@ const CategoryManagementPage: React.FC = () => {
 					)}
 
 					{cat.image_url && (
-						<img src={toBackendUrl(cat.image_url)} alt="" className="h-10 w-10 rounded-md border object-cover flex-shrink-0" />
+						<img loading="lazy" decoding="async" src={toBackendUrl(cat.image_url)} alt="" className="h-10 w-10 rounded-md border object-cover flex-shrink-0" />
 					)}
 
 					{/* Name */}
@@ -566,7 +566,7 @@ const CategoryManagementPage: React.FC = () => {
 								}}
 								className="w-full text-sm"
 							/>
-							{createImagePreview && <img src={createImagePreview} alt="Aperçu de la catégorie" className="mt-2 h-24 w-24 rounded-md border object-cover" />}
+							{createImagePreview && <img loading="lazy" decoding="async" src={createImagePreview} alt="Aperçu de la catégorie" className="mt-2 h-24 w-24 rounded-md border object-cover" />}
 						</div>
 						<div className="flex items-center gap-2">
 							<button
