@@ -5430,9 +5430,9 @@ const BonsPage = () => {
               // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
               const clientId = b.client_id ?? b.contact_id;
               const found = clients.find((c) => String(c.id) === String(clientId)) || null;
-              if (!found && ((effectiveCurrentTab === 'Comptant' || b.type === 'Comptant' || effectiveCurrentTab === 'AvoirComptant' || b.type === 'AvoirComptant') && b.client_nom)) {
-                // Build a minimal contact-like object for display
-                return { nom_complet: b.client_nom } as any;
+              if (!found && b.client_nom) {
+                // Annuaire non chargé ou contact absent : informations renvoyées avec le bon.
+                return { id: Number(clientId) || 0, nom_complet: b.client_nom, societe: b.client_societe, telephone: b.contact_telephone || b.phone } as any;
               }
               return found;
             })()}
@@ -5483,8 +5483,10 @@ const BonsPage = () => {
               if (!selectedBonForPDFPrint) return undefined;
               const bon = selectedBonForPDFPrint;
               const found = clients.find(c => bon.client_id != null && String(c.id) === String(bon.client_id));
-              if (!found && ((bon.type === 'Comptant' || effectiveCurrentTab === 'Comptant' || bon.type === 'AvoirComptant' || effectiveCurrentTab === 'AvoirComptant' || bon.type === 'Devis' || effectiveCurrentTab === 'Devis') && bon.client_nom)) {
-                return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
+              if (!found && bon.client_nom) {
+                // L'impression recharge la fiche complète par client_id (BonPrintModal) ;
+                // en attendant, ou sans identifiant, on affiche ce que l'API renvoie avec le bon.
+                return { id: 0, nom_complet: bon.client_nom, societe: (bon as any).client_societe, telephone: (bon as any).contact_telephone, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
               }
               return found;
             })()}

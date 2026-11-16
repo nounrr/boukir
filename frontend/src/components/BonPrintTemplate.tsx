@@ -292,7 +292,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   const maxHeight = size === 'A5' ? 160 : 180;
   const dynamicSpacerHeight = Math.min(maxHeight, Math.max(baseHeight, baseHeight + Math.max(0, itemsCount - 5) * increment));
 
-  const contact = client || fournisseur || (((bon?.type === 'Comptant' || bon?.type === 'Charge') && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
+  const contact = client || fournisseur || ((bon?.client_nom || bon?.fournisseur_nom || bon?.customer_name) ? { nom_complet: bon.client_nom || bon.fournisseur_nom || bon.customer_name } as any : undefined);
   const isSupplierDocument = Boolean(
     fournisseur ||
     bon?.type === 'Commande' ||
