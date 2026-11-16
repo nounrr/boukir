@@ -49,6 +49,7 @@ import {
   useDeleteComptantPaymentMutation
 } from '../store/api/comptantApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
+import { useTableToolkit } from '../hooks/useTableToolkit';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -604,6 +605,24 @@ const BonsPage = () => {
   useEffect(() => {
     setColWidths(getStoredColWidths());
   }, [getStoredColWidths]);
+
+  // Affichage du tableau : colonnes / filtres visibles, largeurs, densité, glisser pour défiler.
+  const bonsTable = useTableToolkit({
+    storageKey: 'bons',
+    filters: [
+      { key: 'recherche', label: 'Recherche' },
+      { key: 'statut', label: 'Statut' },
+      { key: 'affectation', label: 'Affectation véhicule' },
+      { key: 'whatsapp', label: 'WhatsApp auto' },
+      { key: 'pagination', label: 'Pagination' },
+    ],
+    defaultWidths: {
+      'Numéro': 120, 'Date création': 130, 'Ref': 80, 'Client': 220, 'Fournisseur': 220, 'Véhicule': 200,
+      'Téléphone': 150, 'Adresse livraison': 220, 'Montant': 120, 'Poids (kg)': 90, 'Inclus en caisse': 120,
+      'Profit': 110, 'Mouvement': 120, 'Créé par': 140, 'Dernier modifié par': 150, 'Duplication': 170,
+      'Livré': 100, 'Statut': 130, 'Payment status': 140, 'Actions': 230, 'Imprimé': 80, '#1': 48,
+    },
+  });
 
   const resizingRef = useRef<{colIndex:number; startX:number; startWidth:number; isResizing:boolean}>({
     colIndex: -1,
@@ -2951,7 +2970,7 @@ const BonsPage = () => {
             )}
 
             {/* Recherche */}
-            <div className="relative flex-1 min-w-[300px]">
+            <div className="relative flex-1 min-w-[300px]" {...bonsTable.filterAttr('recherche')}>
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
@@ -2969,6 +2988,7 @@ const BonsPage = () => {
             </div>
             <button
               type="button"
+              {...bonsTable.filterAttr('recherche')}
               onClick={() => {
                 setCurrentPage(1);
                 setSearchTerm(searchInput.trim());
@@ -2980,7 +3000,7 @@ const BonsPage = () => {
             </button>
 
             {/* Filtre Statut */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" {...bonsTable.filterAttr('statut')}>
               <label className="text-sm text-gray-600 whitespace-nowrap" htmlFor="statusFilter">Statut:</label>
               <select
                 multiple
@@ -3000,7 +3020,7 @@ const BonsPage = () => {
             </div>
 
             {effectiveCurrentTab === 'Vehicule' && (
-              <label className="flex items-center gap-2 text-sm text-gray-600">
+              <label className="flex items-center gap-2 text-sm text-gray-600" {...bonsTable.filterAttr('affectation')}>
                 Affectation
                 <select
                   value={unassignedVehicleOnly ? 'unassigned' : 'all'}
@@ -3024,7 +3044,7 @@ const BonsPage = () => {
 
             {/* Checkbox WhatsApp automatique */}
             {SHOW_WHATSAPP_BUTTON && (
-              <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-green-50">
+              <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-green-50" {...bonsTable.filterAttr('whatsapp')}>
                 <input
                   type="checkbox"
                   id="autoSendWhatsApp"
@@ -3038,8 +3058,11 @@ const BonsPage = () => {
               </div>
             )}
 
+            {/* Affichage du tableau (colonnes, filtres, largeurs) */}
+            <div className="ml-auto">{bonsTable.menuButton}</div>
+
             {/* Pagination compacte */}
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-2" {...bonsTable.filterAttr('pagination')}>
               <span className="text-xs text-gray-600 whitespace-nowrap">
                 {startIndex + 1}-{Math.min(endIndex, totalItems)} / {totalItems}
               </span>
@@ -3077,18 +3100,14 @@ const BonsPage = () => {
               {batchPrintBons.size > 0 && <button type="button" onClick={() => setBatchPrintBons(new Map())} className="text-sm text-gray-600 underline">Effacer la sélection</button>}
             </div>
           )}
-          <div className="responsive-table-container">
+          <div {...bonsTable.containerProps} className={`responsive-table-container ${bonsTable.containerProps.className}`}>
+            {bonsTable.overlay}
             <table
-              className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
-              style={{ minWidth: showContactRefCol ? 1150 : 1070, tableLayout: 'fixed', width: 'auto' }}
+              className="responsive-table divide-y divide-gray-200 table-mobile-compact"
+              style={{ width: bonsTable.tableWidth || undefined, minWidth: '100%', tableLayout: 'fixed' }}
             >
-              {/* colgroup driven by colWidths so headers/cols can be resized */}
-              <colgroup>
-                {isUnpaidComptantTab && <><col style={{ width: 48 }} /><col style={{ width: 80 }} /></>}
-                {colWidths.map((w, idx) => (
-                  <col key={idx} style={{ width: w }} />
-                ))}
-              </colgroup>
+              {/* Largeurs pilotées par l'outil d'affichage (colonnes réellement visibles) */}
+              {bonsTable.colgroup}
               <thead className="bg-gray-50">
                 <tr>
                   {isUnpaidComptantTab && <>
@@ -3717,7 +3736,7 @@ const BonsPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <div className="inline-flex gap-2 items-center relative">
+                        <div className="bons-actions relative">
                           {deliveryAccess?.allowed && (() => {
                             const type = effectiveCurrentTab;
                             const queued = deliveryQueue.some(q => q.bon_type === type && Number(q.bon_id) === Number(bon.id));
@@ -3774,6 +3793,7 @@ const BonsPage = () => {
                               setIsThermalPrintModalOpen(true); 
                             }}
                             className="text-purple-600 hover:text-purple-800"
+                            data-badge="5cm"
                             title="Imprimer (Thermique 5cm)"
                           >
                             <Printer size={ACTION_ICON_SIZE} />
@@ -3786,6 +3806,7 @@ const BonsPage = () => {
                               setIsPrintModalOpen(true);
                             }}
                             className="text-green-600 hover:text-green-800"
+                            data-badge="PDF"
                             title="Imprimer PDF"
                           >
                             <Printer size={ACTION_ICON_SIZE} />

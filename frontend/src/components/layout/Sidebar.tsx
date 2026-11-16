@@ -53,14 +53,21 @@ import {
   ImageUp,
   Search,
   X,
+  ChevronsLeft,
+  ChevronsRight,
+  PanelLeftClose,
 } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
   tabletCompact?: boolean;
+  /** Réduire (icônes seules) / agrandir le menu. */
+  onToggle?: () => void;
+  /** Masquer complètement le menu. */
+  onHide?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false, onToggle, onHide }) => {
   const [pageSearch, setPageSearch] = React.useState('');
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const { user } = useAuth();
@@ -225,6 +232,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
       }`}
       style={{ height: 'calc(100vh - 56px)' }}
     >
+      {onToggle && (
+        <button
+          type="button"
+          onClick={onToggle}
+          title={isOpen ? 'Réduire le menu' : 'Agrandir le menu'}
+          aria-label={isOpen ? 'Réduire le menu' : 'Agrandir le menu'}
+          className="absolute -right-3.5 top-5 z-40 flex h-7 w-7 items-center justify-center rounded-full border border-primary-200 bg-white text-primary-600 shadow-md transition hover:scale-110 hover:bg-primary-600 hover:text-white"
+        >
+          {isOpen ? <ChevronsLeft className="h-4 w-4" /> : <ChevronsRight className="h-4 w-4" />}
+        </button>
+      )}
       {isOpen && (
         <div className="shrink-0 border-b border-gray-100 p-3">
           <div className="relative">
@@ -292,6 +310,20 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false }) => {
           );
         })}
       </nav>
+      {onHide && (
+        <div className="shrink-0 border-t border-gray-100 p-2">
+          <button
+            type="button"
+            onClick={onHide}
+            title="Masquer le menu"
+            aria-label="Masquer le menu"
+            className={`flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-rose-50 hover:text-rose-700 ${isOpen ? 'gap-3' : 'justify-center'}`}
+          >
+            <PanelLeftClose className="h-5 w-5 flex-shrink-0" />
+            {isOpen && <span className="truncate">Masquer le menu</span>}
+          </button>
+        </div>
+      )}
     </aside>
   );
 };

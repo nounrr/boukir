@@ -305,3 +305,59 @@ html, body { overflow-x: hidden; }
   gap: 12px !important;
 }
 
+
+/* ========= Table toolkit (useTableToolkit) ========= */
+.tk-container { position: relative; }
+.tk-container table { cursor: grab; }
+.tk-container.tk-dragging, .tk-container.tk-dragging * { cursor: grabbing !important; user-select: none !important; }
+.tk-container.tk-dragging { scroll-behavior: auto; }
+/* Les anciennes poignées à index fixe sont remplacées par .tk-resizer */
+.tk-container th > span.cursor-col-resize, .tk-container table th::after { display: none !important; }
+.tk-resizer {
+  position: absolute; width: 10px; z-index: 5; cursor: col-resize; touch-action: none;
+  border-radius: 4px; background: linear-gradient(to right, transparent 4px, rgba(99,102,241,.25) 4px, rgba(99,102,241,.25) 6px, transparent 6px);
+  transition: background .15s;
+}
+.tk-resizer:hover, body.tk-resizing .tk-resizer:active {
+  background: linear-gradient(to right, transparent 3px, #6366f1 3px, #6366f1 7px, transparent 7px);
+}
+body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-select: none !important; }
+.tk-container.tk-density-compact table th, .tk-container.tk-density-compact table td { padding: .35rem .6rem !important; }
+.tk-container.tk-density-comfortable table th, .tk-container.tk-density-comfortable table td { padding: 1.1rem 1.4rem !important; }
+
+/* ========= Actions des bons : 2 lignes de pastilles colorées ========= */
+.bons-actions {
+  display: inline-grid !important;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  gap: 6px !important;
+  justify-items: center;
+  align-items: center;
+}
+.bons-actions > button,
+.bons-actions > div > button {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0 !important;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: linear-gradient(145deg, color-mix(in srgb, currentColor 6%, #fff), color-mix(in srgb, currentColor 16%, #fff));
+  box-shadow: 0 1px 2px color-mix(in srgb, currentColor 20%, transparent);
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.bons-actions > button:not(:disabled):hover,
+.bons-actions > div > button:not(:disabled):hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, currentColor 22%, #fff);
+  box-shadow: 0 4px 10px color-mix(in srgb, currentColor 30%, transparent);
+}
+.bons-actions > button:focus-visible,
+.bons-actions > div > button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.bons-actions > button[data-badge]::after {
+  content: attr(data-badge);
+  position: absolute; top: -7px; right: -8px;
+  padding: 0 4px; border-radius: 999px;
+  font-size: 9px; line-height: 14px; font-weight: 800; letter-spacing: .02em;
+  color: inherit; background: #fff;
+  border: 1px solid currentColor;
+}
