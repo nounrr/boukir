@@ -5,6 +5,7 @@ import logo from './logo3.png';
 import logo1 from './logo1WB.png';
 import { getBonNumeroDisplay } from '../utils/numero';
 import BonBarcode from './BonBarcode';
+import BonQrCode from './BonQrCode';
 
 interface ThermalPrintModalProps {
   isOpen: boolean;
@@ -615,7 +616,9 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
             {/* Code-barres du bon : à scanner depuis la page Bons pour l'ouvrir en modification */}
             {bon?.id != null && (
               <div className="thermal-barcode" style={{ marginTop: '2mm', textAlign: 'center' }}>
-                <BonBarcode type={bon?.type || (type === 'AvoirClient' ? 'Avoir' : type)} id={bon?.id} />
+                {/* QR code (lecture webcam fiable) + code-barres (douchette) : même contenu */}
+                <BonQrCode type={bon?.type || (type === 'AvoirClient' ? 'Avoir' : type)} id={bon?.id} />
+                <BonBarcode type={bon?.type || (type === 'AvoirClient' ? 'Avoir' : type)} id={bon?.id} height={30} />
               </div>
             )}
 

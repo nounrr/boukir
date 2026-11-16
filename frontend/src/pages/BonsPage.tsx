@@ -5,7 +5,7 @@ import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, ScanBarcode, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
+  import { Ban, Plus, ScanBarcode, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
@@ -55,6 +55,14 @@ import { ActiveFilterChips, BonsAdvancedFilters, EMPTY_ADVANCED } from '../compo
 import type { AdvancedFilters, FilterState } from '../components/BonsAdvancedFilters';
 // Chargé seulement à l'ouverture : la lecture du code-barres (ZXing) ne pèse pas sur la page.
 const BonBarcodeScanner = lazy(() => import('../components/BonBarcodeScanner'));
+
+// Statuts filtrables, avec icône et teinte (le libellé reste toujours visible : pas de sens porté par la couleur seule).
+const STATUS_FILTER_OPTIONS = [
+  { value: 'En attente', Icon: Clock, tone: 'amber' },
+  { value: 'Validé', Icon: CheckCircle2, tone: 'green' },
+  { value: 'Refusé', Icon: XCircle, tone: 'red' },
+  { value: 'Annulé', Icon: Ban, tone: 'slate' },
+] as const;
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -3036,24 +3044,35 @@ const BonsPage = () => {
               Rechercher
             </button>
 
-            {/* Filtre Statut */}
-            <div className="flex items-center gap-2" {...bonsTable.filterAttr('statut')}>
-              <label className="text-sm text-gray-600 whitespace-nowrap" htmlFor="statusFilter">Statut:</label>
-              <select
-                multiple
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
-                className="px-2 py-1 border border-gray-300 rounded-md h-20 text-sm min-w-[120px]"
-                id="statusFilter"
+            {/* Filtre Statut : badges cliquables (plusieurs choix possibles) */}
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrer par statut" {...bonsTable.filterAttr('statut')}>
+              <span className="mr-0.5 text-sm text-gray-600 whitespace-nowrap">Statut</span>
+              <button
+                type="button"
+                aria-pressed={statusFilter.length === 0}
+                onClick={() => { setStatusFilter([]); setCurrentPage(1); }}
+                className={`ap-status-chip ${statusFilter.length === 0 ? 'is-on ap-status-all' : ''}`}
               >
-                {['En attente','Validé','Refusé','Annulé'].map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <div className="flex flex-col gap-1">
-                <button type="button" className="px-2 py-0.5 bg-gray-100 rounded text-xs hover:bg-gray-200" onClick={() => setStatusFilter([])}>Tous</button>
-                <button type="button" className="px-2 py-0.5 bg-gray-100 rounded text-xs hover:bg-gray-200" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout</button>
-              </div>
+                Tous
+              </button>
+              {STATUS_FILTER_OPTIONS.map(({ value, Icon, tone }) => {
+                const on = statusFilter.includes(value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      setStatusFilter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
+                      setCurrentPage(1);
+                    }}
+                    className={`ap-status-chip ap-status-${tone} ${on ? 'is-on' : ''}`}
+                  >
+                    <Icon size={13} />
+                    {value}
+                  </button>
+                );
+              })}
             </div>
 
             {effectiveCurrentTab === 'Vehicule' && (

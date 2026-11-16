@@ -637,3 +637,61 @@ table.tk-measure th, table.tk-measure td { white-space: nowrap !important; }
   }
   .apple-ui .bons-actions > button:hover, .apple-ui .bons-actions > div > button:hover, .ap-tab:hover { transform: none !important; }
 }
+
+/* Filtre Statut : badges cliquables */
+.ap-status-chip {
+  --c: #475569; --bg: rgba(71,85,105,.10);
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 11px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; color: #4b5563; background: #fff;
+  border: 1px solid #e6e9ef;
+  transition: background-color var(--ap-fast, 160ms) ease, color var(--ap-fast, 160ms) ease, border-color var(--ap-fast, 160ms) ease, box-shadow var(--ap-fast, 160ms) ease;
+}
+.ap-status-chip svg { color: var(--c); }
+.ap-status-chip:hover { background: #f6f7f9; border-color: #d8dde6; }
+.ap-status-chip:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(37,99,235,.22); }
+.ap-status-chip.is-on { color: var(--c); background: var(--bg); border-color: color-mix(in srgb, var(--c) 35%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--c) 30%, transparent); }
+.ap-status-amber { --c: #b45309; --bg: #fffbeb; }
+.ap-status-green { --c: #047857; --bg: #ecfdf5; }
+.ap-status-red { --c: #be123c; --bg: #fff1f2; }
+.ap-status-slate { --c: #475569; --bg: #f1f5f9; }
+.ap-status-all.is-on { --c: #1d4ed8; --bg: rgba(37,99,235,.08); }
+@media (prefers-reduced-motion: reduce) { .ap-status-chip { transition: none; } }
+
+/* En-tete des tableaux : fond bleu, texte blanc, reste fixe pendant le defilement.
+   L'en-tete « collant » ne s'accroche qu'a son conteneur qui defile : le tableau a donc
+   sa propre hauteur (ecran) et son propre defilement vertical. */
+.apple-ui .tk-container:not(.tk-no-sticky) {
+  max-height: calc(100vh - 210px);
+  min-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > thead > tr > th {
+  background: #2563eb;
+  color: #fff !important;
+  border-bottom: 1px solid #1d4ed8;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.08);
+}
+.apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > thead > tr > th * {
+  color: inherit !important;
+}
+.apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > thead > tr > th:hover {
+  background: #1d4ed8;
+  color: #fff !important;
+}
+/* Coins arrondis de l'en-tete bleu dans la carte */
+.apple-ui table:not(.border-collapse) > thead > tr > th:first-child { border-top-left-radius: 0; }
+/* Separateurs entre colonnes visibles sur le bleu */
+.apple-ui .tk-container.tk-grid table th + th { box-shadow: inset 1px 0 0 rgba(255,255,255,.18); }
+/* Poignees de largeur lisibles sur le bleu */
+.apple-ui .tk-resizer { background: linear-gradient(to right, transparent 4px, rgba(255,255,255,.35) 4px, rgba(255,255,255,.35) 6px, transparent 6px); z-index: 6; }
+.apple-ui .tk-resizer:hover { background: linear-gradient(to right, transparent 3px, #fff 3px, #fff 7px, transparent 7px); }
+/* Cases a cocher de l'en-tete bien visibles */
+.apple-ui table > thead > tr > th input[type="checkbox"] { accent-color: #fff; }
+
+/* Le conteneur .tk-container gere le defilement : le tableau reste un vrai tableau (sinon, sous 768px,
+   il devient son propre conteneur de defilement et l en-tete collant ne tient plus). */
+.tk-container > table { display: table !important; overflow: visible !important; }

@@ -135,13 +135,14 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
         ]);
         if (cancelled || !videoRef.current) return;
         const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128]);
+        // QR code (le plus fiable à la webcam) et code-barres Code 128 du ticket.
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.CODE_128]);
         hints.set(DecodeHintType.TRY_HARDER, true);
-        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120 });
+        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 100 });
+        // Meilleure résolution possible et mise au point continue : les détails fins du ticket restent lisibles.
+        const quality = { width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' } as any] };
         const constraints: MediaStreamConstraints = {
-          video: deviceId
-            ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-            : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: deviceId ? { deviceId: { exact: deviceId }, ...quality } : { facingMode: 'environment', ...quality },
           audio: false,
         };
         const controls = await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
@@ -194,7 +195,7 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
 
   const statusChip = {
     starting: { text: 'Démarrage de la caméra…', cls: 'bg-white/15 text-white' },
-    scanning: { text: 'Prêt · présentez le code-barres du ticket', cls: 'bg-emerald-400/20 text-emerald-200' },
+    scanning: { text: 'Prêt · présentez le QR code du ticket', cls: 'bg-emerald-400/20 text-emerald-200' },
     loading: { text: 'Chargement du bon…', cls: 'bg-sky-400/20 text-sky-100' },
     editing: { text: 'Modification en cours…', cls: 'bg-amber-400/20 text-amber-100' },
     error: { text: 'Caméra indisponible', cls: 'bg-rose-500/25 text-rose-100' },
@@ -209,7 +210,7 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold tracking-tight">Scanner un bon</h2>
-            <p className="text-xs text-white/60">Le bon s'ouvre en modification. Après enregistrement, le scanner reste ouvert pour le suivant.</p>
+            <p className="text-xs text-white/60">Présentez le QR code du ticket à la caméra. Le bon s'ouvre en modification ; après enregistrement, le scanner reste ouvert pour le suivant.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full bg-white/10 p-2 text-white/80 transition hover:bg-white/20 hover:text-white" aria-label="Fermer le scanner">
             <X size={18} />
@@ -222,7 +223,7 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
             {/* Cadre de visée */}
             {status !== 'error' && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="relative h-[38%] w-[72%] rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] ring-2 ring-white/80">
+                <div className="relative aspect-square h-[62%] rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] ring-2 ring-white/80">
                   <div className="absolute inset-x-3 top-1/2 h-0.5 -translate-y-1/2 animate-pulse rounded bg-rose-500 shadow-[0_0_12px_2px_rgba(244,63,94,0.8)]" />
                 </div>
               </div>

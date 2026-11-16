@@ -148,13 +148,22 @@ export function useTableToolkit({
       .map(({ cell, label }) => ({
         label,
         left: table.offsetLeft + cell.offsetLeft + cell.offsetWidth - 5,
-        top: table.offsetTop + (thead?.offsetTop ?? 0),
+        // En-tête fixe : les poignées suivent l'en-tête quand le tableau défile verticalement.
+        top: Math.max(table.offsetTop + (thead?.offsetTop ?? 0), container.classList.contains('tk-no-sticky') ? 0 : container.scrollTop),
         height: thead?.offsetHeight ?? cell.offsetHeight,
       }));
     setHandles((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   }, []);
 
   useLayoutEffect(() => { measure(); }, [measure, labels, prefs]);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    let frame = 0;
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure(); }); };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => { container.removeEventListener('scroll', onScroll); if (frame) cancelAnimationFrame(frame); };
+  }, [measure]);
   useEffect(() => {
     const table = containerRef.current?.querySelector('table');
     if (!table || typeof ResizeObserver === 'undefined') return undefined;
