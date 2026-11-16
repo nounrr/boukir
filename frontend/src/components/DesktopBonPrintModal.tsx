@@ -249,7 +249,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
         <div className="flex-1 overflow-auto bg-gray-100 p-4">
           <div className="flex justify-center">
             <div 
-              ref={printRef}
+              ref={printRef} data-print-root
               className="bg-white shadow-lg"
               style={{
                 width: '210mm',

@@ -70,7 +70,7 @@ const Layout: React.FC<LayoutProps> = ({ children, manualAccessCheck, tabletComp
             <span className="text-[10px] font-bold [writing-mode:vertical-rl] rotate-180">Menu</span>
           </button>
         )}
-        <main className={`flex-1 p-4 pb-24 md:p-6 transition-all duration-300 overflow-x-auto ${margin} ${tabletCompact ? 'lg:pb-6' : 'md:pb-6'}`}>
+        <main className={`apple-ui flex-1 p-4 pb-24 md:p-6 transition-all duration-300 overflow-x-auto ${margin} ${tabletCompact ? 'lg:pb-6' : 'md:pb-6'}`}>
           {children}
         </main>
       </div>

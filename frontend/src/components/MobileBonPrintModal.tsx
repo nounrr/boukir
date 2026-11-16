@@ -212,7 +212,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
           <div ref={previewContainerRef} className="flex w-full justify-center">
             <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
             <div 
-              ref={printRef}
+              ref={printRef} data-print-root
               data-bon-pdf-page
               className="origin-top-left bg-white shadow-lg"
               style={{

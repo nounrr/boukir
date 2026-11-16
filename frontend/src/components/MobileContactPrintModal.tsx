@@ -273,7 +273,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div ref={previewContainerRef} className="flex w-full justify-center">
             <div style={{ width: `${previewWidth * previewScale}px`, height: `${previewHeight * previewScale}px` }}>
-            <div ref={printRef} data-contact-pdf-page className="origin-top-left bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm', transform: `scale(${previewScale})` }}>
+            <div ref={printRef} data-print-root data-contact-pdf-page className="origin-top-left bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm', transform: `scale(${previewScale})` }}>
               <ContactPrintTemplate
                 projectName={projectName}
                 contact={contact}

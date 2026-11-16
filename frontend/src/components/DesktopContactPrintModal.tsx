@@ -176,7 +176,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
         </div>
         <div className="flex-1 overflow-auto bg-gray-100 p-4">
           <div className="flex justify-center">
-            <div ref={printRef} className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
+            <div ref={printRef} data-print-root className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
               <ContactPrintTemplate
                 projectName={projectName}
                 contact={contact}

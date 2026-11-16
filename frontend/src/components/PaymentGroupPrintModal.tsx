@@ -299,7 +299,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
         <div className="flex-1 overflow-auto bg-gray-100 p-4">
           <div className="flex justify-center">
             <div
-              ref={printRef}
+              ref={printRef} data-print-root
               className="bg-white shadow-lg"
               style={{ width: size === 'A5' ? '148mm' : '210mm', minHeight: size === 'A5' ? '210mm' : '297mm' }}
             >

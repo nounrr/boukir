@@ -450,7 +450,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
   const preview = (
           <div
-            ref={printRef}
+            ref={printRef} data-print-root
             className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white"
             style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold', tableLayout: 'fixed', position: 'relative', overflow: 'hidden' }}
           >

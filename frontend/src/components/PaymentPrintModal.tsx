@@ -179,7 +179,7 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
           ) : (
           <div className="flex justify-center">
             <div
-              ref={printRef}
+              ref={printRef} data-print-root
               className="bg-white shadow-lg"
               style={{ width: size === 'A5' ? '148mm' : '210mm', minHeight: size === 'A5' ? '210mm' : '297mm' }}
             >
