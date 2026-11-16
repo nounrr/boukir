@@ -5,7 +5,7 @@ import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
+  import { Plus, ScanBarcode, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
@@ -50,6 +50,8 @@ import {
 } from '../store/api/comptantApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 import { useTableToolkit } from '../hooks/useTableToolkit';
+// Chargé seulement à l'ouverture : la lecture du code-barres (ZXing) ne pèse pas sur la page.
+const BonBarcodeScanner = lazy(() => import('../components/BonBarcodeScanner'));
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -224,6 +226,7 @@ const BonsPage = () => {
     }, { replace: true });
   }, [setSearchParams]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
   const effectiveCurrentTab = normalizeBonTab(currentTab);
@@ -2875,6 +2878,18 @@ const BonsPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Scanner : la webcam lit le code-barres du ticket et ouvre le bon en modification */}
+            <button
+              type="button"
+              onClick={() => setIsScannerOpen(true)}
+              className="group relative flex items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 px-4 py-2 font-medium text-white shadow-md shadow-indigo-500/25 transition hover:shadow-lg hover:shadow-indigo-500/35 active:scale-[0.98]"
+              title="Scanner le code-barres d'un ticket pour modifier le bon"
+              aria-label="Scanner un bon"
+            >
+              <ScanBarcode size={20} />
+              <span className="hidden sm:inline">Scanner</span>
+              <span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-white group-hover:animate-ping" aria-hidden="true" />
+            </button>
             {!isChefChauffeur && (
               <button
                 onClick={handleAddNew}
@@ -4578,6 +4593,13 @@ const BonsPage = () => {
               }
             }}
           />
+        )}
+
+        {/* Scanner de codes-barres (reste ouvert entre deux bons) */}
+        {isScannerOpen && (
+          <Suspense fallback={null}>
+            <BonBarcodeScanner onClose={() => setIsScannerOpen(false)} onSaved={refreshBonsPageKeepingPosition} />
+          </Suspense>
         )}
 
         {/* Modal de visualisation */}

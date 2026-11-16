@@ -4,6 +4,7 @@ import { X, Printer } from 'lucide-react';
 import logo from './logo3.png';
 import logo1 from './logo1WB.png';
 import { getBonNumeroDisplay } from '../utils/numero';
+import BonBarcode from './BonBarcode';
 
 interface ThermalPrintModalProps {
   isOpen: boolean;
@@ -610,6 +611,13 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                 <div className="thermal-row text-center"><span className='span-total'>Total: {formatNumber(totals.total)}DH</span></div>
               </div>
             ) : null}
+
+            {/* Code-barres du bon : à scanner depuis la page Bons pour l'ouvrir en modification */}
+            {bon?.id != null && (
+              <div className="thermal-barcode" style={{ marginTop: '2mm', textAlign: 'center' }}>
+                <BonBarcode type={bon?.type || (type === 'AvoirClient' ? 'Avoir' : type)} id={bon?.id} />
+              </div>
+            )}
 
             <div className="thermal-footer text-center">
               <div>Merci pour votre confiance.</div>
