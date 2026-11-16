@@ -512,3 +512,128 @@ body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-selec
 /* --- Menu latéral : éléments en pilule */
 aside nav a { border-radius: 10px !important; }
 aside nav a.bg-primary-100 { border-right-width: 0 !important; box-shadow: inset 0 0 0 1px rgba(0, 113, 227, 0.12); }
+
+/* =====================================================================
+   Systeme de design « Apple Pro » : composants reutilisables (ap-*)
+   ===================================================================== */
+:root {
+  --ap-bg: #f6f7f9;
+  --ap-surface: #ffffff;
+  --ap-ink: #17191f;
+  --ap-ink-2: #687080;
+  --ap-line: #e6e9ef;
+  --ap-brand: #2563eb;
+  --ap-brand-hover: #1d4ed8;
+  --ap-ring: rgba(37, 99, 235, 0.22);
+  --ap-ease: cubic-bezier(.2, .8, .2, 1);
+  --ap-fast: 160ms;
+}
+
+/* Boutons */
+.ap-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 10px;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.2;
+  border: 1px solid transparent; white-space: nowrap;
+  transition: background-color var(--ap-fast) var(--ap-ease), box-shadow var(--ap-fast) var(--ap-ease), transform var(--ap-fast) var(--ap-ease), border-color var(--ap-fast) var(--ap-ease);
+}
+.ap-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ap-ring); }
+.ap-btn:active:not(:disabled) { transform: scale(0.98); }
+.ap-btn:disabled { cursor: not-allowed; opacity: .45; }
+.ap-btn-lg { padding: 9px 16px; font-size: 14px; }
+.ap-btn-primary { background: var(--ap-brand); color: #fff; box-shadow: 0 1px 2px rgba(37,99,235,.25), inset 0 1px 0 rgba(255,255,255,.15); }
+.ap-btn-primary:hover:not(:disabled) { background: var(--ap-brand-hover); box-shadow: 0 4px 12px rgba(37,99,235,.28); }
+.ap-btn-secondary { background: var(--ap-surface); color: var(--ap-ink); border-color: var(--ap-line); box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+.ap-btn-secondary:hover:not(:disabled) { background: #f8f9fb; border-color: #d8dde6; }
+.ap-btn-tinted { background: rgba(37,99,235,.09); color: #1e40af; border-color: rgba(37,99,235,.14); }
+.ap-btn-tinted:hover:not(:disabled) { background: rgba(37,99,235,.14); }
+.ap-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--ap-brand); color: #fff; font-size: 11px; font-weight: 700;
+}
+
+/* Popovers (Affichage, Filtres avances) */
+.ap-popover {
+  background: #fff;
+  border: 1px solid rgba(15,23,42,.08); border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 12px 40px rgba(15,23,42,.14);
+  transform-origin: top right;
+  animation: ap-pop var(--ap-fast) var(--ap-ease);
+}
+@keyframes ap-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.ap-section-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ap-ink-2);
+}
+.ap-segmented { gap: 2px; padding: 2px; border-radius: 9px; background: rgba(118,118,128,.12); }
+.ap-segmented > button {
+  padding: 5px 6px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--ap-ink-2);
+  transition: background-color var(--ap-fast) var(--ap-ease), color var(--ap-fast) var(--ap-ease), box-shadow var(--ap-fast) var(--ap-ease);
+}
+.ap-segmented > button[aria-pressed="true"] { background: #fff; color: var(--ap-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); }
+.ap-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 4px 3px 10px; border-radius: 999px;
+  background: rgba(37,99,235,.08); color: #1e3a8a; font-size: 12px; font-weight: 500;
+  box-shadow: inset 0 0 0 1px rgba(37,99,235,.16);
+}
+.ap-chip > button { display: inline-flex; padding: 3px; border-radius: 999px; color: #1e40af; }
+.ap-chip > button:hover { background: rgba(37,99,235,.15); }
+
+/* Interrupteur (switch) */
+.tk-switch { position: relative; width: 36px; height: 22px; flex: none; border-radius: 999px; background: rgba(120,120,128,.24); transition: background-color var(--ap-fast) var(--ap-ease); }
+.tk-switch > span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform var(--ap-fast) var(--ap-ease); }
+.tk-switch.is-on { background: #34c759; }
+.tk-switch.is-on > span { transform: translateX(14px); }
+.tk-switch:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ap-ring); }
+
+/* Options du tableau */
+.tk-container:not(.tk-pan) table { cursor: auto; }
+.tk-container.tk-grid table th + th, .tk-container.tk-grid table td + td { box-shadow: inset 1px 0 0 rgba(60,60,67,.08); }
+.apple-ui .tk-container.tk-no-sticky table > thead > tr > th { position: relative !important; }
+table.tk-measure th, table.tk-measure td { white-space: nowrap !important; }
+.tk-container table th { transition: background-color var(--ap-fast) var(--ap-ease); }
+
+/* Onglets de documents : style segmente */
+.ap-tab {
+  border-radius: 10px; border: 1px solid transparent;
+  transition: background-color var(--ap-fast) var(--ap-ease), color var(--ap-fast) var(--ap-ease), box-shadow var(--ap-fast) var(--ap-ease), transform var(--ap-fast) var(--ap-ease);
+}
+.ap-tab:not(.ap-tab-active) { border-color: var(--ap-line) !important; background: #fff !important; }
+.ap-tab:not(.ap-tab-active):hover { background: #f4f6fa !important; transform: translateY(-1px); }
+.ap-tab-active { box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 6px 16px -6px currentColor; font-weight: 600; }
+.ap-tab:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ap-ring); }
+
+/* Menu « Plus d'actions » : surface flottante, icone + libelle */
+.bons-more-menu {
+  min-width: 232px; padding: 6px;
+  background: #fff;
+  border: 1px solid rgba(15,23,42,.08); border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 16px 44px rgba(15,23,42,.18);
+  animation: ap-pop var(--ap-fast) var(--ap-ease);
+}
+.bons-more-menu .flex { flex-direction: column; gap: 1px !important; }
+.bons-more-menu button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 7px 10px !important; border-radius: 8px !important;
+  font-size: 13px; font-weight: 500; text-align: left; background: transparent;
+  transition: background-color 120ms ease;
+}
+.bons-more-menu button[title]::after { content: attr(title); color: #1d1d1f; }
+.bons-more-menu button:hover:not(:disabled), .bons-more-menu button:focus-visible { background: rgba(37,99,235,.08) !important; outline: none; }
+.bons-more-menu button:disabled { opacity: .4; }
+/* Actions destructrices : separees et en rouge */
+.bons-more-menu button[title="Supprimer"] { margin-top: 5px; position: relative; }
+.bons-more-menu button[title="Supprimer"]::before { content: ""; position: absolute; left: 6px; right: 6px; top: -3px; height: 1px; background: rgba(60,60,67,.12); }
+.bons-more-menu button:is([title="Supprimer"], [title^="Annuler"])::after { color: #dc2626; }
+.bons-more-menu button:is([title="Supprimer"], [title^="Annuler"]):hover:not(:disabled) { background: rgba(220,38,38,.08) !important; }
+
+/* Mouvement reduit : on garde les retours visuels, sans deplacement */
+@media (prefers-reduced-motion: reduce) {
+  .ap-btn, .ap-tab, .ap-popover, .bons-more-menu, .tk-switch, .tk-switch > span,
+  .bons-actions > button, .bons-actions > div > button, .apple-ui .bons-actions > button, .apple-ui .bons-actions > div > button {
+    transition: none !important; animation: none !important;
+  }
+  .apple-ui .bons-actions > button:hover, .apple-ui .bons-actions > div > button:hover, .ap-tab:hover { transform: none !important; }
+}

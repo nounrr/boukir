@@ -1,5 +1,6 @@
 import { validateEmployeeSalePrices } from '../utils/employeeSalePrice.js';
 import express from 'express';
+import { buildAdvancedBonFilters } from '../utils/bonAdvancedFilters.js';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
@@ -1014,6 +1015,11 @@ router.get('/paged/:type', async (req, res) => {
         params.push(vehiculeIdParam);
       }
     }
+
+    // Filtres avancés : période de création et fourchette de montant.
+    const advanced = buildAdvancedBonFilters(req.query, cfg);
+    whereParts.push(...advanced.where);
+    params.push(...advanced.params);
 
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
     const sortBy = String(req.query.sortBy || 'numero');

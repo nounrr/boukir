@@ -27,6 +27,10 @@ type PagedBonsArgs = {
   sortDir?: 'asc' | 'desc';
   paymentState?: 'paid' | 'unpaid' | 'vendre_fournisseur' | 'normal_sortie' | 'normal_avoir_client';
   vehiculeId?: number | 'unassigned';
+  dateFrom?: string;
+  dateTo?: string;
+  amountMin?: string;
+  amountMax?: string;
 };
 
 type PagedBonsResponse = {

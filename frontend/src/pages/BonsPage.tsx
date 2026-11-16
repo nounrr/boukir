@@ -50,6 +50,9 @@ import {
 } from '../store/api/comptantApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 import { useTableToolkit } from '../hooks/useTableToolkit';
+import type { TablePrefs } from '../hooks/useTableToolkit';
+import { ActiveFilterChips, BonsAdvancedFilters, EMPTY_ADVANCED } from '../components/BonsAdvancedFilters';
+import type { AdvancedFilters, FilterState } from '../components/BonsAdvancedFilters';
 // Chargé seulement à l'ouverture : la lecture du code-barres (ZXing) ne pèse pas sur la page.
 const BonBarcodeScanner = lazy(() => import('../components/BonBarcodeScanner'));
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
@@ -243,6 +246,8 @@ const BonsPage = () => {
   const [searchInput, setSearchInput] = useState(() => String(restoredListState?.searchInput ?? restoredListState?.searchTerm ?? ''));
   const [searchTerm, setSearchTerm] = useState(() => String(restoredListState?.searchTerm ?? ''));
   const [statusFilter, setStatusFilter] = useState<string[]>(() => Array.isArray(restoredListState?.statusFilter) ? restoredListState.statusFilter : []);
+  // Filtres avancés (période, montant) appliqués par le serveur.
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(() => ({ ...EMPTY_ADVANCED, ...(restoredListState?.advancedFilters || {}) }));
   const [unassignedVehicleOnly, setUnassignedVehicleOnly] = useState(() => restoredListState?.unassignedVehicleOnly === true);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isNewSupplierModalOpen, setIsNewSupplierModalOpen] = useState(false);
@@ -436,6 +441,17 @@ const BonsPage = () => {
 
   const backendSortBy = sortField || 'numero';
   const backendStatus = statusFilter.length ? statusFilter.join(',') : undefined;
+  // Vue d'ensemble des filtres (recherche, statut, période, montant, tri) pour les filtres avancés et les vues enregistrées.
+  const filterState: FilterState = { search: searchTerm, statuses: statusFilter, advanced: advancedFilters, sortField, sortDirection };
+  const applyFilterState = (next: FilterState) => {
+    setSearchInput(next.search);
+    setSearchTerm(next.search);
+    setStatusFilter(next.statuses);
+    setAdvancedFilters({ ...EMPTY_ADVANCED, ...next.advanced });
+    if (next.sortField) setSortField(next.sortField);
+    setSortDirection(next.sortDirection === 'asc' ? 'asc' : 'desc');
+    setCurrentPage(1);
+  };
   const backendPaymentState = currentTab === 'Sortie'
     ? 'normal_sortie'
     : currentTab === 'Avoir'
@@ -456,6 +472,10 @@ const BonsPage = () => {
     sortDir: sortDirection,
     paymentState: backendPaymentState,
     vehiculeId: effectiveCurrentTab === 'Vehicule' && unassignedVehicleOnly ? 'unassigned' : undefined,
+    dateFrom: advancedFilters.dateFrom || undefined,
+    dateTo: advancedFilters.dateTo || undefined,
+    amountMin: advancedFilters.amountMin || undefined,
+    amountMax: advancedFilters.amountMax || undefined,
   });
   const requiresCurrentBons = isComptantTab || effectiveCurrentTab === 'Vehicule';
   const bonsResponse = requiresCurrentBons ? currentData : lastBonsResponse;
@@ -611,7 +631,9 @@ const BonsPage = () => {
 
   // Affichage du tableau : colonnes / filtres visibles, largeurs, densité, glisser pour défiler.
   const bonsTable = useTableToolkit({
-    storageKey: 'bons',
+    storageKey: `bons-${currentTab}`,
+    legacyStorageKey: 'bons',
+    lockedColumns: ['Actions'],
     filters: [
       { key: 'recherche', label: 'Recherche' },
       { key: 'statut', label: 'Statut' },
@@ -2882,7 +2904,7 @@ const BonsPage = () => {
             <button
               type="button"
               onClick={() => setIsScannerOpen(true)}
-              className="group relative flex items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 px-4 py-2 font-medium text-white shadow-md shadow-indigo-500/25 transition hover:shadow-lg hover:shadow-indigo-500/35 active:scale-[0.98]"
+              className="ap-btn ap-btn-tinted ap-btn-lg group relative"
               title="Scanner le code-barres d'un ticket pour modifier le bon"
               aria-label="Scanner un bon"
             >
@@ -2893,7 +2915,7 @@ const BonsPage = () => {
             {!isChefChauffeur && (
               <button
                 onClick={handleAddNew}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                className="ap-btn ap-btn-primary ap-btn-lg"
               >
                 <Plus size={20} />
                 Nouveau {effectiveCurrentTabLabel}
@@ -2940,8 +2962,8 @@ const BonsPage = () => {
                   key={tabKey}
                   onClick={() => changeCurrentTab(tabKey)}
                   aria-pressed={isActive}
-                  className={`my-1 rounded-md border px-3 py-2 font-medium text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
-                    isActive ? tabColor.active : tabColor.inactive
+                  className={`ap-tab my-1 px-3 py-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
+                    isActive ? `ap-tab-active ${tabColor.active}` : tabColor.inactive
                   }`}
                 >
                   {tab.label}
@@ -3008,7 +3030,7 @@ const BonsPage = () => {
                 setCurrentPage(1);
                 setSearchTerm(searchInput.trim());
               }}
-              className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+              className="ap-btn ap-btn-primary"
             >
               <Search size={18} />
               Rechercher
@@ -3073,8 +3095,18 @@ const BonsPage = () => {
               </div>
             )}
 
-            {/* Affichage du tableau (colonnes, filtres, largeurs) */}
-            <div className="ml-auto">{bonsTable.menuButton}</div>
+            {/* Filtres avancés + affichage du tableau (colonnes, filtres, largeurs) */}
+            <div className="ml-auto flex items-center gap-2">
+              <BonsAdvancedFilters
+                state={filterState}
+                onApply={applyFilterState}
+                storageKey={`bonsViews:${currentUser?.id ?? 'anon'}:${currentTab}`}
+                tableSnapshot={() => bonsTable.prefs}
+                onRestoreTable={(table) => bonsTable.setPrefs(table as TablePrefs)}
+                amountSupported={effectiveCurrentTab !== 'Ecommerce'}
+              />
+              {bonsTable.menuButton}
+            </div>
 
             {/* Pagination compacte */}
             <div className="flex items-center gap-2" {...bonsTable.filterAttr('pagination')}>
@@ -3097,6 +3129,7 @@ const BonsPage = () => {
               </select>
             </div>
           </div>
+          <ActiveFilterChips state={filterState} onApply={applyFilterState} />
         </div>
 
   {/* Table */}
@@ -4043,9 +4076,35 @@ const BonsPage = () => {
                                 {/* Fullscreen layer for absolute positioning */}
                                 <div className="fixed inset-0 z-[10050] pointer-events-none">
                                   <div
-                                    ref={menuRef}
-                                    className="absolute pointer-events-auto bg-white border border-gray-200 rounded-md shadow-lg p-1"
+                                    ref={(element) => {
+                                      (menuRef as React.MutableRefObject<HTMLDivElement | null>).current = element;
+                                      // Focus sur la première action à l'ouverture (navigation au clavier).
+                                      if (element && !element.contains(document.activeElement)) {
+                                        element.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+                                      }
+                                    }}
+                                    role="menu"
+                                    aria-label="Plus d'actions"
+                                    className="bons-more-menu absolute pointer-events-auto"
                                     style={{ top: menuPosition.top, left: menuPosition.left, transform: 'translateX(-100%)' }}
+                                    onKeyDown={(event) => {
+                                      const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+                                      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+                                      if (event.key === 'Escape') {
+                                        event.preventDefault();
+                                        setOpenMenuBonId(null); setMenuAnchorEl(null); setMenuPosition(null);
+                                      } else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+                                        event.preventDefault();
+                                        items[(index + 1) % items.length]?.focus();
+                                      } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+                                        event.preventDefault();
+                                        items[(index - 1 + items.length) % items.length]?.focus();
+                                      } else if (event.key === 'Home') {
+                                        event.preventDefault(); items[0]?.focus();
+                                      } else if (event.key === 'End') {
+                                        event.preventDefault(); items[items.length - 1]?.focus();
+                                      }
+                                    }}
                                   >
                                     <div className="flex flex-col gap-1">
                                   {/* Status-change actions */}
@@ -5801,27 +5860,18 @@ const BonsPage = () => {
   function getStatusClasses(statut?: string) {
     const raw = String(statut || '').trim();
     const s = raw.toLowerCase();
-    if (['pending'].includes(s) || s.includes('en attente') || s === 'attente') return 'bg-blue-200 text-blue-700';
-    if (['confirmed', 'delivered'].includes(s) || s.includes('valid') || s.includes('accept') || s.includes('livr')) return 'bg-green-200 text-green-700';
-    if (['processing', 'shipped'].includes(s) || s.includes('envoy')) return 'bg-indigo-200 text-indigo-700';
-    if (['cancelled'].includes(s) || s.includes('annul') || s.includes('refus') || s.includes('expir')) return 'bg-red-200 text-red-700';
-    if (['refunded'].includes(s)) return 'bg-purple-200 text-purple-700';
+    // Pastilles pastel, texte contrasté ; l'icône et le libellé portent aussi le sens (pas la couleur seule).
+    if (['pending'].includes(s) || s.includes('en attente') || s === 'attente') return 'bg-amber-50 text-amber-800';
+    if (['confirmed', 'delivered'].includes(s) || s.includes('valid') || s.includes('accept') || s.includes('livr')) return 'bg-emerald-50 text-emerald-800';
+    if (['processing', 'shipped'].includes(s) || s.includes('envoy')) return 'bg-indigo-50 text-indigo-800';
+    if (s.includes('refus') || s.includes('expir')) return 'bg-rose-50 text-rose-800';
+    if (['cancelled'].includes(s) || s.includes('annul')) return 'bg-slate-100 text-slate-700';
+    if (['refunded'].includes(s)) return 'bg-purple-50 text-purple-800';
     switch (raw) {
       case 'Brouillon':
-        return 'bg-gray-200 text-gray-700';
-      case 'Validé':
-      case 'Accepté':
-      case 'Livré':
-        return 'bg-green-200 text-green-700';
-      case 'En attente':
-      case 'Envoyé':
-        return 'bg-blue-200 text-blue-700';
+        return 'bg-slate-100 text-slate-700';
       case 'Avoir':
-        return 'bg-purple-200 text-purple-700';
-      case 'Annulé':
-      case 'Refusé':
-      case 'Expiré':
-        return 'bg-red-200 text-red-700';
+        return 'bg-purple-50 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-700';
     }
