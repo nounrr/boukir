@@ -11,6 +11,8 @@ test('le workflow sépare les transitions équipe et Maalem', () => {
   assert.equal(canTransitionIntervention('EMPLOYEE', 'scheduled', 'to_do'), true);
   assert.equal(canTransitionIntervention('EMPLOYEE', 'completed', 'closed'), true);
   assert.equal(canTransitionIntervention('MAALEM', 'to_do', 'en_route'), true);
+  assert.equal(canTransitionIntervention('MAALEM', 'scheduled', 'en_route'), true);
+  assert.equal(canTransitionIntervention('MAALEM', 'assigned', 'en_route'), false);
   assert.equal(canTransitionIntervention('MAALEM', 'en_route', 'arrived'), true);
   assert.equal(canTransitionIntervention('MAALEM', 'arrived', 'work_in_progress'), true);
   assert.equal(canTransitionIntervention('MAALEM', 'work_in_progress', 'completed'), true);

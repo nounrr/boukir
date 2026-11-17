@@ -24,6 +24,7 @@ function createDatabaseDouble(options = {}) {
       [9, { id: 9, contact_id: 90, category_id: 4, status: options.maalemStatus || 'suspended', deleted_at: null, contact_is_active: 1, contact_is_blocked: 0, contact_deleted_at: null, service_compatible: 1, nom_complet: 'Maalem refusé' }],
     ]),
     assignments: [],
+    mission: null,
     histories: [],
     nextAssignmentId: 1,
     commits: 0,
@@ -37,6 +38,7 @@ function createDatabaseDouble(options = {}) {
     let workingRequest = null;
     let workingAssignments = null;
     let workingHistories = null;
+    let workingMission = null;
     async function lock() {
       let release;
       const previous = state.tail;
@@ -46,6 +48,7 @@ function createDatabaseDouble(options = {}) {
       workingRequest = structuredClone(state.request);
       workingAssignments = structuredClone(state.assignments);
       workingHistories = structuredClone(state.histories);
+      workingMission = structuredClone(state.mission);
     }
     function release() { if (releaseLock) { releaseLock(); releaseLock = null; } }
     return {
@@ -54,6 +57,7 @@ function createDatabaseDouble(options = {}) {
         state.request = workingRequest;
         state.assignments = workingAssignments;
         state.histories = workingHistories;
+        state.mission = workingMission;
         state.commits += 1;
         release();
       },
@@ -92,6 +96,11 @@ function createDatabaseDouble(options = {}) {
             unassigned_at: null, unassigned_by_employee_id: null, unassignment_reason: null,
           });
           return [{ insertId: id }];
+        }
+        if (sql.includes('INSERT INTO service_interventions')) {
+          if (options.failMission) throw new Error('mission insert failed');
+          workingMission ??= { id: 91, service_request_id: Number(params[0]), status: 'assigned', progress_percent: 0 };
+          return [{ insertId: workingMission.id }];
         }
         if (sql.includes("SET current_assignment_id = ?, status = 'assigned'")) {
           workingRequest.current_assignment_id = Number(params[0]);
@@ -149,8 +158,10 @@ test('affecte un Maalem approved compatible, conserve le Maalem souhaité et his
     const body = await response.json();
     assert.equal(body.requested_maalem_profile_id, 99);
     assert.equal(body.assigned_maalem_profile_id, 7);
+    assert.equal(body.intervention_id, 91);
   });
   assert.equal(database.state.request.status, 'assigned');
+  assert.equal(database.state.mission.status, 'assigned');
   assert.equal(database.state.assignments.filter((item) => item.unassigned_at == null).length, 1);
   assert.equal(database.state.histories[0].event_type, 'MaalemAssigned');
   assert.equal(database.state.histories[0].actor_employee_id, 3);
@@ -193,8 +204,40 @@ test('rollback complet si l’historique échoue', async () => {
   });
   assert.equal(database.state.request.status, 'confirmed');
   assert.equal(database.state.assignments.length, 0);
+  assert.equal(database.state.mission, null);
   assert.equal(database.state.commits, 0);
   assert.equal(database.state.rollbacks, 1);
+});
+
+test('une mission non créée annule aussi son affectation', async () => {
+  const database = createDatabaseDouble({ failMission: true });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({
+      maalem_profile_id: 7, expected_current_assignment_id: null, reason: 'Initiale',
+    }));
+    assert.equal(response.status, 500);
+  });
+  assert.equal(database.state.request.status, 'confirmed');
+  assert.equal(database.state.request.current_assignment_id, null);
+  assert.equal(database.state.mission, null);
+  assert.equal(database.state.assignments.length, 0);
+});
+
+test('une réaffectation conserve la mission et sa progression', async () => {
+  const database = createDatabaseDouble();
+  await withServer(database, async (baseUrl) => {
+    const first = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({
+      maalem_profile_id: 7, expected_current_assignment_id: null, reason: 'Initiale',
+    }));
+    const { assignment_id } = await first.json();
+    database.state.mission.progress_percent = 35;
+    const second = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({
+      maalem_profile_id: 8, expected_current_assignment_id: assignment_id, reason: 'Remplacement',
+    }));
+    assert.equal(second.status, 200);
+    assert.equal((await second.json()).intervention_id, 91);
+  });
+  assert.equal(database.state.mission.progress_percent, 35);
 });
 
 test('rollback de réaffectation restaure l’ancienne affectation courante', async () => {

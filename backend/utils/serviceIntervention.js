@@ -9,6 +9,7 @@ export const TEAM_INTERVENTION_TRANSITIONS = Object.freeze({
 });
 
 export const MAALEM_INTERVENTION_TRANSITIONS = Object.freeze({
+  scheduled: Object.freeze(['en_route']),
   to_do: Object.freeze(['en_route']),
   en_route: Object.freeze(['arrived']),
   arrived: Object.freeze(['work_in_progress']),

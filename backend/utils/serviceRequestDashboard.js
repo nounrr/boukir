@@ -98,7 +98,7 @@ export function buildServiceRequestDashboardFilters(query = {}, { slaMinutes = I
   const assigned = triState(query.assigned);
   if (assigned !== null) clauses.push(`sr.current_assignment_id IS ${assigned ? 'NOT ' : ''}NULL`);
   const planned = triState(query.planned);
-  if (planned !== null) clauses.push(`si.id IS ${planned ? 'NOT ' : ''}NULL`);
+  if (planned !== null) clauses.push(`si.planned_date IS ${planned ? 'NOT ' : ''}NULL`);
   const overdue = triState(query.overdue);
   if (overdue !== null) clauses.push(overdue ? overdueSql(slaMinutes) : `NOT ${overdueSql(slaMinutes)}`);
   if (query.untreated === 'true') clauses.push("sr.status IN ('new', 'to_contact')");
@@ -128,7 +128,7 @@ export function dashboardMetricSelect(slaMinutes = INITIAL_RESPONSE_SLA_MINUTES)
     SUM(sr.status = 'processing') AS processing,
     SUM(sr.status = 'waiting_customer') AS waiting_customer,
     SUM(sr.status = 'confirmed' AND sr.current_assignment_id IS NULL) AS confirmed_without_maalem,
-    SUM(sr.current_assignment_id IS NOT NULL AND si.id IS NULL AND sr.status = 'assigned') AS assigned_without_schedule,
+    SUM(sr.current_assignment_id IS NOT NULL AND si.planned_date IS NULL AND sr.status = 'assigned') AS assigned_without_schedule,
     SUM(si.planned_date = CURDATE() AND sr.status NOT IN ('closed', 'cancelled')) AS scheduled_today,
     SUM(si.status IN ('en_route', 'arrived', 'work_in_progress')) AS in_progress,
     SUM(${overdueSql(slaMinutes)}) AS overdue,

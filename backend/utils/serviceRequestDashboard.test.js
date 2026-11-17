@@ -33,7 +33,7 @@ test('plusieurs filtres sont combinés avec leurs paramètres dans le même ordr
   assert.match(result.where, /sr\.status = \?/);
   assert.match(result.where, /sr\.request_source = \?/);
   assert.match(result.where, /current_assignment_id IS NOT NULL/);
-  assert.match(result.where, /si\.id IS NULL/);
+  assert.match(result.where, /si\.planned_date IS NULL/);
   assert.deepEqual(result.params, ['processing', 'quick_request', 8, 'Rabat', '2026-08-01 00:00:00', '2026-08-31']);
 });
 

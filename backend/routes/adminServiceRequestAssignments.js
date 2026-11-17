@@ -248,6 +248,21 @@ router.post('/:id(\\d+)/assign', async (req, res, next) => {
         [assignmentId, nextStatus, requestId]
       );
     if (Number(updated.affectedRows) !== 1) fail(409, 'La demande a changé pendant l’affectation');
+    // Publish the mission as part of the assignment transaction, even before a
+    // rendez-vous is chosen. Reassignments keep the existing mission and progress.
+    const [missionInsert] = await connection.query(
+      `INSERT INTO service_interventions
+        (service_request_id, status, mission_address, mission_city, latitude, longitude,
+         planned_service_id, planned_category_id, mission_contact_name, mission_contact_phone)
+       SELECT sr.id, 'assigned', sr.intervention_address, sr.city, sr.latitude, sr.longitude,
+              COALESCE(sr.qualified_service_id, sr.service_id), sr.qualified_category_id,
+              COALESCE(sr.requester_name, c.nom_complet), COALESCE(sr.requester_phone, c.telephone)
+       FROM service_requests sr
+       INNER JOIN contacts c ON c.id = sr.requester_contact_id
+       WHERE sr.id = ?
+       ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+      [requestId]
+    );
     const eventType = currentAssignment ? ASSIGNMENT_EVENTS.REASSIGNED : ASSIGNMENT_EVENTS.ASSIGNED;
     await writeEvent(connection, requestId, actor, eventType, request.status, nextStatus,
       currentAssignment ? { assignment_id: Number(currentAssignment.id), maalem_profile_id: Number(currentAssignment.maalem_profile_id) } : null,
@@ -276,6 +291,7 @@ router.post('/:id(\\d+)/assign', async (req, res, next) => {
     if (shouldNotifyOperationalPolicy('SERVICE_NOTIFY_CLIENT_ASSIGNMENT')) audiences.push('CLIENT');
     deliveries = await enqueueOperationalNotifications(connection, {
       serviceRequestId: requestId,
+      interventionId: Number(missionInsert.insertId),
       event: eventType,
       audiences,
       previousMaalemProfileId: currentAssignment?.maalem_profile_id,
@@ -305,6 +321,7 @@ router.post('/:id(\\d+)/assign', async (req, res, next) => {
     await dispatchOperationalNotificationsSafely(deliveries);
     res.status(currentAssignment ? 200 : 201).json({
       assignment_id: assignmentId,
+      intervention_id: Number(missionInsert.insertId),
       status: nextStatus,
       event: eventType,
       requested_maalem_profile_id: request.requested_maalem_profile_id == null ? null : Number(request.requested_maalem_profile_id),

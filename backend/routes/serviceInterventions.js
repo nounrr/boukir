@@ -150,7 +150,8 @@ async function loadMaalemIntervention(connection, id, maalem, forUpdate = false)
      LEFT JOIN services s ON s.id = si.planned_service_id
      LEFT JOIN maalem_categories mc ON mc.id = si.planned_category_id
      INNER JOIN contacts requester ON requester.id = sr.requester_contact_id
-     WHERE si.id = ? LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`, [maalem.id, id]
+     WHERE si.id = ? AND sr.status NOT IN ('cancelled', 'closed')
+     LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`, [maalem.id, id]
   );
   return rows[0] || null;
 }
@@ -234,7 +235,7 @@ adminServiceInterventionsRouter.put('/by-request/:requestId(\\d+)/schedule', asy
     );
     const request = requests[0];
     if (!request) fail(404, 'Demande introuvable');
-    if (!request.current_assignment_id || !['assigned', 'scheduled'].includes(request.status)) {
+    if (!request.current_assignment_id || !['assigned', 'scheduled', 'to_do'].includes(request.status)) {
       fail(409, 'La demande doit avoir une affectation courante et être affectée ou planifiée');
     }
     const [assignments] = await connection.query(
@@ -249,9 +250,9 @@ adminServiceInterventionsRouter.put('/by-request/:requestId(\\d+)/schedule', asy
     const value = validation.value;
     let interventionId;
     if (old) {
-      if (old.status !== 'scheduled') fail(409, 'La planification ne peut plus être modifiée à ce stade');
+      if (!['assigned', 'scheduled', 'to_do'].includes(old.status)) fail(409, 'La planification ne peut plus être modifiée à ce stade');
       await connection.query(
-        `UPDATE service_interventions SET planned_date = ?, planned_time_slot = ?, mission_address = ?, mission_city = ?,
+        `UPDATE service_interventions SET status = 'scheduled', planned_date = ?, planned_time_slot = ?, mission_address = ?, mission_city = ?,
           latitude = ?, longitude = ?, planned_service_id = ?, planned_category_id = ?, mission_contact_name = ?,
           mission_contact_phone = ?, shared_instructions = ?, special_information = ?, scheduled_by_employee_id = ?, scheduled_at = ?
          WHERE id = ?`,
@@ -274,14 +275,15 @@ adminServiceInterventionsRouter.put('/by-request/:requestId(\\d+)/schedule', asy
       interventionId = Number(insert.insertId);
     }
     await connection.query("UPDATE service_requests SET status = 'scheduled' WHERE id = ?", [requestId]);
-    await history(connection, interventionId, actor, old ? 'ScheduleUpdated' : 'InterventionScheduled',
+    const wasPlanned = Boolean(old?.planned_date);
+    await history(connection, interventionId, actor, wasPlanned ? 'ScheduleUpdated' : 'InterventionScheduled',
       old?.status || 'assigned', 'scheduled', old ? { planned_date: old.planned_date, planned_time_slot: old.planned_time_slot } : null, value);
     if (scheduleHasMeaningfulChange(old, value)) {
       deliveries = await enqueueOperationalNotifications(connection, {
         serviceRequestId: requestId,
         interventionId,
-        event: old ? OPERATIONAL_NOTIFICATION_EVENTS.RESCHEDULED : OPERATIONAL_NOTIFICATION_EVENTS.SCHEDULED,
-        sourceEvent: old ? 'ScheduleUpdated' : 'InterventionScheduled',
+        event: wasPlanned ? OPERATIONAL_NOTIFICATION_EVENTS.RESCHEDULED : OPERATIONAL_NOTIFICATION_EVENTS.SCHEDULED,
+        sourceEvent: wasPlanned ? 'ScheduleUpdated' : 'InterventionScheduled',
         audiences: ['CLIENT', 'CURRENT_MAALEM'],
         plannedDate: value.planned_date,
         plannedTimeSlot: value.planned_time_slot,
@@ -294,7 +296,7 @@ adminServiceInterventionsRouter.put('/by-request/:requestId(\\d+)/schedule', asy
     }
     await connection.commit();
     await dispatchOperationalNotificationsSafely(deliveries);
-    res.status(old ? 200 : 201).json({ intervention_id: interventionId, status: 'scheduled', event: old ? 'ScheduleUpdated' : 'InterventionScheduled' });
+    res.status(old ? 200 : 201).json({ intervention_id: interventionId, status: 'scheduled', event: wasPlanned ? 'ScheduleUpdated' : 'InterventionScheduled' });
   } catch (error) {
     await connection.rollback().catch(() => {});
     if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Une intervention existe déjà pour cette demande' });
@@ -363,7 +365,8 @@ maalemRouter.get('/', async (req, res, next) => {
          AND sra.unassigned_at IS NULL AND sra.maalem_profile_id = ?
        LEFT JOIN services s ON s.id = si.planned_service_id
        LEFT JOIN maalem_categories mc ON mc.id = si.planned_category_id
-       WHERE si.status IN ('scheduled', 'to_do', 'en_route', 'arrived', 'work_in_progress', 'completed')
+       WHERE si.status IN ('assigned', 'scheduled', 'to_do', 'en_route', 'arrived', 'work_in_progress', 'completed')
+         AND sr.status NOT IN ('cancelled', 'closed')
        ORDER BY si.planned_date, si.created_at`, [maalem.id]
     );
     res.json({ missions: rows });

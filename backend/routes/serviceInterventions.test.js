@@ -38,11 +38,25 @@ function databaseDouble() {
           contact_deleted_at: null, is_active: 1, is_blocked: 0, nom_complet: contactId === 70 ? 'Maalem Courant' : 'Ancien Maalem' }]];
       }
       if (sql.includes('SELECT si.*') && sql.includes('current_maalem_name')) return [[mission()]];
+      if (sql.includes('FROM service_requests sr') && sql.includes('FOR UPDATE')) {
+        return [[{ ...mission(), id: 51, status: state.requestStatus }]];
+      }
+      if (sql.includes('SELECT id FROM service_request_assignments')) {
+        return Number(params[0]) === state.currentAssignmentId ? [[{ id: state.currentAssignmentId }]] : [[]];
+      }
+      if (sql.includes('SELECT * FROM service_interventions')) return [[mission()]];
       if (sql.includes('FROM service_interventions si') && sql.includes('sra.maalem_profile_id = ?')) {
         const { closure_internal_note: _privateNote, current_maalem_name: _adminName, ...safeMission } = mission();
-        return Number(params[0]) === state.assignedProfileId && Number(params[1]) === 91 ? [[safeMission]] : [[]];
+        return Number(params[0]) === state.assignedProfileId && (params.length === 1 || Number(params[1]) === 91) ? [[safeMission]] : [[]];
       }
       if (sql.includes('FROM service_intervention_photos')) return [[]];
+      if (sql.includes("UPDATE service_interventions SET status = 'scheduled', planned_date")) {
+        state.status = 'scheduled'; state.plannedDate = params[0];
+        return [{ affectedRows: 1 }];
+      }
+      if (sql.includes("UPDATE service_requests SET status = 'scheduled'")) {
+        state.requestStatus = 'scheduled'; return [{ affectedRows: 1 }];
+      }
       if (sql.includes('UPDATE service_interventions SET status = ?')) {
         state.status = params[0]; state.enRouteAt = params[1]; return [{ affectedRows: 1 }];
       }
@@ -106,6 +120,45 @@ test('un ancien ou autre Maalem ne voit plus la mission', async () => {
     assert.equal((await fetch(`${url}/api/maalem-missions/91`)).status, 404);
   });
 });
+
+test('une affectation non planifiée est visible mais ne peut pas démarrer', async () => {
+  const db = databaseDouble(); db.state.status = 'assigned'; db.state.requestStatus = 'assigned';
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    const list = await fetch(`${url}/api/maalem-missions`);
+    assert.equal(list.status, 200);
+    assert.equal((await list.json()).missions[0].status, 'assigned');
+    assert.equal((await fetch(`${url}/api/maalem-missions/91`)).status, 200);
+    assert.equal((await fetch(`${url}/api/maalem-missions/91/transition`, jsonPost({ status: 'en_route' }))).status, 409);
+  });
+});
+
+test('une mission planifiée démarre sans validation d’envoi supplémentaire', async () => {
+  const db = databaseDouble(); db.state.status = 'scheduled'; db.state.requestStatus = 'scheduled';
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    const response = await fetch(`${url}/api/maalem-missions/91/transition`, jsonPost({ status: 'en_route' }));
+    assert.equal(response.status, 200);
+  });
+  assert.equal(db.state.status, 'en_route');
+  assert.equal(db.state.requestStatus, 'en_route');
+});
+
+for (const status of ['assigned', 'scheduled', 'to_do']) {
+  test(`enregistrer le rendez-vous depuis ${status} conserve la mission et suffit à la planifier`, async () => {
+    const db = databaseDouble(); db.state.status = status; db.state.requestStatus = status;
+    await serverFor(db, { id: 3, role: 'Manager', cin: 'TEST' }, async (url) => {
+      const response = await fetch(`${url}/api/admin/service-interventions/by-request/51/schedule`, {
+        ...jsonPost({ planned_date: '2026-11-19', planned_time_slot: '09:00-11:00', mission_address: 'Adresse',
+          mission_city: 'Tanger', mission_contact_name: 'Client', mission_contact_phone: '0600000000', planned_service_id: 8 }),
+        method: 'PUT',
+      });
+      assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+      assert.equal((await response.json()).intervention_id, 91);
+    });
+    assert.equal(db.state.status, 'scheduled');
+    assert.equal(db.state.requestStatus, 'scheduled');
+    assert.equal(db.state.commits, 1);
+  });
+}
 
 test('la transition Maalem est atomique et horodatée par le serveur', async () => {
   const db = databaseDouble();

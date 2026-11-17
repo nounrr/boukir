@@ -33,9 +33,8 @@ export function ServiceInterventionPanel({ request, options, onChanged }: {
   const [transition, transitionState] = useTransitionAdminServiceInterventionMutation();
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [releaseId, setReleaseId] = useState<number | null>(null);
   const [form, setForm] = useState<Record<string, string | number>>({});
-  useEffect(() => { setReleaseId(null); setFeedback(''); }, [request.id]);
+  useEffect(() => { setFeedback(''); }, [request.id]);
 
   useEffect(() => {
     setForm({
@@ -69,37 +68,18 @@ export function ServiceInterventionPanel({ request, options, onChanged }: {
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  async function planAndSend() {
-    if (submitting) return;
-    setSubmitting(true); setFeedback('');
-    let savedId: number | null = null;
-    try {
-      const saved = await schedule({ requestId: request.id, body: form }).unwrap();
-      savedId = saved.intervention_id;
-      setReleaseId(savedId);
-      await transition({ id: savedId, status: 'to_do' }).unwrap();
-      setReleaseId(null);
-      setFeedback('Intervention planifiée et disponible dans le compte du Maalem.');
-    } catch (error) {
-      setFeedback(savedId ? `Le planning est enregistré, mais l’envoi au Maalem a échoué. Cliquez sur « Envoyer au Maalem » pour réessayer. ${errorMessage(error)}` : errorMessage(error));
-    } finally {
-      try { await Promise.all([query.refetch(), onChanged()]); }
-      finally { setSubmitting(false); }
-    }
-  }
-  async function releaseMission() {
-    const missionId = releaseId || intervention?.id;
-    if (!missionId) return;
-    await run(async () => { await transition({ id: missionId, status: 'to_do' }).unwrap(); setReleaseId(null); }, 'Mission disponible dans le compte du Maalem.');
-  }
-  const pendingRelease = Boolean(releaseId || intervention?.status === 'scheduled');
-  const canPlan = (request.status === 'assigned' || request.status === 'scheduled') && !releaseId;
+  const canPlan = Boolean(request.current_assignment_id && ['assigned', 'scheduled', 'to_do'].includes(request.status));
+  const hasAppointment = Boolean(intervention?.planned_date);
+  const interventionLabels: Partial<Record<BackofficeServiceRequest['status'], string>> = {
+    assigned: 'À planifier', scheduled: 'Planifiée', to_do: 'À faire', en_route: 'En route',
+    arrived: 'Arrivé', work_in_progress: 'Travaux en cours', completed: 'Terminée', closed: 'Clôturée', cancelled: 'Annulée',
+  };
   return <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-    <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3"><div className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-blue-600" /><h2 className="font-bold text-gray-900">Planifier et envoyer au Maalem</h2></div>{intervention && <span className="rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{intervention.status}</span>}</div>
+    <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3"><div className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-blue-600" /><h2 className="font-bold text-gray-900">Rendez-vous et intervention</h2></div>{intervention && <span className="rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{interventionLabels[intervention.status] || intervention.status}</span>}</div>
     {feedback && <p role="status" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{feedback}</p>}
     {query.isError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">Impossible de charger le planning. <button type="button" onClick={() => void query.refetch()} className="underline">Réessayer</button></p>}
     {!request.current_assignment_id && <p className="rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-500">{['completed', 'closed', 'cancelled'].includes(request.status) ? 'Aucune planification n’est disponible pour ce dossier.' : 'Affectez un Maalem pour choisir le créneau. Les informations de la demande seront reprises automatiquement.'}</p>}
-    {pendingRelease && <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4"><p className="mb-3 text-sm text-blue-800">Le planning est enregistré. Envoyez la mission pour permettre au Maalem de la démarrer.</p><button type="button" disabled={submitting} onClick={() => void releaseMission()} className="w-full rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{submitting ? 'Envoi…' : 'Envoyer au Maalem'}</button></div>}
+    {canPlan && <p className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">L’affectation est déjà visible dans le compte du Maalem. Renseignez le rendez-vous convenu avec le client ; il sera mis à jour automatiquement.</p>}
     {canPlan && !query.isError && !query.isFetching && <div className="grid gap-4 sm:grid-cols-2">
       <label className="text-xs font-semibold text-slate-600">Date d’intervention<input type="date" className={`${input} mt-1`} value={form.planned_date || ''} onChange={(e) => setForm({ ...form, planned_date: e.target.value })} /></label>
       <label className="text-xs font-semibold text-slate-600">Créneau horaire<input className={`${input} mt-1`} placeholder="Ex. 09:00–11:00" value={form.planned_time_slot || ''} onChange={(e) => setForm({ ...form, planned_time_slot: e.target.value })} /></label>
@@ -113,11 +93,11 @@ export function ServiceInterventionPanel({ request, options, onChanged }: {
       <textarea className={`${textarea} sm:col-span-2`} rows={2} aria-label="Instructions partagées avec le Maalem" placeholder="Instructions partagées avec le Maalem" value={form.shared_instructions || ''} onChange={(e) => setForm({ ...form, shared_instructions: e.target.value })} />
       <textarea className={`${textarea} sm:col-span-2`} rows={2} aria-label="Informations particulières utiles" placeholder="Informations particulières utiles" value={form.special_information || ''} onChange={(e) => setForm({ ...form, special_information: e.target.value })} />
       </div></details>
-      <button type="button" disabled={submitting || scheduleState.isLoading || !String(form.planned_date || '').trim() || !String(form.planned_time_slot || '').trim()} onClick={() => void planAndSend()} className="rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 sm:col-span-2">{submitting ? 'Enregistrement et envoi…' : intervention ? 'Mettre à jour et envoyer au Maalem' : 'Planifier et envoyer au Maalem'}</button>
+      <button type="button" disabled={submitting || scheduleState.isLoading || !String(form.planned_date || '').trim() || !String(form.planned_time_slot || '').trim()} onClick={() => void run(() => schedule({ requestId: request.id, body: form }).unwrap(), 'Rendez-vous enregistré et mis à jour dans le compte du Maalem.')} className="rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 sm:col-span-2">{submitting ? 'Enregistrement…' : hasAppointment ? 'Mettre à jour le rendez-vous' : 'Enregistrer le rendez-vous'}</button>
 
     </div>}
     {intervention && <div className="mt-5 space-y-4 border-t pt-4">
-      <div className="grid gap-3 text-sm sm:grid-cols-3"><div><span className="text-slate-500">Maalem courant</span><p className="font-semibold">{intervention.current_maalem_name}</p></div><div><span className="text-slate-500">Planifiée</span><p className="font-semibold">{intervention.planned_date?.slice(0, 10)} · {intervention.planned_time_slot}</p></div><div><span className="text-slate-500">Progression</span><p className="font-semibold">{intervention.progress_percent}%</p></div></div>
+      <div className="grid gap-3 text-sm sm:grid-cols-3"><div><span className="text-slate-500">Maalem courant</span><p className="font-semibold">{intervention.current_maalem_name}</p></div><div><span className="text-slate-500">Rendez-vous</span><p className="font-semibold">{hasAppointment ? `${intervention.planned_date?.slice(0, 10)} · ${intervention.planned_time_slot || ''}` : 'À convenir'}</p></div><div><span className="text-slate-500">Progression</span><p className="font-semibold">{intervention.progress_percent}%</p></div></div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-emerald-500" style={{ width: `${intervention.progress_percent}%` }} /></div>
       {intervention.latitude != null && <a className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${intervention.latitude},${intervention.longitude}`}><MapPin className="h-4 w-4" />Localisation mission</a>}
       {intervention.status === 'completed' && <button disabled={submitting || transitionState.isLoading} onClick={() => { const note = window.prompt('Note interne de clôture (optionnelle)') || undefined; void run(() => transition({ id: intervention.id, status: 'closed', closure_internal_note: note }).unwrap(), 'Intervention clôturée par l’équipe.'); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"><CheckCircle2 className="h-4 w-4" />Clôturer après contrôle</button>}
