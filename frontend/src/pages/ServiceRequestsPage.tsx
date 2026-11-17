@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, Bell, CalendarDays, CheckCircle2, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, CircleDot,
+  AlertTriangle, ArrowLeft, Bell, CalendarDays, Check, CheckCircle2, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, CircleDot,
   Clock3, LockKeyhole, ExternalLink, FileText, Filter, HardHat, Loader2, MapPin, MessageCircle, Paperclip, Phone, RefreshCw, RotateCcw,
-  Save, Search, SlidersHorizontal, Star, UserRound, Wrench, X, XCircle,
+  Save, Search, SlidersHorizontal, Star, UserRound, Wallet, Wrench, X, XCircle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 import { ServiceInterventionPanel } from '../components/service-requests/ServiceInterventionPanel';
 import { ClientAmountCard, MaalemAmountCard } from '../components/service-requests/ServicePaymentPanel';
+import { money, PAYMENT_METHOD_LABELS } from '../components/service-requests/servicePaymentLabels';
 import { serviceRequestDashboardKpiFilters } from './serviceRequestDashboardPresets';
 import {
   type BackofficeServiceRequest,
+  type MaalemEarning,
+  type ServiceBilling,
   type ServiceRequestFilters,
   type ServiceRequestDashboardResponse,
   type ServiceRequestPriority,
@@ -511,20 +514,17 @@ export function ServiceRequestDetailPage() {
   if (isLoading) return <div className="p-8 text-slate-500">Chargement du dossier…</div>;
   if (!request || error) return <div className="p-8 text-red-600">{messageFromError(error)}</div>;
 
-  return <div className="space-y-6 p-4 sm:p-6">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-5"><div className="flex items-center gap-3"><Link to="/service-requests" aria-label="Retour aux demandes" className="rounded-md border border-gray-300 bg-white p-2 text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><ArrowLeft className="h-5 w-5" /></Link><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Dossier de demande</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-950">{request.request_number}</h1></div></div><div className="flex flex-wrap items-center gap-2"><span className={`rounded-md px-3 py-1.5 text-sm font-semibold ${statusClass(request.status)}`}>{statusLabels[request.status]}</span></div></header>
-    {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.includes('enregistr') || feedback.includes('mise à jour') || feedback.includes('succès') || feedback.includes('désaffecté') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{feedback}</div>}
+  const currentEarning = payments.data?.earnings.find((earning) => earning.assignment_id === request.current_assignment_id && earning.state !== 'void') ?? null;
+  const nextAction = terminal ? null : !organizeUnlocked ? 'Vérifier les informations du client' : !confirmed ? 'Confirmer avec le client' : !request.current_assignment_id ? 'Affecter un Maalem' : !request.planned_date ? 'Convenir du rendez-vous' : 'Suivre l’intervention';
+  const openNextAction = () => { if (!organizeUnlocked) { setActiveTab('info'); return; } setOrganizationStep(null); setActiveTab('organize'); };
+  const followupCount = data.notes.length + data.contacts.length;
 
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid gap-5 border-b border-slate-100 px-5 py-5 sm:grid-cols-3">
-        <dl><Fact label="Client" value={request.requester_name || request.contact_account_name} /><p className="mt-1 text-sm text-slate-500">{request.requester_phone || request.contact_account_phone}</p><div className="mt-3 break-words"><Fact label="E-mail" value={request.requester_email || request.contact_account_email} /></div></dl>
-        <dl><Fact label="Besoin" value={request.qualified_service_name || request.initial_service_name || request.qualified_category_name || 'À préciser'} /><p className="mt-1 text-sm text-slate-500">{request.city || 'Ville à renseigner'}</p></dl>
-        <dl><Fact label="Prochaine action" value={terminal ? statusLabels[request.status] : !confirmed ? 'Confirmer avec le client' : !request.current_assignment_id ? 'Affecter un Maalem' : !request.planned_date ? 'Convenir du rendez-vous' : 'Suivre l’intervention'} /></dl>
-      </div>
-      <div role="tablist" aria-label="Détail de la demande" className="flex flex-wrap gap-1 bg-slate-50 p-2">
-        {([{ key: 'info', title: 'Informations', icon: FileText }, { key: 'organize', title: 'Organiser', icon: organizeUnlocked ? CheckCircle2 : LockKeyhole }, { key: 'followup', title: 'Suivi et historique', icon: Clock3 }] as const).map(({ key, title, icon: Icon }) => <button key={key} type="button" id={`request-tab-${key}`} role="tab" aria-selected={activeTab === key} aria-controls={`request-panel-${key}`} disabled={key === 'organize' && !organizeUnlocked} onClick={() => { setActiveTab(key); if (key === 'organize') setOrganizationStep(null); }} onKeyDown={(event) => { if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')); const index = tabs.indexOf(event.currentTarget); const target = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[tabs.length - 1] : tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length]; target.focus(); target.click(); }} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:text-slate-400 ${activeTab === key ? 'bg-blue-700 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}><Icon className="h-4 w-4 shrink-0" />{title}</button>)}
-      </div>
-    </section>
+  return <div className="space-y-6 p-4 sm:p-6">
+    <RequestHero request={request} billing={billing} earning={currentEarning} confirmed={confirmed} terminal={terminal} whatsappUrl={whatsappUrl} nextAction={nextAction} onNextAction={openNextAction} />
+    {feedback && <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${feedback.includes('enregistr') || feedback.includes('mise à jour') || feedback.includes('succès') || feedback.includes('désaffecté') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{feedback}</div>}
+    <div role="tablist" aria-label="Détail de la demande" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      {([{ key: 'info', title: 'Informations', icon: FileText }, { key: 'organize', title: 'Organiser', icon: organizeUnlocked ? CheckCircle2 : LockKeyhole }, { key: 'followup', title: 'Suivi et historique', icon: Clock3, count: followupCount }] as const).map(({ key, title, icon: Icon, ...tab }) => <button key={key} type="button" id={`request-tab-${key}`} role="tab" aria-selected={activeTab === key} aria-controls={`request-panel-${key}`} disabled={key === 'organize' && !organizeUnlocked} onClick={() => { setActiveTab(key); if (key === 'organize') setOrganizationStep(null); }} onKeyDown={(event) => { if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')); const index = tabs.indexOf(event.currentTarget); const target = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[tabs.length - 1] : tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length]; target.focus(); target.click(); }} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:text-slate-400 ${activeTab === key ? 'bg-blue-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}><Icon className="h-4 w-4 shrink-0" />{title}{'count' in tab && tab.count > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none ${activeTab === key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>{tab.count}</span>}</button>)}
+    </div>
     {!organizeUnlocked && activeTab === 'info' && <p className="flex items-center gap-2 text-sm text-slate-500"><LockKeyhole className="h-4 w-4 shrink-0" />Vérifiez les informations puis enregistrez pour organiser la demande.</p>}
     <div id="request-panel-info" role="tabpanel" aria-labelledby="request-tab-info" hidden={activeTab !== 'info'}>
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0 space-y-5"><Panel title="Vérifier les informations" icon={<Save className="h-5 w-5" />}>
@@ -607,7 +607,7 @@ export function ServiceRequestDetailPage() {
         </Panel><Panel title="Contacter le client" icon={<Phone className="h-5 w-5" />}>
           <div className="mt-4 space-y-3 border-t pt-4"><select className={inputClass} value={contact.channel} onChange={(e) => setContact({ ...contact, channel: e.target.value })}><option value="WHATSAPP">WhatsApp</option><option value="PHONE">Téléphone</option><option value="OTHER">Autre</option></select><input className={inputClass} type="datetime-local" value={contact.contacted_at} onChange={(e) => setContact({ ...contact, contacted_at: e.target.value })} /><input className={inputClass} placeholder="Résultat de l’échange *" value={contact.result} onChange={(e) => setContact({ ...contact, result: e.target.value })} /><textarea className={textareaClass} rows={2} placeholder="Observation interne" value={contact.internal_observation} onChange={(e) => setContact({ ...contact, internal_observation: e.target.value })} /><button disabled={!contact.result.trim() || contactState.isLoading} onClick={() => void action(async () => { await addContact({ id, ...contact, contacted_at: new Date(contact.contacted_at).toISOString() }).unwrap(); setContact({ ...contact, result: '', internal_observation: '' }); }, 'Échange enregistré.')} className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">Enregistrer l’échange</button></div>
           <div className="mt-4 space-y-2 border-t pt-4">{data.contacts.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-xs"><p className="font-semibold">{item.channel} — {item.result}</p><p className="mt-1 text-slate-500">{item.employee_name} · {dateTime(item.contacted_at)}</p>{item.internal_observation && <p className="mt-2 text-slate-700">{item.internal_observation}</p>}</div>)}</div>
-        </Panel><Panel title="Historique" icon={<Clock3 className="h-5 w-5" />}><div className="space-y-4">{data.history.map((event) => <div key={event.id} className="relative border-l-2 border-slate-200 pl-4"><div className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-blue-500" /><p className="text-sm font-semibold text-slate-800">{event.event_type.replaceAll('_', ' ')}</p><p className="text-xs text-slate-500">{event.actor_name} · {dateTime(event.created_at)}</p>{event.old_status && <p className="mt-1 text-xs">{event.old_status} → {event.new_status}</p>}</div>)}</div></Panel></div><div className="min-w-0 space-y-5"><Panel title="Historique des affectations" icon={<HardHat className="h-5 w-5" />}>          <div className="mt-5 border-t pt-4"><h3 className="mb-3 text-sm font-bold text-slate-800">Historique des affectations</h3><div className="space-y-3">{data.assignments.map((assignment) => <div key={assignment.id} className={`rounded-lg border p-3 text-xs ${assignment.is_current ? 'border-cyan-200 bg-cyan-50' : 'border-slate-200'}`}><div className="flex justify-between gap-2"><span className="font-bold text-slate-800">{assignment.maalem_name}</span><span className={assignment.is_current ? 'font-semibold text-cyan-700' : 'text-slate-500'}>{assignment.is_current ? 'Courante' : 'Clôturée'}</span></div><p className="mt-1 text-slate-600">Affecté par {assignment.assigned_by_name} · {dateTime(assignment.assigned_at)}</p><p className="mt-1"><strong>Motif :</strong> {assignment.assignment_reason}</p>{assignment.compatibility_override && <p className="mt-1 text-amber-800"><strong>Dérogation :</strong> {assignment.compatibility_override_reason}</p>}{assignment.unassigned_at && <div className="mt-2 border-t pt-2 text-slate-600"><p>Clôturée par {assignment.unassigned_by_name} · {dateTime(assignment.unassigned_at)}</p><p><strong>Motif :</strong> {assignment.unassignment_reason}</p></div>}</div>)}{data.assignments.length === 0 && <p className="text-sm text-slate-500">Aucune affectation enregistrée.</p>}</div></div>
+        </Panel><Panel title="Historique" icon={<Clock3 className="h-5 w-5" />}><ol className="ml-1.5 space-y-4 border-l-2 border-slate-100 pl-5">{data.history.map((event) => <li key={event.id} className="relative"><div className="absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-500 ring-2 ring-blue-100" aria-hidden="true" /><p className="text-sm font-semibold text-slate-800">{historyLabel(event.event_type)}</p><p className="text-xs text-slate-500">{event.actor_name || 'Système'} · {dateTime(event.created_at)}</p>{event.old_status && event.new_status && event.old_status !== event.new_status && <p className="mt-1.5 flex flex-wrap items-center gap-1.5"><AnyStatusPill status={event.old_status} /><ChevronRight className="h-3 w-3 text-slate-400" /><AnyStatusPill status={event.new_status} /></p>}</li>)}{data.history.length === 0 && <li className="text-sm text-slate-500">Aucun événement.</li>}</ol></Panel></div><div className="min-w-0 space-y-5"><Panel title="Historique des affectations" icon={<HardHat className="h-5 w-5" />}>          <div className="mt-5 border-t pt-4"><h3 className="mb-3 text-sm font-bold text-slate-800">Historique des affectations</h3><div className="space-y-3">{data.assignments.map((assignment) => <div key={assignment.id} className={`rounded-lg border p-3 text-xs ${assignment.is_current ? 'border-cyan-200 bg-cyan-50' : 'border-slate-200'}`}><div className="flex justify-between gap-2"><span className="font-bold text-slate-800">{assignment.maalem_name}</span><span className={assignment.is_current ? 'font-semibold text-cyan-700' : 'text-slate-500'}>{assignment.is_current ? 'Courante' : 'Clôturée'}</span></div><p className="mt-1 text-slate-600">Affecté par {assignment.assigned_by_name} · {dateTime(assignment.assigned_at)}</p><p className="mt-1"><strong>Motif :</strong> {assignment.assignment_reason}</p>{assignment.compatibility_override && <p className="mt-1 text-amber-800"><strong>Dérogation :</strong> {assignment.compatibility_override_reason}</p>}{assignment.unassigned_at && <div className="mt-2 border-t pt-2 text-slate-600"><p>Clôturée par {assignment.unassigned_by_name} · {dateTime(assignment.unassigned_at)}</p><p><strong>Motif :</strong> {assignment.unassignment_reason}</p></div>}</div>)}{data.assignments.length === 0 && <p className="text-sm text-slate-500">Aucune affectation enregistrée.</p>}</div></div>
         </Panel><Panel title="Notifications opérationnelles" icon={<Bell className="h-5 w-5" />}>
           <div className="space-y-3">{data.notifications.map((item) => <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-xs">
             <div className="flex items-start justify-between gap-2"><div><p className="font-bold text-slate-800">{item.title}</p><p className="mt-0.5 text-slate-500">{item.recipient_name || item.recipient_type} · {item.channel} · {item.locale.toUpperCase()}</p></div><span className={`rounded-full px-2 py-0.5 font-semibold ${item.status === 'failed' ? 'bg-red-100 text-red-700' : item.status === 'sent' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{item.status}</span></div>
@@ -643,6 +643,136 @@ export function ServiceRequestDetailPage() {
   </div>;
 }
 
-function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) { return <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-5"><h2 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-3 font-bold text-gray-900"><span className="text-blue-600">{icon}</span>{title}</h2>{children}</section>; }
-function Fact({ label, value }: { label: string; value?: React.ReactNode | null }) { return <div><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{value || '—'}</dd></div>; }
+function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) { return <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><h2 className="mb-4 flex items-center gap-2.5 border-b border-slate-100 pb-3 text-[15px] font-bold text-slate-900"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 [&>svg]:h-4 [&>svg]:w-4">{icon}</span>{title}</h2>{children}</section>; }
+function Fact({ label, value }: { label: string; value?: React.ReactNode | null }) { return <div><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-800">{value || '—'}</dd></div>; }
+
+const HISTORY_LABELS: Record<string, string> = {
+  CREATED: 'Demande créée', status_changed: 'Statut modifié', qualification_updated: 'Informations mises à jour',
+  internal_note_added: 'Note interne ajoutée', shared_instruction_added: 'Instruction pour le Maalem ajoutée',
+  customer_contact_recorded: 'Échange avec le client enregistré', attachments_added: 'Pièces jointes ajoutées',
+  MaalemAssigned: 'Maalem affecté', MaalemReassigned: 'Maalem réaffecté', MaalemUnassigned: 'Maalem désaffecté',
+  MaalemReassignedAfterStart: 'Maalem réaffecté après le début', InterventionScheduled: 'Rendez-vous planifié',
+  ScheduleUpdated: 'Rendez-vous modifié', MaalemEnRoute: 'Maalem en route', MaalemArrived: 'Maalem arrivé',
+  InterventionClosed: 'Intervention clôturée', CLIENT_VALIDATED: 'Travaux validés par le client', CLIENT_COMPLAINT: 'Réclamation du client',
+  client_payment_method_chosen: 'Mode de paiement choisi par le client',
+};
+/** A readable French label for a history event; unknown codes are spelled out ("SomeEvent" / "some_event" → "Some event"). */
+function historyLabel(type: string) {
+  if (HISTORY_LABELS[type]) return HISTORY_LABELS[type];
+  const words = type.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ').toLowerCase().trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+function AnyStatusPill({ status }: { status: string }) {
+  return status in statusLabels ? <StatusPill status={status as ServiceRequestStatus} /> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{status}</span>;
+}
+
+/** The request's journey; the index reached tells how far it went (0 = received). */
+const LIFECYCLE = ['Reçue', 'Confirmée', 'Maalem affecté', 'Rendez-vous', 'Intervention', 'Terminée', 'Clôturée'] as const;
+function reachedStep(request: BackofficeServiceRequest, confirmed: boolean) {
+  if (request.status === 'closed') return 6;
+  if (request.status === 'completed') return 5;
+  if (['en_route', 'arrived', 'work_in_progress'].includes(request.status)) return 4;
+  if (request.planned_date) return 3;
+  if (request.current_assignment_id) return 2;
+  return confirmed ? 1 : 0;
+}
+
+/** Top of the request file: who, what, which Maalem, when, how much — and what to do next. */
+function RequestHero({ request, billing, earning, confirmed, terminal, whatsappUrl, nextAction, onNextAction }: {
+  request: BackofficeServiceRequest; billing: ServiceBilling | null; earning: MaalemEarning | null; confirmed: boolean; terminal: boolean;
+  whatsappUrl: string; nextAction: string | null; onNextAction: () => void;
+}) {
+  const client = request.requester_name || request.contact_account_name;
+  const phone = request.requester_phone || request.contact_account_phone;
+  const email = request.requester_email || request.contact_account_email;
+  const service = request.qualified_service_name || request.initial_service_name || request.qualified_category_name;
+  const category = request.qualified_category_name && request.qualified_category_name !== service ? request.qualified_category_name : null;
+  const wishedOther = request.requested_maalem_name && request.requested_maalem_name !== request.current_assigned_maalem_name;
+  const operational = request.operational_status;
+  const cancelled = request.status === 'cancelled';
+  const reached = reachedStep(request, confirmed);
+  // On a narrow screen the step bar scrolls: bring the current step into view.
+  const stepsRef = React.useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    const list = stepsRef.current;
+    const step = list?.children[Math.min(reached + 1, LIFECYCLE.length - 1)] as HTMLElement | undefined;
+    if (list && step && list.scrollWidth > list.clientWidth) list.scrollLeft = step.offsetLeft - (list.clientWidth - step.offsetWidth) / 2;
+  }, [reached]);
+  const paymentState = !billing ? null : billing.status === 'paid'
+    ? { label: `Payé${billing.method ? ` · ${PAYMENT_METHOD_LABELS[billing.method]}` : ''}`, cls: 'text-emerald-700' }
+    : billing.status === 'declared'
+      ? { label: `Annoncé${billing.method ? ` · ${PAYMENT_METHOD_LABELS[billing.method]}` : ''}`, cls: 'text-blue-700' }
+      : { label: 'À payer', cls: 'text-amber-700' };
+  const tiles: Array<{ label: string; icon: React.ComponentType<{ className?: string }>; value: React.ReactNode; sub: React.ReactNode; warn?: boolean }> = [
+    { label: 'Client', icon: UserRound, value: client || 'Non renseigné', sub: phone || email || 'Sans téléphone' },
+    { label: 'Besoin', icon: Wrench, value: service || 'À préciser', sub: [request.city || 'Ville à renseigner', category].filter(Boolean).join(' · ') },
+    { label: 'Maalem', icon: HardHat, value: request.current_assigned_maalem_name || 'Non affecté', warn: confirmed && !terminal && !request.current_assigned_maalem_name,
+      sub: earning ? `Reçoit ${money(earning.amount)}` : wishedOther ? `Souhaité : ${request.requested_maalem_name}` : request.current_assigned_maalem_name ? 'Montant à saisir' : '—' },
+    { label: 'Rendez-vous', icon: CalendarDays, value: request.planned_date ? shortDate(request.planned_date) : 'À planifier',
+      sub: request.planned_date ? request.planned_time_slot || 'Créneau à préciser' : request.desired_date ? `Souhaité le ${shortDate(request.desired_date)}${request.desired_time_slot ? ` · ${request.desired_time_slot}` : ''}` : 'Pas de date souhaitée' },
+    { label: 'Paiement client', icon: Wallet, value: billing ? money(billing.amount) : 'Montant à saisir', warn: !billing && !terminal,
+      sub: paymentState ? <span className={`font-semibold ${paymentState.cls}`}>{paymentState.label}</span> : 'Requis pour confirmer' },
+  ];
+
+  return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4 sm:px-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <Link to="/service-requests" aria-label="Retour aux demandes" className="mt-0.5 rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><ArrowLeft className="h-5 w-5" /></Link>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-700">Dossier de demande · {sourceLabels[request.request_source]}</p>
+          <h1 className="mt-1 font-mono text-2xl font-bold tracking-tight text-slate-950">{request.request_number}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <StatusPill status={request.status} />
+            {operational && operational !== request.status && <StatusPill status={operational} />}
+            <PriorityBadge priority={request.priority} />
+            {request.is_overdue && <OverduePill />}
+            {request.has_maalem_problem && request.status !== 'closed' && <span className="whitespace-nowrap rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white">Problème Maalem</span>}
+            {request.client_verdict === 'complaint' && <span className="whitespace-nowrap rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-800">Réclamation client</span>}
+            {request.client_verdict === 'validated' && <span className="whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">Validé par le client</span>}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Créée le {dateTime(request.created_at)} · {request.handled_by_name ? `suivie par ${request.handled_by_name}` : 'non attribuée'}</p>
+        </div>
+      </div>
+      {phone && <div className="flex gap-2">
+        {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"><MessageCircle className="h-4 w-4" />WhatsApp</a>}
+        <a href={`tel:${phone}`} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Phone className="h-4 w-4" />Appeler</a>
+      </div>}
+    </div>
+
+    <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+      {cancelled
+        ? <p className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-800"><XCircle className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>Demande annulée.</strong>{request.cancellation_reason ? ` ${request.cancellation_reason}` : ''}</span></p>
+        : <ol ref={stepsRef} aria-label="Avancement de la demande" className="relative flex overflow-x-auto pb-1">
+          {LIFECYCLE.map((label, index) => {
+            const done = index <= reached;
+            const current = !terminal && index === reached + 1;
+            return <li key={label} aria-current={current ? 'step' : undefined} className="flex min-w-[84px] flex-1 flex-col items-center text-center">
+              <div className="flex w-full items-center">
+                <span className={`h-0.5 flex-1 ${index === 0 ? 'invisible' : done ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-bold ${done ? 'border-emerald-500 bg-emerald-500 text-white' : current ? 'border-blue-600 bg-white text-blue-700 ring-4 ring-blue-100' : 'border-slate-200 bg-white text-slate-400'}`}>{done ? <Check className="h-3.5 w-3.5" /> : index + 1}</div>
+                <span className={`h-0.5 flex-1 ${index === LIFECYCLE.length - 1 ? 'invisible' : index < reached ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+              </div>
+              <span className={`mt-1.5 text-[11px] font-semibold ${done ? 'text-emerald-700' : current ? 'text-blue-700' : 'text-slate-400'}`}>{label}</span>
+            </li>;
+          })}
+        </ol>}
+    </div>
+
+    <dl className="grid grid-cols-2 gap-px bg-slate-100 xl:grid-cols-5">
+      {tiles.map(({ label, icon: Icon, value, sub, warn }, index) => <div key={label} className={`flex min-w-0 gap-3 bg-white p-3 sm:p-4 ${index === 0 ? 'col-span-2 xl:col-span-1' : ''}`}>
+        <span className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg sm:flex ${warn ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}><Icon className="h-4 w-4" /></span>
+        <div className="min-w-0">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+          <dd className={`mt-0.5 truncate text-sm font-bold ${warn ? 'text-amber-700' : 'text-slate-900'}`} title={typeof value === 'string' ? value : undefined}>{value}</dd>
+          <dd className="mt-0.5 truncate text-xs text-slate-500">{sub}</dd>
+        </div>
+      </div>)}
+    </dl>
+
+    {nextAction && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-100 bg-blue-50/60 px-4 py-3 sm:px-5">
+      <p className="flex items-center gap-2 text-sm text-blue-900"><CircleDot className="h-4 w-4 shrink-0 text-blue-700" /><span><span className="font-semibold">Prochaine action :</span> {nextAction}</span></p>
+      <button type="button" onClick={onNextAction} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500">Y aller<ChevronRight className="h-4 w-4" /></button>
+    </div>}
+  </section>;
+}
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-600">{label}</span>{children}</label>; }
