@@ -51,6 +51,13 @@ export interface BackofficeServiceRequest {
   operational_status: ServiceRequestStatus | null;
   is_overdue: boolean;
   assignment_eligible: boolean;
+  /** What the client pays, and where that payment stands (null until the amount is entered). */
+  client_amount?: number | null;
+  client_payment_status?: 'unpaid' | 'declared' | 'paid' | null;
+  /** The Maalem flagged a problem in their comments. */
+  has_maalem_problem?: boolean;
+  /** The client's verdict on the finished work. */
+  client_verdict?: 'validated' | 'complaint' | null;
   created_at: string;
   updated_at: string;
 }

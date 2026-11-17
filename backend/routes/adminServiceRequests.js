@@ -105,6 +105,13 @@ function normalizeRow(row) {
   result.longitude = result.longitude == null ? null : Number(result.longitude);
   result.assignment_eligible = result.status === 'confirmed' && !result.cancelled_at;
   result.is_overdue = Boolean(Number(result.is_overdue));
+  // Money and what the Maalem / client said, for the list badges.
+  result.client_amount = result.client_amount == null ? null : Number(result.client_amount);
+  result.client_payment_status = result.client_payment_status ?? null;
+  result.has_maalem_problem = Boolean(Number(result.has_maalem_problem));
+  const verdictNote = String(result.client_verdict_note || '');
+  result.client_verdict = verdictNote.startsWith('RÉCLAMATION CLIENT') ? 'complaint' : verdictNote.startsWith('Travaux validés') ? 'validated' : null;
+  delete result.client_verdict_note;
   return result;
 }
 
@@ -153,7 +160,8 @@ function baseFrom() {
     LEFT JOIN service_request_assignments current_assignment ON current_assignment.id = sr.current_assignment_id
     LEFT JOIN maalem_profiles current_maalem ON current_maalem.id = current_assignment.maalem_profile_id
     LEFT JOIN contacts current_maalem_contact ON current_maalem_contact.id = current_maalem.contact_id
-    LEFT JOIN service_interventions si ON si.service_request_id = sr.id`;
+    LEFT JOIN service_interventions si ON si.service_request_id = sr.id
+    LEFT JOIN service_request_billing billing ON billing.service_request_id = sr.id`;
 }
 
 function baseSelect() {
@@ -173,6 +181,12 @@ function baseSelect() {
       ,si.id AS intervention_id, si.planned_date, si.planned_time_slot
       ,sr.status AS administrative_status, si.status AS intervention_status, si.status AS operational_status
       ,${overdueSql()} AS is_overdue
+      ,billing.client_amount, billing.payment_status AS client_payment_status, billing.payment_method AS client_payment_method
+      ,(si.maalem_observations LIKE '%PROBLÈME :%') AS has_maalem_problem
+      ,(SELECT n.body FROM service_request_notes n
+         WHERE n.request_id = sr.id AND n.actor_type = 'CONTACT'
+           AND (n.body LIKE 'Travaux validés par le client%' OR n.body LIKE 'RÉCLAMATION CLIENT%')
+         ORDER BY n.created_at DESC, n.id DESC LIMIT 1) AS client_verdict_note
     ${baseFrom()}`;
 }
 

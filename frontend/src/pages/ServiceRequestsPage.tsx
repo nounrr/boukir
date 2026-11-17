@@ -275,11 +275,30 @@ export default function ServiceRequestsPage() {
   );
 }
 
+/** Money and what the Maalem / client said, at a glance in the list. */
+function RequestFlags({ request }: { request: BackofficeServiceRequest }) {
+  const payment = request.client_payment_status;
+  const flags: Array<{ label: string; cls: string }> = [];
+  if (request.has_maalem_problem && request.status !== 'closed') flags.push({ label: 'Problème Maalem', cls: 'bg-red-600 text-white' });
+  if (request.client_verdict === 'complaint') flags.push({ label: 'Réclamation client', cls: 'bg-red-100 text-red-800' });
+  if (request.client_verdict === 'validated') flags.push({ label: 'Validé par le client', cls: 'bg-emerald-100 text-emerald-800' });
+  if (request.client_amount != null) {
+    const amount = `${new Intl.NumberFormat('fr-MA', { maximumFractionDigits: 2 }).format(request.client_amount)} DH`;
+    flags.push(payment === 'paid'
+      ? { label: `Payé · ${amount}`, cls: 'bg-emerald-100 text-emerald-800' }
+      : payment === 'declared'
+        ? { label: `Paiement annoncé · ${amount}`, cls: 'bg-blue-100 text-blue-800' }
+        : { label: `À payer · ${amount}`, cls: 'bg-amber-100 text-amber-800' });
+  }
+  if (!flags.length) return null;
+  return <div className="mt-1.5 flex flex-wrap gap-1">{flags.map((flag) => <span key={flag.label} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ${flag.cls}`}>{flag.label}</span>)}</div>;
+}
+
 function RequestMobileCard({ request }: { request: BackofficeServiceRequest }) {
   const administrativeStatus = request.administrative_status || request.status;
   const operationalStatus = request.operational_status || request.intervention_status;
   return <Link to={`/service-requests/${request.id}`} className={`block p-4 transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-300 ${request.is_overdue ? 'bg-red-50/40 active:bg-red-50' : 'active:bg-blue-50'}`}>
-    <div className="flex items-start justify-between gap-3"><div><div className="font-mono text-sm font-bold text-blue-700">{request.request_number}</div><div className="mt-0.5 text-[11px] text-slate-500">Créée {shortDate(request.created_at)} · {sourceLabels[request.request_source]}</div></div>{request.is_overdue ? <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />En retard</span> : <ChevronRight className="h-5 w-5 text-slate-300" />}</div>
+    <div className="flex items-start justify-between gap-3"><div><div className="font-mono text-sm font-bold text-blue-700">{request.request_number}</div><div className="mt-0.5 text-[11px] text-slate-500">Créée {shortDate(request.created_at)} · {sourceLabels[request.request_source]}</div><RequestFlags request={request} /></div>{request.is_overdue ? <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />En retard</span> : <ChevronRight className="h-5 w-5 text-slate-300" />}</div>
     <div className="mt-3"><p className="truncate text-base font-bold text-slate-900">{request.requester_name || request.contact_account_name || 'Client non renseigné'}</p><p className="mt-0.5 truncate text-sm text-slate-600">{request.qualified_service_name || request.initial_service_name || 'Service non défini'}{request.qualified_category_name ? ` · ${request.qualified_category_name}` : ''}</p></div>
     <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 p-3 text-xs">
       <div><dt className="text-slate-400">Maalem affecté</dt><dd className={`mt-0.5 truncate font-semibold ${request.current_assigned_maalem_name ? 'text-cyan-700' : 'text-amber-700'}`}>{request.current_assigned_maalem_name || 'Non affecté'}</dd></div>
@@ -297,7 +316,7 @@ function RequestRow({ request }: { request: BackofficeServiceRequest }) {
   const operationalStatus = request.operational_status || request.intervention_status;
   const open = () => navigate(`/service-requests/${request.id}`);
   return <tr role="link" tabIndex={0} onClick={open} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } }} className={`cursor-pointer transition hover:bg-blue-50/50 focus:bg-blue-50 focus:outline-none ${request.is_overdue ? 'bg-red-50/30' : ''}`}>
-    <td className="whitespace-nowrap px-3 py-3"><Link onClick={(event) => event.stopPropagation()} className="font-bold text-blue-700 hover:underline" to={`/service-requests/${request.id}`}>{request.request_number}</Link><div className="mt-1 text-[11px] text-slate-500">{priorityLabels[request.priority]}</div></td>
+    <td className="whitespace-nowrap px-3 py-3"><Link onClick={(event) => event.stopPropagation()} className="font-bold text-blue-700 hover:underline" to={`/service-requests/${request.id}`}>{request.request_number}</Link><div className="mt-1 text-[11px] text-slate-500">{priorityLabels[request.priority]}</div><RequestFlags request={request} /></td>
     <td className="max-w-52 px-3 py-3"><div className="truncate font-semibold text-slate-800">{request.requester_name || request.contact_account_name || '—'}</div><div className="mt-0.5 truncate text-[11px] text-slate-500">{sourceLabels[request.request_source]} · {request.requester_phone || request.contact_account_phone || 'sans téléphone'}</div></td>
     <td className="max-w-48 px-3 py-3"><div className="truncate font-medium text-slate-800">{request.qualified_service_name || request.initial_service_name || '—'}</div><div className="mt-0.5 truncate text-[11px] text-slate-500">{request.qualified_category_name || 'Catégorie non définie'}</div></td>
     <td className="max-w-40 truncate px-3 py-3 text-slate-600">{request.requested_maalem_name || '—'}</td>
@@ -495,7 +514,7 @@ export function ServiceRequestDetailPage() {
             </div>
           </details> : <p className="mt-4 text-sm text-slate-500">{terminal ? 'Aucune modification d’affectation n’est disponible pour ce dossier.' : 'Confirmez la demande avec le client pour choisir un Maalem.'}</p>}
 </Panel>{request.current_assignment_id && <button type="button" onClick={() => setOrganizationStep('appointment')} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800">Voir le rendez-vous<ChevronRight className="h-4 w-4" /></button>}</div>}
-      {visibleOrganizationStep === 'appointment' && <><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-4 py-3"><div><p className="text-sm font-semibold text-slate-800">{request.current_assigned_maalem_name || 'Maalem affecté'}</p><p className="mt-1 text-xs text-slate-500">Affectation visible dans son compte</p></div><button type="button" onClick={() => setOrganizationStep('assignment')} className="text-sm font-semibold text-blue-700 underline underline-offset-2">Voir l’affectation</button></div><ServiceInterventionPanel request={request} options={options} onChanged={refreshAll} /></>}
+      {visibleOrganizationStep === 'appointment' && <><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-4 py-3"><div><p className="text-sm font-semibold text-slate-800">{request.current_assigned_maalem_name || 'Maalem affecté'}</p><p className="mt-1 text-xs text-slate-500">Affectation visible dans son compte</p></div><button type="button" onClick={() => setOrganizationStep('assignment')} className="text-sm font-semibold text-blue-700 underline underline-offset-2">Voir l’affectation</button></div><ServiceInterventionPanel request={request} options={options} onChanged={refreshAll} notes={data.notes} /></>}
     </div>
     <div id="request-panel-followup" role="tabpanel" aria-labelledby="request-tab-followup" hidden={activeTab !== 'followup'}>
       <div className="grid items-start gap-5 xl:grid-cols-2"><div className="min-w-0 space-y-5"><Panel title="Notes et instructions" icon={<MessageCircle className="h-5 w-5" />}><div className="space-y-3">{data.notes.map((item) => <div key={item.id} className={`rounded-lg border p-3 ${item.visibility === 'INTERNAL' ? 'border-amber-200 bg-amber-50' : 'border-blue-200 bg-blue-50'}`}><div className="flex justify-between text-xs font-semibold"><span>{item.visibility === 'INTERNAL' ? 'Note interne — privée' : 'Instruction partageable'}</span><span>{dateTime(item.created_at)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{item.body}</p><p className="mt-2 text-xs text-slate-500">{item.actor_name}</p></div>)}</div>

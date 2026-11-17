@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { CalendarClock, CheckCircle2, ExternalLink, FileText, MapPin } from 'lucide-react';
+import { BadgeCheck, CalendarClock, Camera, CheckCircle2, ExternalLink, FileText, MapPin, MessageSquare, TriangleAlert } from 'lucide-react';
+import { clientVerdictFromNotes, parseMissionNotes } from './missionNotes';
 import { useAuth } from '../../hooks/redux';
 import {
   type BackofficeServiceRequest,
@@ -21,10 +22,12 @@ function errorMessage(error: unknown) {
   return [value.data?.message, ...(value.data?.errors ? Object.values(value.data.errors) : [])].filter(Boolean).join(' · ') || 'Une erreur est survenue';
 }
 
-export function ServiceInterventionPanel({ request, options, onChanged }: {
+export function ServiceInterventionPanel({ request, options, onChanged, notes = [] }: {
   request: BackofficeServiceRequest;
   options?: ServiceRequestFilterOptions;
   onChanged: () => Promise<unknown>;
+  /** The request's notes (the client's verdict on the finished work is one of them). */
+  notes?: Array<{ visibility?: string; body: string; actor_name?: string | null; created_at: string }>;
 }) {
   const { token } = useAuth();
   const query = useGetAdminServiceInterventionQuery(request.id, { refetchOnMountOrArgChange: true });
@@ -68,6 +71,10 @@ export function ServiceInterventionPanel({ request, options, onChanged }: {
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
+  // What the Maalem wrote during the work, and the client's verdict on the finished work.
+  const missionNotes = parseMissionNotes(intervention?.maalem_observations);
+  const problems = missionNotes.filter((note) => note.problem).length;
+  const verdict = clientVerdictFromNotes(notes);
   const canPlan = Boolean(request.current_assignment_id && ['assigned', 'scheduled', 'to_do'].includes(request.status));
   const hasAppointment = Boolean(intervention?.planned_date);
   const interventionLabels: Partial<Record<BackofficeServiceRequest['status'], string>> = {
@@ -77,6 +84,11 @@ export function ServiceInterventionPanel({ request, options, onChanged }: {
   return <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
     <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3"><div className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-blue-600" /><h2 className="font-bold text-gray-900">Rendez-vous et intervention</h2></div>{intervention && <span className="rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{interventionLabels[intervention.status] || intervention.status}</span>}</div>
     {feedback && <p role="status" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{feedback}</p>}
+    {verdict && <div className={`mb-4 flex items-start gap-3 rounded-lg border p-4 text-sm ${verdict.kind === 'validated' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'}`}>
+      {verdict.kind === 'validated' ? <BadgeCheck className="h-5 w-5 shrink-0" /> : <TriangleAlert className="h-5 w-5 shrink-0" />}
+      <div><p className="font-semibold">{verdict.kind === 'validated' ? 'Le client a validé le travail' : 'Réclamation du client'}</p>{verdict.comment && <p className="mt-1 whitespace-pre-wrap">« {verdict.comment} »</p>}<p className="mt-1 text-xs opacity-75">{verdict.by ? `${verdict.by} · ` : ''}{dateTime(verdict.at)}</p></div>
+    </div>}
+    {problems > 0 && intervention?.status !== 'closed' && <p className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"><TriangleAlert className="h-4 w-4 shrink-0" />Le Maalem a signalé {problems} problème{problems > 1 ? 's' : ''} : voir ses commentaires ci-dessous.</p>}
     {query.isError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">Impossible de charger le planning. <button type="button" onClick={() => void query.refetch()} className="underline">Réessayer</button></p>}
     {!request.current_assignment_id && <p className="rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-500">{['completed', 'closed', 'cancelled'].includes(request.status) ? 'Aucune planification n’est disponible pour ce dossier.' : 'Affectez un Maalem pour choisir le créneau. Les informations de la demande seront reprises automatiquement.'}</p>}
     {canPlan && <p className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">L’affectation est déjà visible dans le compte du Maalem. Renseignez le rendez-vous convenu avec le client ; il sera mis à jour automatiquement.</p>}
@@ -106,7 +118,14 @@ export function ServiceInterventionPanel({ request, options, onChanged }: {
       </div>}
       {intervention.status === 'completed' && <button disabled={submitting || transitionState.isLoading} onClick={() => { const note = window.prompt('Note interne de clôture (optionnelle)') || undefined; void run(() => transition({ id: intervention.id, status: 'closed', closure_internal_note: note }).unwrap(), 'Intervention clôturée par l’équipe.'); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"><CheckCircle2 className="h-4 w-4" />Clôturer après contrôle</button>}
       <div className="grid gap-2 text-xs text-slate-600 sm:grid-cols-2"><p>En route : {dateTime(intervention.en_route_at)}</p><p>Arrivée : {dateTime(intervention.arrived_at)}</p><p>Début : {dateTime(intervention.started_at)}</p><p>Terminée : {dateTime(intervention.completed_at)}</p></div>
-      {intervention.work_summary && <div className="rounded-lg border bg-slate-50 p-4 text-sm"><h3 className="mb-2 flex items-center gap-2 font-bold"><FileText className="h-4 w-4" />Compte-rendu Maalem</h3><p className="whitespace-pre-wrap">{intervention.work_summary}</p>{intervention.maalem_observations && <p className="mt-2 whitespace-pre-wrap text-slate-600">{intervention.maalem_observations}</p>}<p className="mt-2 text-xs">Travail terminé : {intervention.work_finished ? 'Oui' : 'Non'} · Intervention supplémentaire : {intervention.additional_intervention_required ? 'Oui' : 'Non'}</p>{intervention.incomplete_reason && <p className="mt-2 text-amber-800">Motif : {intervention.incomplete_reason}</p>}</div>}
+      {intervention.work_summary && <div className="rounded-lg border bg-slate-50 p-4 text-sm"><h3 className="mb-2 flex items-center gap-2 font-bold"><FileText className="h-4 w-4" />Compte-rendu Maalem</h3><p className="whitespace-pre-wrap">{intervention.work_summary}</p><p className="mt-2 text-xs">Travail terminé : {intervention.work_finished ? 'Oui' : 'Non'} · Intervention supplémentaire : {intervention.additional_intervention_required ? 'Oui' : 'Non'}</p>{intervention.incomplete_reason && intervention.incomplete_reason !== 'Travaux en cours' && <p className="mt-2 text-amber-800">Motif : {intervention.incomplete_reason}</p>}</div>}
+      {missionNotes.length > 0 && <div className="rounded-lg border p-4 text-sm">
+        <h3 className="mb-3 flex flex-wrap items-center gap-2 font-bold"><MessageSquare className="h-4 w-4" />Commentaires du Maalem{problems > 0 && <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">{problems} problème{problems > 1 ? 's' : ''}</span>}</h3>
+        <ul className="space-y-2">{missionNotes.map((note, index) => <li key={index} className={`rounded-lg border p-3 ${note.problem ? 'border-red-200 bg-red-50 text-red-900' : 'border-slate-200 bg-slate-50'}`}>
+          <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500">{note.problem && <span className="rounded-full bg-red-600 px-2 py-0.5 font-bold text-white">Problème</span>}{note.at}{note.photo && <span className="inline-flex items-center gap-1"><Camera className="h-3 w-3" />photo jointe (voir Photos de mission)</span>}</p>
+          <p className="mt-1 whitespace-pre-wrap">{note.text}</p>
+        </li>)}</ul>
+      </div>}
       <div><h3 className="mb-2 text-sm font-bold">Photos de mission</h3><div className="grid gap-2 sm:grid-cols-2">{query.data?.photos?.map((photo) => <button key={photo.id} onClick={() => void openPhoto(photo.id, photo.original_name)} className="flex items-center justify-between rounded-lg border p-3 text-left text-xs hover:bg-slate-50"><span><strong>{photo.phase}</strong> · {photo.original_name}</span><ExternalLink className="h-4 w-4" /></button>)}{!query.data?.photos?.length && <p className="text-sm text-slate-500">Aucune photo.</p>}</div></div>
       <div><h3 className="mb-2 text-sm font-bold">Chronologie opérationnelle</h3><div className="space-y-2">{query.data?.history?.map((event) => <div key={event.id} className="border-l-2 border-blue-200 pl-3 text-xs"><p className="font-semibold">{event.event_type}</p><p className="text-slate-500">{event.actor_name} · {dateTime(event.created_at)}</p></div>)}</div></div>
     </div>}
