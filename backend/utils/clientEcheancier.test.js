@@ -3,9 +3,18 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { clientChequeEcheancierJoinSql, clientChequeEcheancierTotalSql, clientChequeEcheancierListSql, parsePlafondEcheance, tomorrowInCasablanca } from './clientEcheancier.js';
 
+/** The Moroccan calendar day of an instant, from the time-zone database (Morocco's offset changes, e.g. in Ramadan). */
+function casablancaDay(instant) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
+}
+const nextDay = (day) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
 test('tomorrow follows the Moroccan date, including midnight and month changes', () => {
   assert.equal(tomorrowInCasablanca(new Date('2026-10-28T12:00:00Z')), '2026-10-29');
-  assert.equal(tomorrowInCasablanca(new Date('2026-10-28T23:30:00Z')), '2026-10-30');
+  // Late evening UTC: the answer is the day after the Moroccan date, whatever Morocco's offset that night
+  // (the time-zone data, not a hard-coded UTC+1, decides when the Moroccan day changes).
+  const lateEvening = new Date('2026-10-28T23:30:00Z');
+  assert.equal(tomorrowInCasablanca(lateEvening), nextDay(casablancaDay(lateEvening)));
   assert.equal(tomorrowInCasablanca(new Date('2026-12-31T12:00:00Z')), '2027-01-01');
   assert.equal(tomorrowInCasablanca(new Date('2028-02-28T12:00:00Z')), '2028-02-29');
 });
