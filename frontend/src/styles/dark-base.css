@@ -1,0 +1,123 @@
+/* =====================================================================
+   Mode sombre : composants (écran uniquement — l'impression reste claire).
+   Les couleurs Tailwind sont surchargées dans dark-utilities.css (généré).
+   ===================================================================== */
+@media screen {
+  html.dark {
+    color-scheme: dark;
+    --ap-bg: #0d1119;
+    --ap-surface: #161b26;
+    --ap-ink: #eef2f7;
+    --ap-ink-2: #9aa5b6;
+    --ap-line: rgba(255, 255, 255, 0.1);
+    --ap-brand: #3b82f6;
+    --ap-brand-hover: #2563eb;
+    --ap-ring: rgba(96, 165, 250, 0.35);
+  }
+  html.dark body { background: #0d1119; color: #e2e8f0; }
+  html.dark #root .min-h-screen.bg-gray-50 { background-color: #0d1119 !important; }
+  html.dark .apple-ui {
+    --ap-text: #eef2f7;
+    --ap-text-2: #9aa5b6;
+    --ap-text-3: #7c8799;
+    --ap-hairline: rgba(255, 255, 255, 0.1);
+    --ap-hairline-soft: rgba(255, 255, 255, 0.06);
+    --ap-fill: rgba(255, 255, 255, 0.06);
+    --ap-blue: #3b82f6;
+    --ap-blue-soft: rgba(59, 130, 246, 0.1);
+    --ap-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Barre du haut, menu latéral */
+  html.dark header.navbar { background: rgba(18, 23, 33, 0.92) !important; border-color: rgba(255, 255, 255, 0.08) !important; backdrop-filter: saturate(160%) blur(16px); }
+  html.dark aside { border-color: rgba(255, 255, 255, 0.08) !important; }
+  html.dark aside nav a.bg-primary-100 { box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.25); }
+
+  /* Tableaux de données */
+  html.dark .apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) {
+    background: #161b26;
+  }
+  html.dark .apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > thead > tr > th {
+    background: #1e40af;
+    border-bottom-color: #1e3a8a;
+  }
+  html.dark .apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > thead > tr > th:hover {
+    background: #1d4ed8;
+  }
+  html.dark .apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > tbody > tr[class*="bg-"]:hover > td {
+    filter: brightness(1.12);
+  }
+  /* Lignes colorées par statut (fond clair imposé) : on garde un texte foncé lisible */
+  html.dark .colored-row td { color: #111827; }
+
+  /* Champs, listes, cases */
+  html.dark :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):not(:is([data-print-root], #print-mode, .print-compact, [data-keep-light]) *) {
+    background-color: #0f141e;
+    color: #eef2f7;
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  html.dark :is(input, textarea)::placeholder { color: #66728a !important; }
+  html.dark :is(input:disabled, select:disabled, textarea:disabled, input[readonly]) { background-color: #1a2030 !important; color: #8d99ab !important; }
+  html.dark :is(input[type="checkbox"], input[type="radio"]):not(:checked) { background-color: #0f141e; border-color: rgba(255, 255, 255, 0.25); }
+  html.dark select option { background: #161b26; color: #eef2f7; }
+  html.dark input[type="date"]::-webkit-calendar-picker-indicator,
+  html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  html.dark input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(0.85); }
+
+  /* Fenêtres modales : voile plus profond */
+  html.dark .bg-black.bg-opacity-50, html.dark .bg-black\/50, html.dark .bg-black\/40 { background-color: rgba(0, 0, 0, 0.65) !important; }
+  html.dark .shadow, html.dark .shadow-md, html.dark .shadow-lg, html.dark .shadow-xl, html.dark .shadow-2xl { --tw-shadow-color: rgba(0, 0, 0, 0.55); }
+
+  /* Système de design ap-* */
+  html.dark .ap-btn-secondary:hover:not(:disabled) { background: #1f2636; border-color: rgba(255, 255, 255, 0.18); }
+  html.dark .ap-btn-tinted { background: rgba(59, 130, 246, 0.16); color: #93c5fd; border-color: rgba(59, 130, 246, 0.28); }
+  html.dark .ap-btn-tinted:hover:not(:disabled) { background: rgba(59, 130, 246, 0.24); }
+  html.dark .ap-popover, html.dark .bons-more-menu {
+    background: #1a2030 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.55) !important;
+    color: #e2e8f0;
+  }
+  html.dark .bons-more-menu button[title]::after { color: #e2e8f0; }
+  html.dark .bons-more-menu button:is([title="Supprimer"], [title^="Annuler"])::after { color: #f87171; }
+  html.dark .bons-more-menu button[title="Supprimer"]::before { background: rgba(255, 255, 255, 0.1); }
+  html.dark .bons-more-menu button:hover:not(:disabled) { background: rgba(59, 130, 246, 0.16) !important; }
+  html.dark .ap-segmented { background: rgba(255, 255, 255, 0.08); }
+  html.dark .ap-segmented > button[aria-pressed="true"] { background: #2a3245; color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+  html.dark .ap-chip { background: rgba(59, 130, 246, 0.16); color: #bfdbfe; border-color: rgba(59, 130, 246, 0.3); }
+  html.dark .ap-chip > button { color: #bfdbfe; }
+  html.dark .tk-switch:not(.is-on) { background: rgba(255, 255, 255, 0.18); }
+  html.dark .ap-tab:not(.ap-tab-active) { background: #161b26 !important; border-color: rgba(255, 255, 255, 0.1) !important; }
+  html.dark .ap-tab:not(.ap-tab-active):hover { background: #1f2636 !important; }
+  html.dark .ap-status-chip { background: #161b26; color: #a9b4c4; border-color: rgba(255, 255, 255, 0.1); }
+  html.dark .ap-status-chip:hover { background: #1f2636; border-color: rgba(255, 255, 255, 0.16); }
+  html.dark .ap-status-amber { --c: #fbbf24; --bg: rgba(245, 158, 11, 0.14); }
+  html.dark .ap-status-green { --c: #34d399; --bg: rgba(16, 185, 129, 0.14); }
+  html.dark .ap-status-red { --c: #fb7185; --bg: rgba(244, 63, 94, 0.14); }
+  html.dark .ap-status-slate { --c: #a9b4c4; --bg: rgba(148, 163, 184, 0.14); }
+  html.dark .ap-status-all.is-on { --c: #93c5fd; --bg: rgba(59, 130, 246, 0.16); }
+  html.dark .apple-ui .bons-actions > button,
+  html.dark .apple-ui .bons-actions > div > button { background: color-mix(in srgb, currentColor 16%, #161b26); }
+  html.dark .apple-ui .bons-actions > button[data-badge]::after { background: #eef2f7; color: #0d1119; }
+  html.dark .tk-container.tk-grid table th + th, html.dark .tk-container.tk-grid table td + td { box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.06); }
+
+  /* Alertes SweetAlert2 */
+  html.dark .swal2-popup { background: #1a2030 !important; color: #e2e8f0 !important; }
+  html.dark .swal2-title, html.dark .swal2-html-container { color: #eef2f7 !important; }
+  html.dark .swal2-input, html.dark .swal2-textarea, html.dark .swal2-select { background: #0f141e !important; color: #eef2f7 !important; border-color: rgba(255, 255, 255, 0.14) !important; }
+  html.dark .swal2-toast { background: #1a2030 !important; }
+
+  /* Barres de défilement */
+  html.dark * { scrollbar-color: #364056 transparent; }
+
+  /* Aperçus d'impression : le « papier » reste blanc */
+  html.dark :is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page], [data-keep-light]) {
+    color-scheme: light;
+    background-color: #fff;
+    color: #111827;
+  }
+}
+
+/* Passage clair/sombre en douceur (désactivé si mouvement réduit) */
+html.theme-switching, html.theme-switching * { transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease !important; }
+@media (prefers-reduced-motion: reduce) { html.theme-switching, html.theme-switching * { transition: none !important; } }

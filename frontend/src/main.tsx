@@ -4,7 +4,10 @@ import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
 import { store, persistor } from './store'
 import './index.css'
+import './styles/dark-base.css'
+import './styles/dark-utilities.css'
 import App from './App.tsx'
+import { initTheme } from './utils/theme'
 import { ToastProvider } from './components/ui/use-toast'
 import { registerPwa } from './utils/pwa'
 
@@ -17,6 +20,8 @@ try {
     localStorage.setItem('bpukir_fake_cleanup_v1', 'true');
   }
 } catch {}
+
+initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -14,6 +14,7 @@ import { showConfirmation, showSuccess } from '../../utils/notifications';
 import NotificationBell from '../NotificationBell';
 import CashRegisterBell from '../CashRegisterBell';
 import PwaInstallButton from '../PwaInstallButton';
+import ThemeToggle from '../ThemeToggle';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -61,6 +62,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
         {/* Informations utilisateur - Version mobile optimisée */}
         <div className="flex items-center space-x-2 md:space-x-4">
           <PwaInstallButton />
+          <ThemeToggle />
           {/* Version mobile compacte */}
           <div className="sm:hidden flex items-center space-x-1">
             <CashRegisterBell />
