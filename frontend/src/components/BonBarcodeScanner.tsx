@@ -37,7 +37,7 @@ function cameraErrorText(error: any): string {
   const name = error?.name || '';
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'Accès à la caméra refusé. Autorisez la caméra pour ce site dans le navigateur, puis réessayez.';
   if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'Aucune webcam détectée. Branchez une caméra ou utilisez la saisie / la douchette ci-dessous.';
-  if (name === 'NotReadableError') return 'La webcam est déjà utilisée par une autre application.';
+  if (name === 'NotReadableError' || name === 'TrackStartError') return 'La webcam ne démarre pas : elle est peut-être utilisée par une autre application (Teams, Zoom, Logi Tune, un autre onglet). Fermez-la puis réessayez, ou choisissez une autre caméra.';
   if (!window.isSecureContext) return 'La caméra exige une connexion sécurisée (https).';
   return 'Impossible de démarrer la caméra.';
 }
@@ -67,6 +67,8 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
   const [scans, setScans] = useState<Scan[]>([]);
   const [editing, setEditing] = useState<any>(null);
   const [retry, setRetry] = useState(0);
+  const [mirror, setMirror] = useState(false);
+  const [hint, setHint] = useState(false);
 
   const pushScan = (scan: Omit<Scan, 'at'>) => {
     setScans((prev) => [{ ...scan, at: Date.now() }, ...prev].slice(0, 6));
@@ -125,37 +127,133 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
   // --- Caméra
   useEffect(() => {
     let cancelled = false;
+    let stream: MediaStream | null = null;
+    let timer = 0;
+    let hintTimer = 0;
+
+    const listCameras = () =>
+      navigator.mediaDevices?.enumerateDevices?.()
+        .then((all) => { if (!cancelled) setDevices(all.filter((d) => d.kind === 'videoinput')); })
+        .catch(() => {});
+
+    /** Ouvre la caméra ; si la haute résolution est refusée (fréquent avec les webcams USB sous Windows), réessaie sans. */
+    const openCamera = async () => {
+      const quality = { width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' } as any] };
+      const target: MediaTrackConstraints = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' };
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video: { ...target, ...quality }, audio: false });
+      } catch (error: any) {
+        if (!['NotReadableError', 'AbortError', 'OverconstrainedError', 'TrackStartError'].includes(error?.name)) throw error;
+        try {
+          return await navigator.mediaDevices.getUserMedia({ video: { ...target, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        } catch {
+          return await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true, audio: false });
+        }
+      }
+    };
+
     const start = async () => {
       setStatus((s) => (s === 'editing' ? s : 'starting'));
       setCameraError(null);
+      setHint(false);
       try {
-        const [{ BrowserMultiFormatReader, BrowserCodeReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+        if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('no media'), { name: window.isSecureContext ? 'NotFoundError' : 'SecurityError' });
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
           import('@zxing/browser'),
           import('@zxing/library'),
         ]);
         if (cancelled || !videoRef.current) return;
+        stream = await openCamera();
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const video = videoRef.current;
+        video.srcObject = stream;
+        // Sans attendre : la boucle de lecture attend elle-même les premières images.
+        void video.play().catch(() => {});
+
+        // Webcam tournée vers l'utilisateur : image en miroir pour viser naturellement (la lecture n'est pas affectée).
+        const settings = stream.getVideoTracks()[0]?.getSettings?.() ?? {};
+        const touch = window.matchMedia?.('(pointer: coarse)').matches;
+        setMirror(settings.facingMode === 'user' || (!settings.facingMode && !touch));
+
+        // Lecteur natif du navigateur s'il existe (Android, macOS), sinon zxing.
+        const Native = (window as any).BarcodeDetector;
+        let native: any = null;
+        if (Native) {
+          try {
+            const supported: string[] = await Native.getSupportedFormats();
+            const formats = ['qr_code', 'code_128'].filter((f) => supported.includes(f));
+            if (formats.length) native = new Native({ formats });
+          } catch { native = null; }
+        }
         const hints = new Map();
         // QR code (le plus fiable à la webcam) et code-barres Code 128 du ticket.
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.CODE_128]);
         hints.set(DecodeHintType.TRY_HARDER, true);
-        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 100 });
-        // Meilleure résolution possible et mise au point continue : les détails fins du ticket restent lisibles.
-        const quality = { width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' } as any] };
-        const constraints: MediaStreamConstraints = {
-          video: deviceId ? { deviceId: { exact: deviceId }, ...quality } : { facingMode: 'environment', ...quality },
-          audio: false,
+        const reader = new BrowserMultiFormatReader(hints);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        const opened = stream;
+        controlsRef.current = {
+          stop: () => {
+            window.clearTimeout(timer);
+            opened.getTracks().forEach((t) => t.stop());
+            if (video.srcObject === opened) video.srcObject = null;
+          },
         };
-        const controls = await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
-          if (result) void handleCodeRef.current(result.getText());
-        });
-        if (cancelled) { controls.stop(); return; }
-        controlsRef.current = controls;
         setStatus((s) => (s === 'editing' || s === 'loading' ? s : 'scanning'));
         // Les noms des caméras ne sont lisibles qu'après autorisation.
-        BrowserCodeReader.listVideoInputDevices().then((list) => { if (!cancelled) setDevices(list); }).catch(() => {});
+        void listCameras();
+
+        // Rien de lu au bout de 10 s : on affiche des conseils.
+        const armHint = () => {
+          window.clearTimeout(hintTimer);
+          hintTimer = window.setTimeout(() => { if (!cancelled) setHint(true); }, 10000);
+        };
+        armHint();
+
+        let pass = 0;
+        const tick = async () => {
+          if (cancelled) return;
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          if (ctx && vw && vh && video.readyState >= 2 && !busyRef.current) {
+            // On alterne : centre serré, centre large (le cadre de visée), image entière. Toujours en
+            // pleine définition : réduire l'image fait perdre les petits codes vus par une webcam.
+            // Les recadrages se lisent en quelques ms, donc beaucoup plus d'images sont essayées par seconde.
+            let sx = 0, sy = 0, sw = vw, sh = vh;
+            const step = pass % 3;
+            if (step < 2) {
+              const side = Math.round(Math.min(vw, vh) * (step === 0 ? 0.5 : 0.75));
+              sx = Math.round((vw - side) / 2);
+              sy = Math.round((vh - side) / 2);
+              sw = side;
+              sh = side;
+            }
+            const scale = Math.min(1, 1920 / Math.max(sw, sh));
+            canvas.width = Math.round(sw * scale);
+            canvas.height = Math.round(sh * scale);
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+            let text: string | null = null;
+            try {
+              if (native) text = (await native.detect(canvas))?.[0]?.rawValue ?? null;
+              else text = reader.decodeFromCanvas(canvas).getText();
+            } catch { /* aucun code dans cette image */ }
+            if (cancelled) return;
+            if (text) {
+              setHint(false);
+              armHint();
+              void handleCodeRef.current(text);
+            }
+            pass += 1;
+          }
+          timer = window.setTimeout(tick, 40);
+        };
+        void tick();
       } catch (error) {
         if (cancelled) return;
-        if (deviceId && (error as any)?.name === 'OverconstrainedError') {
+        stream?.getTracks().forEach((t) => t.stop());
+        if (deviceId && ['OverconstrainedError', 'NotFoundError'].includes((error as any)?.name)) {
           // Caméra mémorisée débranchée : on repart sur la caméra par défaut.
           try { localStorage.removeItem(DEVICE_KEY); } catch { /* */ }
           setDeviceId('');
@@ -163,11 +261,15 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
         }
         setCameraError(cameraErrorText(error));
         setStatus('error');
+        // Même en erreur, on propose les autres caméras (ex. la webcam USB au lieu de la caméra intégrée).
+        void listCameras();
       }
     };
     void start();
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      window.clearTimeout(hintTimer);
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
@@ -219,7 +321,7 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
 
         <div className="grid gap-0 md:grid-cols-[1fr_260px]">
           <div className="relative aspect-video bg-black">
-            <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay />
+            <video ref={videoRef} className={`h-full w-full object-cover ${mirror ? '-scale-x-100' : ''}`} muted playsInline autoPlay />
             {/* Cadre de visée */}
             {status !== 'error' && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -235,6 +337,12 @@ export default function BonBarcodeScanner({ onClose, onSaved }: { onClose: () =>
                 <button type="button" onClick={() => setRetry((n) => n + 1)} className="rounded-full bg-white/15 px-4 py-1.5 text-xs font-semibold hover:bg-white/25">
                   Réessayer
                 </button>
+              </div>
+            )}
+            {hint && status === 'scanning' && (
+              <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-black/70 px-3 py-2 text-xs leading-relaxed text-white/90 backdrop-blur">
+                Rien n'est lu ? Tenez le ticket à <b>20–30 cm</b> de la webcam, bien à plat et éclairé, le QR code dans le cadre.
+                Les webcams sans mise au point automatique (ex. Logitech C270) sont floues de près : éloignez le ticket plutôt que de l'approcher.
               </div>
             )}
             <div className={`absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold backdrop-blur ${statusChip.cls}`}>
