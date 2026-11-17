@@ -695,3 +695,9 @@ table.tk-measure th, table.tk-measure td { white-space: nowrap !important; }
 /* Le conteneur .tk-container gere le defilement : le tableau reste un vrai tableau (sinon, sous 768px,
    il devient son propre conteneur de defilement et l en-tete collant ne tient plus). */
 .tk-container > table { display: table !important; overflow: visible !important; }
+
+/* Glisser horizontal global des tableaux (useGlobalTableDragScroll) */
+table.table-drag-scrollable { cursor: grab; }
+table.table-drag-scrollable :is(button, a, select, label) { cursor: pointer; }
+table.table-drag-scrollable :is(input, textarea) { cursor: auto; }
+html.table-drag-scrolling, html.table-drag-scrolling * { cursor: grabbing !important; user-select: none !important; }

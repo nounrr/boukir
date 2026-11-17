@@ -6,6 +6,7 @@ import { useAppDispatch, useAuth } from './hooks/redux';
 import { useValidateTokenQuery } from './store/api/authApi';
 import { useAccessScheduleMonitor } from './hooks/useAccessScheduleMonitor';
 import { useSocketConnection } from './hooks/useSocketConnection';
+import { useGlobalTableDragScroll } from './hooks/useGlobalTableDragScroll';
 import { canViewInternalPrices } from './utils/internalPrices';
 import { CATEGORY_EXCEL_ROLES } from './utils/permissions';
 
@@ -997,6 +998,8 @@ const AppContent: React.FC = () => {
 };
 
 function App() {
+  // Glisser à la souris pour faire défiler horizontalement tous les tableaux, sur toutes les pages.
+  useGlobalTableDragScroll();
   return <AppContent />;
 }
 
