@@ -16,10 +16,10 @@ export const SERVICE_REQUEST_STATUSES = Object.freeze([
 ]);
 
 export const SERVICE_REQUEST_TRANSITIONS = Object.freeze({
-  new: Object.freeze(['to_contact']),
-  to_contact: Object.freeze(['processing']),
+  new: Object.freeze(['to_contact', 'confirmed']),
+  to_contact: Object.freeze(['processing', 'confirmed']),
   processing: Object.freeze(['waiting_customer', 'confirmed', 'cancelled']),
-  waiting_customer: Object.freeze(['processing', 'cancelled']),
+  waiting_customer: Object.freeze(['processing', 'confirmed', 'cancelled']),
   confirmed: Object.freeze([]),
   assigned: Object.freeze([]),
   scheduled: Object.freeze([]),

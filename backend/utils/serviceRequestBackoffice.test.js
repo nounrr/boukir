@@ -9,7 +9,10 @@ test('le workflow KAN-17 autorise uniquement les transitions administratives pr√
   assert.equal(canTransitionServiceRequest('new', 'to_contact'), true);
   assert.equal(canTransitionServiceRequest('waiting_customer', 'processing'), true);
   assert.equal(canTransitionServiceRequest('processing', 'confirmed'), true);
-  assert.equal(canTransitionServiceRequest('new', 'confirmed'), false);
+  assert.equal(canTransitionServiceRequest('new', 'confirmed'), true);
+  assert.equal(canTransitionServiceRequest('to_contact', 'confirmed'), true);
+  assert.equal(canTransitionServiceRequest('waiting_customer', 'confirmed'), true);
+  assert.equal(canTransitionServiceRequest('new', 'assigned'), false);
   assert.equal(canTransitionServiceRequest('confirmed', 'processing'), false);
   assert.equal(canTransitionServiceRequest('cancelled', 'to_contact'), false);
 });
