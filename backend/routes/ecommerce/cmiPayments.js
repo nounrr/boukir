@@ -6,7 +6,7 @@ import { getJwtSecret } from '../../middleware/auth.js';
 import { contactLocale, notifyCustomer, soldePaymentMessage } from '../../utils/customerNotify.js';
 import { getStatementBalance } from '../../utils/statementBalance.js';
 import { loadReturnUrl, sanitizeReturnUrl, saveReturnUrl, withParams } from '../../utils/paymentReturn.js';
-import { ensureSoldePaymentSchema, isSoldeOid, makeSoldeOid, processSoldeResult, validateSoldeAmount } from '../../utils/soldePayment.js';
+import { MIN_SOLDE_PAYMENT, ensureSoldePaymentSchema, isSoldeOid, makeSoldeOid, processSoldeResult, validateSoldeAmount } from '../../utils/soldePayment.js';
 import {
   buildCmiPaymentForm,
   cmiAmountsMatch,
@@ -465,11 +465,63 @@ function customerIdFromToken(req) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return null;
   try {
-    return jwt.verify(token, getJwtSecret())?.id ?? null;
+    const payload = jwt.verify(token, getJwtSecret());
+    if (payload?.role && payload?.cin && payload?.type_compte == null) return null;
+    const id = Number(payload?.id);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
   } catch {
     return null;
   }
 }
+
+// Full outstanding amount, independent of the paginated statement on screen.
+router.get('/solde', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const contactId = customerIdFromToken(req);
+    if (!contactId) return res.status(401).json({ message: 'Authentification requise' });
+    const [[contact]] = await pool.query(
+      'SELECT id, is_solde FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1', [contactId]
+    );
+    if (!contact) return res.status(404).json({ message: 'Utilisateur introuvable' });
+    if (!Number(contact.is_solde)) return res.status(403).json({ message: 'Le crédit n’est pas activé sur votre compte', error_type: 'SOLDE_NOT_ALLOWED' });
+    const balance = await getStatementBalance(pool, contactId);
+    if (balance == null || !Number.isFinite(balance)) return res.status(503).json({ message: 'Solde indisponible' });
+    const owed = Math.max(0, balance);
+    res.json({ balance, owed, minimum: Math.min(MIN_SOLDE_PAYMENT, owed), currency: 'MAD' });
+  } catch (error) { next(error); }
+});
+
+// The browser return URL is informational; only the stored bank result can
+// confirm a balance payment. Never return another customer's attempt or raw bank data.
+router.get('/solde/:oid', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const contactId = customerIdFromToken(req);
+    if (!contactId) return res.status(401).json({ message: 'Authentification requise' });
+    const oid = String(req.params.oid || '');
+    if (!isSoldeOid(oid) || oid.length > 64) return res.status(404).json({ message: 'Paiement introuvable' });
+    const [rows] = await pool.query(
+      `SELECT tx.oid, tx.amount, tx.status, tx.payment_id, tx.updated_at
+       FROM solde_payment_transactions tx
+       INNER JOIN contacts c ON c.id = tx.contact_id AND c.deleted_at IS NULL
+       WHERE tx.oid = ? AND tx.contact_id = ? LIMIT 1`,
+      [oid, contactId]
+    );
+    const payment = rows[0];
+    if (!payment) return res.status(404).json({ message: 'Paiement introuvable' });
+    res.json({
+      oid: payment.oid,
+      amount: Number(payment.amount),
+      status: payment.status,
+      paid: payment.status === 'approved' && Number(payment.payment_id) > 0,
+      updated_at: payment.updated_at,
+    });
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') return res.status(404).json({ message: 'Paiement introuvable' });
+    next(error);
+  }
+});
 
 // POST /api/ecommerce/payments/cmi/solde { amount?, locale } -> signed CMI form to pay (part of) the credit balance by card
 router.post('/solde', async (req, res, next) => {
