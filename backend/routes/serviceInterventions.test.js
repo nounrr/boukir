@@ -303,6 +303,30 @@ test('une mission clôturée n’est plus modifiable par le Maalem', async () =>
   });
 });
 
+test('les missions terminées et clôturées restent dans « Mes missions », en lecture seule', async () => {
+  const db = databaseDouble(); db.state.status = 'closed'; db.state.requestStatus = 'closed';
+  const sqls = [];
+  const query = db.connection.query.bind(db.connection);
+  db.connection.query = async (sql, params) => { sqls.push(sql); return query(sql, params); };
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    const list = await fetch(`${url}/api/maalem-missions`);
+    assert.equal(list.status, 200);
+    assert.equal((await list.json()).missions.length, 1);
+    // The list asks for finished and closed missions too, and only leaves out cancelled requests.
+    const listSql = sqls.find((s) => s.includes('ORDER BY si.planned_date'));
+    assert.match(listSql, /'completed', 'closed'\)/);
+    assert.match(listSql, /sr\.status <> 'cancelled'/);
+    // Opening a closed mission works...
+    sqls.length = 0;
+    assert.equal((await fetch(`${url}/api/maalem-missions/91`)).status, 200);
+    assert.match(sqls.find((s) => s.includes('WHERE si.id = ?')), /NOT IN \('cancelled'\)/);
+    // ...but changing it still checks the request is not closed.
+    sqls.length = 0;
+    await fetch(`${url}/api/maalem-missions/91/progress`, jsonPatch({ progress_percent: 50 }));
+    assert.match(sqls.find((s) => s.includes('WHERE si.id = ?')), /NOT IN \('cancelled', 'closed'\)/);
+  });
+});
+
 test('le compte-rendu et une photo typée sont enregistrés pour le Maalem courant', async () => {
   const db = databaseDouble(); db.state.status = 'work_in_progress'; db.state.requestStatus = 'work_in_progress';
   await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {

@@ -128,7 +128,8 @@ async function loadAdminIntervention(connection, id, forUpdate = false) {
   return rows[0] || null;
 }
 
-async function loadMaalemIntervention(connection, id, maalem, forUpdate = false) {
+// readOnly: a mission whose request the team closed can still be opened (and its photos seen), never changed.
+async function loadMaalemIntervention(connection, id, maalem, forUpdate = false, readOnly = false) {
   const [rows] = await connection.query(
     `SELECT si.id, si.service_request_id, si.status, si.planned_date, si.planned_time_slot,
             si.mission_address, si.mission_city, si.latitude, si.longitude,
@@ -150,7 +151,7 @@ async function loadMaalemIntervention(connection, id, maalem, forUpdate = false)
      LEFT JOIN services s ON s.id = si.planned_service_id
      LEFT JOIN maalem_categories mc ON mc.id = si.planned_category_id
      INNER JOIN contacts requester ON requester.id = sr.requester_contact_id
-     WHERE si.id = ? AND sr.status NOT IN ('cancelled', 'closed')
+     WHERE si.id = ? AND sr.status NOT IN (${readOnly ? "'cancelled'" : "'cancelled', 'closed'"})
      LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`, [maalem.id, id]
   );
   return rows[0] || null;
@@ -385,8 +386,8 @@ maalemRouter.get('/', async (req, res, next) => {
          AND sra.unassigned_at IS NULL AND sra.maalem_profile_id = ?
        LEFT JOIN services s ON s.id = si.planned_service_id
        LEFT JOIN maalem_categories mc ON mc.id = si.planned_category_id
-       WHERE si.status IN ('assigned', 'scheduled', 'to_do', 'en_route', 'arrived', 'work_in_progress', 'completed')
-         AND sr.status NOT IN ('cancelled', 'closed')
+       WHERE si.status IN ('assigned', 'scheduled', 'to_do', 'en_route', 'arrived', 'work_in_progress', 'completed', 'closed')
+         AND sr.status <> 'cancelled'
        ORDER BY si.planned_date, si.created_at`, [maalem.id]
     );
     res.json({ missions: rows });
@@ -397,7 +398,7 @@ maalemRouter.get('/:id(\\d+)', async (req, res, next) => {
   try {
     const id = positiveId(req.params.id);
     const maalem = await loadMaalem(pool, req.user?.id);
-    const intervention = id ? await loadMaalemIntervention(pool, id, maalem) : null;
+    const intervention = id ? await loadMaalemIntervention(pool, id, maalem, false, true) : null;
     if (!intervention) return res.status(404).json({ message: 'Mission introuvable ou non affectée à ce Maalem' });
     const photos = await listPhotos(pool, id);
     res.json({ mission: intervention, photos });
@@ -566,7 +567,7 @@ async function sendPhoto(req, res, next, admin) {
     if (!interventionId || !photoId) return res.status(400).json({ message: 'Photo invalide' });
     if (!admin) {
       const maalem = await loadMaalem(pool, req.user?.id);
-      if (!await loadMaalemIntervention(pool, interventionId, maalem)) return res.status(404).json({ message: 'Photo introuvable' });
+      if (!await loadMaalemIntervention(pool, interventionId, maalem, false, true)) return res.status(404).json({ message: 'Photo introuvable' });
     }
     const [rows] = await pool.query(
       `SELECT storage_key, original_name, mime_type FROM service_intervention_photos
