@@ -28,6 +28,7 @@ import {
   Upload,
   Percent,
   ClipboardList,
+  Banknote,
   Wallet,
   Archive,
   CalendarClock,
@@ -168,6 +169,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false, onTogg
       title: 'Maalems & Services',
       items: [
         { name: 'Demandes de service', href: '/service-requests', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Paiements Maalems', href: '/maalem-earnings', icon: Banknote, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Avis Maalem', href: '/maalem-reviews', icon: MessageSquareText, show: canViewMaalemReviews },
         { name: 'Maalems', href: '/maalems', icon: HardHat, show: user?.role === 'PDG' },
         { name: 'Catégories Maalem', href: '/maalem-categories', icon: Tags, show: user?.role === 'PDG' },

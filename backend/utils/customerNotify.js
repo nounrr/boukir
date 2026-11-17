@@ -84,6 +84,53 @@ export function accountRequestMessage({ approved, role, locale }) {
   return (approved ? ok : ko)[lang];
 }
 
+/** The shop set (or changed) what the customer pays for a service request. */
+export function serviceAmountMessage({ number, amount, locale }) {
+  const lang = pickLang(locale);
+  const a = money(amount);
+  return {
+    fr: { title: 'Montant de votre demande', body: `Demande ${number} : ${a}. Payez par carte, virement, chèque ou espèces depuis votre demande.` },
+    en: { title: 'Amount of your request', body: `Request ${number}: ${a}. Pay by card, transfer, cheque or cash from your request.` },
+    es: { title: 'Importe de su solicitud', body: `Solicitud ${number}: ${a}. Pague con tarjeta, transferencia, cheque o efectivo desde su solicitud.` },
+    ar: { title: 'مبلغ طلبك', body: `الطلب ${number}: ${a}. ادفع بالبطاقة أو التحويل أو الشيك أو نقدًا من صفحة طلبك.` },
+    zh: { title: '您的申请金额', body: `申请 ${number}：${a}。可在申请页面用银行卡、转账、支票或现金支付。` },
+  }[lang];
+}
+
+/** The service request is paid (card approved, or the team recorded the transfer / cheque / cash). */
+export function servicePaidMessage({ number, amount, locale }) {
+  const lang = pickLang(locale);
+  const a = money(amount);
+  return {
+    fr: { title: 'Paiement reçu', body: `Le paiement de ${a} pour la demande ${number} est bien reçu. Merci !` },
+    en: { title: 'Payment received', body: `The payment of ${a} for request ${number} was received. Thank you!` },
+    es: { title: 'Pago recibido', body: `Se recibió el pago de ${a} de la solicitud ${number}. ¡Gracias!` },
+    ar: { title: 'تم استلام الدفعة', body: `تم استلام دفعة ${a} للطلب ${number}. شكرًا لك!` },
+    zh: { title: '已收到付款', body: `申请 ${number} 的 ${a} 付款已收到，谢谢！` },
+  }[lang];
+}
+
+/** A Maalem took their money: in cash at the shop, or moved to their shopping balance. */
+export function maalemPayoutMessage({ amount, kind, locale }) {
+  const lang = pickLang(locale);
+  const a = money(amount);
+  const cash = {
+    fr: { title: 'Paiement remis', body: `${a} vous ont été remis en espèces pour vos missions.` },
+    en: { title: 'Payment handed over', body: `${a} was paid to you in cash for your missions.` },
+    es: { title: 'Pago entregado', body: `Se le pagaron ${a} en efectivo por sus misiones.` },
+    ar: { title: 'تم تسليم المبلغ', body: `تم تسليمك ${a} نقدًا مقابل مهامك.` },
+    zh: { title: '已付款', body: `已以现金向您支付任务款 ${a}。` },
+  };
+  const shop = {
+    fr: { title: 'Ajouté à vos achats', body: `${a} ont été ajoutés à vos points d'achat : utilisez-les à votre prochaine commande.` },
+    en: { title: 'Added to your purchases', body: `${a} was added to your shopping balance: use it on your next order.` },
+    es: { title: 'Añadido a sus compras', body: `Se añadieron ${a} a su saldo de compras: úselo en su próximo pedido.` },
+    ar: { title: 'أضيف إلى مشترياتك', body: `أضيف ${a} إلى رصيد مشترياتك: استعمله في طلبك القادم.` },
+    zh: { title: '已加入购物余额', body: `${a} 已加入您的购物余额，可在下次下单时使用。` },
+  };
+  return (kind === 'shop' ? shop : cash)[lang];
+}
+
 /** Sends the messages through Expo's push service; unknown (uninstalled) devices are forgotten. */
 export async function sendExpoPush(messages, { fetchImpl = globalThis.fetch, onDead = (token) => removeToken(token) } = {}) {
   if (!messages.length || typeof fetchImpl !== 'function') return { sent: 0 };

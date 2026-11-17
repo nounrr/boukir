@@ -144,6 +144,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ tabletCompact = false
       key: 'maalems', label: 'Maalems', icon: HardHat,
       items: [
         { name: 'Demandes de service', to: '/service-requests', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Paiements Maalems', to: '/maalem-earnings', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Avis Maalem', to: '/maalem-reviews', show: canViewMaalemReviews },
         { name: 'Maalems', to: '/maalems', show: user?.role === 'PDG' },
         { name: 'Catégories Maalem', to: '/maalem-categories', show: user?.role === 'PDG' },

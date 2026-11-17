@@ -53,6 +53,7 @@ const ServicesPage = React.lazy(() => import('./pages/ServicesPage'));
 const ServiceRequestsPage = React.lazy(() => import('./pages/ServiceRequestsPage'));
 const ServiceRequestDetailPage = React.lazy(() => import('./pages/ServiceRequestsPage').then((module) => ({ default: module.ServiceRequestDetailPage })));
 const MaalemReviewsPage = React.lazy(() => import('./pages/MaalemReviewsPage'));
+const MaalemEarningsPage = React.lazy(() => import('./pages/MaalemEarningsPage'));
 const StatsDetailPage = React.lazy(() => import('./pages/StatsDetailPage'));
 const ExcelUploadPage = React.lazy(() => import('./pages/ImportExcelTabs'));
 const ExportProducts = React.lazy(() => import('./pages/ExportProducts'));
@@ -630,6 +631,15 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
               <LayoutWithAccessCheck><ServiceRequestDetailPage /></LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/maalem-earnings"
+          element={
+            <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
+              <LayoutWithAccessCheck><MaalemEarningsPage /></LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />

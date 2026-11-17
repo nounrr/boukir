@@ -8,6 +8,8 @@ import pool from '../db/pool.js';
 import { requireRoles } from '../middleware/auth.js';
 import { detectBufferKind } from '../utils/uploadValidation.js';
 import assignmentRouter from './adminServiceRequestAssignments.js';
+import { adminServiceBillingRouter } from './servicePayments.js';
+import { contactLocale, notifyCustomer, serviceAmountMessage } from '../utils/customerNotify.js';
 import {
   SERVICE_REQUEST_CONTACT_CHANNELS,
   SERVICE_REQUEST_PRIORITIES,
@@ -41,6 +43,21 @@ const kindMimeTypes = Object.freeze({ pdf: 'application/pdf', jpeg: 'image/jpeg'
 
 router.use(requireRoles(...allowedRoles));
 router.use(assignmentRouter);
+router.use(adminServiceBillingRouter);
+
+/** The amount the shop receives from the client (null when not entered yet). */
+async function clientAmountOf(connection, requestId) {
+  try {
+    const [rows] = await connection.query(
+      'SELECT client_amount FROM service_request_billing WHERE service_request_id = ? LIMIT 1', [requestId]
+    );
+    const amount = Number(rows[0]?.client_amount);
+    return amount > 0 ? amount : null;
+  } catch (error) {
+    if (error?.code === 'ER_NO_SUCH_TABLE') return null;
+    throw error;
+  }
+}
 
 function fail(status, message, errors) {
   const error = new Error(message);
@@ -426,8 +443,11 @@ router.post('/:id(\\d+)/transition', async (req, res, next) => {
     const request = await requestForUpdate(connection, requestId);
     if (!request) fail(404, 'Demande introuvable');
     if (!canTransitionServiceRequest(request.status, nextStatus)) fail(409, `Transition ${request.status} → ${nextStatus} interdite`);
+    let clientAmount = null;
     if (nextStatus === 'confirmed') {
       const errors = confirmationErrors(request);
+      clientAmount = await clientAmountOf(connection, requestId);
+      if (!clientAmount) errors.client_amount = 'Saisissez le montant à recevoir du client avant de confirmer';
       if (Object.keys(errors).length) fail(422, 'Informations minimales incomplètes', errors);
     }
     if (nextStatus === 'cancelled' && !reason) fail(422, "Un motif d'annulation est obligatoire");
@@ -452,6 +472,17 @@ router.post('/:id(\\d+)/transition', async (req, res, next) => {
     });
     await connection.commit();
     await dispatchOperationalNotificationsSafely(deliveries);
+    if (nextStatus === 'confirmed' && clientAmount) {
+      // The client can pay from now on: tell them the amount and the ways to pay.
+      void (async () => {
+        const locale = await contactLocale(request.requester_contact_id);
+        await notifyCustomer(request.requester_contact_id, {
+          kind: 'order',
+          ...serviceAmountMessage({ number: request.request_number, amount: clientAmount, locale }),
+          href: `/service-requests/${requestId}`,
+        });
+      })().catch(() => {});
+    }
     res.json({ status: nextStatus, assignment_eligible: nextStatus === 'confirmed' });
   } catch (error) { if (connection) await connection.rollback().catch(() => {}); next(error); }
   finally { connection?.release(); }

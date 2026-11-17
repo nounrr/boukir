@@ -24,6 +24,7 @@ function createDatabaseDouble(options = {}) {
       [9, { id: 9, contact_id: 90, category_id: 4, status: options.maalemStatus || 'suspended', deleted_at: null, contact_is_active: 1, contact_is_blocked: 0, contact_deleted_at: null, service_compatible: 1, nom_complet: 'Maalem refusé' }],
     ]),
     assignments: [],
+    earnings: [],
     mission: null,
     histories: [],
     nextAssignmentId: 1,
@@ -39,6 +40,7 @@ function createDatabaseDouble(options = {}) {
     let workingAssignments = null;
     let workingHistories = null;
     let workingMission = null;
+    let workingEarnings = null;
     async function lock() {
       let release;
       const previous = state.tail;
@@ -49,6 +51,7 @@ function createDatabaseDouble(options = {}) {
       workingAssignments = structuredClone(state.assignments);
       workingHistories = structuredClone(state.histories);
       workingMission = structuredClone(state.mission);
+      workingEarnings = structuredClone(state.earnings);
     }
     function release() { if (releaseLock) { releaseLock(); releaseLock = null; } }
     return {
@@ -58,6 +61,7 @@ function createDatabaseDouble(options = {}) {
         state.assignments = workingAssignments;
         state.histories = workingHistories;
         state.mission = workingMission;
+        state.earnings = workingEarnings;
         state.commits += 1;
         release();
       },
@@ -96,6 +100,10 @@ function createDatabaseDouble(options = {}) {
             unassigned_at: null, unassigned_by_employee_id: null, unassignment_reason: null,
           });
           return [{ insertId: id }];
+        }
+        if (sql.includes('INSERT INTO service_maalem_earnings')) {
+          workingEarnings.push({ service_request_id: Number(params[0]), assignment_id: Number(params[1]), maalem_profile_id: Number(params[2]), amount: Number(params[3]) });
+          return [{ insertId: workingEarnings.length }];
         }
         if (sql.includes('INSERT INTO service_interventions')) {
           if (options.failMission) throw new Error('mission insert failed');
@@ -144,8 +152,10 @@ async function withServer(database, callback, user = { id: 3, role: 'Manager' })
   }
 }
 
+// Every assignment carries what the Maalem receives (required); tests that check it pass their own value.
 function post(body) {
-  return { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
+  const withAmount = body.maalem_profile_id && !Object.hasOwn(body, 'maalem_amount') ? { ...body, maalem_amount: 350 } : body;
+  return { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(withAmount) };
 }
 
 test('affecte un Maalem approved compatible, conserve le Maalem souhaité et historise auteur/date', async () => {
@@ -274,4 +284,34 @@ test('refuse l’auto-affectation ou l’affectation par un client côté serveu
     assert.equal(response.status, 403);
   }, { id: 70, type_compte: 'Artisan/Promoteur' });
   assert.equal(database.state.assignments.length, 0);
+});
+
+test('le montant du Maalem est obligatoire et enregistré avec l’affectation', async () => {
+  const missing = createDatabaseDouble();
+  await withServer(missing, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({ maalem_profile_id: 7, expected_current_assignment_id: null, reason: 'Test', maalem_amount: '' }));
+    assert.equal(response.status, 422);
+    assert.ok((await response.json()).errors.maalem_amount);
+  });
+  assert.equal(missing.state.assignments.length, 0);
+
+  const database = createDatabaseDouble();
+  await withServer(database, async (baseUrl) => {
+    const first = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({ maalem_profile_id: 7, expected_current_assignment_id: null, reason: 'Initiale', maalem_amount: '1 250,50' }));
+    assert.equal(first.status, 201);
+    const { assignment_id } = await first.json();
+    const second = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({ maalem_profile_id: 8, expected_current_assignment_id: assignment_id, reason: 'Remplacement', maalem_amount: 900 }));
+    assert.equal(second.status, 200);
+  });
+  // Each assignment keeps its own amount: only the one who does the work is paid (at closing).
+  assert.deepEqual(database.state.earnings.map((e) => [e.maalem_profile_id, e.amount]), [[7, 1250.5], [8, 900]]);
+});
+
+test('une affectation qui échoue n’enregistre aucun montant', async () => {
+  const database = createDatabaseDouble({ failHistory: true });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/admin/service-requests/51/assign`, post({ maalem_profile_id: 7, expected_current_assignment_id: null, reason: 'Initiale' }));
+    assert.equal(response.status, 500);
+  });
+  assert.equal(database.state.earnings.length, 0);
 });

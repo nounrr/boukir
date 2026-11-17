@@ -11,6 +11,8 @@ import {
   enqueueOperationalNotifications,
   shouldNotifyOperationalPolicy,
 } from '../utils/operationalNotification.js';
+import { validateAmount } from '../utils/servicePayments.js';
+import { saveAssignmentEarning } from './servicePayments.js';
 
 const router = Router();
 router.use(requireRoles('PDG', 'Manager', 'ManagerPlus'));
@@ -191,6 +193,9 @@ router.post('/:id(\\d+)/assign', async (req, res, next) => {
     if (!Object.prototype.hasOwnProperty.call(req.body, 'expected_current_assignment_id')) {
       fail(422, 'La version courante de l’affectation est requise');
     }
+    // What this Maalem receives for the mission: required before confirming them on the request.
+    const maalemAmount = validateAmount(req.body.maalem_amount);
+    if (!maalemAmount.valid) fail(422, 'Saisissez le montant que recevra le Maalem', { maalem_amount: maalemAmount.error });
     await connection.beginTransaction();
     const actor = await loadActor(connection, req.user.id);
     const request = await loadRequestForUpdate(connection, requestId);
@@ -237,6 +242,9 @@ router.post('/:id(\\d+)/assign', async (req, res, next) => {
         validation.compatibility.compatible ? null : validation.overrideReason]
     );
     const assignmentId = Number(insert.insertId);
+    await saveAssignmentEarning(connection, {
+      requestId, assignmentId, maalemProfileId: profileId, amount: maalemAmount.value, employeeId: actor.id,
+    });
     const nextStatus = currentAssignment ? request.status : 'assigned';
     const [updated] = nextStatus === 'assigned'
       ? await connection.query(

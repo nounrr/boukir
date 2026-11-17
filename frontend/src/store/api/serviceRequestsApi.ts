@@ -236,6 +236,51 @@ export interface AdminInterventionResponse {
   photos?: Array<{ id: number; phase: 'BEFORE' | 'DURING' | 'AFTER'; original_name: string; mime_type: string; file_size: number; created_at: string }>;
 }
 
+export type ClientPaymentMethod = 'cmi' | 'virement' | 'cheque' | 'especes';
+export type EarningState = 'pending' | 'available' | 'paid_cash' | 'to_shop';
+
+export interface ServiceBilling {
+  amount: number;
+  method: ClientPaymentMethod | null;
+  status: 'unpaid' | 'declared' | 'paid';
+  reference: string | null;
+  declared_at: string | null;
+  paid_at: string | null;
+}
+
+export interface MaalemEarning {
+  id: number;
+  service_request_id: number;
+  assignment_id: number;
+  intervention_id: number | null;
+  request_number: string;
+  service_name: string | null;
+  maalem_profile_id: number;
+  maalem_name: string | null;
+  amount: number;
+  state: EarningState | 'void';
+  closed_at: string | null;
+  planned_date: string | null;
+  settled_at: string | null;
+  settled_by: string | null;
+}
+
+export interface EarningsSummary { available: number; pending: number; paid_cash: number; to_shop: number }
+
+export interface MaalemEarningsOverview extends EarningsSummary {
+  maalem_profile_id: number;
+  maalem_name: string | null;
+  available_count: number;
+}
+
+export interface MaalemEarningsDetail {
+  maalem_profile_id: number;
+  maalem_name: string | null;
+  summary: EarningsSummary;
+  earnings: MaalemEarning[];
+  settlements: Array<{ id: number; kind: 'cash' | 'shop'; total: number; employee_name: string | null; note: string | null; created_at: string }>;
+}
+
 export const serviceRequestsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getBackofficeServiceRequests: builder.query<ServiceRequestListResponse, ServiceRequestFilters>({
@@ -284,6 +329,7 @@ export const serviceRequestsApi = apiSlice.injectEndpoints({
       compatibility_override?: boolean;
       compatibility_override_reason?: string;
       started_reassignment?: boolean;
+      maalem_amount: string | number;
     }>({
       query: ({ id, ...body }) => ({ url: `/admin/service-requests/${id}/assign`, method: 'POST', body }),
     }),
@@ -298,6 +344,30 @@ export const serviceRequestsApi = apiSlice.injectEndpoints({
     }),
     transitionAdminServiceIntervention: builder.mutation<{ intervention_id: number; status: ServiceRequestStatus }, { id: number; status: 'to_do' | 'completed' | 'closed'; closure_internal_note?: string }>({
       query: ({ id, ...body }) => ({ url: `/admin/service-interventions/${id}/transition`, method: 'POST', body }),
+    }),
+    getServiceRequestPayments: builder.query<{ billing: ServiceBilling | null; earnings: MaalemEarning[] }, number>({
+      query: (id) => `/admin/service-requests/${id}/payments`,
+    }),
+    setServiceClientAmount: builder.mutation<{ billing: ServiceBilling }, { id: number; client_amount: string | number }>({
+      query: ({ id, ...body }) => ({ url: `/admin/service-requests/${id}/billing`, method: 'PUT', body }),
+    }),
+    markServicePaid: builder.mutation<void, { id: number; method: ClientPaymentMethod; reference?: string }>({
+      query: ({ id, ...body }) => ({ url: `/admin/service-requests/${id}/billing/mark-paid`, method: 'POST', body }),
+    }),
+    markServiceUnpaid: builder.mutation<void, number>({
+      query: (id) => ({ url: `/admin/service-requests/${id}/billing/mark-unpaid`, method: 'POST' }),
+    }),
+    setServiceMaalemAmount: builder.mutation<{ maalem_amount: number }, { id: number; amount: string | number }>({
+      query: ({ id, ...body }) => ({ url: `/admin/service-requests/${id}/maalem-amount`, method: 'PUT', body }),
+    }),
+    getMaalemEarningsOverview: builder.query<{ maalems: MaalemEarningsOverview[] }, void>({
+      query: () => '/admin/maalem-earnings',
+    }),
+    getMaalemEarningsDetail: builder.query<MaalemEarningsDetail, number>({
+      query: (profileId) => `/admin/maalem-earnings/${profileId}`,
+    }),
+    settleMaalemEarnings: builder.mutation<{ settlement_id: number; total: number; count: number }, { maalem_profile_id: number; earning_ids: number[]; note?: string }>({
+      query: (body) => ({ url: '/admin/maalem-earnings/settle', method: 'POST', body }),
     }),
     retryServiceRequestNotification: builder.mutation<void, { requestId: number; notificationId: number }>({
       query: ({ requestId, notificationId }) => ({
@@ -324,4 +394,12 @@ export const {
   useScheduleServiceInterventionMutation,
   useTransitionAdminServiceInterventionMutation,
   useRetryServiceRequestNotificationMutation,
+  useGetServiceRequestPaymentsQuery,
+  useSetServiceClientAmountMutation,
+  useMarkServicePaidMutation,
+  useMarkServiceUnpaidMutation,
+  useSetServiceMaalemAmountMutation,
+  useGetMaalemEarningsOverviewQuery,
+  useGetMaalemEarningsDetailQuery,
+  useSettleMaalemEarningsMutation,
 } = serviceRequestsApi;

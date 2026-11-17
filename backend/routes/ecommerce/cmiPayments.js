@@ -7,6 +7,9 @@ import { contactLocale, notifyCustomer, soldePaymentMessage } from '../../utils/
 import { getStatementBalance } from '../../utils/statementBalance.js';
 import { loadReturnUrl, sanitizeReturnUrl, saveReturnUrl, withParams } from '../../utils/paymentReturn.js';
 import { MIN_SOLDE_PAYMENT, ensureSoldePaymentSchema, isSoldeOid, makeSoldeOid, processSoldeResult, validateSoldeAmount } from '../../utils/soldePayment.js';
+import { isServicePayOid, makeServicePayOid, processServicePaymentResult, roundMoney } from '../../utils/servicePayments.js';
+import { servicePaidMessage } from '../../utils/customerNotify.js';
+import { PAYABLE_REQUEST_STATUSES } from '../servicePayments.js';
 import {
   buildCmiPaymentForm,
   cmiAmountsMatch,
@@ -103,6 +106,14 @@ function soldeResultUrl(config, { lang, status, oid }) {
   return `${config.shopPublicUrl}/${safeLang}/checkout/payment-result?${query.toString()}`;
 }
 
+// A service request paid by card: the same result page, flagged service=1.
+function serviceResultUrl(config, { lang, status, oid }) {
+  const safeLang = ['fr', 'ar', 'en', 'zh'].includes(lang) ? lang : 'fr';
+  const query = new URLSearchParams({ status, service: '1' });
+  if (oid) query.set('oid', oid);
+  return `${config.shopPublicUrl}/${safeLang}/checkout/payment-result?${query.toString()}`;
+}
+
 function resultUrl(config, { lang, status, orderNumber }) {
   const safeLang = ['fr', 'ar', 'en', 'zh'].includes(lang) ? lang : 'fr';
   const query = new URLSearchParams({ status });
@@ -168,6 +179,22 @@ async function processCmiResult(params, source) {
 
   const result = { hashValid, approved, orderFound: false, amountValid: false, order: null, lang, oid };
   if (!hashValid || !oid) return result;
+
+  if (isServicePayOid(oid)) {
+    const service = await processServicePaymentResult(pool, params, { source, approved, oid, hashValid, lang });
+    if (service.paid) {
+      void (async () => {
+        const [rows] = await pool.query('SELECT request_number FROM service_requests WHERE id = ? LIMIT 1', [service.paid.service_request_id]);
+        const locale = await contactLocale(service.paid.contact_id);
+        await notifyCustomer(service.paid.contact_id, {
+          kind: 'order',
+          ...servicePaidMessage({ number: rows[0]?.request_number ?? '', amount: service.paid.amount, locale }),
+          href: `/service-requests/${service.paid.service_request_id}`,
+        });
+      })().catch(() => {});
+    }
+    return service;
+  }
 
   if (isSoldeOid(oid)) {
     await ensureSoldePaymentSchema(pool);
@@ -333,6 +360,10 @@ async function handleBrowserReturn(req, res, expectedStatus) {
     }
     // An app (e.g. the web build of the mobile app) can ask to be brought back to itself.
     const appReturn = await loadReturnUrl(pool, result.oid);
+    if (appReturn && result.service) {
+      return res.redirect(303, withParams(appReturn, { status, service: '1', oid: result.oid }));
+    }
+    if (result.service) return res.redirect(303, serviceResultUrl(config, { lang: result.lang, status, oid: result.oid }));
     if (appReturn) {
       const orderRef = result.solde ? undefined : (result.order?.order_number || (status === 'failed' ? await findOrderNumberByOid(result.oid) : null));
       return res.redirect(303, withParams(appReturn, { status, solde: result.solde ? '1' : undefined, oid: result.oid, order: orderRef || undefined, token: orderRef ? cmiOrderToken(orderRef, config) : undefined }));
@@ -521,6 +552,76 @@ router.get('/solde/:oid', async (req, res, next) => {
     if (error.code === 'ER_NO_SUCH_TABLE') return res.status(404).json({ message: 'Paiement introuvable' });
     next(error);
   }
+});
+
+// POST /api/ecommerce/payments/cmi/service { request_id, locale, return_url? } -> signed CMI form to pay a service request.
+// The amount is always the one the shop set (never sent by the client).
+router.post('/service', async (req, res, next) => {
+  try {
+    const contactId = customerIdFromToken(req);
+    if (!contactId) return res.status(401).json({ message: 'Authentification requise' });
+    if (!isCmiConfigured()) return res.status(503).json({ message: 'Paiement par carte indisponible', error_type: 'CMI_NOT_CONFIGURED' });
+    const requestId = Number(req.body?.request_id);
+    if (!Number.isSafeInteger(requestId) || requestId <= 0) return res.status(422).json({ message: 'Demande invalide' });
+    const [rows] = await pool.query(
+      `SELECT sr.id, sr.request_number, sr.status, b.client_amount, b.payment_status,
+              c.nom_complet, c.email, c.telephone, c.shipping_address_line1, c.shipping_city
+       FROM service_requests sr
+       INNER JOIN contacts c ON c.id = sr.requester_contact_id
+       LEFT JOIN service_request_billing b ON b.service_request_id = sr.id
+       WHERE sr.id = ? AND sr.requester_contact_id = ? AND sr.deleted_at IS NULL LIMIT 1`,
+      [requestId, contactId]
+    );
+    const request = rows[0];
+    if (!request) return res.status(404).json({ message: 'Demande introuvable' });
+    if (!PAYABLE_REQUEST_STATUSES.includes(request.status)) return res.status(409).json({ message: 'Le paiement s’ouvre une fois la demande confirmée', error_type: 'SERVICE_NOT_PAYABLE' });
+    if (!(Number(request.client_amount) > 0)) return res.status(409).json({ message: 'Le montant n’est pas encore fixé', error_type: 'SERVICE_NO_AMOUNT' });
+    if (request.payment_status === 'paid') return res.status(409).json({ message: 'Cette demande est déjà payée', error_type: 'SERVICE_ALREADY_PAID' });
+
+    const config = getCmiConfig();
+    const amount = roundMoney(request.client_amount);
+    const oid = makeServicePayOid(requestId);
+    const lang = normalizeCmiLang(req.body?.locale);
+    const returnUrl = sanitizeReturnUrl(req.body?.return_url);
+    const form = buildCmiPaymentForm({
+      oid,
+      amount,
+      locale: req.body?.locale,
+      customerName: request.nom_complet,
+      customerEmail: request.email,
+      customerPhone: request.telephone,
+      address: request.shipping_address_line1,
+      city: request.shipping_city,
+      shopUrl: returnUrl ? withParams(returnUrl, { status: 'cancel', service: '1', oid }) : serviceResultUrl(config, { lang, status: 'cancel', oid }),
+    }, config);
+    await pool.query(
+      `INSERT INTO service_payment_transactions (service_request_id, contact_id, oid, amount, currency, status)
+       VALUES (?, ?, ?, ?, ?, 'initiated')`,
+      [requestId, contactId, oid, amount, config.currency]
+    );
+    await saveReturnUrl(pool, oid, returnUrl);
+    res.json({ cmi_payment: { url: form.url, fields: form.fields }, oid, amount });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/ecommerce/payments/cmi/service/:oid -> what the bank answered (the browser return is only informational).
+router.get('/service/:oid', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const contactId = customerIdFromToken(req);
+    if (!contactId) return res.status(401).json({ message: 'Authentification requise' });
+    const oid = String(req.params.oid || '');
+    if (!isServicePayOid(oid) || oid.length > 64) return res.status(404).json({ message: 'Paiement introuvable' });
+    const [rows] = await pool.query(
+      `SELECT oid, service_request_id, amount, status, updated_at FROM service_payment_transactions
+       WHERE oid = ? AND contact_id = ? LIMIT 1`, [oid, contactId]
+    );
+    const tx = rows[0];
+    if (!tx) return res.status(404).json({ message: 'Paiement introuvable' });
+    res.json({ oid: tx.oid, service_request_id: Number(tx.service_request_id), amount: roundMoney(tx.amount), status: tx.status, paid: tx.status === 'approved' });
+  } catch (error) { next(error); }
 });
 
 // POST /api/ecommerce/payments/cmi/solde { amount?, locale } -> signed CMI form to pay (part of) the credit balance by card

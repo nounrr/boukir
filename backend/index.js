@@ -37,6 +37,8 @@ import reviewInvitationsRouter from './routes/reviewInvitations.js';
 import adminServiceRequestsRouter from './routes/adminServiceRequests.js';
 import adminMaalemReviewsRouter from './routes/adminMaalemReviews.js';
 import maalemMissionsRouter, { adminServiceInterventionsRouter } from './routes/serviceInterventions.js';
+import { adminMaalemEarningsRouter, clientServicePaymentRouter, maalemEarningsRouter } from './routes/servicePayments.js';
+import { ensureServicePaymentSchema } from './utils/servicePayments.js';
 import publicMaalemsRouter from './routes/publicMaalems.js';
 import { startReviewInvitationWorker } from './workers/reviewInvitationWorker.js';
 import productsRouter from './routes/products.js';
@@ -178,6 +180,7 @@ async function ensureSchemas() {
   await ensureBonContactNumberSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
   await ensureMaalemServiceTranslationColumns(pool);
+  await ensureServicePaymentSchema(pool);
 }
 
 const app = express();
@@ -416,11 +419,14 @@ app.use('/api/maalem-profiles', maalemProfilesRouter);
 app.use('/api/admin/maalem-profiles', adminMaalemProfilesRouter);
 app.use('/api/maalem-access', maalemAccessRouter);
 app.use('/api/service-requests', serviceRequestsRouter);
+app.use('/api/service-requests', clientServicePaymentRouter);
 app.use('/api/service-requests', serviceRequestReviewsRouter);
 app.use('/api/review-invitations', reviewInvitationsRouter);
 app.use('/api/admin/service-requests', adminServiceRequestsRouter);
 app.use('/api/admin/maalem-reviews', adminMaalemReviewsRouter);
+app.use('/api/maalem-missions', maalemEarningsRouter);
 app.use('/api/maalem-missions', maalemMissionsRouter);
+app.use('/api/admin/maalem-earnings', adminMaalemEarningsRouter);
 app.use('/api/admin/service-interventions', adminServiceInterventionsRouter);
 app.use('/api/maalems', publicMaalemsRouter);
 app.use('/api/products', productsRouter);
