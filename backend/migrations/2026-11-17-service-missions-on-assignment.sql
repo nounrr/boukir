@@ -12,4 +12,4 @@ INNER JOIN service_request_assignments sra
   ON sra.id = sr.current_assignment_id AND sra.unassigned_at IS NULL
 LEFT JOIN service_interventions si ON si.service_request_id = sr.id
 WHERE sr.status = 'assigned' AND sr.deleted_at IS NULL AND si.id IS NULL
-ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id);
+ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(service_interventions.id);

@@ -260,7 +260,7 @@ router.post('/:id(\\d+)/assign', async (req, res, next) => {
        FROM service_requests sr
        INNER JOIN contacts c ON c.id = sr.requester_contact_id
        WHERE sr.id = ?
-       ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+       ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(service_interventions.id)`,
       [requestId]
     );
     const eventType = currentAssignment ? ASSIGNMENT_EVENTS.REASSIGNED : ASSIGNMENT_EVENTS.ASSIGNED;
