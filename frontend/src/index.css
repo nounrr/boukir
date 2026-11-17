@@ -274,7 +274,7 @@ html, body { overflow-x: hidden; }
   padding: 12px 32px !important;
   font-weight: 600 !important;
   font-size: 15px !important;
-  transition: all 0.3s ease !important;
+  transition: all var(--hover-dur) var(--hover-ease) !important;
   box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3) !important;
 }
 
@@ -292,7 +292,7 @@ html, body { overflow-x: hidden; }
   padding: 12px 32px !important;
   font-weight: 500 !important;
   font-size: 15px !important;
-  transition: all 0.3s ease !important;
+  transition: all var(--hover-dur) var(--hover-ease) !important;
 }
 
 .whatsapp-cancel-btn:hover {
@@ -316,7 +316,7 @@ html, body { overflow-x: hidden; }
 .tk-resizer {
   position: absolute; width: 10px; z-index: 5; cursor: col-resize; touch-action: none;
   border-radius: 4px; background: linear-gradient(to right, transparent 4px, rgba(99,102,241,.25) 4px, rgba(99,102,241,.25) 6px, transparent 6px);
-  transition: background .15s;
+  transition: background var(--hover-dur) var(--hover-ease);
 }
 .tk-resizer:hover, body.tk-resizing .tk-resizer:active {
   background: linear-gradient(to right, transparent 3px, #6366f1 3px, #6366f1 7px, transparent 7px);
@@ -343,7 +343,7 @@ body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-selec
   border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
   background: linear-gradient(145deg, color-mix(in srgb, currentColor 6%, #fff), color-mix(in srgb, currentColor 16%, #fff));
   box-shadow: 0 1px 2px color-mix(in srgb, currentColor 20%, transparent);
-  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+  transition: transform var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease), background var(--hover-dur) var(--hover-ease);
 }
 .bons-actions > button:not(:disabled):hover,
 .bons-actions > div > button:not(:disabled):hover {
@@ -426,7 +426,7 @@ body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-selec
 .apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > tbody > tr > td {
   border-bottom: 1px solid var(--ap-hairline-soft);
   color: var(--ap-text);
-  transition: background-color .18s ease;
+  transition: background-color var(--hover-dur) var(--hover-ease);
 }
 .apple-ui table:not(.border-collapse):not(.thermal-table):not(.print-table-full):not(:is([data-print-root], #print-mode, .print-compact, [data-contact-pdf-page]) table) > tbody > tr:last-child > td {
   border-bottom: 0;
@@ -466,7 +466,7 @@ body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-selec
 .apple-ui :is(input[type="text"], input[type="search"], input[type="number"], input[type="date"], input[type="email"], input[type="tel"], select, textarea):not(:is([data-print-root], #print-mode) *) {
   border-radius: 10px;
   border-color: rgba(60, 60, 67, 0.18);
-  transition: border-color .15s ease, box-shadow .15s ease;
+  transition: border-color var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease);
 }
 .apple-ui :is(input[type="text"], input[type="search"], input[type="number"], input[type="date"], input[type="email"], input[type="tel"], select, textarea):not(:is([data-print-root], #print-mode) *):focus {
   outline: none;
@@ -484,7 +484,7 @@ body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-selec
   border: 0;
   background: color-mix(in srgb, currentColor 10%, #fff);
   box-shadow: inset 0 0 0 0.5px color-mix(in srgb, currentColor 30%, transparent), 0 1px 1px rgba(0, 0, 0, 0.04);
-  transition: transform .18s cubic-bezier(.2, .8, .2, 1), background-color .18s ease, box-shadow .18s ease;
+  transition: transform var(--hover-dur) var(--hover-ease), background-color var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease);
 }
 .apple-ui .bons-actions > button:not(:disabled):hover,
 .apple-ui .bons-actions > div > button:not(:disabled):hover {
@@ -535,7 +535,7 @@ aside nav a.bg-primary-100 { border-right-width: 0 !important; box-shadow: inset
   padding: 8px 14px; border-radius: 10px;
   font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.2;
   border: 1px solid transparent; white-space: nowrap;
-  transition: background-color var(--ap-fast) var(--ap-ease), box-shadow var(--ap-fast) var(--ap-ease), transform var(--ap-fast) var(--ap-ease), border-color var(--ap-fast) var(--ap-ease);
+  transition: background-color var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease), transform var(--hover-dur) var(--hover-ease), border-color var(--hover-dur) var(--hover-ease);
 }
 .ap-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ap-ring); }
 .ap-btn:active:not(:disabled) { transform: scale(0.98); }
@@ -569,7 +569,7 @@ aside nav a.bg-primary-100 { border-right-width: 0 !important; box-shadow: inset
 .ap-segmented { gap: 2px; padding: 2px; border-radius: 9px; background: rgba(118,118,128,.12); }
 .ap-segmented > button {
   padding: 5px 6px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--ap-ink-2);
-  transition: background-color var(--ap-fast) var(--ap-ease), color var(--ap-fast) var(--ap-ease), box-shadow var(--ap-fast) var(--ap-ease);
+  transition: background-color var(--hover-dur) var(--hover-ease), color var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease);
 }
 .ap-segmented > button[aria-pressed="true"] { background: #fff; color: var(--ap-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); }
 .ap-chip {
@@ -593,12 +593,12 @@ aside nav a.bg-primary-100 { border-right-width: 0 !important; box-shadow: inset
 .tk-container.tk-grid table th + th, .tk-container.tk-grid table td + td { box-shadow: inset 1px 0 0 rgba(60,60,67,.08); }
 .apple-ui .tk-container.tk-no-sticky table > thead > tr > th { position: relative !important; }
 table.tk-measure th, table.tk-measure td { white-space: nowrap !important; }
-.tk-container table th { transition: background-color var(--ap-fast) var(--ap-ease); }
+.tk-container table th { transition: background-color var(--hover-dur) var(--hover-ease); }
 
 /* Onglets de documents : style segmente */
 .ap-tab {
   border-radius: 10px; border: 1px solid transparent;
-  transition: background-color var(--ap-fast) var(--ap-ease), color var(--ap-fast) var(--ap-ease), box-shadow var(--ap-fast) var(--ap-ease), transform var(--ap-fast) var(--ap-ease);
+  transition: background-color var(--hover-dur) var(--hover-ease), color var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease), transform var(--hover-dur) var(--hover-ease);
 }
 .ap-tab:not(.ap-tab-active) { border-color: var(--ap-line) !important; background: #fff !important; }
 .ap-tab:not(.ap-tab-active):hover { background: #f4f6fa !important; transform: translateY(-1px); }
@@ -618,7 +618,7 @@ table.tk-measure th, table.tk-measure td { white-space: nowrap !important; }
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 7px 10px !important; border-radius: 8px !important;
   font-size: 13px; font-weight: 500; text-align: left; background: transparent;
-  transition: background-color 120ms ease;
+  transition: background-color var(--hover-dur) var(--hover-ease);
 }
 .bons-more-menu button[title]::after { content: attr(title); color: #1d1d1f; }
 .bons-more-menu button:hover:not(:disabled), .bons-more-menu button:focus-visible { background: rgba(37,99,235,.08) !important; outline: none; }
@@ -645,7 +645,7 @@ table.tk-measure th, table.tk-measure td { white-space: nowrap !important; }
   height: 30px; padding: 0 11px; border-radius: 999px;
   font-size: 12.5px; font-weight: 600; color: #4b5563; background: #fff;
   border: 1px solid #e6e9ef;
-  transition: background-color var(--ap-fast, 160ms) ease, color var(--ap-fast, 160ms) ease, border-color var(--ap-fast, 160ms) ease, box-shadow var(--ap-fast, 160ms) ease;
+  transition: background-color var(--hover-dur) var(--hover-ease), color var(--hover-dur) var(--hover-ease), border-color var(--hover-dur) var(--hover-ease), box-shadow var(--hover-dur) var(--hover-ease);
 }
 .ap-status-chip svg { color: var(--c); }
 .ap-status-chip:hover { background: #f6f7f9; border-color: #d8dde6; }
@@ -701,3 +701,43 @@ table.table-drag-scrollable { cursor: grab; }
 table.table-drag-scrollable :is(button, a, select, label) { cursor: pointer; }
 table.table-drag-scrollable :is(input, textarea) { cursor: auto; }
 html.table-drag-scrolling, html.table-drag-scrolling * { cursor: grabbing !important; user-select: none !important; }
+
+/* =====================================================================
+   Survol en douceur — entrée ET sortie lentes, sur tout le back-office.
+   Une seule variable à régler : --hover-dur (450 ms). L'appui reste vif.
+   ===================================================================== */
+:root {
+  --hover-dur: 450ms;
+  --hover-ease: cubic-bezier(.4, 0, .2, 1);
+  --press-dur: 120ms;
+}
+
+/* 1. Tout ce qui réagit au survol et n'a pas de transition propre en reçoit une
+      (déclarée sur l'élément lui-même : elle joue à l'entrée comme à la sortie). */
+:where(a, button, summary, select, label[for], [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [class*="hover:"], [class*="group-hover:"]):where(:not(:is([data-print-root], #print-mode, .print-compact) *):not([data-rfd-draggable-id], [data-rbd-draggable-id], [data-rfd-drag-handle-draggable-id])) {
+  transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-duration: var(--hover-dur);
+  transition-timing-function: var(--hover-ease);
+}
+
+/* 2. Transitions Tailwind existantes : même durée (au lieu de 150-300 ms).
+      Les transitions volontairement longues (500 ms et plus) sont gardées. */
+:is(.transition, .transition-all, .transition-colors, .transition-opacity, .transition-shadow, .transition-transform, .duration-75, .duration-100, .duration-150, .duration-200, .duration-300):not(.duration-500, .duration-700, .duration-1000) {
+  transition-duration: var(--hover-dur);
+  transition-timing-function: var(--hover-ease);
+}
+
+/* 3. Appui : retour immédiat ; le relâchement repart lentement. */
+:is(a, button, [role="button"], [role="tab"], [role="menuitem"]):active:not(:disabled) {
+  transition-duration: var(--press-dur);
+}
+
+/* 4. Pendant un glisser (tableau, largeur de colonne) : aucun délai. */
+html.table-drag-scrolling *, body.tk-resizing *, .tk-container.tk-dragging * {
+  transition-duration: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --hover-dur: 1ms; --press-dur: 1ms; }
+}
+
