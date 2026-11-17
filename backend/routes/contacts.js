@@ -58,8 +58,11 @@ const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, d
 
   if (clientSubTab && type === 'Client') {
     if (clientSubTab === 'backoffice') {
-      whereSql += ' AND c.source = ?';
-      params.push('backoffice');
+      // Clients du back-office : tout ce qui ne vient pas du site (y compris les anciens contacts sans source).
+      whereSql += " AND (c.source IS NULL OR c.source <> 'ecommerce')";
+    } else if (clientSubTab === 'ecommerce-all') {
+      // Tous les comptes créés sur le site, demandes artisan/promoteur en attente comprises.
+      whereSql += " AND c.source = 'ecommerce'";
     } else if (clientSubTab === 'ecommerce') {
       whereSql += " AND c.source = 'ecommerce' AND (c.demande_artisan IS NULL OR c.demande_artisan = 0 OR c.artisan_approuve = 1)";
     } else if (clientSubTab === 'artisan-requests') {

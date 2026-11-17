@@ -96,7 +96,7 @@ const contactsApi = api.injectEndpoints({
       }),
       invalidatesTags: (_result, error) => error ? [] : ['Contact', 'ContactDirectory', 'ContactGroup', 'Dashboard'],
     }),
-    getContacts: builder.query<PaginatedContactsResponse, { type?: 'Client' | 'Fournisseur'; page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection }>({
+    getContacts: builder.query<PaginatedContactsResponse, { type?: 'Client' | 'Fournisseur'; page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'ecommerce-all' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection }>({
       query: ({ type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir }) => ({ 
         url: '/contacts', 
         params: { 
@@ -113,7 +113,7 @@ const contactsApi = api.injectEndpoints({
       providesTags: ['Contact'],
     }),
 
-    getContactsSummary: builder.query<ContactsSummaryResponse, { type?: 'Client' | 'Fournisseur'; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number }>({
+    getContactsSummary: builder.query<ContactsSummaryResponse, { type?: 'Client' | 'Fournisseur'; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'ecommerce-all' | 'artisan-requests'; groupId?: number }>({
       query: ({ type, search, clientSubTab, groupId }) => ({
         url: '/contacts/summary',
         params: {
@@ -232,7 +232,7 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: ['Contact', 'ContactDirectory'],
     }),
 
-    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string; exclude_charge?: boolean; only_charge?: boolean }>({
+    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'ecommerce-all' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string; exclude_charge?: boolean; only_charge?: boolean }>({
       query: ({ page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo, exclude_charge, only_charge } = {}) => ({
         url: '/contacts',
         params: {

@@ -67,7 +67,7 @@ const getSnapshotLabel = (item: any) => {
 };
 
 const getDisplayReference = (item: any) => {
-  const baseRef = item?.reference ?? item?.product_reference ?? 'â€”';
+  const baseRef = item?.reference ?? item?.product_reference ?? '—';
   const snapshotLabel = getSnapshotLabel(item);
   return snapshotLabel ? `${baseRef} / ${snapshotLabel}` : baseRef;
 };
@@ -1358,6 +1358,8 @@ const ClientDetailPage: React.FC = () => {
   const { currentData: contact, isLoading: loadingContact, isFetching: fetchingContact, isError: contactError, refetch: refetchContact } = useGetContactQuery(clientId);
   const [updateContact, { isLoading: isSavingMaalemRemise }] = useUpdateContactMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  // Retour : la liste d'où vient le client (compte du site → Clients e-commerce, réservé au PDG).
+  const backToListPath = contact?.source === 'ecommerce' && currentUser?.role === 'PDG' ? '/clients-ecommerce' : '/clients';
   const [maalemRemiseOverride, setMaalemRemiseOverride] = useState<boolean | null>(null);
   const { currentData: history, isLoading: loadingHistory, isFetching: fetchingHistory, isError: historyError, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
   const { data: products = EMPTY_HISTORY_DATA } = useGetProductsQuery();
@@ -1907,7 +1909,7 @@ const ClientDetailPage: React.FC = () => {
         <p className="text-red-800">Le serveur n’a pas répondu à temps ou une erreur est survenue. Réessayez le chargement.</p>
         <div className="flex gap-3">
           <button type="button" className="rounded-lg bg-red-700 px-4 py-2 text-white" onClick={() => { refetchContact(); refetchHistory(); }}>Réessayer</button>
-          <button type="button" className="rounded-lg border border-red-300 px-4 py-2" onClick={() => navigate('/clients')}>Retour aux clients</button>
+          <button type="button" className="rounded-lg border border-red-300 px-4 py-2" onClick={() => navigate(backToListPath)}>Retour aux clients</button>
         </div>
       </div>
     );
@@ -1930,7 +1932,7 @@ const ClientDetailPage: React.FC = () => {
         <MobileContactPrintModal
           historyKind="client"
           isOpen
-          onClose={() => navigate('/clients')}
+          onClose={() => navigate(backToListPath)}
           closeLabel="Retour à la liste"
           onEditHistory={canModifyPayments(currentUser) ? () => setMobileHistoryClientId(clientId) : undefined}
           contact={contact}
@@ -1962,7 +1964,7 @@ const ClientDetailPage: React.FC = () => {
       {/* Back + header */}
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={() => navigate('/clients')}
+          onClick={() => navigate(backToListPath)}
           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
@@ -2339,16 +2341,26 @@ type ClientsAccordionRow =
   | { kind: 'client'; client: Contact }
   | { kind: 'group'; groupId: number; groupName: string; members: Contact[] };
 
-const readSavedClientsState = (): ClientsListSavedState => {
+const readSavedClientsState = (stateKey: string = CLIENTS_STATE_KEY): ClientsListSavedState => {
   try {
-    const raw = sessionStorage.getItem(CLIENTS_STATE_KEY);
+    const raw = sessionStorage.getItem(stateKey);
     return raw ? (JSON.parse(raw) as ClientsListSavedState) : {};
   } catch {
     return {};
   }
 };
 
-const ClientsListPage: React.FC = () => {
+/**
+ * Liste des clients. `source` choisit les comptes affichés :
+ *  - 'backoffice' (page Clients) : clients créés au back-office, sans les comptes du site ;
+ *  - 'ecommerce' (page Clients e-commerce) : uniquement les comptes créés sur le site.
+ * Même écran, mêmes colonnes et mêmes actions dans les deux cas.
+ */
+export const ClientsListPage: React.FC<{ source?: 'backoffice' | 'ecommerce' }> = ({ source = 'backoffice' }) => {
+  const isEcommerceList = source === 'ecommerce';
+  const clientSubTab = isEcommerceList ? 'ecommerce-all' as const : 'backoffice' as const;
+  const listStateKey = isEcommerceList ? 'ecommerceClientsListState' : CLIENTS_STATE_KEY;
+  const listScrollKey = isEcommerceList ? 'ecommerceClientsListScrollY' : CLIENTS_SCROLL_KEY;
   const navigate = useNavigate();
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -2363,7 +2375,7 @@ const ClientsListPage: React.FC = () => {
   });
   const canUseComments = collaborationPermissions?.commentaires_clients === true;
   const canUseReminders = collaborationPermissions?.rappels_clients === true;
-  const savedState = React.useRef<ClientsListSavedState>(readSavedClientsState()).current;
+  const savedState = React.useRef<ClientsListSavedState>(readSavedClientsState(listStateKey)).current;
   const previousReminderAccess = useRef<boolean | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
@@ -2392,6 +2404,7 @@ const ClientsListPage: React.FC = () => {
   const effectiveSortBy: ContactsSortBy = !canUseReminders && sortBy === 'rappel' ? 'nom' : sortBy;
   const { data, isLoading, isFetching, refetch: refetchClients } = useGetClientsQuery({
     page: itemsPerPage === 0 ? 1 : currentPage, limit: effectiveLimit,
+    clientSubTab,
     search: debouncedSearch || undefined,
     sortBy: effectiveSortBy, sortDir,
     dateFrom: dateFrom || undefined,
@@ -2446,15 +2459,15 @@ const ClientsListPage: React.FC = () => {
     }
   }, [visibleClientIds, openCommentsClientId]);
 
-  const saveListScroll = useListScrollRestoration(CLIENTS_SCROLL_KEY, !isLoading && !isFetching && !permissionsLoading);
+  const saveListScroll = useListScrollRestoration(listScrollKey, !isLoading && !isFetching && !permissionsLoading);
   React.useEffect(() => () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
   }, []);
   React.useEffect(() => {
     try {
-      sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify({ search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage, expandedGroupKeys: [...expandedGroupKeys] }));
+      sessionStorage.setItem(listStateKey, JSON.stringify({ search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage, expandedGroupKeys: [...expandedGroupKeys] }));
     } catch { /* La liste reste utilisable si le stockage est indisponible. */ }
-  }, [search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage, expandedGroupKeys]);
+  }, [listStateKey, search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage, expandedGroupKeys]);
 
   const handleRowClick = (id: number, navigateInApp = true) => {
     saveListScroll();
@@ -2462,7 +2475,7 @@ const ClientsListPage: React.FC = () => {
       search, sortBy, sortDir, dateFrom, dateTo, itemsPerPage, expandedGroupKeys: [...expandedGroupKeys],
       currentPage: search === debouncedSearch ? currentPage : 1,
     };
-    try { sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify(stateToSave)); } catch { /* Continuer la navigation. */ }
+    try { sessionStorage.setItem(listStateKey, JSON.stringify(stateToSave)); } catch { /* Continuer la navigation. */ }
     if (navigateInApp) navigate(`/clients/${id}`);
   };
 
@@ -2546,6 +2559,7 @@ const ClientsListPage: React.FC = () => {
         printRequest = loadPrintData({
           page: 1,
           limit: 999999,
+          clientSubTab,
           search: debouncedSearch || undefined,
           sortBy: effectiveSortBy,
           sortDir,
@@ -2732,19 +2746,19 @@ const ClientsListPage: React.FC = () => {
       <td className="px-4 py-3">
         {client.societe
           ? <div className="flex items-center gap-1.5 text-gray-700"><Building2 className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />{client.societe}</div>
-          : <span className="text-gray-300">â€”</span>}
+          : <span className="text-gray-300">—</span>}
       </td>
       <td className="px-4 py-3">
         <div className="space-y-0.5">
           {client.telephone && <div className="flex items-center gap-1.5 text-gray-600 text-xs"><Phone className="w-3 h-3 text-gray-400" />{client.telephone}</div>}
           {client.email && <div className="flex items-center gap-1.5 text-gray-600 text-xs"><Mail className="w-3 h-3 text-gray-400" /><span className="truncate max-w-[160px]">{client.email}</span></div>}
-          {!client.telephone && !client.email && <span className="text-gray-300 text-xs">â€”</span>}
+          {!client.telephone && !client.email && <span className="text-gray-300 text-xs">—</span>}
         </div>
       </td>
       <td className="px-4 py-3">
         {client.adresse
           ? <div className="flex items-center gap-1.5 text-gray-600 text-xs"><MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" /><span className="truncate max-w-[180px]">{client.adresse}</span></div>
-          : <span className="text-gray-300 text-xs">â€”</span>}
+          : <span className="text-gray-300 text-xs">—</span>}
       </td>
       {canUseComments && <td className="px-4 py-3">
         {clientCommentSummary?.dernier_contenu
@@ -2792,7 +2806,7 @@ const ClientsListPage: React.FC = () => {
           ? <span className={`font-bold text-sm ${client.total_cumule > 0 ? 'text-red-600' : client.total_cumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
               {fmt(client.total_cumule)}
             </span>
-          : <span className="text-gray-300 text-xs">â€”</span>}
+          : <span className="text-gray-300 text-xs">—</span>}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-2">
@@ -2924,8 +2938,8 @@ const ClientsListPage: React.FC = () => {
           <td className="px-4 py-3 text-gray-600">
             <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Groupe</span>
           </td>
-          <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
-          <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
+          <td className="px-4 py-3 text-gray-400 text-xs">—</td>
+          <td className="px-4 py-3 text-gray-400 text-xs">—</td>
           {canUseComments && <td className="px-4 py-3">
             {groupCommentsTotal > 0
               ? <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50/60 px-2 py-1 text-xs font-semibold text-indigo-600">
@@ -3002,13 +3016,15 @@ const ClientsListPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-100 rounded-lg"><Users className="w-6 h-6 text-blue-600" /></div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Clients</h1>
-            <p className="text-sm text-gray-500">{totalActiveClients} client{totalActiveClients !== 1 ? 's actifs' : ' actif'}</p>
+            <h1 className="text-xl font-bold text-gray-900">{isEcommerceList ? 'Clients e-commerce' : 'Clients'}</h1>
+            <p className="text-sm text-gray-500">{totalActiveClients} client{totalActiveClients !== 1 ? 's actifs' : ' actif'}{isEcommerceList ? ' · comptes créés sur le site' : ''}</p>
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
         <button type="button" onClick={() => setIsGroupCreateOpen(true)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-4 py-2 font-medium text-blue-700 hover:bg-blue-50 sm:flex-none"><Plus className="h-4 w-4" />Créer un groupe</button>
         <button type="button" onClick={() => setManagedGroupId(0)} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 py-2 font-medium text-blue-700 hover:bg-blue-50 sm:flex-none">Gérer les membres</button>
+        {/* Les comptes e-commerce sont créés par les clients sur le site : pas de création ici. */}
+        {!isEcommerceList && (
         <button
           type="button"
           onClick={handleCreate}
@@ -3017,6 +3033,7 @@ const ClientsListPage: React.FC = () => {
           <Plus className="w-4 h-4" />
           Nouveau Client
         </button>
+        )}
         </div>
       </div>
 
