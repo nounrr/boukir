@@ -11,10 +11,13 @@ import {
   useUpdateMaalemCategoryMutation,
 } from '../store/api/maalemCategoriesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import TranslationStatus from '../components/TranslationStatus';
 
 const validationSchema = yup.object({
   nom: yup.string().trim().min(2, 'Minimum 2 caractères').max(100, 'Maximum 100 caractères').required('Le nom est requis'),
   nom_ar: yup.string().trim().min(2, 'Minimum 2 caractères').max(100, 'Maximum 100 caractères').required('Le nom arabe est requis'),
+  nom_en: yup.string().trim().max(100, 'Maximum 100 caractères'),
+  nom_zh: yup.string().trim().max(100, 'Maximum 100 caractères'),
   description: yup.string().trim().max(1000, 'Maximum 1000 caractères'),
   is_active: yup.boolean().required(),
 });
@@ -22,6 +25,8 @@ const validationSchema = yup.object({
 interface FormValues {
   nom: string;
   nom_ar: string;
+  nom_en: string;
+  nom_zh: string;
   description: string;
   is_active: boolean;
 }
@@ -55,6 +60,8 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onClose
   const initialValues: FormValues = {
     nom: category?.nom || '',
     nom_ar: category?.nom_ar || '',
+    nom_en: category?.nom_en || '',
+    nom_zh: category?.nom_zh || '',
     description: category?.description || '',
     is_active: category?.is_active ?? true,
   };
@@ -78,6 +85,8 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onClose
             const payload: SaveMaalemCategoryData = {
               nom: values.nom.trim(),
               nom_ar: values.nom_ar.trim(),
+              nom_en: values.nom_en.trim() || null,
+              nom_zh: values.nom_zh.trim() || null,
               description: values.description.trim() || null,
               is_active: values.is_active,
             };
@@ -111,6 +120,23 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({ category, onClose
                 <Field id="nom_ar" name="nom_ar" dir="rtl" className="w-full rounded-md border border-gray-300 px-3 py-2 text-right focus:border-blue-500 focus:ring-2 focus:ring-blue-200" placeholder="مثال: سباك" />
                 {touched.nom_ar && errors.nom_ar && <p className="mt-1 text-xs text-red-600">{errors.nom_ar}</p>}
               </div>
+
+              <fieldset className="rounded-lg border border-gray-200 p-3">
+                <legend className="px-1 text-sm font-medium text-gray-700">Traductions du site</legend>
+                <p className="mb-3 text-xs text-gray-500">Facultatif. Si une langue est vide, le site affiche le nom français.</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="nom_en" className="mb-1 block text-sm font-medium text-gray-700">Nom anglais</label>
+                    <Field id="nom_en" name="nom_en" lang="en" className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" placeholder="Ex. Plumber" />
+                    {touched.nom_en && errors.nom_en && <p className="mt-1 text-xs text-red-600">{errors.nom_en}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="nom_zh" className="mb-1 block text-sm font-medium text-gray-700">Nom chinois</label>
+                    <Field id="nom_zh" name="nom_zh" lang="zh" className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" placeholder="例如：水管工" />
+                    {touched.nom_zh && errors.nom_zh && <p className="mt-1 text-xs text-red-600">{errors.nom_zh}</p>}
+                  </div>
+                </div>
+              </fieldset>
 
               <div>
                 <label htmlFor="description" className="mb-1 block text-sm font-medium text-gray-700">Description</label>
@@ -250,6 +276,7 @@ const MaalemCategoriesPage: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="font-medium text-gray-900">{category.nom}</div>
                         <div dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{category.nom_ar}</div>
+                        <TranslationStatus en={category.nom_en} zh={category.nom_zh} className="mt-1.5" />
                       </td>
                       <td className="max-w-md px-6 py-4 text-sm text-gray-600">{category.description || '—'}</td>
                       <td className="px-6 py-4">
@@ -280,6 +307,7 @@ const MaalemCategoriesPage: React.FC = () => {
                     <div>
                       <h2 className="font-semibold text-gray-900">{category.nom}</h2>
                       <p dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{category.nom_ar}</p>
+                      <TranslationStatus en={category.nom_en} zh={category.nom_zh} className="mt-1.5" />
                     </div>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${category.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                       {category.is_active ? 'Active' : 'Inactive'}

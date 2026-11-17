@@ -17,6 +17,21 @@ function normalizeRequiredText(value, field, errors) {
   return normalized;
 }
 
+// Traduction facultative (anglais, chinois) : vide = repli sur le français côté site.
+function normalizeOptionalName(value, field, errors) {
+  if (value == null) return null;
+  if (typeof value !== 'string') {
+    errors[field] = 'Ce champ doit être un texte';
+    return null;
+  }
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (!normalized) return null;
+  if (normalized.length > NAME_MAX_LENGTH) {
+    errors[field] = `Ce champ ne peut pas dépasser ${NAME_MAX_LENGTH} caractères`;
+  }
+  return normalized;
+}
+
 function normalizeDescription(value, errors) {
   if (value == null || value === '') return null;
   if (typeof value !== 'string') {
@@ -37,6 +52,8 @@ export function validateMaalemCategoryInput(body, { defaultActive = true } = {})
 
   const nom = normalizeRequiredText(source.nom, 'nom', errors);
   const nom_ar = normalizeRequiredText(source.nom_ar, 'nom_ar', errors);
+  const nom_en = normalizeOptionalName(source.nom_en, 'nom_en', errors);
+  const nom_zh = normalizeOptionalName(source.nom_zh, 'nom_zh', errors);
   const description = normalizeDescription(source.description, errors);
 
   let is_active = source.is_active;
@@ -48,7 +65,7 @@ export function validateMaalemCategoryInput(body, { defaultActive = true } = {})
   return {
     valid: Object.keys(errors).length === 0,
     errors,
-    value: { nom, nom_ar, description, is_active },
+    value: { nom, nom_ar, nom_en, nom_zh, description, is_active },
   };
 }
 

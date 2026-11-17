@@ -238,8 +238,8 @@ function normalizeAttachmentRow(row) {
 async function loadOwnedRequest(db, requestId, contactId) {
   const [rows] = await db.query(
     `SELECT sr.*,
-            s.nom AS service_name, s.nom_ar AS service_name_ar,
-            mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+            s.nom AS service_name, s.nom_ar AS service_name_ar, s.nom_en AS service_name_en, s.nom_zh AS service_name_zh,
+            mc.nom AS category_name, mc.nom_ar AS category_name_ar, mc.nom_en AS category_name_en, mc.nom_zh AS category_name_zh,
             maalem_contact.nom_complet AS maalem_name
      FROM service_requests sr
      LEFT JOIN services s ON s.id = sr.service_id
@@ -668,8 +668,8 @@ router.get('/', async (req, res, next) => {
               sr.requested_maalem_profile_id, sr.qualified_category_id, sr.title, sr.problem_description,
               sr.city, sr.desired_date, sr.desired_time_slot, sr.status, sr.request_channel,
               sr.created_at, sr.updated_at,
-              s.nom AS service_name, s.nom_ar AS service_name_ar,
-              mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+              s.nom AS service_name, s.nom_ar AS service_name_ar, s.nom_en AS service_name_en, s.nom_zh AS service_name_zh,
+              mc.nom AS category_name, mc.nom_ar AS category_name_ar, mc.nom_en AS category_name_en, mc.nom_zh AS category_name_zh,
               maalem_contact.nom_complet AS maalem_name
        FROM service_requests sr
        LEFT JOIN services s ON s.id = sr.service_id

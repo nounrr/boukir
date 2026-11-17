@@ -95,10 +95,10 @@ test('recherche FR/AR, filtre catégorie et pagination sont combinés et bornés
       current_page: 2, per_page: 6, total_items: 13, total_pages: 3,
       has_previous: true, has_next: true, from: 7, to: 7,
     });
-    assert.deepEqual(payload.filters.categories, [{ id: 3, nom: 'Plombier', nom_ar: 'سباك' }]);
+    assert.deepEqual(payload.filters.categories, [{ id: 3, nom: 'Plombier', nom_ar: 'سباك', nom_en: null, nom_zh: null }]);
   });
   const list = db.queries.find(({ sql }) => sql.includes('LIMIT ? OFFSET ?'));
-  assert.match(list.sql, /s\.nom LIKE \? OR s\.nom_ar LIKE \? OR s\.description LIKE \? OR s\.description_ar LIKE \?/);
+  assert.match(list.sql, /s\.nom LIKE \? OR s\.nom_ar LIKE \? OR s\.nom_en LIKE \? OR s\.nom_zh LIKE \? OR s\.description LIKE \? OR s\.description_ar LIKE \? OR s\.description_en LIKE \? OR s\.description_zh LIKE \?/);
   assert.match(list.sql, /filter_smc\.category_id = \?/);
   assert.deepEqual(list.params.slice(-3), [3, 6, 6]);
 
@@ -116,8 +116,8 @@ test('le DTO public est strict et le détail masque tout service non publié', a
     const response = await fetch(`${baseUrl}/api/services/7`);
     assert.equal(response.status, 200);
     const payload = await response.json();
-    assert.deepEqual(Object.keys(payload).sort(), ['categories', 'description', 'description_ar', 'id', 'image_url', 'nom', 'nom_ar']);
-    assert.deepEqual(payload.categories, [{ id: 3, nom: 'Plombier', nom_ar: 'سباك' }]);
+    assert.deepEqual(Object.keys(payload).sort(), ['categories', 'description', 'description_ar', 'description_en', 'description_zh', 'id', 'image_url', 'nom', 'nom_ar', 'nom_en', 'nom_zh']);
+    assert.deepEqual(payload.categories, [{ id: 3, nom: 'Plombier', nom_ar: 'سباك', nom_en: null, nom_zh: null }]);
     for (const privateField of ['is_active', 'is_published', 'created_by', 'updated_by', 'deleted_at', 'created_at']) {
       assert.equal(privateField in payload, false);
     }

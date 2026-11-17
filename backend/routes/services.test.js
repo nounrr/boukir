@@ -37,9 +37,10 @@ function createDatabase() {
       return [params.map(Number).map((id) => state.categories.get(id)).filter((category) => category?.is_active === 1 && category.deleted_at == null).map(({ id }) => ({ id }))];
     }
     if (sql.includes('INSERT INTO services')) {
-      const [nom, nomAr, description, descriptionAr, imageUrl, isActive, isPublished, createdBy, updatedBy] = params;
+      const [nom, nomAr, nomEn, nomZh, description, descriptionAr, descriptionEn, descriptionZh, imageUrl, isActive, isPublished, createdBy, updatedBy] = params;
       state.service = {
-        id: state.nextId++, nom, nom_ar: nomAr, description, description_ar: descriptionAr,
+        id: state.nextId++, nom, nom_ar: nomAr, nom_en: nomEn, nom_zh: nomZh, description, description_ar: descriptionAr,
+        description_en: descriptionEn, description_zh: descriptionZh,
         image_url: imageUrl, is_active: isActive, is_published: isPublished, created_by: createdBy, updated_by: updatedBy,
         created_at: '2026-08-09 10:00:00', updated_at: '2026-08-09 10:00:00', deleted_at: null,
       };
@@ -94,9 +95,9 @@ function createDatabase() {
       return [[...state.pivots].map((value) => value.split(':').map(Number)).filter(([id]) => id === serviceId).map(([, categoryId]) => ({ category_id: categoryId }))];
     }
     if (sql.includes('UPDATE services') && sql.includes('SET nom =')) {
-      const [nom, nomAr, description, descriptionAr, imageUrl, isActive, isPublished, updatedBy, id] = params;
+      const [nom, nomAr, nomEn, nomZh, description, descriptionAr, descriptionEn, descriptionZh, imageUrl, isActive, isPublished, updatedBy, id] = params;
       if (!state.service || state.service.id !== Number(id) || state.service.deleted_at) return [{ affectedRows: 0 }];
-      Object.assign(state.service, { nom, nom_ar: nomAr, description, description_ar: descriptionAr, image_url: imageUrl, is_active: isActive, is_published: isPublished, updated_by: updatedBy });
+      Object.assign(state.service, { nom, nom_ar: nomAr, nom_en: nomEn, nom_zh: nomZh, description, description_ar: descriptionAr, description_en: descriptionEn, description_zh: descriptionZh, image_url: imageUrl, is_active: isActive, is_published: isPublished, updated_by: updatedBy });
       return [{ affectedRows: 1 }];
     }
     if (sql.includes('SELECT 1') && sql.includes('service_maalem_categories')) {
@@ -304,5 +305,7 @@ test('la liste admin transmet les filtres de recherche, statut et catégorie au 
   assert.match(listQuery.sql, /s\.is_active = \?/);
   assert.match(listQuery.sql, /s\.nom LIKE \?/);
   assert.match(listQuery.sql, /filter_smc\.category_id = \?/);
-  assert.deepEqual(listQuery.params, [1, '%fuite%', '%fuite%', '%fuite%', '%fuite%', 1]);
+  assert.match(listQuery.sql, /s\.nom_en LIKE \?/);
+  assert.match(listQuery.sql, /s\.description_zh LIKE \?/);
+  assert.deepEqual(listQuery.params, [1, ...Array(8).fill('%fuite%'), 1]);
 });

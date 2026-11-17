@@ -126,6 +126,7 @@ import {
   ensureProductRemiseColumns,
 } from './utils/ensureRemiseSchema.js';
 import { ensureCategoryColumns } from './utils/ensureCategorySchema.js';
+import { ensureMaalemServiceTranslationColumns } from './utils/ensureMaalemServiceTranslations.js';
 import { ensurePricePrecisionColumns } from './utils/ensurePricePrecisionSchema.js';
 import { ensureUniteSpecialColumns } from './utils/ensureUniteSpecialSchema.js';
 import { ensureUiSettingsTable } from './utils/uiSettings.js';
@@ -176,6 +177,7 @@ async function ensureSchemas() {
   await ensureContactArchiveSchema();
   await ensureBonContactNumberSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
+  await ensureMaalemServiceTranslationColumns(pool);
 }
 
 const app = express();

@@ -23,13 +23,29 @@ test('normalise un service multipart et déduplique ses catégories', () => {
   assert.deepEqual(result.value, {
     nom: 'Réparation de fuite',
     nom_ar: 'إصلاح تسرب المياه',
+    nom_en: null,
+    nom_zh: null,
     description: 'Intervention rapide',
     description_ar: null,
+    description_en: null,
+    description_zh: null,
     is_active: true,
     is_published: false,
     remove_image: false,
     category_ids: [3, 4],
   });
+});
+
+test('accepte les noms et descriptions anglais et chinois facultatifs d\'un service', () => {
+  const result = validateServiceInput({
+    nom: 'Réparation de fuite', nom_ar: 'إصلاح تسرب المياه', nom_en: 'Leak repair', nom_zh: '漏水维修',
+    description: 'Intervention rapide', description_en: ' Fast visit ', description_zh: '快速上门', category_ids: [3],
+  });
+  assert.equal(result.valid, true);
+  assert.equal(result.value.nom_en, 'Leak repair');
+  assert.equal(result.value.nom_zh, '漏水维修');
+  assert.equal(result.value.description_en, 'Fast visit');
+  assert.equal(result.value.description_zh, '快速上门');
 });
 
 test('refuse les services incomplets, les booléens ambigus et les catégories invalides', () => {

@@ -19,9 +19,24 @@ test('normalise et valide une catégorie Maalem complète', () => {
   assert.deepEqual(result.value, {
     nom: 'Plombier',
     nom_ar: 'سباك',
+    nom_en: null,
+    nom_zh: null,
     description: 'Installation et réparation',
     is_active: true,
   });
+});
+
+test('accepte les traductions anglais et chinois facultatives d\'une catégorie Maalem', () => {
+  const result = validateMaalemCategoryInput({ nom: 'Plombier', nom_ar: 'سباك', nom_en: '  Plumber ', nom_zh: '水管工', is_active: true });
+  assert.equal(result.valid, true);
+  assert.equal(result.value.nom_en, 'Plumber');
+  assert.equal(result.value.nom_zh, '水管工');
+  const empty = validateMaalemCategoryInput({ nom: 'Plombier', nom_ar: 'سباك', nom_en: '   ', nom_zh: '', is_active: true });
+  assert.equal(empty.value.nom_en, null);
+  assert.equal(empty.value.nom_zh, null);
+  const tooLong = validateMaalemCategoryInput({ nom: 'Plombier', nom_ar: 'سباك', nom_en: 'x'.repeat(101), is_active: true });
+  assert.equal(tooLong.valid, false);
+  assert.ok(tooLong.errors.nom_en);
 });
 
 test('refuse les champs obligatoires absents et les statuts ambigus', () => {

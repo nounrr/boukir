@@ -125,13 +125,19 @@ function toPublicService(service) {
     id: Number(service.id),
     nom: service.nom,
     nom_ar: service.nom_ar,
+    nom_en: service.nom_en ?? null,
+    nom_zh: service.nom_zh ?? null,
     description: service.description ?? null,
     description_ar: service.description_ar ?? null,
+    description_en: service.description_en ?? null,
+    description_zh: service.description_zh ?? null,
     image_url: service.image_url ?? null,
     categories: service.categories.map((category) => ({
       id: Number(category.id),
       nom: category.nom,
       nom_ar: category.nom_ar,
+      nom_en: category.nom_en ?? null,
+      nom_zh: category.nom_zh ?? null,
     })),
   };
 }
@@ -142,7 +148,7 @@ async function loadCategoriesForServices(db, services, { publicOnly = false } = 
   const placeholders = ids.map(() => '?').join(', ');
   const availability = publicOnly ? ' AND mc.is_active = 1 AND mc.deleted_at IS NULL' : '';
   const [rows] = await db.query(
-    `SELECT smc.service_id, mc.id, mc.nom, mc.nom_ar, mc.description,
+    `SELECT smc.service_id, mc.id, mc.nom, mc.nom_ar, mc.nom_en, mc.nom_zh, mc.description,
             mc.is_active, mc.deleted_at
      FROM service_maalem_categories smc
      INNER JOIN maalem_categories mc ON mc.id = smc.category_id${availability}
@@ -156,6 +162,8 @@ async function loadCategoriesForServices(db, services, { publicOnly = false } = 
       id: Number(row.id),
       nom: row.nom,
       nom_ar: row.nom_ar,
+      nom_en: row.nom_en ?? null,
+      nom_zh: row.nom_zh ?? null,
       description: row.description ?? null,
       is_active: Boolean(row.is_active),
       deleted_at: row.deleted_at ?? null,
@@ -171,9 +179,11 @@ async function findServiceById(db, id, { publicOnly = false, forUpdate = false }
   const conditions = ['s.id = ?', 's.deleted_at IS NULL'];
   if (publicOnly) conditions.push(publicVisibilitySql('s'));
   const [rows] = await db.query(
-    `SELECT s.id, s.nom, s.nom_ar,
+    `SELECT s.id, s.nom, s.nom_ar, s.nom_en, s.nom_zh,
             ${publicOnly ? 'LEFT(s.description, 320)' : 's.description'} AS description,
             ${publicOnly ? 'LEFT(s.description_ar, 320)' : 's.description_ar'} AS description_ar,
+            ${publicOnly ? 'LEFT(s.description_en, 320)' : 's.description_en'} AS description_en,
+            ${publicOnly ? 'LEFT(s.description_zh, 320)' : 's.description_zh'} AS description_zh,
             s.image_url, s.is_active, s.is_published,
             s.created_by, s.updated_by, s.created_at, s.updated_at, s.deleted_at
      FROM services s
@@ -238,8 +248,8 @@ publicRouter.get('/', async (req, res, next) => {
     const params = [];
     if (q) {
       const term = `%${q}%`;
-      conditions.push('(s.nom LIKE ? OR s.nom_ar LIKE ? OR s.description LIKE ? OR s.description_ar LIKE ?)');
-      params.push(term, term, term, term);
+      conditions.push('(s.nom LIKE ? OR s.nom_ar LIKE ? OR s.nom_en LIKE ? OR s.nom_zh LIKE ? OR s.description LIKE ? OR s.description_ar LIKE ? OR s.description_en LIKE ? OR s.description_zh LIKE ?)');
+      params.push(term, term, term, term, term, term, term, term);
     }
     if (categoryId) {
       conditions.push(`EXISTS (
@@ -261,9 +271,11 @@ publicRouter.get('/', async (req, res, next) => {
     const currentPage = totalPages === 0 ? 1 : Math.min(page, totalPages);
     const offset = (currentPage - 1) * perPage;
     const [rows] = await pool.query(
-      `SELECT s.id, s.nom, s.nom_ar,
+      `SELECT s.id, s.nom, s.nom_ar, s.nom_en, s.nom_zh,
               LEFT(s.description, 320) AS description,
               LEFT(s.description_ar, 320) AS description_ar,
+              LEFT(s.description_en, 320) AS description_en,
+              LEFT(s.description_zh, 320) AS description_zh,
               s.image_url
        FROM services s
        WHERE ${whereSql}
@@ -273,7 +285,7 @@ publicRouter.get('/', async (req, res, next) => {
     );
     const services = await loadCategoriesForServices(pool, rows, { publicOnly: true });
     const [categoryRows] = await pool.query(
-      `SELECT DISTINCT mc.id, mc.nom, mc.nom_ar
+      `SELECT DISTINCT mc.id, mc.nom, mc.nom_ar, mc.nom_en, mc.nom_zh
        FROM maalem_categories mc
        INNER JOIN service_maalem_categories smc ON smc.category_id = mc.id
        INNER JOIN services s ON s.id = smc.service_id
@@ -300,6 +312,8 @@ publicRouter.get('/', async (req, res, next) => {
           id: Number(category.id),
           nom: category.nom,
           nom_ar: category.nom_ar,
+          nom_en: category.nom_en ?? null,
+          nom_zh: category.nom_zh ?? null,
         })),
       },
     });
@@ -356,6 +370,7 @@ publicRouter.get('/:id/maalems', async (req, res, next) => {
     const [rows] = await pool.query(
       `SELECT mp.id, c.nom_complet AS public_name, c.avatar_url AS photo_url,
               mc.id AS category_id, mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+              mc.nom_en AS category_name_en, mc.nom_zh AS category_name_zh,
               JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.city')) AS city,
               JSON_EXTRACT(mp.professional_data, '$.intervention_areas') AS intervention_areas,
               COALESCE(verified.closed_interventions, 0) AS closed_interventions_for_service,
@@ -393,7 +408,7 @@ publicRouter.get('/:id/maalems', async (req, res, next) => {
         return {
           id: Number(row.id), public_name: row.public_name, photo_url: row.photo_url ?? null,
           is_verified: true,
-          category: { id: Number(row.category_id), name: row.category_name, name_ar: row.category_name_ar },
+          category: { id: Number(row.category_id), name: row.category_name, name_ar: row.category_name_ar, name_en: row.category_name_en ?? null, name_zh: row.category_name_zh ?? null },
           city: row.city ?? null,
           intervention_areas: Array.isArray(areas) ? areas.filter((area) => typeof area === 'string').slice(0, 30) : [],
           closed_interventions_for_service: Number(row.closed_interventions_for_service || 0),
@@ -448,9 +463,9 @@ adminRouter.get('/', async (req, res, next) => {
       params.push(status === 'active' ? 1 : 0);
     }
     if (search) {
-      conditions.push('(s.nom LIKE ? OR s.nom_ar LIKE ? OR s.description LIKE ? OR s.description_ar LIKE ?)');
+      conditions.push('(s.nom LIKE ? OR s.nom_ar LIKE ? OR s.nom_en LIKE ? OR s.nom_zh LIKE ? OR s.description LIKE ? OR s.description_ar LIKE ? OR s.description_en LIKE ? OR s.description_zh LIKE ?)');
       const term = `%${search}%`;
-      params.push(term, term, term, term);
+      params.push(term, term, term, term, term, term, term, term);
     }
     if (categoryId) {
       conditions.push(`EXISTS (
@@ -460,7 +475,7 @@ adminRouter.get('/', async (req, res, next) => {
       params.push(categoryId);
     }
     const [rows] = await pool.query(
-      `SELECT s.id, s.nom, s.nom_ar, s.description, s.description_ar, s.image_url,
+      `SELECT s.id, s.nom, s.nom_ar, s.nom_en, s.nom_zh, s.description, s.description_ar, s.description_en, s.description_zh, s.image_url,
               s.is_active, s.is_published, s.created_by, s.updated_by, s.created_at, s.updated_at, s.deleted_at
        FROM services s
        WHERE ${conditions.join(' AND ')}
@@ -504,9 +519,9 @@ adminRouter.post('/', maybeUploadImage, async (req, res, next) => {
     const imageUrl = req.file ? `/uploads/services/${req.file.filename}` : null;
     const [result] = await connection.query(
       `INSERT INTO services
-        (nom, nom_ar, description, description_ar, image_url, is_active, is_published, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [value.nom, value.nom_ar, value.description, value.description_ar, imageUrl,
+        (nom, nom_ar, nom_en, nom_zh, description, description_ar, description_en, description_zh, image_url, is_active, is_published, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [value.nom, value.nom_ar, value.nom_en, value.nom_zh, value.description, value.description_ar, value.description_en, value.description_zh, imageUrl,
         value.is_active ? 1 : 0, value.is_published ? 1 : 0, req.user.id, req.user.id]
     );
     await replaceCategoryAssociations(connection, result.insertId, value.category_ids);
@@ -572,10 +587,11 @@ adminRouter.put('/:id', maybeUploadImage, async (req, res, next) => {
       : value.remove_image ? null : previousImageUrl;
     await connection.query(
       `UPDATE services
-       SET nom = ?, nom_ar = ?, description = ?, description_ar = ?, image_url = ?,
+       SET nom = ?, nom_ar = ?, nom_en = ?, nom_zh = ?, description = ?, description_ar = ?,
+           description_en = ?, description_zh = ?, image_url = ?,
            is_active = ?, is_published = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND deleted_at IS NULL`,
-      [value.nom, value.nom_ar, value.description, value.description_ar, nextImageUrl,
+      [value.nom, value.nom_ar, value.nom_en, value.nom_zh, value.description, value.description_ar, value.description_en, value.description_zh, nextImageUrl,
         value.is_active ? 1 : 0, value.is_published ? 1 : 0, req.user.id, id]
     );
     await replaceCategoryAssociations(connection, id, value.category_ids);

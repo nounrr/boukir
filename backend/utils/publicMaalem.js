@@ -53,6 +53,8 @@ export function normalizePublicMaalem(row) {
       id: Number(row.category_id),
       name: publicString(row.category_name, 100),
       name_ar: publicString(row.category_name_ar, 100),
+      name_en: publicString(row.category_name_en, 100),
+      name_zh: publicString(row.category_name_zh, 100),
     },
     city: publicString(professional.city, 100),
     intervention_areas: publicStringList(professional.intervention_areas),

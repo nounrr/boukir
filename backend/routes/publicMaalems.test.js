@@ -93,7 +93,7 @@ test('GET /api/maalems/:id expose uniquement le résumé public approuvé', asyn
     assert.equal(body.maalem.public_name, 'Maalem Public');
     assert.equal(body.maalem.statistics.closed_interventions, 2);
     assert.equal(body.maalem.compatible_services[0].nom, 'Plomberie');
-    assert.deepEqual(Object.keys(body.maalem.compatible_services[0]).sort(), ['categories', 'description', 'description_ar', 'id', 'image_url', 'nom', 'nom_ar']);
+    assert.deepEqual(Object.keys(body.maalem.compatible_services[0]).sort(), ['categories', 'description', 'description_ar', 'description_en', 'description_zh', 'id', 'image_url', 'nom', 'nom_ar', 'nom_en', 'nom_zh']);
     assert.equal(body.maalem.statistics.average_rating, 4.67);
     assert.equal(body.maalem.statistics.review_count, 3);
     assert.deepEqual(body.maalem.statistics.rating_distribution, { 1: 0, 2: 0, 3: 0, 4: 1, 5: 2 });

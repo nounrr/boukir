@@ -13,8 +13,12 @@ function toFormData(data: SaveServiceData) {
   const body = new FormData();
   body.append('nom', data.nom);
   body.append('nom_ar', data.nom_ar);
+  body.append('nom_en', data.nom_en || '');
+  body.append('nom_zh', data.nom_zh || '');
   body.append('description', data.description || '');
   body.append('description_ar', data.description_ar || '');
+  body.append('description_en', data.description_en || '');
+  body.append('description_zh', data.description_zh || '');
   body.append('is_active', String(data.is_active));
   body.append('is_published', String(data.is_published));
   body.append('category_ids', JSON.stringify(data.category_ids));

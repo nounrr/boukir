@@ -17,6 +17,21 @@ function normalizeRequiredText(value, field, errors) {
   return normalized;
 }
 
+// Traduction facultative (anglais, chinois) : vide = repli sur le français côté site.
+function normalizeOptionalName(value, field, errors) {
+  if (value == null) return null;
+  if (typeof value !== 'string') {
+    errors[field] = 'Ce champ doit être un texte';
+    return null;
+  }
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (!normalized) return null;
+  if (normalized.length > NAME_MAX_LENGTH) {
+    errors[field] = `Ce champ ne peut pas dépasser ${NAME_MAX_LENGTH} caractères`;
+  }
+  return normalized;
+}
+
 function normalizeOptionalText(value, field, errors) {
   if (value == null || value === '') return null;
   if (typeof value !== 'string') {
@@ -76,8 +91,12 @@ export function validateServiceInput(body, { defaultActive = true, defaultPublis
   const errors = {};
   const nom = normalizeRequiredText(source.nom, 'nom', errors);
   const nom_ar = normalizeRequiredText(source.nom_ar, 'nom_ar', errors);
+  const nom_en = normalizeOptionalName(source.nom_en, 'nom_en', errors);
+  const nom_zh = normalizeOptionalName(source.nom_zh, 'nom_zh', errors);
   const description = normalizeOptionalText(source.description, 'description', errors);
   const description_ar = normalizeOptionalText(source.description_ar, 'description_ar', errors);
+  const description_en = normalizeOptionalText(source.description_en, 'description_en', errors);
+  const description_zh = normalizeOptionalText(source.description_zh, 'description_zh', errors);
   const is_active = parseBoolean(source.is_active, 'is_active', errors, defaultActive);
   const is_published = parseBoolean(source.is_published, 'is_published', errors, defaultPublished);
   const remove_image = parseBoolean(source.remove_image, 'remove_image', errors, false);
@@ -94,8 +113,12 @@ export function validateServiceInput(body, { defaultActive = true, defaultPublis
     value: {
       nom,
       nom_ar,
+      nom_en,
+      nom_zh,
       description,
       description_ar,
+      description_en,
+      description_zh,
       is_active,
       is_published,
       remove_image,

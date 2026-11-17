@@ -27,12 +27,17 @@ import {
 } from '../store/api/servicesApi';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
+import TranslationStatus from '../components/TranslationStatus';
 
 const validationSchema = yup.object({
   nom: yup.string().trim().min(2, 'Minimum 2 caractères').max(150, 'Maximum 150 caractères').required('Le nom est requis'),
   nom_ar: yup.string().trim().min(2, 'Minimum 2 caractères').max(150, 'Maximum 150 caractères').required('Le nom arabe est requis'),
   description: yup.string().trim().max(5000, 'Maximum 5000 caractères'),
   description_ar: yup.string().trim().max(5000, 'Maximum 5000 caractères'),
+  nom_en: yup.string().trim().max(150, 'Maximum 150 caractères'),
+  nom_zh: yup.string().trim().max(150, 'Maximum 150 caractères'),
+  description_en: yup.string().trim().max(5000, 'Maximum 5000 caractères'),
+  description_zh: yup.string().trim().max(5000, 'Maximum 5000 caractères'),
   category_ids: yup.array().of(yup.number().integer().positive()).min(1, 'Sélectionnez au moins une catégorie Maalem'),
   is_active: yup.boolean().required(),
   is_published: yup.boolean().required(),
@@ -41,8 +46,12 @@ const validationSchema = yup.object({
 interface FormValues {
   nom: string;
   nom_ar: string;
+  nom_en: string;
+  nom_zh: string;
   description: string;
   description_ar: string;
+  description_en: string;
+  description_zh: string;
   category_ids: number[];
   is_active: boolean;
   is_published: boolean;
@@ -106,8 +115,12 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
   const initialValues: FormValues = {
     nom: service?.nom || '',
     nom_ar: service?.nom_ar || '',
+    nom_en: service?.nom_en || '',
+    nom_zh: service?.nom_zh || '',
     description: service?.description || '',
     description_ar: service?.description_ar || '',
+    description_en: service?.description_en || '',
+    description_zh: service?.description_zh || '',
     category_ids: service?.categories.map(({ id }) => id) || [],
     is_active: service?.is_active ?? true,
     is_published: service?.is_published ?? false,
@@ -132,8 +145,12 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
             const payload: SaveServiceData = {
               nom: values.nom.trim(),
               nom_ar: values.nom_ar.trim(),
+              nom_en: values.nom_en.trim() || null,
+              nom_zh: values.nom_zh.trim() || null,
               description: values.description.trim() || null,
               description_ar: values.description_ar.trim() || null,
+              description_en: values.description_en.trim() || null,
+              description_zh: values.description_zh.trim() || null,
               category_ids: values.category_ids,
               is_active: values.is_active,
               is_published: values.is_published,
@@ -180,6 +197,33 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ service, onClose })
                   {touched.description_ar && errors.description_ar && <p className="mt-1 text-xs text-red-600">{errors.description_ar}</p>}
                 </div>
               </div>
+
+              <fieldset className="rounded-lg border border-gray-200 p-4">
+                <legend className="px-1 text-sm font-medium text-gray-700">Traductions du site : anglais et chinois</legend>
+                <p className="mb-3 text-xs text-gray-500">Facultatif. Si une langue est vide, le site affiche le texte français.</p>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="nom_en" className="mb-1 block text-sm font-medium text-gray-700">Nom anglais</label>
+                    <Field id="nom_en" name="nom_en" lang="en" className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" placeholder="Ex. Water leak repair" />
+                    {touched.nom_en && errors.nom_en && <p className="mt-1 text-xs text-red-600">{errors.nom_en}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="nom_zh" className="mb-1 block text-sm font-medium text-gray-700">Nom chinois</label>
+                    <Field id="nom_zh" name="nom_zh" lang="zh" className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" placeholder="例如：漏水维修" />
+                    {touched.nom_zh && errors.nom_zh && <p className="mt-1 text-xs text-red-600">{errors.nom_zh}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="description_en" className="mb-1 block text-sm font-medium text-gray-700">Description anglaise</label>
+                    <Field as="textarea" id="description_en" name="description_en" lang="en" rows={4} className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+                    {touched.description_en && errors.description_en && <p className="mt-1 text-xs text-red-600">{errors.description_en}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="description_zh" className="mb-1 block text-sm font-medium text-gray-700">Description chinoise</label>
+                    <Field as="textarea" id="description_zh" name="description_zh" lang="zh" rows={4} className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+                    {touched.description_zh && errors.description_zh && <p className="mt-1 text-xs text-red-600">{errors.description_zh}</p>}
+                  </div>
+                </div>
+              </fieldset>
 
               <div>
                 <span className="mb-2 block text-sm font-medium text-gray-700">Image</span>
@@ -406,7 +450,7 @@ const ServicesPage: React.FC = () => {
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
                           {service.image_url ? <img loading="lazy" decoding="async" src={toBackendUrl(service.image_url)} alt="" className="h-full w-full object-cover" /> : <Wrench className="h-5 w-5 text-gray-400" />}
                         </div>
-                        <div><div className="font-medium text-gray-900">{service.nom}</div><div dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</div></div>
+                        <div><div className="font-medium text-gray-900">{service.nom}</div><div dir="rtl" className="mt-1 w-fit text-sm text-gray-500">{service.nom_ar}</div><TranslationStatus en={service.nom_en} zh={service.nom_zh} className="mt-1.5" /></div>
                       </div></td>
                       <td className="max-w-sm px-5 py-4"><CategoryBadges categories={service.categories} /></td>
                       <td className="px-5 py-4"><div className="flex flex-wrap gap-1.5"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${service.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{service.is_active ? 'Actif' : 'Inactif'}</span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${service.is_published ? 'bg-blue-100 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{service.is_published ? 'Publié' : 'Non publié'}</span></div></td>

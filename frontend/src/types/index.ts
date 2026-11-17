@@ -264,6 +264,8 @@ export interface MaalemCategory {
   id: number;
   nom: string;
   nom_ar: string;
+  nom_en?: string | null;
+  nom_zh?: string | null;
   description: string | null;
   is_active: boolean;
   created_by?: number | null;
@@ -276,6 +278,8 @@ export interface MaalemCategory {
 export interface SaveMaalemCategoryData {
   nom: string;
   nom_ar: string;
+  nom_en: string | null;
+  nom_zh: string | null;
   description: string | null;
   is_active: boolean;
 }
@@ -284,6 +288,8 @@ export interface ServiceMaalemCategory {
   id: number;
   nom: string;
   nom_ar: string;
+  nom_en?: string | null;
+  nom_zh?: string | null;
   description: string | null;
   is_active: boolean;
   deleted_at?: string | null;
@@ -293,8 +299,12 @@ export interface Service {
   id: number;
   nom: string;
   nom_ar: string;
+  nom_en?: string | null;
+  nom_zh?: string | null;
   description: string | null;
   description_ar: string | null;
+  description_en?: string | null;
+  description_zh?: string | null;
   image_url: string | null;
   is_active: boolean;
   is_published: boolean;
@@ -309,8 +319,12 @@ export interface Service {
 export interface SaveServiceData {
   nom: string;
   nom_ar: string;
+  nom_en: string | null;
+  nom_zh: string | null;
   description: string | null;
   description_ar: string | null;
+  description_en: string | null;
+  description_zh: string | null;
   is_active: boolean;
   is_published: boolean;
   category_ids: number[];

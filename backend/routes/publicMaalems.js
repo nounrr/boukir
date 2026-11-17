@@ -56,9 +56,9 @@ router.get('/', async (req, res, next) => {
     const fromSql = `FROM maalem_profiles mp INNER JOIN contacts c ON c.id = mp.contact_id INNER JOIN maalem_categories mc ON mc.id = mp.category_id ${VERIFIED_AGGREGATE} ${PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL} WHERE ${conditions.join(' AND ')}`;
     const [[count]] = await pool.query(`SELECT COUNT(*) AS total_items ${fromSql}`, params);
     const total = Number(count?.total_items || 0), pages = total ? Math.ceil(total / perPage) : 0, current = pages ? Math.min(page, pages) : 1, offset = (current - 1) * perPage;
-    const [rows] = await pool.query(`SELECT mp.id, mp.is_public, mp.status, mp.category_id, mp.professional_data, mp.deleted_at, c.nom_complet, c.avatar_url, c.is_active AS contact_is_active, c.is_blocked AS contact_is_blocked, c.deleted_at AS contact_deleted_at, mc.nom AS category_name, mc.nom_ar AS category_name_ar, COALESCE(stats.closed_interventions,0) AS closed_interventions, stats.last_closed_intervention_at, COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.experience_years')) AS UNSIGNED),0) AS experience_years, c.nom_complet AS public_name, COALESCE(review_stats.review_count, 0) AS review_count, review_stats.average_rating ${fromSql} ORDER BY ${orders[sort]} LIMIT ? OFFSET ?`, [...params, perPage, offset]);
-    const [categories] = await pool.query(`SELECT id, nom, nom_ar FROM maalem_categories WHERE is_active = 1 AND deleted_at IS NULL ORDER BY nom`);
-    const [services] = await pool.query(`SELECT s.id, s.nom, s.nom_ar FROM services s WHERE s.is_active = 1 AND s.is_published = 1 AND s.deleted_at IS NULL AND NULLIF(TRIM(s.nom), '') IS NOT NULL AND NULLIF(TRIM(s.description), '') IS NOT NULL AND EXISTS (SELECT 1 FROM service_maalem_categories smc INNER JOIN maalem_categories mc ON mc.id = smc.category_id WHERE smc.service_id = s.id AND mc.is_active = 1 AND mc.deleted_at IS NULL) ORDER BY s.nom`);
+    const [rows] = await pool.query(`SELECT mp.id, mp.is_public, mp.status, mp.category_id, mp.professional_data, mp.deleted_at, c.nom_complet, c.avatar_url, c.is_active AS contact_is_active, c.is_blocked AS contact_is_blocked, c.deleted_at AS contact_deleted_at, mc.nom AS category_name, mc.nom_ar AS category_name_ar, mc.nom_en AS category_name_en, mc.nom_zh AS category_name_zh, COALESCE(stats.closed_interventions,0) AS closed_interventions, stats.last_closed_intervention_at, COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(mp.professional_data, '$.experience_years')) AS UNSIGNED),0) AS experience_years, c.nom_complet AS public_name, COALESCE(review_stats.review_count, 0) AS review_count, review_stats.average_rating ${fromSql} ORDER BY ${orders[sort]} LIMIT ? OFFSET ?`, [...params, perPage, offset]);
+    const [categories] = await pool.query(`SELECT id, nom, nom_ar, nom_en, nom_zh FROM maalem_categories WHERE is_active = 1 AND deleted_at IS NULL ORDER BY nom`);
+    const [services] = await pool.query(`SELECT s.id, s.nom, s.nom_ar, s.nom_en, s.nom_zh FROM services s WHERE s.is_active = 1 AND s.is_published = 1 AND s.deleted_at IS NULL AND NULLIF(TRIM(s.nom), '') IS NOT NULL AND NULLIF(TRIM(s.description), '') IS NOT NULL AND EXISTS (SELECT 1 FROM service_maalem_categories smc INNER JOIN maalem_categories mc ON mc.id = smc.category_id WHERE smc.service_id = s.id AND mc.is_active = 1 AND mc.deleted_at IS NULL) ORDER BY s.nom`);
     const maalems = rows.map((row) => { const item = normalizePublicMaalem(row); const reviewCount = Number(row.review_count || 0); return item ? { ...item, statistics: { closed_interventions: Number(row.closed_interventions), last_closed_intervention_at: row.last_closed_intervention_at ?? null, average_rating: reviewCount ? Number(row.average_rating) : null, review_count: reviewCount } } : null; }).filter(Boolean);
     res.set('Cache-Control', 'no-store');
     return res.json({ maalems, pagination: { current_page: current, per_page: perPage, total_items: total, total_pages: pages, has_previous: current > 1, has_next: current < pages, from: total ? offset + 1 : 0, to: total ? Math.min(offset + maalems.length, total) : 0 }, filters: { categories: categories.map((x) => ({ id: Number(x.id), nom: x.nom, nom_ar: x.nom_ar })), services: services.map((x) => ({ id: Number(x.id), nom: x.nom, nom_ar: x.nom_ar })), rating_sort_min_reviews: 3 } });
@@ -104,7 +104,8 @@ router.get('/:id', async (req, res, next) => {
       `SELECT mp.id, mp.is_public, mp.status, mp.category_id, mp.professional_data, mp.deleted_at,
               c.nom_complet, c.avatar_url, c.is_active AS contact_is_active,
               c.is_blocked AS contact_is_blocked, c.deleted_at AS contact_deleted_at,
-              mc.nom AS category_name, mc.nom_ar AS category_name_ar
+              mc.nom AS category_name, mc.nom_ar AS category_name_ar,
+              mc.nom_en AS category_name_en, mc.nom_zh AS category_name_zh
        FROM maalem_profiles mp
        INNER JOIN contacts c ON c.id = mp.contact_id
        LEFT JOIN maalem_categories mc ON mc.id = mp.category_id
@@ -118,8 +119,8 @@ router.get('/:id', async (req, res, next) => {
     const [statistics, reviewStatistics, [serviceRows]] = await Promise.all([
       getVerifiedMaalemStatistics(pool, profileId),
       getPublishedMaalemReviewStatistics(pool, profileId),
-      pool.query(`SELECT s.id, s.nom, s.nom_ar, s.description, s.description_ar, s.image_url,
-          mc.id AS category_id, mc.nom AS category_name, mc.nom_ar AS category_name_ar
+      pool.query(`SELECT s.id, s.nom, s.nom_ar, s.nom_en, s.nom_zh, s.description, s.description_ar, s.description_en, s.description_zh, s.image_url,
+          mc.id AS category_id, mc.nom AS category_name, mc.nom_ar AS category_name_ar, mc.nom_en AS category_name_en, mc.nom_zh AS category_name_zh
         FROM services s
         INNER JOIN service_maalem_categories smc ON smc.service_id = s.id
         INNER JOIN maalem_categories mc ON mc.id = smc.category_id
@@ -131,8 +132,8 @@ router.get('/:id', async (req, res, next) => {
     const services = new Map();
     for (const row of serviceRows) {
       const id = Number(row.id);
-      if (!services.has(id)) services.set(id, { id, nom: row.nom, nom_ar: row.nom_ar, description: row.description, description_ar: row.description_ar, image_url: row.image_url ?? null, categories: [] });
-      services.get(id).categories.push({ id: Number(row.category_id), nom: row.category_name, nom_ar: row.category_name_ar });
+      if (!services.has(id)) services.set(id, { id, nom: row.nom, nom_ar: row.nom_ar, nom_en: row.nom_en ?? null, nom_zh: row.nom_zh ?? null, description: row.description, description_ar: row.description_ar, description_en: row.description_en ?? null, description_zh: row.description_zh ?? null, image_url: row.image_url ?? null, categories: [] });
+      services.get(id).categories.push({ id: Number(row.category_id), nom: row.category_name, nom_ar: row.category_name_ar, nom_en: row.category_name_en ?? null, nom_zh: row.category_name_zh ?? null });
     }
     const compatibleServices = [...services.values()];
     const publicServiceIds = new Set(compatibleServices.map((service) => service.id));

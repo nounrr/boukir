@@ -11,7 +11,7 @@ const publicRouter = Router();
 const adminRouter = Router();
 
 const SELECT_COLUMNS = `
-  id, nom, nom_ar, description, is_active,
+  id, nom, nom_ar, nom_en, nom_zh, description, is_active,
   created_by, updated_by, created_at, updated_at, deleted_at
 `;
 
@@ -57,7 +57,7 @@ async function findCategoryById(id) {
 publicRouter.get('/active', async (_req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, nom, nom_ar, description
+      `SELECT id, nom, nom_ar, nom_en, nom_zh, description
        FROM maalem_categories
        WHERE is_active = 1 AND deleted_at IS NULL
        ORDER BY nom ASC, id ASC`
@@ -91,9 +91,9 @@ adminRouter.get('/', async (req, res, next) => {
       params.push(status === 'active' ? 1 : 0);
     }
     if (search) {
-      conditions.push('(nom LIKE ? OR nom_ar LIKE ?)');
+      conditions.push('(nom LIKE ? OR nom_ar LIKE ? OR nom_en LIKE ? OR nom_zh LIKE ?)');
       const term = `%${search}%`;
-      params.push(term, term);
+      params.push(term, term, term, term);
     }
 
     const [rows] = await pool.query(
@@ -114,12 +114,12 @@ adminRouter.post('/', async (req, res, next) => {
   if (!validation.valid) return validationResponse(res, validation);
 
   try {
-    const { nom, nom_ar, description, is_active } = validation.value;
+    const { nom, nom_ar, nom_en, nom_zh, description, is_active } = validation.value;
     const [result] = await pool.query(
       `INSERT INTO maalem_categories
-        (nom, nom_ar, description, is_active, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [nom, nom_ar, description, is_active ? 1 : 0, req.user.id, req.user.id]
+        (nom, nom_ar, nom_en, nom_zh, description, is_active, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nom, nom_ar, nom_en, nom_zh, description, is_active ? 1 : 0, req.user.id, req.user.id]
     );
     const category = await findCategoryById(result.insertId);
     return res.status(201).json(category);
@@ -140,13 +140,13 @@ adminRouter.put('/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Catégorie Maalem introuvable' });
     }
 
-    const { nom, nom_ar, description, is_active } = validation.value;
+    const { nom, nom_ar, nom_en, nom_zh, description, is_active } = validation.value;
     await pool.query(
       `UPDATE maalem_categories
-       SET nom = ?, nom_ar = ?, description = ?, is_active = ?,
+       SET nom = ?, nom_ar = ?, nom_en = ?, nom_zh = ?, description = ?, is_active = ?,
            updated_by = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND deleted_at IS NULL`,
-      [nom, nom_ar, description, is_active ? 1 : 0, req.user.id, id]
+      [nom, nom_ar, nom_en, nom_zh, description, is_active ? 1 : 0, req.user.id, id]
     );
     return res.json(await findCategoryById(id));
   } catch (error) {

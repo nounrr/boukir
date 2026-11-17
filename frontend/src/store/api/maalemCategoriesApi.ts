@@ -10,7 +10,7 @@ export interface MaalemCategoryFilters {
 
 export type ActiveMaalemCategory = Pick<
   MaalemCategory,
-  'id' | 'nom' | 'nom_ar' | 'description'
+  'id' | 'nom' | 'nom_ar' | 'nom_en' | 'nom_zh' | 'description'
 >;
 
 export const maalemCategoriesApi = apiSlice.injectEndpoints({
