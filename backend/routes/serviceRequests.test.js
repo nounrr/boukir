@@ -37,6 +37,18 @@ function createDatabaseDouble(options = {}) {
           const existing = state.requests.find((request) => request.client_submission_id === params[1]);
           return [[existing?.row].filter(Boolean)];
         }
+        // The customer's own request, read inside a transaction (client feedback).
+        if (sql.includes('FROM service_requests sr') && sql.includes('requester_contact_id = ?')) {
+          if (options.ownedRequest === false || Number(params[1]) !== 42) return [[]];
+          return [[{
+            id: Number(params[0]), request_number: 'SRV-000001', requester_contact_id: 42,
+            request_source: 'quick_request', service_id: null, requested_maalem_profile_id: null,
+            qualified_category_id: null, status: options.requestStatus || 'new', request_channel: 'ECOMMERCE',
+          }]];
+        }
+        if (sql.includes('FROM contacts WHERE id = ? LIMIT 1')) {
+          return [[{ id: Number(params[0]), nom_complet: 'Client Test', email: 'client@example.test', telephone: '0600000000' }]];
+        }
         if (sql.includes('FROM contacts') && sql.includes('FOR UPDATE')) {
           return [[options.contact || {
             id: 42,
@@ -134,12 +146,15 @@ async function withServer(database, callback, user = { id: 42, type_compte: 'Art
       return [[{
         id: Number(params[0]), request_number: 'SRV-000001', requester_contact_id: Number(params[1]),
         request_source: 'quick_request', service_id: null, requested_maalem_profile_id: null,
-        qualified_category_id: null, status: 'new', request_channel: 'ECOMMERCE',
+        qualified_category_id: null, status: database.requestStatus || 'new', request_channel: 'ECOMMERCE',
       }]];
     }
     if (sql.includes('FROM service_request_attachments')) return [[]];
     if (sql.includes("visibility = 'SHARED'")) {
-      return [[{ id: 1, request_id: Number(params[0]), body: 'Instruction visible', actor_type: 'CONTACT', actor_name: 'Client' }]];
+      return [[
+        { id: 1, request_id: Number(params[0]), body: 'Instruction visible', actor_type: 'CONTACT', actor_name: 'Client' },
+        ...(database.sharedNotes || []),
+      ]];
     }
     throw new Error(`Unexpected pool query: ${sql}`);
   };
@@ -629,5 +644,75 @@ test('la lecture demandeur filtre les notes internes en SQL', async () => {
     assert.deepEqual(body.shared_notes.map((note) => note.body), ['Instruction visible']);
     assert.equal(JSON.stringify(body).includes('INTERNAL'), false);
     assert.equal('history' in body, false);
+  });
+});
+
+// ---- The customer's verdict on the Maalem's finished work ----
+
+test('le client voit qu’il peut donner son avis une fois le travail terminé', async () => {
+  const database = createDatabaseDouble();
+  database.requestStatus = 'completed';
+  await withServer(database, async (baseUrl) => {
+    const body = await (await fetch(`${baseUrl}/api/service-requests/88`)).json();
+    assert.equal(body.can_give_feedback, true);
+    assert.equal(body.client_feedback, null);
+  });
+  database.requestStatus = 'work_in_progress';
+  await withServer(database, async (baseUrl) => {
+    assert.equal((await (await fetch(`${baseUrl}/api/service-requests/88`)).json()).can_give_feedback, false);
+  });
+});
+
+test('le client valide le travail terminé : note partagée et historique', async () => {
+  const database = createDatabaseDouble({ requestStatus: 'completed' });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/service-requests/88/client-feedback`, jsonPost({ kind: 'validated' }));
+    assert.equal(response.status, 201);
+    assert.deepEqual((await response.json()).client_feedback, { kind: 'validated' });
+  });
+  assert.equal(database.state.notes.length, 1);
+  assert.equal(database.state.notes[0][1], 'Travaux validés par le client');
+  assert.equal(database.state.histories[0][1], 'CLIENT_VALIDATED');
+  assert.equal(database.state.commits, 1);
+});
+
+test('une réclamation exige un motif, puis devient une note RÉCLAMATION CLIENT', async () => {
+  const database = createDatabaseDouble({ requestStatus: 'completed' });
+  await withServer(database, async (baseUrl) => {
+    const url = `${baseUrl}/api/service-requests/88/client-feedback`;
+    assert.equal((await fetch(url, jsonPost({ kind: 'complaint' }))).status, 422);
+    assert.equal((await fetch(url, jsonPost({ kind: 'complaint', comment: 'La fuite revient' }))).status, 201);
+  });
+  assert.equal(database.state.notes.length, 1);
+  assert.equal(database.state.notes[0][1], 'RÉCLAMATION CLIENT : La fuite revient');
+  assert.equal(database.state.histories[0][1], 'CLIENT_COMPLAINT');
+});
+
+test('le client ne peut pas valider avant la fin du travail', async () => {
+  const database = createDatabaseDouble({ requestStatus: 'work_in_progress' });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/service-requests/88/client-feedback`, jsonPost({ kind: 'validated' }));
+    assert.equal(response.status, 409);
+  });
+  assert.equal(database.state.notes.length, 0);
+  assert.equal(database.state.rollbacks, 1);
+});
+
+test('un client ne peut pas donner son avis sur la demande d’un autre', async () => {
+  const database = createDatabaseDouble({ requestStatus: 'completed', ownedRequest: false });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/service-requests/88/client-feedback`, jsonPost({ kind: 'validated' }));
+    assert.equal(response.status, 404);
+  });
+  assert.equal(database.state.notes.length, 0);
+});
+
+test('après son avis, le client le retrouve dans sa demande', async () => {
+  const database = createDatabaseDouble();
+  database.requestStatus = 'completed';
+  database.sharedNotes = [{ id: 2, request_id: 88, body: 'RÉCLAMATION CLIENT : La fuite revient', actor_type: 'CONTACT', actor_name: 'Client', created_at: '2026-11-17' }];
+  await withServer(database, async (baseUrl) => {
+    const body = await (await fetch(`${baseUrl}/api/service-requests/88`)).json();
+    assert.deepEqual(body.client_feedback, { kind: 'complaint', at: '2026-11-17' });
   });
 });

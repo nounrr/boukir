@@ -5,10 +5,13 @@ export const INTERVENTION_STATUSES = Object.freeze([
 
 export const TEAM_INTERVENTION_TRANSITIONS = Object.freeze({
   scheduled: Object.freeze(['to_do']),
+  // The team can mark finished a mission the Maalem left "in progress" (e.g. work done, app not updated).
+  work_in_progress: Object.freeze(['completed']),
   completed: Object.freeze(['closed']),
 });
 
 export const MAALEM_INTERVENTION_TRANSITIONS = Object.freeze({
+  // Once the team has scheduled the mission it belongs to the Maalem: no separate "to do" release is needed to start.
   scheduled: Object.freeze(['en_route']),
   to_do: Object.freeze(['en_route']),
   en_route: Object.freeze(['arrived']),
@@ -32,6 +35,26 @@ function text(value, maxLength) {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   return normalized && normalized.length <= maxLength ? normalized : null;
+}
+
+/**
+ * The saved report as read back from the database. MySQL keeps the yes/no answers in TINYINT(1) columns, which come
+ * back as 1 / 0, while the report check wants true / false: without this, a saved report never passes the check and a
+ * mission can never be finished.
+ */
+export function reportFromRow(row) {
+  const source = row && typeof row === 'object' ? row : {};
+  const yesNo = (value) => {
+    if (value === null || value === undefined || value === '') return value;
+    if (typeof value === 'boolean') return value;
+    if (Buffer.isBuffer(value)) return value[0] === 1;
+    return Number(value) === 1;
+  };
+  return {
+    ...source,
+    work_finished: yesNo(source.work_finished),
+    additional_intervention_required: yesNo(source.additional_intervention_required),
+  };
 }
 
 export function validateCompletionReport(input) {

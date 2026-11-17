@@ -10,6 +10,7 @@ import { canReceiveServiceAssignments } from '../utils/maalemAccess.js';
 import { detectBufferKind } from '../utils/uploadValidation.js';
 import {
   canTransitionIntervention,
+  reportFromRow,
   validateCompletionReport,
   validateProgress,
   validateSchedule,
@@ -20,7 +21,6 @@ import {
   enqueueOperationalNotifications,
   notifiableInterventionStatuses,
   scheduleHasMeaningfulChange,
-  shouldNotifyOperationalPolicy,
 } from '../utils/operationalNotification.js';
 import { suspendReviewInvitationsForRequest } from '../utils/reviewInvitation.js';
 import { queueReviewInvitationScheduling } from '../workers/reviewInvitationWorker.js';
@@ -326,12 +326,19 @@ adminServiceInterventionsRouter.post('/:id(\\d+)/transition', async (req, res, n
           String(req.body.closure_internal_note || '').trim() || null, id]
       );
       if (closureResult.affectedRows !== 1) fail(409, 'Cette intervention est déjà clôturée');
+    } else if (nextStatus === 'completed') {
+      // Finished on the team's word: the work is done, so the progress reads 100 % everywhere.
+      await connection.query(
+        "UPDATE service_interventions SET status = 'completed', completed_at = ?, progress_percent = 100 WHERE id = ?",
+        [new Date(), id]
+      );
     } else {
       await connection.query("UPDATE service_interventions SET status = 'to_do' WHERE id = ?", [id]);
     }
     await connection.query('UPDATE service_requests SET status = ? WHERE id = ?', [nextStatus, intervention.service_request_id]);
-    await history(connection, id, actor, nextStatus === 'closed' ? 'InterventionClosed' : 'MissionReleased', intervention.status, nextStatus);
-    if (nextStatus !== 'closed') {
+    const event = { closed: 'InterventionClosed', completed: 'WorkCompletedByTeam' }[nextStatus] || 'MissionReleased';
+    await history(connection, id, actor, event, intervention.status, nextStatus);
+    if (nextStatus === 'to_do') {
       await suspendReviewInvitationsForRequest(connection, intervention.service_request_id, 'REQUEST_REOPENED');
     }
     if (nextStatus === 'closed') deliveries = await enqueueOperationalNotifications(connection, {
@@ -343,10 +350,23 @@ adminServiceInterventionsRouter.post('/:id(\\d+)/transition', async (req, res, n
       versionKey: `status:closed`,
       createdByEmployeeId: actor.id,
     });
+    // Same as when the Maalem finishes: the customer is told, to validate the work or file a complaint.
+    if (nextStatus === 'completed' && String(process.env.SERVICE_NOTIFY_CLIENT_COMPLETED || '').toLowerCase() !== 'false') {
+      deliveries = await enqueueOperationalNotifications(connection, {
+        serviceRequestId: intervention.service_request_id,
+        interventionId: id,
+        event: OPERATIONAL_NOTIFICATION_EVENTS.COMPLETED,
+        sourceEvent: event,
+        audiences: ['CLIENT'],
+        context: notificationContext(intervention),
+        versionKey: 'status:completed',
+        createdByEmployeeId: actor.id,
+      });
+    }
     await connection.commit();
     if (nextStatus === 'closed') queueReviewInvitationScheduling(intervention.service_request_id);
     await dispatchOperationalNotificationsSafely(deliveries);
-    res.json({ intervention_id: id, status: nextStatus, event: nextStatus === 'closed' ? 'InterventionClosed' : 'MissionReleased' });
+    res.json({ intervention_id: id, status: nextStatus, event });
   } catch (error) { await connection.rollback().catch(() => {}); next(error); }
   finally { connection.release(); }
 });
@@ -414,8 +434,13 @@ maalemRouter.patch('/:id(\\d+)/report', async (req, res, next) => {
     const actor = { ...(await loadMaalem(connection, req.user?.id)), type: 'MAALEM' };
     const mission = await loadMaalemIntervention(connection, id, actor, true);
     if (!mission) fail(404, 'Mission introuvable ou réaffectée');
-    if (mission.status !== 'work_in_progress') fail(409, 'Le compte-rendu est modifiable pendant les travaux');
+    // While the work goes on, and after the Maalem finished until the team closes it (corrections, a late comment).
+    if (!['work_in_progress', 'completed'].includes(mission.status)) fail(409, 'Le compte-rendu est modifiable pendant les travaux et jusqu’à la clôture');
     const value = validation.value;
+    // A finished mission stays finished: a correction cannot turn it back into unfinished work.
+    if (mission.status === 'completed' && (!value.work_finished || value.progress_percent !== 100)) {
+      fail(409, 'Une mission terminée reste terminée : le travail doit rester « terminé » à 100 %');
+    }
     await connection.query(
       `UPDATE service_interventions SET work_summary = ?, maalem_observations = ?, progress_percent = ?,
         work_finished = ?, additional_intervention_required = ?, incomplete_reason = ? WHERE id = ?`,
@@ -442,7 +467,8 @@ maalemRouter.post('/:id(\\d+)/transition', async (req, res, next) => {
     if (!mission) fail(404, 'Mission introuvable ou réaffectée');
     if (!canTransitionIntervention('MAALEM', mission.status, nextStatus)) fail(409, 'Transition Maalem interdite');
     if (nextStatus === 'completed') {
-      const report = validateCompletionReport(mission);
+      // Read back from the database, the yes/no answers are 1 / 0: turn them into true / false before the check.
+      const report = validateCompletionReport(reportFromRow(mission));
       if (!report.valid) fail(422, 'Le compte-rendu complet est obligatoire avant de terminer', report.errors);
     }
     const timestampColumns = {
@@ -459,7 +485,9 @@ maalemRouter.post('/:id(\\d+)/transition', async (req, res, next) => {
     await history(connection, id, actor, event, mission.status, nextStatus);
     if (nextStatus === 'completed') {
       const audiences = ['BACKOFFICE_TEAM'];
-      if (shouldNotifyOperationalPolicy('SERVICE_NOTIFY_CLIENT_COMPLETED')) audiences.push('CLIENT');
+      // The customer is told the work is finished so they can validate it or file a complaint from their request.
+      // SERVICE_NOTIFY_CLIENT_COMPLETED=false turns it off.
+      if (String(process.env.SERVICE_NOTIFY_CLIENT_COMPLETED || '').toLowerCase() !== 'false') audiences.push('CLIENT');
       deliveries = await enqueueOperationalNotifications(connection, {
         serviceRequestId: mission.service_request_id,
         interventionId: id,

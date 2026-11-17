@@ -6,6 +6,12 @@ import { Router } from 'express';
 import multer from 'multer';
 import pool from '../db/pool.js';
 import { canReceiveServiceAssignments } from '../utils/maalemAccess.js';
+import {
+  CLIENT_FEEDBACK_STATUSES,
+  clientFeedbackNote,
+  lastClientFeedback,
+  validateClientFeedback,
+} from '../utils/clientFeedback.js';
 import { detectBufferKind } from '../utils/uploadValidation.js';
 import {
   SERVICE_REQUEST_CHANNEL,
@@ -280,6 +286,9 @@ async function listOwnedRequestDetails(db, requestId, contactId) {
     request,
     attachments: attachments.map(normalizeAttachmentRow),
     shared_notes: sharedNotes.map((row) => ({ ...row, id: Number(row.id), request_id: Number(row.request_id) })),
+    // The customer's verdict on the finished work ("validated" or "complaint"), once given.
+    client_feedback: lastClientFeedback(sharedNotes),
+    can_give_feedback: CLIENT_FEEDBACK_STATUSES.includes(request.status),
   };
 }
 
@@ -700,6 +709,61 @@ router.get('/:id', async (req, res, next) => {
     return res.json(details);
   } catch (error) {
     return next(error);
+  }
+});
+
+// The customer validates the Maalem's finished work, or files a complaint, with an optional comment.
+// Kept as a shared note (the back-office lists it with the request's notes) plus a history event.
+router.post('/:id(\\d+)/client-feedback', async (req, res, next) => {
+  const requestId = parseId(req.params.id);
+  if (!requestId) return res.status(400).json({ message: 'Identifiant de demande invalide' });
+  const validation = validateClientFeedback(req.body);
+  if (!validation.valid) return res.status(422).json({ message: 'Avis invalide', errors: validation.errors });
+  const contactId = Number(req.user.id);
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const request = await loadOwnedRequest(connection, requestId, contactId);
+    if (!request) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Demande introuvable' });
+    }
+    if (!CLIENT_FEEDBACK_STATUSES.includes(request.status)) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Vous pourrez valider ou réclamer une fois le travail terminé par le Maalem' });
+    }
+    const [contacts] = await connection.query(
+      'SELECT id, nom_complet, prenom, nom, email, telephone FROM contacts WHERE id = ? LIMIT 1',
+      [contactId]
+    );
+    const actorName = contactDisplayName(contacts[0] || { id: contactId });
+    const body = clientFeedbackNote(validation.value);
+    await connection.query(
+      `INSERT INTO service_request_notes
+         (request_id, visibility, body, actor_type, created_by_contact_id, actor_name)
+       VALUES (?, 'SHARED', ?, 'CONTACT', ?, ?)`,
+      [requestId, body, contactId, actorName]
+    );
+    await connection.query(
+      `INSERT INTO service_request_history
+         (request_id, event_type, new_value, actor_type, actor_contact_id, actor_name)
+       VALUES (?, ?, ?, 'CONTACT', ?, ?)`,
+      [
+        requestId,
+        validation.value.kind === 'complaint' ? 'CLIENT_COMPLAINT' : 'CLIENT_VALIDATED',
+        JSON.stringify(validation.value),
+        contactId,
+        actorName,
+      ]
+    );
+    await connection.commit();
+    return res.status(201).json({ client_feedback: { kind: validation.value.kind }, note: body });
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    return next(error);
+  } finally {
+    connection?.release();
   }
 });
 

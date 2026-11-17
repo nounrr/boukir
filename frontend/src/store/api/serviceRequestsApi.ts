@@ -296,7 +296,7 @@ export const serviceRequestsApi = apiSlice.injectEndpoints({
     scheduleServiceIntervention: builder.mutation<{ intervention_id: number; status: 'scheduled' }, { requestId: number; body: Record<string, unknown> }>({
       query: ({ requestId, body }) => ({ url: `/admin/service-interventions/by-request/${requestId}/schedule`, method: 'PUT', body }),
     }),
-    transitionAdminServiceIntervention: builder.mutation<{ intervention_id: number; status: ServiceRequestStatus }, { id: number; status: 'to_do' | 'closed'; closure_internal_note?: string }>({
+    transitionAdminServiceIntervention: builder.mutation<{ intervention_id: number; status: ServiceRequestStatus }, { id: number; status: 'to_do' | 'completed' | 'closed'; closure_internal_note?: string }>({
       query: ({ id, ...body }) => ({ url: `/admin/service-interventions/${id}/transition`, method: 'POST', body }),
     }),
     retryServiceRequestNotification: builder.mutation<void, { requestId: number; notificationId: number }>({

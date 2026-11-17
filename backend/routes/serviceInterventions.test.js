@@ -67,6 +67,9 @@ function databaseDouble() {
         return [{ affectedRows: 1 }];
       }
       if (sql.includes("SET status = 'to_do'")) { state.status = 'to_do'; return [{ affectedRows: 1 }]; }
+      if (sql.includes("SET status = 'completed'")) {
+        state.status = 'completed'; state.completedAt = params[0]; state.progress = 100; return [{ affectedRows: 1 }];
+      }
       if (sql.includes('SET progress_percent = ?')) { state.progress = Number(params[0]); return [{ affectedRows: 1 }]; }
       if (sql.includes('SET work_summary = ?')) {
         state.report = { work_summary: params[0], observations: params[1], progress: params[2], finished: params[3], additional: params[4], incomplete: params[5] };
@@ -227,6 +230,77 @@ test('une seconde clôture est refusée et ne peut pas doubler le crédit', asyn
     assert.equal((await fetch(endpoint, jsonPost({ status: 'closed' }))).status, 409);
   });
   assert.equal(db.state.executingAssignmentId, 3);
+});
+
+test('le Maalem termine sa mission : le compte-rendu relu depuis MySQL (1/0) est accepté', async () => {
+  // The double returns the saved report exactly as mysql2 does: work_finished = 1, additional_intervention_required = 0.
+  const db = databaseDouble(); db.state.status = 'work_in_progress'; db.state.requestStatus = 'work_in_progress';
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    const response = await fetch(`${url}/api/maalem-missions/91/transition`, jsonPost({ status: 'completed' }));
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  });
+  assert.equal(db.state.status, 'completed');
+  assert.equal(db.state.requestStatus, 'completed');
+  assert.deepEqual(db.state.history.at(-1), { event: 'WorkCompleted', oldStatus: 'work_in_progress', newStatus: 'completed' });
+  assert.equal(db.state.commits, 1);
+});
+
+test('le Maalem démarre une mission planifiée sans attendre « À faire »', async () => {
+  const db = databaseDouble(); db.state.status = 'scheduled'; db.state.requestStatus = 'scheduled';
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    assert.equal((await fetch(`${url}/api/maalem-missions/91/transition`, jsonPost({ status: 'en_route' }))).status, 200);
+  });
+  assert.equal(db.state.status, 'en_route');
+});
+
+test('l’équipe peut terminer une mission laissée « en cours » (progression 100 %)', async () => {
+  const db = databaseDouble(); db.state.status = 'work_in_progress'; db.state.requestStatus = 'work_in_progress'; db.state.progress = 100;
+  await serverFor(db, { id: 3, role: 'Manager', cin: 'TEST' }, async (url) => {
+    const response = await fetch(`${url}/api/admin/service-interventions/91/transition`, jsonPost({ status: 'completed' }));
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  });
+  assert.equal(db.state.status, 'completed');
+  assert.equal(db.state.requestStatus, 'completed');
+  assert.equal(db.state.progress, 100);
+  assert.ok(db.state.completedAt instanceof Date);
+  assert.deepEqual(db.state.history.at(-1), { event: 'WorkCompletedByTeam', oldStatus: 'work_in_progress', newStatus: 'completed' });
+});
+
+test('l’équipe ne peut pas terminer une mission dont les travaux n’ont pas commencé', async () => {
+  const db = databaseDouble(); db.state.status = 'arrived'; db.state.requestStatus = 'arrived';
+  await serverFor(db, { id: 3, role: 'Manager', cin: 'TEST' }, async (url) => {
+    assert.equal((await fetch(`${url}/api/admin/service-interventions/91/transition`, jsonPost({ status: 'completed' }))).status, 409);
+  });
+  assert.equal(db.state.status, 'arrived');
+  assert.equal(db.state.rollbacks, 1);
+});
+
+test('après « terminée », le Maalem corrige le compte-rendu jusqu’à la clôture', async () => {
+  const db = databaseDouble(); db.state.status = 'completed'; db.state.requestStatus = 'completed'; db.state.progress = 100;
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    const ok = await fetch(`${url}/api/maalem-missions/91/report`, jsonPatch({
+      work_summary: 'Joint changé, siphon nettoyé', maalem_observations: '[17/11 18:00] Photo ajoutée', progress_percent: 100,
+      work_finished: true, additional_intervention_required: false,
+    }));
+    assert.equal(ok.status, 200);
+    // It cannot be turned back into unfinished work.
+    const back = await fetch(`${url}/api/maalem-missions/91/report`, jsonPatch({
+      work_summary: 'x', progress_percent: 50, work_finished: false, additional_intervention_required: false, incomplete_reason: 'Travaux en cours',
+    }));
+    assert.equal(back.status, 409);
+  });
+  assert.equal(db.state.report.work_summary, 'Joint changé, siphon nettoyé');
+  assert.equal(db.state.status, 'completed');
+});
+
+test('une mission clôturée n’est plus modifiable par le Maalem', async () => {
+  const db = databaseDouble(); db.state.status = 'closed'; db.state.requestStatus = 'closed';
+  await serverFor(db, { id: 70, type_compte: 'Artisan/Promoteur' }, async (url) => {
+    const response = await fetch(`${url}/api/maalem-missions/91/report`, jsonPatch({
+      work_summary: 'x', progress_percent: 100, work_finished: true, additional_intervention_required: false,
+    }));
+    assert.equal(response.status, 409);
+  });
 });
 
 test('le compte-rendu et une photo typée sont enregistrés pour le Maalem courant', async () => {
