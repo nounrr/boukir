@@ -107,12 +107,20 @@ const kpis: Array<{
 ];
 
 const kpiTone = {
-  blue: 'border-l-blue-500 text-blue-700 bg-blue-50',
-  cyan: 'border-l-cyan-500 text-cyan-700 bg-cyan-50',
-  amber: 'border-l-amber-500 text-amber-700 bg-amber-50',
-  red: 'border-l-red-500 text-red-700 bg-red-50',
-  slate: 'border-l-gray-400 text-gray-600 bg-gray-100',
+  blue: 'bg-blue-50 text-blue-700',
+  cyan: 'bg-cyan-50 text-cyan-700',
+  amber: 'bg-amber-50 text-amber-700',
+  red: 'bg-red-50 text-red-700',
+  slate: 'bg-gray-100 text-gray-600',
 };
+
+/** Les indicateurs suivent le parcours d'une demande : traiter, organiser, intervenir, clôturer. */
+const kpiGroups: Array<{ title: string; hint: string; keys: Array<keyof DashboardMetrics> }> = [
+  { title: 'À traiter', hint: 'Avant l’accord du client', keys: ['new_requests', 'to_contact', 'processing', 'waiting_customer'] },
+  { title: 'À organiser', hint: 'Maalem et rendez-vous', keys: ['confirmed_without_maalem', 'assigned_without_schedule'] },
+  { title: 'Sur le terrain', hint: 'Interventions', keys: ['scheduled_today', 'in_progress', 'overdue'] },
+  { title: 'Fin de dossier', hint: 'Contrôle et clôture', keys: ['completed_to_verify', 'closed', 'cancelled'] },
+];
 
 function shortDate(value?: string | null) {
   if (!value) return '—';
@@ -121,21 +129,30 @@ function shortDate(value?: string | null) {
 }
 
 function KpiCard({ kpi, value, loading, selected, onClick }: {
-  kpi: (typeof kpis)[number]; value: number; loading: boolean; selected: boolean;
-  emphasis?: 'priority' | 'standard' | 'quiet'; onClick: () => void;
+  kpi: (typeof kpis)[number]; value: number; loading: boolean; selected: boolean; onClick: () => void;
 }) {
   const { label, hint, icon: Icon, tone } = kpi;
-  return <button type="button" onClick={onClick} aria-label={`${label} : ${value}`} className={`group min-w-[158px] border-b-2 bg-white px-3 py-3 text-left transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 ${kpiTone[tone].split(' ')[0]} ${selected ? 'bg-blue-50 ring-2 ring-inset ring-blue-500' : ''}`}>
-    <div className="flex items-center justify-between gap-3"><span className="truncate text-[11px] font-bold uppercase tracking-wide text-gray-600">{label}</span><span className={`rounded-md p-1 ${kpiTone[tone].split(' ').slice(1).join(' ')}`}><Icon className="h-3.5 w-3.5" /></span></div>
-    <div className="mt-1 text-2xl font-bold tabular-nums text-gray-950">{loading ? <span className="inline-block h-6 w-8 animate-pulse rounded bg-gray-200" /> : value}</div>
-    <p className="mt-0.5 truncate text-[11px] text-gray-500">{hint}</p>
+  const alert = tone === 'red' && kpi.key === 'overdue' && value > 0;
+  return <button type="button" onClick={onClick} aria-pressed={selected} aria-label={`${label} : ${value}`} title={hint}
+    className={`group flex w-full min-w-0 items-center gap-2.5 rounded-lg border px-2 py-1.5 text-left transition duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${selected ? 'border-blue-500 bg-blue-50' : alert ? 'border-red-200 bg-red-50 hover:border-red-300' : 'border-transparent hover:border-gray-200 hover:bg-gray-50'}`}>
+    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${kpiTone[tone]}`}><Icon className="h-3.5 w-3.5" /></span>
+    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-700 group-hover:text-gray-950">{label}</span>
+    <span className={`text-base font-bold tabular-nums ${alert ? 'text-red-700' : value === 0 ? 'text-gray-400' : 'text-gray-950'}`}>{loading ? <span className="inline-block h-4 w-6 animate-pulse rounded bg-gray-200" /> : value}</span>
   </button>;
+}
+
+function StatusPill({ status }: { status: ServiceRequestStatus }) {
+  return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(status)}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{statusLabels[status]}</span>;
+}
+
+function OverduePill() {
+  return <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />En retard</span>;
 }
 
 export default function ServiceRequestsPage() {
   const [filters, setFilters] = useState<ServiceRequestFilters>({ page: 1, limit: 25 });
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [allIndicators, setAllIndicators] = useState(false);
+  const [indicatorsOpen, setIndicatorsOpen] = useState(true);
   const { data, isLoading, isFetching, isError, refetch } = useGetBackofficeServiceRequestsQuery(filters, {
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
@@ -148,7 +165,12 @@ export default function ServiceRequestsPage() {
     page: 1,
     [key]: value === '' || value === undefined ? undefined : value,
   }));
-  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / (data?.limit || 25)));
+  const page = filters.page || 1;
+  const limit = data?.limit || filters.limit || 25;
+  const total = data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const firstShown = total === 0 ? 0 : (page - 1) * limit + 1;
+  const lastShown = Math.min(total, page * limit);
   const activeAdvancedCount = Object.entries(filters).filter(([key, value]) => !['page', 'limit', 'q', 'quick_view'].includes(key) && value !== undefined && value !== '').length;
   const activeFilterChips = useMemo(() => {
     const names: Partial<Record<keyof ServiceRequestFilters, string>> = {
@@ -178,99 +200,143 @@ export default function ServiceRequestsPage() {
 
   const applyPreset = (preset: Partial<ServiceRequestFilters>) => setFilters({ page: 1, limit: filters.limit || 25, ...preset });
   const refreshAll = () => { void refetch(); void dashboard.refetch(); };
+  const hasAnyFilter = activeAdvancedCount > 0 || Boolean(filters.q) || Boolean(filters.quick_view);
+  const metrics = dashboard.data?.metrics;
+  const isKpiSelected = (kpi: (typeof kpis)[number]) => {
+    const entries = Object.entries(kpi.filters);
+    // Un indicateur est actif seulement si la vue correspond exactement à ses filtres (ni plus, ni moins).
+    const others = Object.entries(filters).filter(([key, value]) => !['page', 'limit', 'q'].includes(key) && value !== undefined && value !== '').length;
+    return entries.every(([key, value]) => filters[key as keyof ServiceRequestFilters] === value) && others === entries.length;
+  };
+  const columns = ['Demande', 'Client', 'Besoin', 'Maalem', 'Rendez-vous', 'Statut', 'Suivi'];
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-gray-200 pb-5">
-          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Back-office</p><div className="mt-1 flex items-center gap-2"><Wrench className="h-7 w-7 text-blue-600" /><h1 className="text-2xl font-bold tracking-tight text-gray-950">Demandes de service</h1></div><p className="mt-1 text-sm text-gray-500">Une demande, deux étapes : vérifier les informations, puis confirmer et organiser.</p></div>
+    <div className="space-y-5 p-4 sm:p-6">
+      {/* En-tête */}
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm"><Wrench className="h-6 w-6" /></span>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-950">Demandes de service</h1>
+            <p className="mt-0.5 text-sm text-gray-500">Vérifier la demande, confirmer avec le client, puis affecter un Maalem et suivre l’intervention.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <p className="hidden text-right text-xs text-gray-500 sm:block">Dernière mise à jour<br /><span className="font-medium text-gray-700">{dashboard.data ? dateTime(dashboard.data.generated_at) : '—'}</span></p>
+          <button type="button" onClick={refreshAll} disabled={isFetching || dashboard.isFetching} className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-300 bg-white px-3.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+            <RefreshCw className={`h-4 w-4 ${(isFetching || dashboard.isFetching) ? 'animate-spin' : ''}`} /> Actualiser
+          </button>
+        </div>
+      </header>
+
+      {/* Indicateurs, regroupés par étape du parcours */}
+      <section aria-label="Résumé opérationnel" className="rounded-2xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><CircleDot className="h-4 w-4 text-blue-600" />Où en sont les demandes</h2>
+          <button type="button" onClick={() => setIndicatorsOpen((open) => !open)} aria-expanded={indicatorsOpen} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">{indicatorsOpen ? 'Réduire' : 'Afficher les indicateurs'}<ChevronDown className={`h-3.5 w-3.5 transition ${indicatorsOpen ? 'rotate-180' : ''}`} /></button>
+        </div>
+        {dashboard.isError && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">Les indicateurs ne sont pas disponibles. La liste reste utilisable.</p>}
+        {indicatorsOpen && <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {kpiGroups.map((group, index) => {
+            const items = kpis.filter((kpi) => group.keys.includes(kpi.key));
+            const groupTotal = items.reduce((sum, kpi) => sum + (metrics?.[kpi.key] ?? 0), 0);
+            return <div key={group.title} className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">{index + 1}</span>
+                  <div className="min-w-0"><h3 className="truncate text-sm font-bold text-gray-900">{group.title}</h3><p className="truncate text-[11px] text-gray-500">{group.hint}</p></div>
+                </div>
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold tabular-nums text-gray-700" title="Total du groupe">{dashboard.isLoading ? '…' : groupTotal}</span>
+              </div>
+              <div className="space-y-0.5">
+                {items.map((kpi) => <KpiCard key={kpi.key} kpi={kpi} value={metrics?.[kpi.key] ?? 0} loading={dashboard.isLoading} selected={isKpiSelected(kpi)} onClick={() => applyPreset(isKpiSelected(kpi) ? {} : kpi.filters)} />)}
+              </div>
+            </div>;
+          })}
+        </div>}
+      </section>
+
+      {/* File des demandes : vues, recherche, filtres et tableau dans un seul bloc */}
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3.5">
           <div className="flex items-center gap-3">
-            <p className="hidden text-right text-xs text-gray-500 sm:block">Dernière mise à jour<br /><span className="font-medium text-gray-700">{dashboard.data ? dateTime(dashboard.data.generated_at) : '—'}</span></p>
-            <button type="button" onClick={refreshAll} disabled={isFetching || dashboard.isFetching} className="inline-flex h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3.5 text-sm font-semibold text-gray-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
-              <RefreshCw className={`h-4 w-4 ${(isFetching || dashboard.isFetching) ? 'animate-spin' : ''}`} /> Actualiser
-            </button>
+            <h2 className="text-base font-bold text-gray-900">File des demandes</h2>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold tabular-nums text-blue-700">{total} résultat{total > 1 ? 's' : ''}</span>
+            {isFetching && !isLoading && <span className="inline-flex items-center gap-1.5 text-xs text-blue-600"><Loader2 className="h-3.5 w-3.5 animate-spin" />Mise à jour</span>}
           </div>
-        </header>
-
-        <section aria-label="Résumé opérationnel" className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        <nav aria-label="Vues rapides" className="overflow-x-auto border-b border-gray-200 bg-gray-50 p-1">
-          <div className="flex min-w-max gap-1">
-            {quickViews.map(({ value, label, icon: Icon }) => <button key={value} type="button" aria-pressed={filters.quick_view === value} onClick={() => applyPreset(filters.quick_view === value ? {} : { quick_view: value })} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${filters.quick_view === value ? 'bg-blue-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-950'}`}><Icon className="h-4 w-4" />{label}</button>)}
-          </div>
-        </nav>
-
-          {dashboard.isError && <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Les indicateurs ne sont pas disponibles. La liste reste utilisable.</div>}
-            <div className="grid grid-flow-col auto-cols-[minmax(158px,1fr)] divide-x divide-gray-200 overflow-x-auto xl:grid-flow-row xl:grid-cols-5 xl:auto-cols-auto">
-              {kpis.filter((kpi) => allIndicators || ['new_requests', 'confirmed_without_maalem', 'assigned_without_schedule', 'scheduled_today', 'overdue'].includes(kpi.key)).map((kpi) => <KpiCard key={kpi.key} kpi={kpi} value={dashboard.data?.metrics[kpi.key] ?? 0} loading={dashboard.isLoading} selected={Object.entries(kpi.filters).every(([key, value]) => filters[key as keyof ServiceRequestFilters] === value)} onClick={() => applyPreset(kpi.filters)} />)}
+          <nav aria-label="Vues rapides" className="max-w-full overflow-x-auto">
+            <div className="flex min-w-max gap-1 rounded-xl bg-gray-100 p-1">
+              <button type="button" aria-pressed={!filters.quick_view} onClick={() => set('quick_view', undefined)} className={`rounded-lg px-3 py-1.5 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${!filters.quick_view ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-600 hover:text-gray-950'}`}>Toutes</button>
+              {quickViews.map(({ value, label, icon: Icon }) => <button key={value} type="button" aria-pressed={filters.quick_view === value} onClick={() => applyPreset(filters.quick_view === value ? {} : { quick_view: value })} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${filters.quick_view === value ? 'bg-blue-700 text-white shadow-sm' : 'text-gray-600 hover:text-gray-950'}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}
             </div>
-          <button type="button" onClick={() => setAllIndicators((open) => !open)} aria-expanded={allIndicators} className="flex w-full items-center justify-center gap-2 border-t border-gray-100 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">{allIndicators ? 'Réduire les indicateurs' : 'Voir tous les indicateurs'}<ChevronDown className={`h-3.5 w-3.5 ${allIndicators ? 'rotate-180' : ''}`} /></button>
-        </section>
+          </nav>
+        </div>
 
-        <section className="rounded-lg border border-gray-200 bg-white">
-          <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
-            <label className="relative flex-1"><span className="sr-only">Recherche rapide</span><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input className={`${inputClass} pl-9 pr-9`} placeholder="Rechercher un n° SRV, client, téléphone ou Maalem…" value={filters.q || ''} onChange={(e) => set('q', e.target.value)} />{filters.q && <button type="button" aria-label="Effacer la recherche" onClick={() => set('q', undefined)} className="absolute right-2.5 top-2.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}</label>
-            <button type="button" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-gray-300 px-3.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200"><SlidersHorizontal className="h-4 w-4" />Filtres avancés{activeAdvancedCount > 0 && <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">{activeAdvancedCount}</span>}<ChevronDown className={`h-4 w-4 transition ${advancedOpen ? 'rotate-180' : ''}`} /></button>
-            <button type="button" onClick={() => applyPreset({})} disabled={activeAdvancedCount === 0 && !filters.q && !filters.quick_view} className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-40"><RotateCcw className="h-4 w-4" />Réinitialiser</button>
+        <div className="flex flex-col gap-2.5 border-b border-gray-100 px-4 py-3 lg:flex-row lg:items-center">
+          <label className="relative flex-1"><span className="sr-only">Recherche rapide</span><Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" /><input className={`${inputClass} rounded-xl pl-10 pr-9`} placeholder="Rechercher un n° SRV, client, téléphone ou Maalem…" value={filters.q || ''} onChange={(e) => set('q', e.target.value)} />{filters.q && <button type="button" aria-label="Effacer la recherche" onClick={() => set('q', undefined)} className="absolute right-2.5 top-2.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}</label>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen} className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-200 lg:flex-none ${advancedOpen || activeAdvancedCount > 0 ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}><SlidersHorizontal className="h-4 w-4" />Filtres{activeAdvancedCount > 0 && <span className="rounded-full bg-blue-700 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">{activeAdvancedCount}</span>}<ChevronDown className={`h-4 w-4 transition ${advancedOpen ? 'rotate-180' : ''}`} /></button>
+            <button type="button" onClick={() => applyPreset({})} disabled={!hasAnyFilter} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-40"><RotateCcw className="h-4 w-4" />Réinitialiser</button>
           </div>
-          {advancedOpen && <div className="space-y-5 border-t border-gray-200 bg-gray-50 p-4">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500"><Filter className="h-3.5 w-3.5" />Filtres combinables</div>
-            <fieldset><legend className="mb-3 border-b border-slate-200 pb-2 text-sm font-bold text-slate-800">Demande et client</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Numéro SRV"><input className={inputClass} placeholder="Ex. SRV-2026-001" value={filters.request_number || ''} onChange={(e) => set('request_number', e.target.value)} /></Field>
-              <Field label="Nom du client"><input className={inputClass} placeholder="Nom ou raison sociale" value={filters.client || ''} onChange={(e) => set('client', e.target.value)} /></Field>
-              <Field label="Téléphone"><input className={inputClass} placeholder="Numéro autorisé" value={filters.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
-              <Field label="Statut administratif"><select className={inputClass} value={filters.status || ''} onChange={(e) => set('status', e.target.value)}><option value="">Tous les statuts</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-              <Field label="Origine"><select className={inputClass} value={filters.source || ''} onChange={(e) => set('source', e.target.value)}><option value="">Toutes les origines</option>{Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-              <Field label="Service"><select className={inputClass} value={filters.service_id || ''} onChange={(e) => set('service_id', Number(e.target.value) || undefined)}><option value="">Tous les services</option>{options?.services.map((item) => <option key={item.id} value={item.id}>{item.nom}</option>)}</select></Field>
-              <Field label="Catégorie Maalem"><select className={inputClass} value={filters.category_id || ''} onChange={(e) => set('category_id', Number(e.target.value) || undefined)}><option value="">Toutes les catégories</option>{options?.categories.map((item) => <option key={item.id} value={item.id}>{item.nom}</option>)}</select></Field>
-              <Field label="Ville"><select className={inputClass} value={filters.city || ''} onChange={(e) => set('city', e.target.value)}><option value="">Toutes les villes</option>{options?.cities.map((city) => <option key={city} value={city}>{city}</option>)}</select></Field>
-            </div></fieldset>
-            <fieldset><legend className="mb-3 border-b border-slate-200 pb-2 text-sm font-bold text-slate-800">Affectation et responsabilité</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Maalem souhaité"><select className={inputClass} value={filters.requested_maalem_id || ''} onChange={(e) => set('requested_maalem_id', Number(e.target.value) || undefined)}><option value="">Tous</option>{options?.maalems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-              <Field label="Maalem affecté"><select className={inputClass} value={filters.assigned_maalem_id || ''} onChange={(e) => set('assigned_maalem_id', Number(e.target.value) || undefined)}><option value="">Tous</option>{options?.maalems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-              <Field label="Responsable Back-office"><select className={inputClass} value={filters.handled_by_employee_id || ''} onChange={(e) => set('handled_by_employee_id', Number(e.target.value) || undefined)}><option value="">Tous les responsables</option>{options?.employees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-              <Field label="État d’affectation"><select className={inputClass} value={filters.assigned === undefined ? '' : String(filters.assigned)} onChange={(e) => set('assigned', e.target.value === '' ? undefined : e.target.value === 'true')}><option value="">Toutes</option><option value="true">Avec affectation</option><option value="false">Sans affectation</option></select></Field>
-            </div></fieldset>
-            <fieldset><legend className="mb-3 border-b border-slate-200 pb-2 text-sm font-bold text-slate-800">Dates et pilotage</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-              <Field label="État de planification"><select className={inputClass} value={filters.planned === undefined ? '' : String(filters.planned)} onChange={(e) => set('planned', e.target.value === '' ? undefined : e.target.value === 'true')}><option value="">Toutes</option><option value="true">Avec planification</option><option value="false">Sans planification</option></select></Field>
-              <Field label="Retard calculé"><select className={inputClass} value={filters.overdue === undefined ? '' : String(filters.overdue)} onChange={(e) => set('overdue', e.target.value === '' ? undefined : e.target.value === 'true')}><option value="">Tous</option><option value="true">En retard</option><option value="false">À l’heure</option></select></Field>
-              <Field label="Créées du"><input className={inputClass} type="date" value={filters.created_from || ''} onChange={(e) => set('created_from', e.target.value)} /></Field>
-              <Field label="Créées au"><input className={inputClass} type="date" value={filters.created_to || ''} onChange={(e) => set('created_to', e.target.value)} /></Field>
-              <Field label="Date planifiée"><input className={inputClass} type="date" value={filters.planned_date || ''} onChange={(e) => set('planned_date', e.target.value)} /></Field>
-              <Field label="Planifiées du"><input className={inputClass} type="date" value={filters.planned_from || ''} onChange={(e) => set('planned_from', e.target.value)} /></Field>
-              <Field label="Planifiées au"><input className={inputClass} type="date" value={filters.planned_to || ''} onChange={(e) => set('planned_to', e.target.value)} /></Field>
-            </div></fieldset>
-          </div>}
-        </section>
+        </div>
 
-        {activeFilterChips.length > 0 && <section aria-label="Filtres actifs" aria-live="polite" className="-mt-2 flex flex-wrap items-center gap-2">
+        {advancedOpen && <div className="space-y-4 border-b border-gray-100 bg-gray-50 p-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500"><Filter className="h-3.5 w-3.5" />Filtres combinables</div>
+          <fieldset className="rounded-xl border border-gray-200 bg-white p-3.5"><legend className="px-1.5 text-sm font-bold text-slate-800">Demande et client</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Numéro SRV"><input className={inputClass} placeholder="Ex. SRV-2026-001" value={filters.request_number || ''} onChange={(e) => set('request_number', e.target.value)} /></Field>
+            <Field label="Nom du client"><input className={inputClass} placeholder="Nom ou raison sociale" value={filters.client || ''} onChange={(e) => set('client', e.target.value)} /></Field>
+            <Field label="Téléphone"><input className={inputClass} placeholder="Numéro autorisé" value={filters.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
+            <Field label="Statut administratif"><select className={inputClass} value={filters.status || ''} onChange={(e) => set('status', e.target.value)}><option value="">Tous les statuts</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+            <Field label="Origine"><select className={inputClass} value={filters.source || ''} onChange={(e) => set('source', e.target.value)}><option value="">Toutes les origines</option>{Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+            <Field label="Service"><select className={inputClass} value={filters.service_id || ''} onChange={(e) => set('service_id', Number(e.target.value) || undefined)}><option value="">Tous les services</option>{options?.services.map((item) => <option key={item.id} value={item.id}>{item.nom}</option>)}</select></Field>
+            <Field label="Catégorie Maalem"><select className={inputClass} value={filters.category_id || ''} onChange={(e) => set('category_id', Number(e.target.value) || undefined)}><option value="">Toutes les catégories</option>{options?.categories.map((item) => <option key={item.id} value={item.id}>{item.nom}</option>)}</select></Field>
+            <Field label="Ville"><select className={inputClass} value={filters.city || ''} onChange={(e) => set('city', e.target.value)}><option value="">Toutes les villes</option>{options?.cities.map((city) => <option key={city} value={city}>{city}</option>)}</select></Field>
+          </div></fieldset>
+          <fieldset className="rounded-xl border border-gray-200 bg-white p-3.5"><legend className="px-1.5 text-sm font-bold text-slate-800">Affectation et responsabilité</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Maalem souhaité"><select className={inputClass} value={filters.requested_maalem_id || ''} onChange={(e) => set('requested_maalem_id', Number(e.target.value) || undefined)}><option value="">Tous</option>{options?.maalems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+            <Field label="Maalem affecté"><select className={inputClass} value={filters.assigned_maalem_id || ''} onChange={(e) => set('assigned_maalem_id', Number(e.target.value) || undefined)}><option value="">Tous</option>{options?.maalems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+            <Field label="Responsable Back-office"><select className={inputClass} value={filters.handled_by_employee_id || ''} onChange={(e) => set('handled_by_employee_id', Number(e.target.value) || undefined)}><option value="">Tous les responsables</option>{options?.employees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+            <Field label="État d’affectation"><select className={inputClass} value={filters.assigned === undefined ? '' : String(filters.assigned)} onChange={(e) => set('assigned', e.target.value === '' ? undefined : e.target.value === 'true')}><option value="">Toutes</option><option value="true">Avec affectation</option><option value="false">Sans affectation</option></select></Field>
+          </div></fieldset>
+          <fieldset className="rounded-xl border border-gray-200 bg-white p-3.5"><legend className="px-1.5 text-sm font-bold text-slate-800">Dates et pilotage</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <Field label="État de planification"><select className={inputClass} value={filters.planned === undefined ? '' : String(filters.planned)} onChange={(e) => set('planned', e.target.value === '' ? undefined : e.target.value === 'true')}><option value="">Toutes</option><option value="true">Avec planification</option><option value="false">Sans planification</option></select></Field>
+            <Field label="Retard calculé"><select className={inputClass} value={filters.overdue === undefined ? '' : String(filters.overdue)} onChange={(e) => set('overdue', e.target.value === '' ? undefined : e.target.value === 'true')}><option value="">Tous</option><option value="true">En retard</option><option value="false">À l’heure</option></select></Field>
+            <Field label="Créées du"><input className={inputClass} type="date" value={filters.created_from || ''} onChange={(e) => set('created_from', e.target.value)} /></Field>
+            <Field label="Créées au"><input className={inputClass} type="date" value={filters.created_to || ''} onChange={(e) => set('created_to', e.target.value)} /></Field>
+            <Field label="Date planifiée"><input className={inputClass} type="date" value={filters.planned_date || ''} onChange={(e) => set('planned_date', e.target.value)} /></Field>
+            <Field label="Planifiées du"><input className={inputClass} type="date" value={filters.planned_from || ''} onChange={(e) => set('planned_from', e.target.value)} /></Field>
+            <Field label="Planifiées au"><input className={inputClass} type="date" value={filters.planned_to || ''} onChange={(e) => set('planned_to', e.target.value)} /></Field>
+          </div></fieldset>
+        </div>}
+
+        {activeFilterChips.length > 0 && <div aria-label="Filtres actifs" aria-live="polite" className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2.5">
           <span className="mr-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Filtres actifs</span>
-          {activeFilterChips.map((chip) => <button key={chip.key} type="button" onClick={() => set(chip.key, undefined)} aria-label={`Retirer le filtre ${chip.label}`} className="group inline-flex max-w-full items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-800 hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-200"><span className="text-blue-500">{chip.label} :</span><span className="max-w-44 truncate">{chip.value}</span><X className="h-3.5 w-3.5 text-blue-400 group-hover:text-blue-700" /></button>)}
-          <button type="button" onClick={() => applyPreset({})} className="px-2 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800">Tout effacer</button>
-        </section>}
+          {activeFilterChips.map((chip) => <button key={chip.key} type="button" onClick={() => set(chip.key, undefined)} aria-label={`Retirer le filtre ${chip.label}`} className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800 hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-200"><span className="text-blue-500">{chip.label} :</span><span className="max-w-44 truncate">{chip.value}</span><X className="h-3.5 w-3.5 text-blue-400 group-hover:text-blue-700" /></button>)}
+          <button type="button" onClick={() => applyPreset({})} className="px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-800">Tout effacer</button>
+        </div>}
 
-        <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><h2 className="font-semibold text-slate-900">File des demandes</h2><p className="text-xs text-slate-500">{data?.total || 0} résultat(s) · filtres côté serveur</p></div>{isFetching && !isLoading && <span className="inline-flex items-center gap-1.5 text-xs text-blue-600"><Loader2 className="h-3.5 w-3.5 animate-spin" />Mise à jour</span>}</div>
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[1740px] text-left text-[13px]">
-              <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500"><tr>{['N° SRV', 'Client / origine', 'Service / catégorie', 'Maalem souhaité', 'Maalem affecté', 'Ville', 'Création', 'Planification', 'Administratif', 'Opérationnel', 'Pilotage', 'Mise à jour'].map((title) => <th key={title} className="whitespace-nowrap px-3 py-3 font-bold">{title}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {isLoading && <tr><td colSpan={12} className="px-4 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /><p className="mt-2 text-slate-500">Chargement de la file opérationnelle…</p></td></tr>}
-                {isError && <tr><td colSpan={12} className="px-4 py-14 text-center"><AlertTriangle className="mx-auto h-7 w-7 text-red-500" /><p className="mt-2 font-medium text-red-700">Impossible de charger les demandes.</p><button type="button" onClick={() => void refetch()} className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">Réessayer</button></td></tr>}
-                {!isLoading && !isError && data?.requests.length === 0 && <tr><td colSpan={12} className="px-4 py-16 text-center"><Search className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 font-medium text-slate-700">Aucune demande dans cette vue</p><p className="text-sm text-slate-500">Modifiez les filtres ou réinitialisez la recherche.</p></td></tr>}
-                {data?.requests.map((request) => <RequestRow key={request.id} request={request} />)}
-              </tbody>
-            </table>
-          </div>
-          <div className="divide-y divide-slate-100 md:hidden">
-            {isLoading && <div className="px-4 py-14 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /><p className="mt-2 text-sm text-slate-500">Chargement de la file…</p></div>}
-            {isError && <div className="px-4 py-12 text-center"><AlertTriangle className="mx-auto h-7 w-7 text-red-500" /><p className="mt-2 text-sm font-medium text-red-700">Impossible de charger les demandes.</p><button type="button" onClick={() => void refetch()} className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700">Réessayer</button></div>}
-            {!isLoading && !isError && data?.requests.length === 0 && <div className="px-4 py-14 text-center"><Search className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 font-medium text-slate-700">Aucune demande dans cette vue</p><p className="text-sm text-slate-500">Modifiez ou effacez les filtres.</p></div>}
-            {data?.requests.map((request) => <RequestMobileCard key={request.id} request={request} />)}
-          </div>
-          <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3"><span>{data?.total || 0} demande(s)</span><select aria-label="Nombre de lignes par page" className="h-8 rounded border border-slate-200 bg-white px-2 text-xs" value={filters.limit || 25} onChange={(e) => set('limit', Number(e.target.value))}><option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option></select></div>
-            <div className="flex items-center gap-2"><button aria-label="Page précédente" disabled={(filters.page || 1) <= 1} onClick={() => setFilters((f) => ({ ...f, page: (f.page || 1) - 1 }))} className="rounded-md border border-gray-300 bg-white p-2 hover:bg-gray-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><span className="min-w-28 text-center">Page {filters.page || 1} / {totalPages}</span><button aria-label="Page suivante" disabled={(filters.page || 1) >= totalPages} onClick={() => setFilters((f) => ({ ...f, page: (f.page || 1) + 1 }))} className="rounded-md border border-gray-300 bg-white p-2 hover:bg-gray-50 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div>
-          </div>
-        </section>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[1000px] text-left text-[13px]">
+            <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500"><tr>{columns.map((title) => <th key={title} scope="col" className="whitespace-nowrap px-4 py-2.5 font-bold">{title}</th>)}<th scope="col" className="w-10 px-2 py-2.5"><span className="sr-only">Ouvrir</span></th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {isLoading && <tr><td colSpan={8} className="px-4 py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /><p className="mt-2 text-slate-500">Chargement de la file opérationnelle…</p></td></tr>}
+              {isError && <tr><td colSpan={8} className="px-4 py-14 text-center"><AlertTriangle className="mx-auto h-7 w-7 text-red-500" /><p className="mt-2 font-medium text-red-700">Impossible de charger les demandes.</p><button type="button" onClick={() => void refetch()} className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">Réessayer</button></td></tr>}
+              {!isLoading && !isError && data?.requests.length === 0 && <tr><td colSpan={8} className="px-4 py-16 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100"><Search className="h-5 w-5 text-slate-400" /></span><p className="mt-3 font-semibold text-slate-700">Aucune demande dans cette vue</p><p className="text-sm text-slate-500">Modifiez les filtres ou réinitialisez la recherche.</p>{hasAnyFilter && <button type="button" onClick={() => applyPreset({})} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"><RotateCcw className="h-3.5 w-3.5" />Réinitialiser</button>}</td></tr>}
+              {data?.requests.map((request) => <RequestRow key={request.id} request={request} />)}
+            </tbody>
+          </table>
+        </div>
+        <div className="divide-y divide-slate-100 md:hidden">
+          {isLoading && <div className="px-4 py-14 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" /><p className="mt-2 text-sm text-slate-500">Chargement de la file…</p></div>}
+          {isError && <div className="px-4 py-12 text-center"><AlertTriangle className="mx-auto h-7 w-7 text-red-500" /><p className="mt-2 text-sm font-medium text-red-700">Impossible de charger les demandes.</p><button type="button" onClick={() => void refetch()} className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700">Réessayer</button></div>}
+          {!isLoading && !isError && data?.requests.length === 0 && <div className="px-4 py-14 text-center"><Search className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 font-medium text-slate-700">Aucune demande dans cette vue</p><p className="text-sm text-slate-500">Modifiez ou effacez les filtres.</p></div>}
+          {data?.requests.map((request) => <RequestMobileCard key={request.id} request={request} />)}
+        </div>
+        <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3"><span className="tabular-nums">{total === 0 ? 'Aucune demande' : `${firstShown}–${lastShown} sur ${total}`}</span><select aria-label="Nombre de lignes par page" className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs" value={filters.limit || 25} onChange={(e) => set('limit', Number(e.target.value))}><option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option></select></div>
+          <div className="flex items-center gap-2"><button aria-label="Page précédente" disabled={page <= 1} onClick={() => setFilters((f) => ({ ...f, page: (f.page || 1) - 1 }))} className="rounded-lg border border-gray-300 bg-white p-2 hover:bg-gray-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><span className="min-w-28 text-center tabular-nums">Page {page} / {totalPages}</span><button aria-label="Page suivante" disabled={page >= totalPages} onClick={() => setFilters((f) => ({ ...f, page: (f.page || 1) + 1 }))} className="rounded-lg border border-gray-300 bg-white p-2 hover:bg-gray-50 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -294,19 +360,30 @@ function RequestFlags({ request }: { request: BackofficeServiceRequest }) {
   return <div className="mt-1.5 flex flex-wrap gap-1">{flags.map((flag) => <span key={flag.label} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ${flag.cls}`}>{flag.label}</span>)}</div>;
 }
 
+function initials(name?: string | null) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] || '?').slice(0, 2)).toUpperCase();
+}
+
+function PriorityBadge({ priority }: { priority: ServiceRequestPriority }) {
+  if (priority !== 'high' && priority !== 'urgent') return null;
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${priority === 'urgent' ? 'bg-red-600 text-white' : 'bg-orange-100 text-orange-800'}`}>{priorityLabels[priority]}</span>;
+}
+
 function RequestMobileCard({ request }: { request: BackofficeServiceRequest }) {
   const administrativeStatus = request.administrative_status || request.status;
   const operationalStatus = request.operational_status || request.intervention_status;
+  const client = request.requester_name || request.contact_account_name;
   return <Link to={`/service-requests/${request.id}`} className={`block p-4 transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-300 ${request.is_overdue ? 'bg-red-50/40 active:bg-red-50' : 'active:bg-blue-50'}`}>
-    <div className="flex items-start justify-between gap-3"><div><div className="font-mono text-sm font-bold text-blue-700">{request.request_number}</div><div className="mt-0.5 text-[11px] text-slate-500">Créée {shortDate(request.created_at)} · {sourceLabels[request.request_source]}</div><RequestFlags request={request} /></div>{request.is_overdue ? <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />En retard</span> : <ChevronRight className="h-5 w-5 text-slate-300" />}</div>
-    <div className="mt-3"><p className="truncate text-base font-bold text-slate-900">{request.requester_name || request.contact_account_name || 'Client non renseigné'}</p><p className="mt-0.5 truncate text-sm text-slate-600">{request.qualified_service_name || request.initial_service_name || 'Service non défini'}{request.qualified_category_name ? ` · ${request.qualified_category_name}` : ''}</p></div>
-    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 p-3 text-xs">
+    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-bold text-blue-700">{request.request_number}</span><PriorityBadge priority={request.priority} /></div><div className="mt-0.5 text-[11px] text-slate-500">Créée {shortDate(request.created_at)} · {sourceLabels[request.request_source]}</div><RequestFlags request={request} /></div>{request.is_overdue ? <OverduePill /> : <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />}</div>
+    <div className="mt-3 flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{initials(client)}</span><div className="min-w-0"><p className="truncate text-base font-bold text-slate-900">{client || 'Client non renseigné'}</p><p className="truncate text-sm text-slate-600">{request.qualified_service_name || request.initial_service_name || 'Service non défini'}{request.qualified_category_name ? ` · ${request.qualified_category_name}` : ''}</p></div></div>
+    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-slate-50 p-3 text-xs">
       <div><dt className="text-slate-400">Maalem affecté</dt><dd className={`mt-0.5 truncate font-semibold ${request.current_assigned_maalem_name ? 'text-cyan-700' : 'text-amber-700'}`}>{request.current_assigned_maalem_name || 'Non affecté'}</dd></div>
-      <div><dt className="text-slate-400">Planification</dt><dd className="mt-0.5 font-semibold text-slate-700">{shortDate(request.planned_date)}{request.planned_time_slot ? ` · ${request.planned_time_slot}` : ''}</dd></div>
+      <div><dt className="text-slate-400">Rendez-vous</dt><dd className="mt-0.5 font-semibold text-slate-700">{request.planned_date ? `${shortDate(request.planned_date)}${request.planned_time_slot ? ` · ${request.planned_time_slot}` : ''}` : 'À planifier'}</dd></div>
       <div><dt className="text-slate-400">Ville</dt><dd className="mt-0.5 truncate font-medium text-slate-700">{request.city || '—'}</dd></div>
       <div><dt className="text-slate-400">Maalem souhaité</dt><dd className="mt-0.5 truncate font-medium text-slate-700">{request.requested_maalem_name || '—'}</dd></div>
     </dl>
-    <div className="mt-3 flex flex-wrap items-center gap-1.5"><span className={`rounded-md px-2 py-1 text-[10px] font-bold ${statusClass(administrativeStatus)}`}>{statusLabels[administrativeStatus]}</span>{operationalStatus && <span className={`rounded-md px-2 py-1 text-[10px] font-bold ${statusClass(operationalStatus)}`}>{statusLabels[operationalStatus]}</span>}<span className="ml-auto text-[10px] text-slate-400">Màj {dateTime(request.updated_at)}</span></div>
+    <div className="mt-3 flex flex-wrap items-center gap-1.5"><StatusPill status={administrativeStatus} />{operationalStatus && operationalStatus !== administrativeStatus && <StatusPill status={operationalStatus} />}<span className="ml-auto text-[10px] text-slate-400">Màj {dateTime(request.updated_at)}</span></div>
   </Link>;
 }
 
@@ -314,20 +391,28 @@ function RequestRow({ request }: { request: BackofficeServiceRequest }) {
   const navigate = useNavigate();
   const administrativeStatus = request.administrative_status || request.status;
   const operationalStatus = request.operational_status || request.intervention_status;
+  const client = request.requester_name || request.contact_account_name;
+  const phone = request.requester_phone || request.contact_account_phone;
+  const wishedOther = request.requested_maalem_name && request.requested_maalem_name !== request.current_assigned_maalem_name;
   const open = () => navigate(`/service-requests/${request.id}`);
-  return <tr role="link" tabIndex={0} onClick={open} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } }} className={`cursor-pointer transition hover:bg-blue-50/50 focus:bg-blue-50 focus:outline-none ${request.is_overdue ? 'bg-red-50/30' : ''}`}>
-    <td className="whitespace-nowrap px-3 py-3"><Link onClick={(event) => event.stopPropagation()} className="font-bold text-blue-700 hover:underline" to={`/service-requests/${request.id}`}>{request.request_number}</Link><div className="mt-1 text-[11px] text-slate-500">{priorityLabels[request.priority]}</div><RequestFlags request={request} /></td>
-    <td className="max-w-52 px-3 py-3"><div className="truncate font-semibold text-slate-800">{request.requester_name || request.contact_account_name || '—'}</div><div className="mt-0.5 truncate text-[11px] text-slate-500">{sourceLabels[request.request_source]} · {request.requester_phone || request.contact_account_phone || 'sans téléphone'}</div></td>
-    <td className="max-w-48 px-3 py-3"><div className="truncate font-medium text-slate-800">{request.qualified_service_name || request.initial_service_name || '—'}</div><div className="mt-0.5 truncate text-[11px] text-slate-500">{request.qualified_category_name || 'Catégorie non définie'}</div></td>
-    <td className="max-w-40 truncate px-3 py-3 text-slate-600">{request.requested_maalem_name || '—'}</td>
-    <td className="max-w-40 px-3 py-3"><span className={request.current_assigned_maalem_name ? 'font-semibold text-cyan-700' : 'text-amber-700'}>{request.current_assigned_maalem_name || 'Non affecté'}</span></td>
-    <td className="max-w-32 truncate px-3 py-3"><span className="inline-flex items-center gap-1 text-slate-700"><MapPin className="h-3.5 w-3.5 text-slate-400" />{request.city || '—'}</span></td>
-    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{shortDate(request.created_at)}</td>
-    <td className="whitespace-nowrap px-3 py-3"><div className="font-medium text-slate-800">{shortDate(request.planned_date)}</div><div className="mt-0.5 text-[11px] text-slate-500">{request.planned_time_slot || '—'}</div></td>
-    <td className="whitespace-nowrap px-3 py-3"><span className={`rounded-md px-2 py-1 text-[11px] font-bold ${statusClass(administrativeStatus)}`}>{statusLabels[administrativeStatus]}</span></td>
-    <td className="whitespace-nowrap px-3 py-3">{operationalStatus ? <span className={`rounded-md px-2 py-1 text-[11px] font-bold ${statusClass(operationalStatus)}`}>{statusLabels[operationalStatus]}</span> : <span className="text-slate-400">—</span>}</td>
-    <td className="whitespace-nowrap px-3 py-3">{request.is_overdue ? <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />En retard</span> : <span className="text-[11px] text-slate-400">À l’heure</span>}</td>
-    <td className="whitespace-nowrap px-3 py-3"><div className="text-slate-600">{dateTime(request.updated_at)}</div><div className="mt-0.5 max-w-32 truncate text-[11px] text-slate-500">{request.handled_by_name || 'Non attribuée'}</div></td>
+  return <tr role="link" tabIndex={0} onClick={open} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } }} className={`group cursor-pointer align-top transition hover:bg-blue-50/50 focus:bg-blue-50 focus:outline-none ${request.is_overdue ? 'bg-red-50/30' : ''}`}>
+    <td className={`border-l-[3px] px-4 py-3 ${request.is_overdue ? 'border-red-500' : 'border-transparent'}`}>
+      <div className="flex flex-wrap items-center gap-2"><Link onClick={(event) => event.stopPropagation()} className="whitespace-nowrap font-mono font-bold text-blue-700 hover:underline" to={`/service-requests/${request.id}`}>{request.request_number}</Link><PriorityBadge priority={request.priority} /></div>
+      <div className="mt-1 whitespace-nowrap text-[11px] text-slate-500">Créée le {shortDate(request.created_at)}</div>
+      <RequestFlags request={request} />
+    </td>
+    <td className="max-w-56 px-4 py-3"><div className="flex items-center gap-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-blue-700">{initials(client)}</span><div className="min-w-0"><div className="truncate font-semibold text-slate-800">{client || '—'}</div><div className="mt-0.5 truncate text-[11px] text-slate-500">{phone || 'sans téléphone'} · {sourceLabels[request.request_source]}</div></div></div></td>
+    <td className="max-w-56 px-4 py-3"><div className="truncate font-medium text-slate-800">{request.qualified_service_name || request.initial_service_name || '—'}</div><div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500"><MapPin className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate">{request.city || 'Ville non renseignée'}{request.qualified_category_name ? ` · ${request.qualified_category_name}` : ''}</span></div></td>
+    <td className="max-w-48 px-4 py-3">{request.current_assigned_maalem_name
+      ? <div className="flex items-center gap-1.5 font-semibold text-cyan-700"><HardHat className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{request.current_assigned_maalem_name}</span></div>
+      : <span className="inline-flex whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">Non affecté</span>}
+      {wishedOther && <div className="mt-1 truncate text-[11px] text-slate-500">Souhaité : {request.requested_maalem_name}</div>}</td>
+    <td className="whitespace-nowrap px-4 py-3">{request.planned_date
+      ? <><div className="flex items-center gap-1.5 font-medium text-slate-800"><CalendarDays className="h-3.5 w-3.5 text-slate-400" />{shortDate(request.planned_date)}</div><div className="mt-0.5 text-[11px] text-slate-500">{request.planned_time_slot || 'Créneau à préciser'}</div></>
+      : <span className="text-[12px] text-slate-400">À planifier</span>}</td>
+    <td className="px-4 py-3"><div className="flex flex-col items-start gap-1"><StatusPill status={administrativeStatus} />{operationalStatus && operationalStatus !== administrativeStatus && <StatusPill status={operationalStatus} />}{request.is_overdue && <OverduePill />}</div></td>
+    <td className="whitespace-nowrap px-4 py-3"><div className="text-slate-600">{dateTime(request.updated_at)}</div><div className="mt-0.5 flex max-w-36 items-center gap-1 truncate text-[11px] text-slate-500"><UserRound className="h-3 w-3 shrink-0" /><span className="truncate">{request.handled_by_name || 'Non attribuée'}</span></div></td>
+    <td className="px-2 py-3 align-middle"><ChevronRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" /></td>
   </tr>;
 }
 
