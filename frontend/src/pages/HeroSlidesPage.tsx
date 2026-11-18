@@ -595,7 +595,10 @@ const HeroSlidesPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ImageIcon className="w-6 h-6 text-primary-600" />
-          <h1 className="text-2xl font-bold text-gray-900">Hero Slides</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Slides de l’accueil</h1>
+            <p className="text-sm text-gray-500">En haut de l’accueil du site et de l’application mobile. Seuls les slides « Publié » s’affichent, du plus grand ordre au plus petit.</p>
+          </div>
         </div>
 
         {isPdg && (
@@ -611,16 +614,16 @@ const HeroSlidesPage: React.FC = () => {
 
       <div className="flex flex-wrap items-end gap-3 bg-white p-4 border rounded-lg">
         <div>
-          <label className="block text-sm text-gray-600">Status</label>
+          <label className="block text-sm text-gray-600">Statut</label>
           <select
             className="mt-1 border rounded-md px-3 py-2"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as '' | SlideStatus)}
           >
             <option value="">Tous</option>
-            <option value="draft">draft</option>
-            <option value="published">published</option>
-            <option value="archived">archived</option>
+            <option value="draft">Brouillon</option>
+            <option value="published">Publié</option>
+            <option value="archived">Archivé</option>
           </select>
         </div>
 
@@ -798,7 +801,9 @@ const HeroSlidesPage: React.FC = () => {
               <button onClick={closeModal} className="text-gray-500 hover:text-gray-700">✕</button>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto min-h-0">
+            <div className="p-5 overflow-y-auto min-h-0">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="min-w-0 space-y-4">
               {!isPdg && (
                 <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-md">
                   Seul le PDG peut créer / modifier / supprimer des slides.
@@ -807,36 +812,36 @@ const HeroSlidesPage: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Status</label>
+                  <label className="block text-sm text-gray-600">Statut</label>
                   <select
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.status}
                     onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as SlideStatus }))}
                   >
-                    <option value="draft">draft</option>
-                    <option value="published">published</option>
-                    <option value="archived">archived</option>
+                    <option value="draft">Brouillon</option>
+                    <option value="published">Publié</option>
+                    <option value="archived">Archivé</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-600">Type</label>
+                  <label className="block text-sm text-gray-600">Ouvre (au clic sur le slide)</label>
                   <select
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.type}
                     onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as SlideType }))}
                   >
-                    <option value="category">category</option>
-                    <option value="brand">brand</option>
-                    <option value="campaign">campaign</option>
-                    <option value="product">product</option>
+                    <option value="category">Catégorie</option>
+                    <option value="brand">Marque</option>
+                    <option value="campaign">Campagne (promotions)</option>
+                    <option value="product">Produit</option>
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Starts at</label>
+                  <label className="block text-sm text-gray-600">Début d’affichage (facultatif)</label>
                   <input
                     type="datetime-local"
                     className="mt-1 border rounded-md px-3 py-2 w-full"
@@ -846,7 +851,7 @@ const HeroSlidesPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-600">Ends at</label>
+                  <label className="block text-sm text-gray-600">Fin d’affichage (facultatif)</label>
                   <input
                     type="datetime-local"
                     className="mt-1 border rounded-md px-3 py-2 w-full"
@@ -854,11 +859,23 @@ const HeroSlidesPage: React.FC = () => {
                     onChange={(e) => setForm((p) => ({ ...p, ends_at: e.target.value }))}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Ordre d’affichage</label>
+                  <input
+                    type="number"
+                    step={1}
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.priority}
+                    onChange={(e) => setForm((p) => ({ ...p, priority: Number(e.target.value) || 0 }))}
+                  />
+                  <div className="mt-1 text-xs text-gray-500">Le plus grand passe en premier.</div>
+                </div>
               </div>
 
+              <p className="text-xs text-gray-500 -mb-2">Titre : la grande phrase du slide (2 lignes au plus dans l’application).</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Title (fr)</label>
+                  <label className="block text-sm text-gray-600">Titre (fr) *</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.title}
@@ -866,7 +883,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Title (ar)</label>
+                  <label className="block text-sm text-gray-600">Titre (ar)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.title_ar}
@@ -874,7 +891,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Title (en)</label>
+                  <label className="block text-sm text-gray-600">Titre (en)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.title_en}
@@ -882,7 +899,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Title (zh)</label>
+                  <label className="block text-sm text-gray-600">Titre (zh)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.title_zh}
@@ -891,9 +908,10 @@ const HeroSlidesPage: React.FC = () => {
                 </div>
               </div>
 
+              <p className="text-xs text-gray-500 -mb-2">Surtitre : petite ligne dorée au-dessus du titre (ex. « Univers maison »). Facultatif.</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Subtitle (fr)</label>
+                  <label className="block text-sm text-gray-600">Surtitre (fr)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.subtitle}
@@ -901,7 +919,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Subtitle (ar)</label>
+                  <label className="block text-sm text-gray-600">Surtitre (ar)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.subtitle_ar}
@@ -909,7 +927,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Subtitle (en)</label>
+                  <label className="block text-sm text-gray-600">Surtitre (en)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.subtitle_en}
@@ -917,7 +935,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Subtitle (zh)</label>
+                  <label className="block text-sm text-gray-600">Surtitre (zh)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.subtitle_zh}
@@ -926,9 +944,10 @@ const HeroSlidesPage: React.FC = () => {
                 </div>
               </div>
 
+              <p className="text-xs text-gray-500 -mb-2">Texte : une ou deux lignes sous le titre. Facultatif.</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Description (fr)</label>
+                  <label className="block text-sm text-gray-600">Texte (fr)</label>
                   <textarea
                     className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
                     value={form.description}
@@ -936,7 +955,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Description (ar)</label>
+                  <label className="block text-sm text-gray-600">Texte (ar)</label>
                   <textarea
                     className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
                     value={form.description_ar}
@@ -944,7 +963,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Description (en)</label>
+                  <label className="block text-sm text-gray-600">Texte (en)</label>
                   <textarea
                     className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
                     value={form.description_en}
@@ -952,7 +971,7 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Description (zh)</label>
+                  <label className="block text-sm text-gray-600">Texte (zh)</label>
                   <textarea
                     className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
                     value={form.description_zh}
@@ -963,7 +982,7 @@ const HeroSlidesPage: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Image (upload)</label>
+                  <label className="block text-sm text-gray-600">Image *</label>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
@@ -980,7 +999,7 @@ const HeroSlidesPage: React.FC = () => {
                     }}
                   />
                   <div className="mt-1 text-xs text-gray-500">
-                    Upload direct (sans compression) pour garder la même qualité.
+                    Photo en largeur (paysage), au moins 1200 px. Envoyée sans compression.
                   </div>
                   {editing?.image_url && !imagePreviewUrl && (
                     <div className="mt-2">
@@ -1005,7 +1024,7 @@ const HeroSlidesPage: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Image ALT</label>
+                  <label className="block text-sm text-gray-600">Description de l’image (accessibilité)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.image_alt}
@@ -1071,7 +1090,7 @@ const HeroSlidesPage: React.FC = () => {
 
                 {showTargetField(form.type, 'campaign') && (
                   <div>
-                    <label className="block text-sm text-gray-600">campaign_id</label>
+                    <label className="block text-sm text-gray-600">N° de campagne</label>
                     <input
                       className="mt-1 border rounded-md px-3 py-2 w-full"
                       value={form.campaign_id}
@@ -1157,25 +1176,28 @@ const HeroSlidesPage: React.FC = () => {
 
               <div className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="font-medium text-gray-900">CTAs (max 2)</div>
+                  <div>
+                    <div className="font-medium text-gray-900">Boutons (2 au plus)</div>
+                    <div className="text-xs text-gray-500">Un bouton « Principal » est obligatoire ; c’est lui qui s’affiche dans l’application.</div>
+                  </div>
                   <button
                     className="px-3 py-2 border rounded-md hover:bg-gray-50"
                     onClick={addCta}
                     disabled={form.ctas.length >= 2}
                   >
-                    Ajouter CTA
+                    Ajouter un bouton
                   </button>
                 </div>
 
                 {form.ctas.length === 0 ? (
-                  <div className="text-sm text-gray-500">Aucun CTA</div>
+                  <div className="text-sm text-gray-500">Aucun bouton</div>
                 ) : (
                   <div className="space-y-3">
                     {form.ctas.map((cta, idx) => (
                       <div key={idx} className="border rounded-lg p-3">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                           <div>
-                            <label className="block text-sm text-gray-600">Label (fr)</label>
+                            <label className="block text-sm text-gray-600">Texte du bouton (fr)</label>
                             <input
                               className="mt-1 border rounded-md px-3 py-2 w-full"
                               value={cta.label}
@@ -1183,7 +1205,7 @@ const HeroSlidesPage: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-600">Label (ar)</label>
+                            <label className="block text-sm text-gray-600">Texte du bouton (ar)</label>
                             <input
                               className="mt-1 border rounded-md px-3 py-2 w-full"
                               value={String(cta.label_ar || '')}
@@ -1191,7 +1213,7 @@ const HeroSlidesPage: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-600">Label (en)</label>
+                            <label className="block text-sm text-gray-600">Texte du bouton (en)</label>
                             <input
                               className="mt-1 border rounded-md px-3 py-2 w-full"
                               value={String(cta.label_en || '')}
@@ -1199,7 +1221,7 @@ const HeroSlidesPage: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-600">Label (zh)</label>
+                            <label className="block text-sm text-gray-600">Texte du bouton (zh)</label>
                             <input
                               className="mt-1 border rounded-md px-3 py-2 w-full"
                               value={String(cta.label_zh || '')}
@@ -1210,14 +1232,14 @@ const HeroSlidesPage: React.FC = () => {
 
                         <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
                           <div>
-                            <label className="block text-sm text-gray-600">Style</label>
+                            <label className="block text-sm text-gray-600">Rôle</label>
                             <select
                               className="mt-1 border rounded-md px-3 py-2 w-full"
                               value={cta.style}
                               onChange={(e) => setCta(idx, { style: e.target.value as Cta['style'] })}
                             >
-                              <option value="primary">primary</option>
-                              <option value="secondary">secondary</option>
+                              <option value="primary">Principal</option>
+                              <option value="secondary">Secondaire</option>
                             </select>
                           </div>
                           <div className="md:col-span-3">
@@ -1233,6 +1255,15 @@ const HeroSlidesPage: React.FC = () => {
                     ))}
                   </div>
                 )}
+              </div>
+              </div>
+              <AppSlidePreview
+                image={imagePreviewUrl || editing?.image_url || null}
+                eyebrow={form.subtitle}
+                title={form.title}
+                text={form.description}
+                cta={form.ctas.find((cta) => cta.style === 'primary')?.label || ''}
+              />
               </div>
             </div>
 
@@ -1252,5 +1283,29 @@ const HeroSlidesPage: React.FC = () => {
     </div>
   );
 };
+
+/** The slide as the mobile app shows it at the top of its home (same layout and line limits, French texts). */
+function AppSlidePreview({ image, eyebrow, title, text, cta }: { image: string | null; eyebrow: string; title: string; text: string; cta: string }) {
+  return (
+    <aside className="lg:sticky lg:top-0 self-start">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Aperçu dans l’application</div>
+      <div className="rounded-[28px] bg-black p-3 shadow-lg">
+        <div className="relative h-[250px] overflow-hidden rounded-[20px] bg-neutral-900">
+          {image
+            ? <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            : <div className="absolute inset-0 flex items-center justify-center text-xs text-neutral-500">Ajoutez une image</div>}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-black/25 to-black/85" />
+          <div className="absolute inset-x-0 bottom-0 space-y-1.5 p-4">
+            {eyebrow.trim() && <div className="truncate text-[10px] font-bold uppercase tracking-[0.14em] text-[#F1D27F]">{eyebrow}</div>}
+            <div className="line-clamp-2 text-xl font-extrabold leading-tight text-white">{title.trim() || 'Titre du slide'}</div>
+            {text.trim() && <div className="line-clamp-2 text-xs leading-snug text-white/80">{text}</div>}
+            <div className="!mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-gradient-to-br from-[#F1D27F] to-[#A97D1E] px-3.5 text-xs font-bold text-[#1A1405]">{cta.trim() || 'Découvrir'} →</div>
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-gray-500">Le titre et le texte sont coupés à 2 lignes. Sur le site, le slide garde le même contenu dans sa propre mise en page.</p>
+    </aside>
+  );
+}
 
 export default HeroSlidesPage;
