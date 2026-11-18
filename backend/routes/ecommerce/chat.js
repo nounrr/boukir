@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import OpenAI from 'openai';
+import multer from 'multer';
+import OpenAI, { toFile } from 'openai';
 import pool from '../../db/pool.js';
 
 // ----------------------------
@@ -72,25 +73,27 @@ const LOCALE_NAMES = { fr: 'français', ar: 'arabe (ou darija si le client écri
 
 function systemPrompt(locale) {
   return [
-    `Tu es l'assistant de la boutique en ligne ${STORE.name}, un magasin de matériaux de construction, bricolage, outillage, quincaillerie, sanitaire et peinture à ${STORE.city} (Maroc).`,
-    `Langue : réponds dans la langue du client ; par défaut en ${LOCALE_NAMES[locale] || 'français'}.`,
-    'Ton rôle : aider à trouver le bon produit, conseiller (quel produit pour quel usage, quantités approximatives), et répondre aux questions pratiques sur la boutique.',
-    'Quand le client décrit un problème (fuite, mur humide, peinture qui s\'écaille, carrelage décollé, prise qui ne marche plus…) :',
-    '  1. identifie la cause probable en une phrase (pose au plus une question courte si c\'est vraiment ambigu) ;',
-    '  2. liste les produits nécessaires pour réparer (le produit principal + les accessoires indispensables) ;',
-    '  3. appelle search_products une fois par produit nécessaire (plusieurs appels dans le même tour si besoin) ;',
-    '  4. donne les étapes de réparation en 3 à 5 points courts, en citant les produits trouvés ;',
-    '  5. si c\'est dangereux (électricité, gaz, structure) ou trop technique, recommande un Maalem (/services).',
-    'Règles :',
-    '- Pour toute question sur un produit, un prix ou une disponibilité, appelle search_products. Ne cite jamais un produit, un prix ou un stock qui ne vient pas des résultats de l\'outil.',
-    '- Si la recherche ne donne rien, essaie une fois avec un terme plus général ou un synonyme, puis propose de contacter un conseiller.',
-    '- Les prix sont en dirhams (DH). Si promo_price existe, c\'est le prix actuel.',
-    '- Ne recopie pas la liste complète des produits : la boutique les affiche déjà en cartes sous ta réponse. Résume en une ou deux phrases et aide à choisir.',
-    '- Tu ne peux pas passer de commande, modifier un panier, ni voir les commandes du client. Pour cela, oriente vers le panier, la page « Mes commandes » ou un conseiller.',
-    '- Pour les quantités (carrelage, peinture, ciment…), donne une estimation et rappelle que les calculateurs de la boutique (/calculateurs) donnent un résultat plus précis.',
-    `- Contact : téléphone ${STORE.phone}, WhatsApp ${STORE.whatsapp}, e-mail ${STORE.email}, adresse ${STORE.address}.`,
-    '- Pour les travaux (pose, plomberie, électricité…), la boutique propose des artisans (Maalems) sur /services.',
-    '- Reste poli, bref (3 à 5 phrases maximum, ou des étapes courtes pour un problème), concret. Pas de tableaux Markdown. Refuse les sujets sans rapport avec la boutique ou le bricolage.',
+    `Tu es l'assistant de la boutique en ligne ${STORE.name}, magasin de matériaux de construction, bricolage, outillage, sanitaire et peinture à ${STORE.city} (Maroc).`,
+    `Langue : celle du client ; par défaut ${LOCALE_NAMES[locale] || 'français'}.`,
+    '',
+    'FORMAT DES RÉPONSES (le plus important) :',
+    '- Réponse COURTE et PRÉCISE, comme un vendeur au comptoir : 1 à 2 phrases, 35 mots maximum.',
+    '- Va droit au but : réponds exactement à la question, sans introduction, sans formule de politesse, sans répéter la question, sans conclusion du type « n’hésitez pas ».',
+    '- Pas de paragraphe, pas de titres, pas de Markdown, pas de gras.',
+    '- Pour un problème à réparer seulement : 1 phrase sur la cause, puis 3 étapes maximum, une par ligne, 10 mots maximum chacune, commençant par « 1. », « 2. », « 3. ».',
+    '- Les produits s’affichent déjà en cartes sous ta réponse : ne les liste pas, ne donne pas leurs prix sauf si le client demande un prix.',
+    '- Une seule question de retour, courte, et seulement si c’est indispensable pour trouver le bon produit.',
+    '',
+    'MÉTIER :',
+    '- Produit, prix ou disponibilité : appelle search_products. Ne cite jamais un produit, un prix ou un stock absent des résultats.',
+    '- Problème décrit (fuite, humidité, fissure, panne…) : trouve la cause, appelle search_products pour chaque produit nécessaire (produit principal + accessoire indispensable), puis réponds au format « problème ».',
+    '- Rien trouvé : réessaie une fois avec un terme plus général, sinon propose WhatsApp.',
+    '- Prix en DH ; si promo_price existe, c’est le prix actuel.',
+    '- Tu ne passes pas de commande et ne vois pas les commandes : oriente vers le panier, « Mes commandes » ou WhatsApp.',
+    '- Quantités : estimation courte + « calcul précis sur /calculateurs ».',
+    '- Électricité, gaz, structure ou gros travaux : conseille un Maalem (/services).',
+    `- Contact : téléphone ${STORE.phone}, WhatsApp ${STORE.whatsapp}, adresse ${STORE.address}.`,
+    '- Hors sujet (sans rapport avec la boutique ou le bricolage) : refuse en une phrase.',
   ].join('\n');
 }
 
@@ -275,6 +278,16 @@ function sanitizeHistory(raw) {
   return messages;
 }
 
+// Filet de sécurité si le modèle met quand même du Markdown : la bulle du chat affiche du texte brut.
+function plainText(text) {
+  return String(text || '')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/^\s*[-*•]\s+/gm, '- ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 router.post('/', rateLimit, async (req, res) => {
   const history = sanitizeHistory(req.body?.messages);
   if (!history) return res.status(400).json({ message: 'Message invalide.' });
@@ -299,6 +312,7 @@ router.post('/', rateLimit, async (req, res) => {
         store: false,
         include: ['reasoning.encrypted_content'],
         reasoning: { effort: 'low' },
+        text: { verbosity: 'low' }, // réponses courtes
         tools: round < MAX_TOOL_ROUNDS ? TOOLS : [],
         input,
       });
@@ -349,13 +363,63 @@ router.post('/', rateLimit, async (req, res) => {
     console.log(`[chat] model=${choice.model} reason=${choice.reason}`);
     if (!result) return res.status(502).json({ message: "L'assistant n'a pas pu répondre." });
     return res.json({
-      reply: result.reply || "Désolé, je n'ai pas compris. Pouvez-vous reformuler ?",
+      reply: plainText(result.reply) || "Désolé, je n'ai pas compris. Pouvez-vous reformuler ?",
       products: interleave(result.searches, CARD_LIMIT),
     });
   } catch (error) {
     console.error('[chat] error:', error?.message || error);
     return res.status(502).json({ message: "L'assistant ne peut pas répondre pour le moment." });
   }
+});
+
+// ----------------------------
+// Message vocal → texte
+// ----------------------------
+// POST /api/ecommerce/chat/transcribe (multipart, champ « audio », 60 s max côté navigateur)
+// Le son est transcrit par OpenAI puis oublié ; la boutique envoie ensuite le texte au chat.
+const TRANSCRIBE_MODEL = process.env.AI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
+const AUDIO_TYPES = {
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'mp4',
+  'audio/m4a': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/aac': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+};
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1 },
+});
+
+router.post('/transcribe', rateLimit, (req, res) => {
+  audioUpload.single('audio')(req, res, async (uploadError) => {
+    if (uploadError) {
+      const tooBig = uploadError.code === 'LIMIT_FILE_SIZE';
+      return res.status(tooBig ? 413 : 400).json({ message: tooBig ? 'Message vocal trop long.' : 'Audio invalide.' });
+    }
+    const file = req.file;
+    const baseType = String(file?.mimetype || '').split(';')[0].trim().toLowerCase();
+    const ext = AUDIO_TYPES[baseType];
+    if (!file || !file.buffer?.length || !ext) return res.status(400).json({ message: 'Audio invalide.' });
+    const ai = getClient();
+    if (!ai) return res.status(503).json({ message: 'Message vocal indisponible pour le moment.' });
+    try {
+      const result = await ai.audio.transcriptions.create({
+        model: TRANSCRIBE_MODEL,
+        file: await toFile(file.buffer, `vocal.${ext}`, { type: baseType }),
+        // Vocabulaire de la boutique : aide pour les noms de produits, en français comme en darija.
+        prompt: 'Boutique de bricolage au Maroc : perceuse, visseuse, ciment colle, carrelage, robinet, siphon, silicone, peinture, enduit, disque diamant, Bosch, Sika, Ingco.',
+      });
+      const text = String(result?.text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHARS);
+      return res.json({ text });
+    } catch (error) {
+      console.error('[chat/transcribe] error:', error?.message || error);
+      return res.status(502).json({ message: "Impossible de comprendre le message vocal pour le moment." });
+    }
+  });
 });
 
 export default router;
