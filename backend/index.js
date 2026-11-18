@@ -44,6 +44,7 @@ import { startReviewInvitationWorker } from './workers/reviewInvitationWorker.js
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceSearchRouter from './routes/ecommerce/search.js';
+import ecommerceChatRouter from './routes/ecommerce/chat.js';
 import ecommerceCartRouter from './routes/ecommerce/cart.js';
 import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
 import ecommerceOrdersRouter, {
@@ -279,6 +280,7 @@ const PUBLIC_PATHS = new Set([
 const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/products',
   '/api/ecommerce/search',
+  '/api/ecommerce/chat',
   '/api/ecommerce/promo',
   '/api/ecommerce/pickup-locations',
   '/api/ecommerce/payments/cmi',
@@ -433,6 +435,7 @@ app.use('/api/maalems', publicMaalemsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
 app.use('/api/ecommerce/search', optionalAuth, ecommerceSearchRouter); // E-commerce public search (with optional auth)
+app.use('/api/ecommerce/chat', optionalAuth, ecommerceChatRouter); // Assistant de la boutique (OpenAI, public, limité par IP)
 app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
 app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
 app.use('/api/nominatim', nominatimRouter); // Address search / reverse geocoding for the website's and the app's map pickers (public)
