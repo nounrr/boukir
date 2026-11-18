@@ -267,7 +267,7 @@ export const maalemProfilesApi = apiSlice.injectEndpoints({
       query: ({ profileId, documentId }) => ({
         url: `/admin/maalem-profiles/${profileId}/documents/${documentId}/download`,
         method: 'GET',
-        responseHandler: (response) => response.blob(),
+        responseHandler: (response: Response) => response.blob(),
         cache: 'no-store',
       }),
     }),

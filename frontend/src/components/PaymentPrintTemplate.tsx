@@ -128,7 +128,6 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
     return isNaN(num) ? 0 : num;
   };
   const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
-  const paidDisplayAmountOf = (p: any) => Math.max(amountOf(p) - ignoredAmountOf(p), 0);
   const balanceAmountOf = (p: any) => amountOf(p);
 
   // Calcul du solde cumulÃ©: API historique du paiement, fallback local si indisponible.

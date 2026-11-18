@@ -295,7 +295,7 @@ export const getCurrentDateTimeMySQL = (): string => {
  * @param dateTimeValue - DateTime MySQL (YYYY-MM-DD HH:MM:SS) ou Date JavaScript
  * @returns DateTime au format YYYY-MM-DDTHH:MM pour les inputs datetime-local
  */
-export const formatMySQLToDateTimeInput = (dateTimeValue: string | null): string => {
+export const formatMySQLToDateTimeInput = (dateTimeValue: string | Date | null): string => {
   if (!dateTimeValue) return '';
   
   console.log('formatMySQLToDateTimeInput input:', dateTimeValue);

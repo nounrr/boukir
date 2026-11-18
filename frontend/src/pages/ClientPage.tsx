@@ -99,7 +99,6 @@ const MODE_COLORS: Record<string, string> = {
 };
 const modeColor = (m: string) => MODE_COLORS[m] ?? 'bg-gray-100 text-gray-600';
 
-const EXCLUDED = new Set(['Annulé', 'Annule', 'Supprimé', 'Supprime', 'Brouillon', 'Refusé', 'Refuse', 'Expiré', 'Expire']);
 const isExcludedStatus = (value: any): boolean => {
   const status = String(value ?? '')
     .trim()
@@ -655,11 +654,6 @@ function getItemRemises(item: any, remises: any[]): RemiseSplit {
   result.abonne = Number(result.abonne.toFixed(3));
   result.client = Number(result.client.toFixed(3));
   return result;
-}
-
-function getItemClientRemiseTotal(item: any, remises: any[]): number {
-  if (!item || !Array.isArray(remises) || remises.length === 0) return 0;
-  return getItemRemises(item, remises).client;
 }
 
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
@@ -1227,7 +1221,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                               step="0.001"
                               min="0"
                               placeholder="0.000"
-                              value={price === '' ? '' : String(price)}
+                              value={(price as unknown) === '' ? '' : String(price)}
                               onChange={(e) => {
                                 const v = parseFloat(e.target.value) || 0;
                                 remiseEditor.setItemPrice(eligibleId, v);
@@ -1317,7 +1311,7 @@ const MobileCompletCards: React.FC<CompletTableProps> = ({ rows, detail, soldeIn
           {onToggleSelect && <label className="flex min-h-9 items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedIds?.has(id) ?? false} onChange={() => onToggleSelect(id)} className="h-4 w-4 accent-blue-600" /> Bon</label>}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-200 pt-3"><div><p className="text-xs text-gray-500">Montant</p><p className="font-bold text-gray-900">{fmt(amount)}</p></div><div className="text-right"><p className="text-xs text-gray-500">Solde cumulé</p><p className={`font-bold ${(balances.get(lastKey) ?? 0) > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{fmt(balances.get(lastKey) ?? 0)}</p></div></div>
-        {payment ? <div className="mt-3 space-y-1 text-xs text-gray-600"><p>Mode : {b.mode_paiement ?? '—'}</p><p>RIB / Réf : {b.code_reglement || b.reference_virement || b.reference || '—'}</p><p>Montant ignoré : {fmt(Number(b.montant_ignorer ?? 0))}</p>{b.date_echeance && <p>Échéance : {fmtDate(b.date_echeance)}</p>}</div> : <><p className="mt-3 text-xs text-gray-600">Statut : <span className={`rounded px-2 py-0.5 ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span></p>{detail && <div className="mt-3 space-y-2">{items.length === 0 ? <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedItemIds?.has(`${id}-item-0`) ?? false} onChange={() => onToggleItem?.(`${id}-item-0`)} className="h-4 w-4 accent-purple-600" /> Ligne sans produit</label> : groupDisplayItems(items).map(({ item, sourceIndices, sourceItems }) => { const head = sourceItems[0]; const eligibleId = `${row.kind}-${b.id}-item-${head?.id}`; const totalQte = sourceItems.reduce((sum, src) => sum + (Number(src.quantite ?? 0) || 0), 0); const price = remiseEditor?.remisePrices[eligibleId] ?? ''; const totalRem = (Number(price) || 0) * totalQte; return <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs"><div className="flex items-start gap-2"><input type="checkbox" checked={sourceIndices.every(i => selectedItemIds?.has(`${id}-item-${i}`))} onChange={() => onToggleAllItems?.(sourceIndices.map(i => `${id}-item-${i}`))} className="mt-0.5 h-4 w-4 shrink-0 accent-purple-600" aria-label="Sélectionner cette ligne pour impression" /><div className="min-w-0 flex-1"><p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p><p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p><p className="mt-2">Qté {Number(item.quantite ?? 0)} × {fmt(Number(item.prix_unitaire ?? 0))}</p><p className="mt-1 font-bold text-gray-900">{fmt(Number(item.total ?? 0))}</p>{remiseEditor?.showRemiseMode && row.kind === 'sortie' && head?.id && <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2"><label className="text-xs font-semibold text-orange-800">Prix Remise<input type="number" step="0.001" min="0" placeholder="0.000" value={price === '' ? '' : String(price)} onChange={e => remiseEditor.setItemPrice(eligibleId, parseFloat(e.target.value) || 0)} className="mt-1 w-full rounded border border-orange-300 bg-white px-2 py-2 text-right text-sm focus:ring-2 focus:ring-orange-500" /></label><div className="text-right"><p className="text-xs font-semibold text-orange-800">Total Remise</p><p className="mt-2 font-bold text-emerald-700">{totalRem > 0 ? `${totalRem.toFixed(3)} DH` : '—'}</p></div></div>}</div></div></div>; })}</div>}{b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}</>}
+        {payment ? <div className="mt-3 space-y-1 text-xs text-gray-600"><p>Mode : {b.mode_paiement ?? '—'}</p><p>RIB / Réf : {b.code_reglement || b.reference_virement || b.reference || '—'}</p><p>Montant ignoré : {fmt(Number(b.montant_ignorer ?? 0))}</p>{b.date_echeance && <p>Échéance : {fmtDate(b.date_echeance)}</p>}</div> : <><p className="mt-3 text-xs text-gray-600">Statut : <span className={`rounded px-2 py-0.5 ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span></p>{detail && <div className="mt-3 space-y-2">{items.length === 0 ? <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={selectedItemIds?.has(`${id}-item-0`) ?? false} onChange={() => onToggleItem?.(`${id}-item-0`)} className="h-4 w-4 accent-purple-600" /> Ligne sans produit</label> : groupDisplayItems(items).map(({ item, sourceIndices, sourceItems }) => { const head = sourceItems[0]; const eligibleId = `${row.kind}-${b.id}-item-${head?.id}`; const totalQte = sourceItems.reduce((sum, src) => sum + (Number(src.quantite ?? 0) || 0), 0); const price = remiseEditor?.remisePrices[eligibleId] ?? ''; const totalRem = (Number(price) || 0) * totalQte; return <div key={sourceIndices.join('-')} className="rounded-lg bg-gray-50 p-3 text-xs"><div className="flex items-start gap-2"><input type="checkbox" checked={sourceIndices.every(i => selectedItemIds?.has(`${id}-item-${i}`))} onChange={() => onToggleAllItems?.(sourceIndices.map(i => `${id}-item-${i}`))} className="mt-0.5 h-4 w-4 shrink-0 accent-purple-600" aria-label="Sélectionner cette ligne pour impression" /><div className="min-w-0 flex-1"><p className="font-semibold text-gray-900">{item.designation ?? item.product_designation ?? '—'}</p><p className="mt-1 text-gray-500">{getDisplayReference(item)} · {getHistoryVariantLabel(item, products)} · {getHistoryUnitLabel(item, products)}</p><p className="mt-2">Qté {Number(item.quantite ?? 0)} × {fmt(Number(item.prix_unitaire ?? 0))}</p><p className="mt-1 font-bold text-gray-900">{fmt(Number(item.total ?? 0))}</p>{remiseEditor?.showRemiseMode && row.kind === 'sortie' && head?.id && <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2"><label className="text-xs font-semibold text-orange-800">Prix Remise<input type="number" step="0.001" min="0" placeholder="0.000" value={(price as unknown) === '' ? '' : String(price)} onChange={e => remiseEditor.setItemPrice(eligibleId, parseFloat(e.target.value) || 0)} className="mt-1 w-full rounded border border-orange-300 bg-white px-2 py-2 text-right text-sm focus:ring-2 focus:ring-orange-500" /></label><div className="text-right"><p className="text-xs font-semibold text-orange-800">Total Remise</p><p className="mt-2 font-bold text-emerald-700">{totalRem > 0 ? `${totalRem.toFixed(3)} DH` : '—'}</p></div></div>}</div></div></div>; })}</div>}{b.adresse_livraison && <p className="mt-2 text-xs text-gray-500">Livraison : {b.adresse_livraison}</p>}</>}
         {payment && onCompletDragEnd && <div className="mt-3 flex gap-2 border-t border-emerald-100 pt-3"><button type="button" disabled={rowIndex === 0} onClick={() => movePayment(rowIndex, rowIndex - 1)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs font-medium text-emerald-800 disabled:opacity-40">Monter</button><button type="button" disabled={rowIndex === displayed.length - 1} onClick={() => movePayment(rowIndex, rowIndex + 1)} className="min-h-9 rounded-lg border border-emerald-200 px-3 text-xs font-medium text-emerald-800 disabled:opacity-40">Descendre</button></div>}
       </article>;
     })}
@@ -1373,7 +1367,7 @@ const ClientDetailPage: React.FC = () => {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const didAutoScrollRef = useRef(false);
-  const [isAtBottom, setIsAtBottom] = useState(false);
+  const [, setIsAtBottom] = useState(false);
 
   const scrollToBottom = () => {
     const el = scrollRef.current;

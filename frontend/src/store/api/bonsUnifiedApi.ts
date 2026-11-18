@@ -7,24 +7,19 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
     getBonsByType: builder.query({
       queryFn: async (type, _queryApi, _extraOptions, fetchWithBQ) => {
         let endpoint = '';
-        let tagType = '';
         
         switch (type) {
           case 'Commande':
             endpoint = '/commandes';
-            tagType = 'Commande';
             break;
           case 'Sortie':
             endpoint = '/sorties';
-            tagType = 'Sortie';
             break;
           case 'Comptant':
             endpoint = '/comptant';
-            tagType = 'Comptant';
             break;
           case 'Devis':
             endpoint = '/devis';
-            tagType = 'Devis';
             break;
           default:
             return { error: { status: 400, data: { message: 'Type de bon invalide' } } };
@@ -53,24 +48,19 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
     createBonByType: builder.mutation({
       queryFn: async ({ type, ...bonData }, _queryApi, _extraOptions, fetchWithBQ) => {
         let endpoint = '';
-        let tagType = '';
         
         switch (type) {
           case 'Commande':
             endpoint = '/commandes';
-            tagType = 'Commande';
             break;
           case 'Sortie':
             endpoint = '/sorties';
-            tagType = 'Sortie';
             break;
           case 'Comptant':
             endpoint = '/comptant';
-            tagType = 'Comptant';
             break;
           case 'Devis':
             endpoint = '/devis';
-            tagType = 'Devis';
             break;
           default:
             return { error: { status: 400, data: { message: 'Type de bon invalide' } } };
@@ -112,24 +102,19 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
     updateBonByType: builder.mutation({
       queryFn: async ({ id, type, ...bonData }, _queryApi, _extraOptions, fetchWithBQ) => {
         let endpoint = '';
-        let tagType = '';
         
         switch (type) {
           case 'Commande':
             endpoint = `/commandes/${id}`;
-            tagType = 'Commande';
             break;
           case 'Sortie':
             endpoint = `/sorties/${id}`;
-            tagType = 'Sortie';
             break;
           case 'Comptant':
             endpoint = `/comptant/${id}`;
-            tagType = 'Comptant';
             break;
           case 'Devis':
             endpoint = `/devis/${id}`;
-            tagType = 'Devis';
             break;
           default:
             return { error: { status: 400, data: { message: 'Type de bon invalide' } } };
@@ -172,24 +157,19 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
     deleteBonByType: builder.mutation({
       queryFn: async ({ id, type }, _queryApi, _extraOptions, fetchWithBQ) => {
         let endpoint = '';
-        let tagType = '';
         
         switch (type) {
           case 'Commande':
             endpoint = `/commandes/${id}`;
-            tagType = 'Commande';
             break;
           case 'Sortie':
             endpoint = `/sorties/${id}`;
-            tagType = 'Sortie';
             break;
           case 'Comptant':
             endpoint = `/comptant/${id}`;
-            tagType = 'Comptant';
             break;
           case 'Devis':
             endpoint = `/devis/${id}`;
-            tagType = 'Devis';
             break;
           default:
             return { error: { status: 400, data: { message: 'Type de bon invalide' } } };

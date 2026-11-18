@@ -8,18 +8,6 @@ import ConfirmModal from './ConfirmModal';
 // Sans VITE_API_BASE_URL (build de production), chemins relatifs vers l'origine courante.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-interface ArtisanRequest {
-  id: number;
-  nom_complet: string;
-  prenom: string;
-  nom: string;
-  email: string;
-  telephone?: string;
-  avatar_url?: string;
-  created_at: string;
-  type_compte_demande?: 'Artisan' | 'Promoteur' | null;
-}
-
 const NotificationBell: React.FC = () => {
   const dispatch = useAppDispatch();
   const { count, requests, loading } = useAppSelector(state => state.notifications);

@@ -395,6 +395,10 @@ export const mockBons: Bon[] = [
 export const mockPayments: Payment[] = [
   {
     id: 1,
+    type_paiement: 'Client',
+    contact_id: null,
+    montant_total: 0,
+    designation: '',
     numero: 'PAY-2024-001',
     bon_id: 1,
     montant: 17650.00,
@@ -408,6 +412,10 @@ export const mockPayments: Payment[] = [
   },
   {
     id: 2,
+    type_paiement: 'Client',
+    contact_id: null,
+    montant_total: 0,
+    designation: '',
     numero: 'PAY-2024-002',
     bon_id: 2,
     montant: 9600.00,
@@ -421,6 +429,10 @@ export const mockPayments: Payment[] = [
   },
   {
     id: 3,
+    type_paiement: 'Client',
+    contact_id: null,
+    montant_total: 0,
+    designation: '',
     numero: 'PAY-2024-003',
     bon_id: 3,
     montant: 4000.00,
@@ -433,9 +445,13 @@ export const mockPayments: Payment[] = [
   },
   {
     id: 4,
+    type_paiement: 'Client',
+    contact_id: null,
+    montant_total: 0,
+    designation: '',
     numero: 'PAY-2024-004',
     montant: 1500.00,
-    mode_paiement: 'Carte',
+    mode_paiement: 'TPE',
     date_paiement: '2024-02-05',
     reference: 'CARD20240205001',
     notes: 'Paiement divers - achat fournitures',

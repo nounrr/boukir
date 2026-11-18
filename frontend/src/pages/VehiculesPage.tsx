@@ -606,7 +606,7 @@ const VehiculesPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-700">
-                        {formatDateTimeWithHour(vehicule.date_creation)}
+                        {formatDateTimeWithHour(vehicule.date_creation || vehicule.created_at)}
                       </div>
                     </td>
                     {(() => {

@@ -26,7 +26,7 @@ export function useSecurityCheck(options: SecurityCheckOptions = {}) {
 
     // Si des rôles sont requis, vérifier que l'utilisateur en possède un
     if (requiredRoles.length > 0 && currentUser) {
-      const hasRequiredRole = requiredRoles.includes(currentUser.role);
+      const hasRequiredRole = !!currentUser.role && requiredRoles.includes(currentUser.role);
       if (!hasRequiredRole) {
         navigate(redirectTo);
       }

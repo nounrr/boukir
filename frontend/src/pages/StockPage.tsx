@@ -4,7 +4,7 @@ import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import React, { useState, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category, ProductImageTarget } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download, GitMerge, Images, LoaderCircle, ImagePlus, Link2, BadgeCheck } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Download, GitMerge, Images, LoaderCircle, ImagePlus, Link2, BadgeCheck } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -297,13 +297,6 @@ const StockPage: React.FC = () => {
     if (v === null || v === undefined) return Number(p?.quantite || 0);
     const n = Number(v);
     return Number.isFinite(n) ? n : Number(p?.quantite || 0);
-  };
-
-  const getSnapshotAwarePrixAchat = (p: any) => {
-    const v = p?.snapshot_prix_achat_old;
-    const n = v === null || v === undefined ? null : Number(v);
-    if (n !== null && Number.isFinite(n) && n > 0) return n;
-    return Number(p?.prix_achat || 0);
   };
 
   const getOldestPositiveSnapshotRow = (rows: any[] | null | undefined) => {
@@ -1212,7 +1205,7 @@ const StockPage: React.FC = () => {
             onClick={async () => {
               if (!selectedProductForVariantClone) return;
 
-              const variantIds = selectedProductForVariantClone.variants
+              const variantIds = (selectedProductForVariantClone.variants ?? [])
                 .map((variant: any) => Number(variant.id))
                 .filter((id: number) => Number.isInteger(id) && id > 0);
               if (variantIds.length === 0) return;

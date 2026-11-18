@@ -135,7 +135,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
       };
       
       try {
-        const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+        const created = await createBon({ ...newAvoir, type: newAvoir.type }).unwrap();
         showSuccess('Avoir créé avec succès');
         if (onAvoirCreated) onAvoirCreated(created);
         onClose();
@@ -197,7 +197,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
       };
       
       try {
-        const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+        const created = await createBon({ ...newAvoir, type: newAvoir.type }).unwrap();
         showSuccess('Avoir partiel créé avec succès');
         if (onAvoirCreated) onAvoirCreated(created);
         onClose();
@@ -306,7 +306,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                 };
                 
                 try {
-                  const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+                  const created = await createBon({ ...newAvoir, type: newAvoir.type }).unwrap();
                   showSuccess('Avoir libre créé avec succès');
                   if (onAvoirCreated) onAvoirCreated(created);
                   onClose();
@@ -345,7 +345,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                 };
                 
                 try {
-                  const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+                  const created = await createBon({ ...newAvoir, type: newAvoir.type }).unwrap();
                   showSuccess('Avoir client créé avec succès');
                   if (onAvoirCreated) onAvoirCreated(created);
                   onClose();
@@ -384,7 +384,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                 };
                 
                 try {
-                  const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+                  const created = await createBon({ ...newAvoir, type: newAvoir.type }).unwrap();
                   showSuccess('Avoir fournisseur créé avec succès');
                   if (onAvoirCreated) onAvoirCreated(created);
                   onClose();

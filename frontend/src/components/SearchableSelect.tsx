@@ -211,7 +211,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       const label = searchTerm.trim();
                       if (!label) return;
                       try {
-                        onCreate(label);
+                        onCreate?.(label);
                       } finally {
                         setIsOpen(false);
                         setSearchTerm('');

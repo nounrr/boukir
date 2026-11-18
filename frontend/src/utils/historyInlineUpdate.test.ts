@@ -11,9 +11,9 @@ const bon = { id: 15, type: 'Sortie', date_creation: '2026-11-05T10:00:00', mont
 
 test('inline quantity retains split lots, unrelated items, discounts and header extras', () => {
   const result = buildHistoryInlineUpdate(bon, items.slice(0, 2), 'quantite', 10, 6);
-  assert.deepEqual(result.items.map(item => item.quantite), [4, 6, 4]);
-  assert.deepEqual(result.items.map(item => item.total), [40, 60, 32]);
-  assert.deepEqual(result.items.map(item => item.product_snapshot_id), [41, 42, undefined]);
+  assert.deepEqual(result.items.map((item: any) => item.quantite), [4, 6, 4]);
+  assert.deepEqual(result.items.map((item: any) => item.total), [40, 60, 32]);
+  assert.deepEqual(result.items.map((item: any) => item.product_snapshot_id), [41, 42, undefined]);
   assert.equal(result.items[0].remise_montant, 1);
   assert.equal(result.montant_total, 137);
   assert.equal(result.client_id, 7);

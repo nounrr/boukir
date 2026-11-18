@@ -84,14 +84,6 @@ const getBonRemiseTarget = (bon: any) => {
   return { remise_is_client, remise_id: Number.isFinite(remise_id as any) ? (remise_id as any) : null };
 };
 
-const getBonDirectClientId = (bon: any): number | null => {
-  const { remise_is_client, remise_id } = getBonRemiseTarget(bon);
-  if (remise_is_client !== 1) return null;
-  const fallback = bon?.client_id ?? bon?.clientId;
-  const id = remise_id ?? (fallback == null || fallback === '' ? null : Number(fallback));
-  return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
-};
-
 const getBonClientId = (bon: any): number | null => {
   const raw = bon?.client_id ?? bon?.clientId;
   const id = raw == null || raw === '' ? null : Number(raw);
@@ -111,12 +103,6 @@ const getAccountNewTotalWithFallback = (account: any, fallbackNewTotal = 0): num
   return getAccountNewTotal(account);
 };
 const getAccountUsedTotal = (account: any): number => Number(account?.remise_utilisee ?? account?.used_total ?? 0);
-const getAccountAvailableTotal = (account: any, fallbackEarned = 0): number => {
-  const explicit = account?.remise_disponible ?? account?.available_total;
-  if (explicit != null && explicit !== '') return Number(explicit || 0);
-  return Math.max(0, Number(fallbackEarned || 0) - getAccountUsedTotal(account));
-};
-
 type SortDirection = 'asc' | 'desc';
 type RemiseSortKey = 'nom' | 'type' | 'phone' | 'cin' | 'created_at' | 'ancien' | 'nouveau' | 'used' | 'final';
 type DirectSortKey = 'client' | 'societe' | 'telephone' | 'bons' | 'used' | 'remise';

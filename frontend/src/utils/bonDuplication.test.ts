@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { toCommandeDuplicateItem } from './bonDuplication.ts';
+// @ts-expect-error -- back-end JavaScript module, without type declarations
 import { validateBonItems } from '../../../backend/utils/bonItems.js';
 
 test('une duplication fournisseur conserve la variante obligatoire et son unité', async () => {

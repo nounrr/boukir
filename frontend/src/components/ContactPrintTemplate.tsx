@@ -90,13 +90,6 @@ const getProductHistorySnapshotLabel = (item: any) => {
   return snapshotId != null && snapshotId !== '' ? `SNAP-${snapshotId}` : '';
 };
 
-const getProductHistoryReference = (item: any) => {
-  if (item?.syntheticInitial) return 'â€”';
-  const baseRef = item?.product_reference || 'â€”';
-  const snapshotLabel = getProductHistorySnapshotLabel(item);
-  return snapshotLabel ? `${baseRef} / ${snapshotLabel}` : baseRef;
-};
-
 const groupProductHistoryRowsForPrint = (rows: any[]) => {
   const result: any[] = [];
   const groups = new Map<string, any>();

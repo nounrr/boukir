@@ -557,6 +557,8 @@ export interface CreateContactData {
 
 // Types pour les véhicules
 export interface Vehicule {
+  /** Legacy creation date sent by some endpoints (else created_at). */
+  date_creation?: string;
   id: number;
   nom: string;
   marque?: string;
@@ -606,6 +608,8 @@ export interface CreateVehiculeData {
 
 // Types pour les bons
 export interface Bon {
+  /** Sortie / avoir sold to a supplier (bons « vendre au fournisseur »). */
+  vendre_au_fournisseur?: boolean | number | null;
   id: number;
   numero?: string;
   type: 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'AvoirCharge' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce' | 'AvoirEcommerce';
@@ -700,7 +704,7 @@ export interface Payment {
   contact_id: number | null; // ID du client ou fournisseur
   payment?: number;
   remise_account_id?: number | null;
-  remise_account_type?: 'client-remise' | 'client_abonne' | null;
+  remise_account_type?: 'client-remise' | 'client_abonne' | 'direct-client' | null;
   remise_account_name?: string | null;
   bon_id?: number;
   bon_type?: string | null; // Type du bon (pour éviter collisions d'IDs entre tables)
@@ -740,7 +744,7 @@ export interface CreatePaymentData {
   contact_id: number | null;
   payment?: number;
   remise_account_id?: number | null;
-  remise_account_type?: 'client-remise' | 'client_abonne' | null;
+  remise_account_type?: 'client-remise' | 'client_abonne' | 'direct-client' | null;
   remise_account_name?: string | null;
   bon_id?: number;
   bon_type?: string | null;

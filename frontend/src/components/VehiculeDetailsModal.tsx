@@ -287,7 +287,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
               </div>
               <div>
                 <p className="font-semibold text-gray-600">Date de création:</p>
-                <p>{formatDateTime(vehicule.date_creation)}</p>
+                <p>{formatDateTime(vehicule.date_creation || vehicule.created_at)}</p>
               </div>
             </div>
             

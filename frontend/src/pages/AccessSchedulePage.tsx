@@ -29,7 +29,7 @@ interface AccessSchedule {
 
 const AccessSchedulePage: React.FC = () => {
   const { data: employees = [] } = useGetEmployeesQuery();
-  const { data: schedules = [], refetch: refetchSchedules } = useGetAccessSchedulesQuery();
+  const { data: schedules = [] } = useGetAccessSchedulesQuery();
   const [saveSchedule] = useSaveAccessScheduleMutation();
   const [updateSchedule] = useUpdateAccessScheduleMutation();
   const [deleteSchedule] = useDeleteAccessScheduleMutation();
@@ -43,7 +43,6 @@ const AccessSchedulePage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<AccessSchedule | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showRulesFor, setShowRulesFor] = useState<number | null>(null);
 
   // Fonction pour s'assurer que l'heure est en format 24H
   const ensureTimeFormat24H = (time: string): string => {

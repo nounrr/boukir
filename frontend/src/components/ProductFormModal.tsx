@@ -6,7 +6,7 @@ import type { RootState } from '../store';
 import type { Product, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, X, Save, ChevronDown, ChevronRight, Package, Tag, Coins, Percent, Languages, Image as ImageIcon, History, ChevronsDownUp, ChevronsUpDown, AlertCircle, Sparkles } from 'lucide-react';
+import { Plus, Trash2, X, ChevronDown, ChevronRight, Package, Tag, Coins, Percent, Languages, Image as ImageIcon, History, ChevronsDownUp, ChevronsUpDown, AlertCircle, Sparkles } from 'lucide-react';
 // Switch to backend mutations
 import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUpdateSnapshotsMutation, useEnrichProductDraftMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -1225,7 +1225,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const shareQty = toNum(formik.values.stock_partage_ecom_qty);
     const totalQty = (nextIsService || nextNonStockable) ? 0 : toNonNegativeNum(formik.values.quantite ?? 0);
 
-    if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+    if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > Number(totalQty ?? 0)) {
       formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
     } else {
       formik.setFieldError('stock_partage_ecom_qty', undefined);
@@ -1678,7 +1678,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     : commitNonNegativeFieldValue('quantite', formik.values.quantite, 0);
                   // Revalider après blur aussi
                   const shareQty = toNonNegativeNum(formik.values.stock_partage_ecom_qty);
-                  if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+                  if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > Number(totalQty ?? 0)) {
                     formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                   } else {
                     formik.setFieldError('stock_partage_ecom_qty', undefined);
@@ -1957,7 +1957,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     } else if (!isService) {
                       // Revalider avec la quantité actuelle si on décoche service
                       const totalQty = toNonNegativeNum(formik.values.quantite ?? 0);
-                      if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+                      if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > Number(totalQty ?? 0)) {
                         formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                       } else {
                         formik.setFieldError('stock_partage_ecom_qty', undefined);
@@ -2023,7 +2023,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                     } else if (!checked) {
                       const totalQty = toNonNegativeNum(formik.values.quantite ?? 0);
-                      if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+                      if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > Number(totalQty ?? 0)) {
                         formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                       } else {
                         formik.setFieldError('stock_partage_ecom_qty', undefined);
@@ -2649,8 +2649,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="Nom de l'unité"
                               />
-                              {asStringError((formik.errors.units?.[index] as any)?.unit_name) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.unit_name)}</p>
+                              {asStringError(((formik.errors.units as any)?.[index] as any)?.unit_name) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.units as any)?.[index] as any)?.unit_name)}</p>
                               )}
                             </div>
                             <div>
@@ -2674,8 +2674,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 step="0.0001"
                                 min={0.0001}
                               />
-                              {asStringError((formik.errors.units?.[index] as any)?.conversion_factor) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.conversion_factor)}</p>
+                              {asStringError(((formik.errors.units as any)?.[index] as any)?.conversion_factor) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.units as any)?.[index] as any)?.conversion_factor)}</p>
                               )}
                             </div>
 
@@ -2726,8 +2726,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       />
                                       <span className="text-xs text-gray-500">DH</span>
                                     </div>
-                                    {asStringError((formik.errors.units?.[index] as any)?.prix_vente) && (
-                                      <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.prix_vente)}</p>
+                                    {asStringError(((formik.errors.units as any)?.[index] as any)?.prix_vente) && (
+                                      <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.units as any)?.[index] as any)?.prix_vente)}</p>
                                     )}
                                   </div>
                                 );
@@ -2922,8 +2922,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 <option value="Unité">Unité</option>
                                 <option value="Autre">Autre</option>
                               </select>
-                              {asStringError((formik.errors.variants?.[index] as any)?.variant_type) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.variant_type)}</p>
+                              {asStringError(((formik.errors.variants as any)?.[index] as any)?.variant_type) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.variant_type)}</p>
                               )}
                             </div>
                             <div>
@@ -2936,8 +2936,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="Ex. KK4, XL"
                               />
-                              {asStringError((formik.errors.variants?.[index] as any)?.variant_name) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.variant_name)}</p>
+                              {asStringError(((formik.errors.variants as any)?.[index] as any)?.variant_name) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.variant_name)}</p>
                               )}
                               <datalist id={`suggestions-${index}`}>
                                 {(VARIANT_SUGGESTIONS[variant.variant_type || 'Autre'] || []).map((s) => (
@@ -2979,8 +2979,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                     placeholder="Rouge, #FF0000"
                                   />
                                 </div>
-                                {asStringError((formik.errors.variants?.[index] as any)?.color_name) && (
-                                  <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.color_name)}</p>
+                                {asStringError(((formik.errors.variants as any)?.[index] as any)?.color_name) && (
+                                  <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.color_name)}</p>
                                 )}
                                 <datalist id={`color-suggestions-${index}`}>
                                   {VARIANT_SUGGESTIONS.Couleur.map((color) => (
@@ -3015,8 +3015,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 placeholder="0"
                                 min={0}
                               />
-                              {asStringError((formik.errors.variants?.[index] as any)?.stock_quantity) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.stock_quantity)}</p>
+                              {asStringError(((formik.errors.variants as any)?.[index] as any)?.stock_quantity) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.stock_quantity)}</p>
                               )}
                             </div>
                             <div>
@@ -3037,8 +3037,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 placeholder="0.00"
                                 min={0}
                               />
-                              {asStringError((formik.errors.variants?.[index] as any)?.prix_vente) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente)}</p>
+                              {asStringError(((formik.errors.variants as any)?.[index] as any)?.prix_vente) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.prix_vente)}</p>
                               )}
                             </div>
                             <div>
@@ -3057,8 +3057,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 placeholder="0.00"
                                 min={0}
                               />
-                              {asStringError((formik.errors.variants?.[index] as any)?.prix_vente_2) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente_2)}</p>
+                              {asStringError(((formik.errors.variants as any)?.[index] as any)?.prix_vente_2) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.prix_vente_2)}</p>
                               )}
                             </div>
                           </div>
@@ -3224,8 +3224,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 placeholder="0.00"
                                 min={0}
                               />
-                              {asStringError((formik.errors.variants?.[index] as any)?.prix_achat) && (
-                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_achat)}</p>
+                              {asStringError(((formik.errors.variants as any)?.[index] as any)?.prix_achat) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError(((formik.errors.variants as any)?.[index] as any)?.prix_achat)}</p>
                               )}
                             </div>)}
 

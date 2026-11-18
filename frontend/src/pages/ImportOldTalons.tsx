@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Download, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { FileText, Download, AlertCircle, CheckCircle, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { showError, showSuccess } from '../utils/notifications';
-import { isValidDateString, normalizeDateString, formatDateOrText } from '../utils/dateUtils';
+import { isValidDateString, normalizeDateString } from '../utils/dateUtils';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 import type { Talon } from '../types';
@@ -309,8 +309,6 @@ const ImportOldTalons = () => {
           // Normaliser les headers (enlever les espaces et normaliser la casse)
           const headers = rawData[0].map((h: any) => String(h || '').trim());
           
-          // Créer un mapping des headers pour être plus flexible
-          const headerMapping: { [key: string]: string } = {};
           
           const findHeaderIndex = (searchTerms: string[]) => {
             for (let i = 0; i < headers.length; i++) {

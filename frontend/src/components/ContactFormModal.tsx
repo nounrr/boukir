@@ -77,7 +77,6 @@ interface ContactFormModalProps {
 const ContactForm: React.FC<Omit<ContactFormModalProps, 'isOpen'>> = ({
   onClose,
   contactType,
-  clientSubTab,
   initialValues,
   onContactAdded,
   defaultIsCharge = false,
@@ -170,7 +169,7 @@ const ContactForm: React.FC<Omit<ContactFormModalProps, 'isOpen'>> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
-                montant_garantie: values.montant_garantie === '' || values.montant_garantie == null
+                montant_garantie: (values.montant_garantie as unknown) === '' || values.montant_garantie == null
                   ? null
                   : Number(values.montant_garantie),
                 numero_garantie: values.numero_garantie?.trim() || null,

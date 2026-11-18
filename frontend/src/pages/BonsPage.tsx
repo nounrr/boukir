@@ -295,7 +295,7 @@ const BonsPage = () => {
   const [selectedArticlesForDuplicate, setSelectedArticlesForDuplicate] = useState<number[]>([]);
   // Clé pour forcer le remontage du formulaire (assure un état 100% vierge entre créations)
 
-  const [bonFormKey, setBonFormKey] = useState(0);
+  const [bonFormKey] = useState(0);
 
   // Menu actions state
   const [openMenuBonId, setOpenMenuBonId] = useState<string | null>(null);

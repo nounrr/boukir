@@ -26,7 +26,7 @@ const productTypeLabel = (row: DepotStockRow) => {
   return 'Produit';
 };
 
-const productLabel = (row: { designation?: string; variant_name?: string | null; bon_commande_id?: number | null; product_snapshot_id?: number }) => {
+const productLabel = (row: { designation?: string; variant_name?: string | null; bon_commande_id?: number | null; product_snapshot_id?: number | null }) => {
   const variant = row.variant_name ? ` - ${row.variant_name}` : '';
   const bon = row.bon_commande_id ? ` | BC${row.bon_commande_id}` : ` | Snap ${row.product_snapshot_id || ''}`;
   return `${row.designation || ''}${variant}${bon}`;
@@ -437,7 +437,7 @@ const StockDepot2Page: React.FC = () => {
                     <td className="px-4 py-3">{bon.statut}</td>
                     <td className="px-4 py-3">{bon.items?.length || 0}</td>
                     <td className="px-4 py-3 text-right">
-                      {bon.statut !== 'Annule' && bon.statut !== 'Annulé' && (
+                      {String(bon.statut) !== 'Annule' && bon.statut !== 'Annulé' && (
                         <button className="p-2 rounded-md hover:bg-gray-100" title="Annuler" onClick={() => onCancelTransfer(bon.id)}>
                           <X className="w-4 h-4" />
                         </button>

@@ -332,7 +332,8 @@ export const bonsApi = api.injectEndpoints({
           await queryFulfilled;
           if (!type) return;
           dispatch(
-            api.util.updateQueryData('getBonsByType', type, (draft: any[]) => {
+            // getBonsByType is defined in this same injectEndpoints call, so the base api does not type it yet.
+            (api.util.updateQueryData as any)('getBonsByType', type, (draft: any[]) => {
               const idx = draft.findIndex((b: any) => Number(b?.id) === Number(id));
               if (idx === -1) return;
               draft[idx] = {
