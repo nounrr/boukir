@@ -127,3 +127,25 @@ test('a product photo gives the words to search for', async () => {
     server.close();
   }
 });
+
+test('a silent recording that echoes the vocabulary hint counts as nothing heard', async () => {
+  const { isHintEcho } = await import('./chat.js');
+  assert.equal(isHintEcho('Boutique de bricolage au Maroc : perceuse, visseuse, ciment colle, carrelage, robinet, siphon, silicone, peinture, enduit, disque diamant, Bosch, Sika, Ingco.'), true);
+  assert.equal(isHintEcho('perceuse, visseuse, ciment colle, carrelage, robinet'), true);
+  assert.equal(isHintEcho(''), true);
+  // What customers really say.
+  assert.equal(isHintEcho('je cherche une perceuse Bosch pour le béton'), false);
+  assert.equal(isHintEcho('ciment colle'), false);
+  assert.equal(isHintEcho('bghit disque diamant'), false);
+  assert.equal(isHintEcho('I want a drill for concrete'), false);
+
+  const ai = fakeAi({ transcript: 'Boutique de bricolage au Maroc (Boukir Diamond) : perceuse, visseuse, ciment colle.' });
+  const { server, url } = await serve(ai);
+  try {
+    const form = new FormData();
+    form.append('audio', new Blob([Buffer.from('silence')], { type: 'audio/webm' }), 'voice.webm');
+    assert.deepEqual(await (await fetch(`${url}/transcribe`, { method: 'POST', body: form })).json(), { text: '' });
+  } finally {
+    server.close();
+  }
+});

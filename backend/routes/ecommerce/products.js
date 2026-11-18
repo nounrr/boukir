@@ -133,7 +133,8 @@ router.get('/', async (req, res, next) => {
       color,        // Single or comma-separated colors
       unit,         // Single or comma-separated units
       in_stock_only, // Filter only in-stock products
-      sort = 'category', // category, newest, price_asc, price_desc, popular, promo
+      sort = 'category', // category, newest, price_asc, price_desc, popular, promo, random
+      seed,         // random: same seed = same order (pages never repeat a product); a new seed = a new order
       page = 1,     // Page number (starts from 1)
       limit = 50,   // Items per page
       per_page      // Alternative to limit
@@ -310,6 +311,12 @@ router.get('/', async (req, res, next) => {
       case 'promo':
         orderBy = `p.pourcentage_promo DESC, ${categoryOrder}`;
         break;
+      case 'random': {
+        // MySQL RAND(n) with a constant seed is repeatable: page 2 continues page 1 without repeats.
+        const randomSeed = (Math.abs(Number.parseInt(String(seed ?? ''), 10)) % 2147483647) || 1;
+        orderBy = `RAND(${randomSeed}), p.id ASC`;
+        break;
+      }
       case 'popular':
         // Could be based on sales count or views in the future
         orderBy = 'p.created_at DESC';

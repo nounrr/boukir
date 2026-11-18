@@ -219,10 +219,14 @@ router.get('/:id', async (req, res, next) => {
     );
     const [items] = bons.length
       ? await pool.query(
-        `SELECT id, bon_id, position, product_id, variant_id, unit_id, product_snapshot_id,
-                designation, unite, quantite, prix_unitaire, total,
-                prix_achat, cout_revient, prix_vente, prix_vente_2
-         FROM projet_bon_items WHERE bon_id IN (?) ORDER BY position, id`,
+        // The product's photo comes along, so the phone can show each line like the client sheet.
+        `SELECT i.id, i.bon_id, i.position, i.product_id, i.variant_id, i.unit_id, i.product_snapshot_id,
+                i.designation, i.unite, i.quantite, i.prix_unitaire, i.total,
+                i.prix_achat, i.cout_revient, i.prix_vente, i.prix_vente_2,
+                p.image_url
+         FROM projet_bon_items i
+         LEFT JOIN products p ON p.id = i.product_id
+         WHERE i.bon_id IN (?) ORDER BY i.position, i.id`,
         [bons.map((b) => b.id)]
       )
       : [[]];

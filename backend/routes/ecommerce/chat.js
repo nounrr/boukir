@@ -497,6 +497,35 @@ export function audioFileName(file) {
 // En français comme en darija.
 const TRANSCRIBE_PROMPT =
   'Boutique de bricolage au Maroc (Boukir Diamond) : perceuse, visseuse, ciment colle, carrelage, robinet, siphon, silicone, peinture, enduit, disque diamant, Bosch, Sika, Ingco, Makita, Rubi, Total, Dewalt, Hilti.';
+// Older hints, still echoed by recordings made before this one (same rule).
+const PAST_PROMPTS = [
+  'Boutique de bricolage au Maroc : perceuse, visseuse, ciment colle, carrelage, robinet, siphon, silicone, peinture, enduit, disque diamant, Bosch, Sika, Ingco.',
+  'Boukir Diamond, INGCO, BOSCH, MAKITA, RUBI, TOTAL, DEWALT, HILTI, perceuse, ciment colle, disque diamant, carrelage, silicone.',
+];
+
+const plainWords = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9؀-ۿ]+/g, ' ')
+    .trim();
+
+/**
+ * On a silent or empty recording the transcription service writes back its vocabulary hint instead of words:
+ * "Boutique de bricolage au Maroc : perceuse, visseuse…". That is not what the customer said: nothing was heard.
+ */
+export function isHintEcho(text) {
+  const said = plainWords(text);
+  if (!said) return true;
+  const words = said.split(' ');
+  return [TRANSCRIBE_PROMPT, ...PAST_PROMPTS].some((hint) => {
+    const h = plainWords(hint);
+    if (words.length >= 3 && h.includes(said)) return true;
+    const known = new Set(h.split(' '));
+    return words.length >= 6 && words.filter((w) => known.has(w)).length / words.length >= 0.8;
+  });
+}
 
 function identifyPrompt(locale) {
   return [
@@ -532,7 +561,9 @@ export function createChatRouter({ getAi = getClient, search = searchProducts, p
           file: await toFile(file.buffer, name, { type: String(file.mimetype || '').split(';')[0].trim() || 'audio/mp4' }),
           prompt: TRANSCRIBE_PROMPT,
         });
-        return res.json({ text: clip(result?.text, MAX_CHARS) });
+        const text = clip(result?.text, MAX_CHARS);
+        // Nothing heard: an empty text, the app says so (never the hint as if the customer had said it).
+        return res.json({ text: isHintEcho(text) ? '' : text });
       } catch (error) {
         console.error('[chat/transcribe] error:', error?.message || error);
         return res.status(502).json({ message: 'Impossible de comprendre le message vocal pour le moment.' });
