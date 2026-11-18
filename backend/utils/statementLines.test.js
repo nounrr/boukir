@@ -5,7 +5,17 @@ import { LINE_QUERIES, loadStatementLines, normalizeLine } from './statementLine
 
 test('a line carries quantity, unit price, discount and total, and never a cost price', () => {
   const line = normalizeLine({ id: 4, designation: 'Ciment', variant_name: 'Gris', quantite: '3', prix_unitaire: '75.5', remise_pourcentage: 0, remise_montant: 0, total: 226.5, prix_achat: 60 });
-  assert.deepEqual(line, { id: 4, designation: 'Ciment · Gris', unit: null, quantity: 3, unit_price: 75.5, discount_percent: 0, discount_amount: 0, total: 226.5 });
+  assert.deepEqual(line, { id: 4, product_id: null, image_url: null, designation: 'Ciment · Gris', unit: null, quantity: 3, unit_price: 75.5, discount_percent: 0, discount_amount: 0, total: 226.5 });
+});
+
+test('a line carries its product and photo (the variant photo first), for the customer’s « Mon solde »', () => {
+  const line = normalizeLine({ id: 5, product_id: '12', image_url: '/uploads/products/ciment.webp', designation: 'Ciment', quantite: 1, prix_unitaire: 70, total: 70 });
+  assert.equal(line.product_id, 12);
+  assert.equal(line.image_url, '/uploads/products/ciment.webp');
+  for (const sql of Object.values(LINE_QUERIES)) {
+    assert.match(sql, /COALESCE\(pv\.image_url, p\.image_url\) AS image_url/);
+    assert.match(sql, /LEFT JOIN product_variants pv ON pv\.id = \w+\.variant_id/);
+  }
 });
 
 test('a missing total is computed from quantity, price and discount', () => {

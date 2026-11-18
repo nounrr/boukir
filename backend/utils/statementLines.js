@@ -1,7 +1,7 @@
 /**
  * Product lines of the documents of a customer's statement, in ONE round trip per source (not one request per
  * document). They are what the back-office customer sheet shows under each bon: designation, quantity, unit price,
- * discount and line total. Cost prices never leave here.
+ * discount and line total, plus the product and its photo (the variant's when it has one). Cost prices never leave here.
  */
 
 const money = (value) => {
@@ -17,6 +17,8 @@ export function normalizeLine(row) {
   const total = row.total != null ? money(row.total) : money(quantity * unitPrice - discount);
   return {
     id: Number(row.id) || null,
+    product_id: Number(row.product_id) || null,
+    image_url: row.image_url || null,
     designation: [row.designation, row.variant_name].filter(Boolean).join(' · '),
     unit: row.unit_name || null,
     quantity: Number.isFinite(quantity) ? quantity : 0,
@@ -29,21 +31,31 @@ export function normalizeLine(row) {
 
 /** `IN (?)` queries per statement source. Ownership is already guaranteed: the ids come from the customer's own timeline. */
 export const LINE_QUERIES = Object.freeze({
-  BON_ECOMMERCE: `SELECT oi.order_id AS doc_id, oi.id, oi.product_name AS designation, oi.variant_name, oi.unit_name,
+  BON_ECOMMERCE: `SELECT oi.order_id AS doc_id, oi.id, oi.product_id, COALESCE(pv.image_url, p.image_url) AS image_url,
+                         oi.product_name AS designation, oi.variant_name, oi.unit_name,
                          oi.quantity AS quantite, oi.unit_price AS prix_unitaire, oi.discount_percentage AS remise_pourcentage,
                          oi.discount_amount AS remise_montant, oi.subtotal AS total
-                  FROM ecommerce_order_items oi WHERE oi.order_id IN (?) ORDER BY oi.id`,
-  BON_SORTIE: `SELECT si.bon_sortie_id AS doc_id, si.id, p.designation, NULL AS variant_name, NULL AS unit_name,
+                  FROM ecommerce_order_items oi
+                  LEFT JOIN products p ON p.id = oi.product_id
+                  LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+                  WHERE oi.order_id IN (?) ORDER BY oi.id`,
+  BON_SORTIE: `SELECT si.bon_sortie_id AS doc_id, si.id, si.product_id, COALESCE(pv.image_url, p.image_url) AS image_url,
+                      p.designation, NULL AS variant_name, NULL AS unit_name,
                       si.quantite, si.prix_unitaire, si.remise_pourcentage, si.remise_montant, si.total
                FROM sortie_items si LEFT JOIN products p ON p.id = si.product_id
+               LEFT JOIN product_variants pv ON pv.id = si.variant_id
                WHERE si.bon_sortie_id IN (?) ORDER BY si.id`,
-  AVOIR_CLIENT: `SELECT i.avoir_client_id AS doc_id, i.id, p.designation, NULL AS variant_name, NULL AS unit_name,
+  AVOIR_CLIENT: `SELECT i.avoir_client_id AS doc_id, i.id, i.product_id, COALESCE(pv.image_url, p.image_url) AS image_url,
+                        p.designation, NULL AS variant_name, NULL AS unit_name,
                         i.quantite, i.prix_unitaire, i.remise_pourcentage, i.remise_montant, i.total
                  FROM avoir_client_items i LEFT JOIN products p ON p.id = i.product_id
+                 LEFT JOIN product_variants pv ON pv.id = i.variant_id
                  WHERE i.avoir_client_id IN (?) ORDER BY i.id`,
-  AVOIR_ECOMMERCE: `SELECT i.avoir_ecommerce_id AS doc_id, i.id, p.designation, NULL AS variant_name, NULL AS unit_name,
+  AVOIR_ECOMMERCE: `SELECT i.avoir_ecommerce_id AS doc_id, i.id, i.product_id, COALESCE(pv.image_url, p.image_url) AS image_url,
+                           p.designation, NULL AS variant_name, NULL AS unit_name,
                            i.quantite, i.prix_unitaire, i.remise_pourcentage, i.remise_montant, i.total
                     FROM avoir_ecommerce_items i LEFT JOIN products p ON p.id = i.product_id
+                    LEFT JOIN product_variants pv ON pv.id = i.variant_id
                     WHERE i.avoir_ecommerce_id IN (?) ORDER BY i.id`,
 });
 
