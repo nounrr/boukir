@@ -1,5 +1,6 @@
 import { ensureProductCategoriesSchema } from '../../utils/productCategories.js';
 import { Router } from 'express';
+import OpenAI from 'openai';
 import pool from '../../db/pool.js';
 import { ensureCategoryColumns } from '../../utils/ensureCategorySchema.js';
 
@@ -474,6 +475,82 @@ router.get('/suggestions', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+// ----------------------------
+// Recherche par image (public)
+// ----------------------------
+// La photo (JPEG réduit côté navigateur) est décrite par le modèle de vision en quelques mots
+// de recherche ; la boutique lance ensuite sa recherche texte habituelle. Rien n'est stocké.
+const IMAGE_SEARCH_MODEL = process.env.AI_IMAGE_SEARCH_MODEL || 'gpt-5-mini';
+const IMAGE_WINDOW_MS = 10 * 60 * 1000;
+const IMAGE_MAX_REQ = 12; // par IP et par fenêtre de 10 minutes
+const imageHits = new Map();
+let imageClient = null;
+let imageClientKey = null;
+
+function imageRateLimit(req, res, next) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+  const now = Date.now();
+  if (imageHits.size > 5000) {
+    for (const [key, entry] of imageHits) if (now > entry.resetAt) imageHits.delete(key);
+  }
+  const entry = imageHits.get(ip) || { count: 0, resetAt: now + IMAGE_WINDOW_MS };
+  if (now > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = now + IMAGE_WINDOW_MS;
+  }
+  entry.count += 1;
+  imageHits.set(ip, entry);
+  if (entry.count > IMAGE_MAX_REQ) return res.status(429).json({ message: 'Trop de recherches par image, réessayez dans quelques minutes.' });
+  next();
+}
+
+function getImageClient() {
+  const key = String(process.env.OPENAI_API_KEY ?? '').trim();
+  if (!key) return null;
+  if (!imageClient || imageClientKey !== key) {
+    imageClientKey = key;
+    imageClient = new OpenAI({ apiKey: key, maxRetries: 1 });
+  }
+  return imageClient;
+}
+
+router.post('/image', imageRateLimit, async (req, res) => {
+  const image = String(req.body?.image || '');
+  const match = image.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return res.status(400).json({ message: 'Image invalide.' });
+  if (match[2].length > 900_000) return res.status(413).json({ message: 'Image trop lourde.' });
+  const client = getImageClient();
+  if (!client) return res.status(503).json({ message: 'Recherche par image indisponible.' });
+  const locale = ['fr', 'ar', 'en', 'zh'].includes(req.body?.locale) ? req.body.locale : 'fr';
+  try {
+    const response = await client.responses.create({
+      model: IMAGE_SEARCH_MODEL,
+      store: false,
+      input: [
+        {
+          role: 'system',
+          content: "Tu identifies des produits pour la boutique en ligne d'un magasin marocain de matériaux de construction, bricolage et outillage. Regarde la photo et réponds uniquement avec un objet JSON {\"query\": string, \"alternatives\": string[]}. query : 1 à 4 mots en français, le nom courant du produit tel qu'on le chercherait dans un catalogue (par exemple \"perceuse visseuse\", \"disque diamant\", \"ciment colle\", \"robinet mitigeur\"), avec la marque seulement si elle est lisible sur la photo. alternatives : jusqu'à 3 autres recherches plus générales, en français. Si la photo ne montre aucun produit de ce type, query est une chaîne vide. Pas de Markdown.",
+        },
+        {
+          role: 'user',
+          content: [{ type: 'input_image', image_url: image, detail: 'low' }],
+        },
+      ],
+    });
+    const raw = String(response.output_text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+    const parsed = JSON.parse(raw);
+    const clean = (v) => String(v || '').replace(/[^\p{L}\p{N}\s'’\-.]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    const query = clean(parsed?.query);
+    const alternatives = Array.isArray(parsed?.alternatives)
+      ? [...new Set(parsed.alternatives.map(clean).filter((v) => v && v.toLowerCase() !== query.toLowerCase()))].slice(0, 3)
+      : [];
+    res.json({ query, alternatives, locale });
+  } catch (error) {
+    console.error('[search/image] error:', error?.message || error);
+    res.status(502).json({ message: "Impossible d'analyser la photo pour le moment." });
   }
 });
 
