@@ -18,6 +18,7 @@ import {
   getImageBilling,
   getOpenAIClient,
 } from './productPhotos.js';
+import { optimizeImageFile } from '../utils/optimizeImage.js';
 
 // Amélioration de la qualité des images produit / variante (principale + galerie).
 // Une image est identifiée par son URL : la remplacer met à jour toutes les lignes qui l'utilisent.
@@ -372,6 +373,7 @@ router.post('/replace-selected-file', (req, res, next) => {
   try {
     fs.mkdirSync(replacementsDir, { recursive: true });
     fs.writeFileSync(filePath, req.file.buffer);
+    await optimizeImageFile(filePath);
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [queueRows] = await conn.query(
@@ -504,6 +506,7 @@ async function enhanceOne(client, enhancement, { model, quality }) {
 
   const filename = `enhanced-${Date.now()}-${Math.round(Math.random() * 1e9)}.png`;
   fs.writeFileSync(path.join(enhancedDir, filename), Buffer.from(b64, 'base64'));
+  await optimizeImageFile(path.join(enhancedDir, filename));
   const newUrl = path.posix.join('/uploads/products/enhanced', filename);
   const billing = getImageBilling(result, { model, quality });
 

@@ -11,6 +11,7 @@ import {
   deleteProductPhotoFileIfUnreferenced,
   syncAttachedPhotoUrl,
 } from '../utils/productPhotoFiles.js';
+import { optimizeImageFile } from '../utils/optimizeImage.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -399,6 +400,7 @@ async function processOneImage(client, image, { model, quality }, { signal, asse
 
   const filename = `ai-${Date.now()}-${Math.round(Math.random() * 1e9)}.png`;
   fs.writeFileSync(path.join(shootsDir, filename), Buffer.from(b64, 'base64'));
+  await optimizeImageFile(path.join(shootsDir, filename));
   return {
     url: publicUrlFor(filename),
     billing: getImageBilling(result, { model, quality }),

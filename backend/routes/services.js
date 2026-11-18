@@ -15,6 +15,7 @@ import {
   parseServiceStatus,
   validateServiceInput,
 } from '../utils/serviceCatalog.js';
+import { optimizeImageFile } from '../utils/optimizeImage.js';
 
 const publicRouter = Router();
 const adminRouter = Router();
@@ -510,6 +511,7 @@ adminRouter.post('/', maybeUploadImage, async (req, res, next) => {
   let committed = false;
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     await connection.beginTransaction();
     const value = validation.value;
     if (!(await validateNewCategoryAssociations(connection, value.category_ids))) {
@@ -557,6 +559,7 @@ adminRouter.put('/:id', maybeUploadImage, async (req, res, next) => {
   let previousImageUrl = null;
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     await connection.beginTransaction();
     const [serviceRows] = await connection.query(
       `SELECT id, image_url FROM services

@@ -34,6 +34,7 @@ import {
 } from '../utils/salePriceCorrectionPermissions.js';
 import { WEB_PRICE_CONTEXT_SIZES, WEB_PRICE_MODELS, canReuseWebPriceResearch, parseWebResearchUsage, summarizeWebPrices, summarizeWebResearchUsage } from '../utils/webSalePriceResearch.js';
 import { ensureSalePriceWebResearchSchema } from '../db/ensureSalePriceWebResearchSchema.js';
+import { optimizeUploadedFiles } from '../utils/optimizeImage.js';
 
 const router = Router();
 router.use('/category-order', createCategoryProductOrderRouter(pool, (productId, categoryId) => revalidateEcommerceProduct(productId, { categoryId })));
@@ -135,6 +136,8 @@ const upload = multer({
 async function validateProductUploadFiles(files) {
   const list = Array.isArray(files) ? files : Object.values(files || {}).flat();
   await Promise.all(list.map((file) => assertUploadedFileKind(file, ['jpeg', 'png', 'webp'])));
+  // Valid photos are compressed in place (same name and format): lighter pages, same URLs.
+  await optimizeUploadedFiles(list);
 }
 
 function normalizeSearchText(value) {

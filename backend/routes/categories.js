@@ -10,6 +10,7 @@ import OpenAI from 'openai';
 import { ensureCategoryColumns, CATEGORY_ORDER_SQL } from '../utils/ensureCategorySchema.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import { requireRoles } from '../middleware/auth.js';
+import { optimizeImageFile } from '../utils/optimizeImage.js';
 
 const router = Router();
 
@@ -114,6 +115,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     const { nom, nom_ar, nom_en, nom_zh, description, parent_id, created_by, image_url: image_url_body } = req.body;
     if (!nom || !nom.trim()) return res.status(400).json({ message: 'Nom requis' });
 
@@ -214,6 +216,7 @@ router.put('/reorder', async (req, res, next) => {
 router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
     const { nom, nom_ar, nom_en, nom_zh, description, parent_id, updated_by, image_url: image_url_body } = req.body;

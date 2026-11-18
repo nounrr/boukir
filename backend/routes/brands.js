@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
+import { optimizeImageFile } from '../utils/optimizeImage.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', upload.single('image'), async (req, res, next) => {
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     await ensureBrandsTable();
     const { nom, description } = req.body;
     const image_url = req.file ? `/uploads/brands/${req.file.filename}` : null;
@@ -92,6 +94,7 @@ router.post('/', upload.single('image'), async (req, res, next) => {
 router.put('/:id', upload.single('image'), async (req, res, next) => {
   try {
     if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png', 'webp']);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     await ensureBrandsTable();
     const id = Number(req.params.id);
     const { nom, description } = req.body;

@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { optimizeImageFile } from '../utils/optimizeImage.js';
 
 const router = Router();
 
@@ -226,6 +227,7 @@ router.post('/', requirePdg, maybeUploadSingle('image'), async (req, res, next) 
 
     const title = normalizeNullableText(body.title); // FR
     const image_url_from_body = normalizeNullableText(body.image_url);
+    if (req.file?.path) await optimizeImageFile(req.file.path);
     const image_url_from_upload = req.file ? `/uploads/hero_slides/${req.file.filename}` : null;
     const image_url = image_url_from_upload || image_url_from_body;
 
@@ -431,6 +433,7 @@ router.put('/:id', requirePdg, maybeUploadSingle('image'), async (req, res, next
     }
 
     if (req.file) {
+      if (req.file.path) await optimizeImageFile(req.file.path);
       updates.push('image_url = ?');
       params.push(`/uploads/hero_slides/${req.file.filename}`);
     }
