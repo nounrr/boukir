@@ -64,8 +64,8 @@ test('le filtre retard oui et non réutilise exactement la règle centralisée',
   assert.match(buildServiceRequestDashboardFilters({ overdue: 'false' }).where, /NOT COALESCE/);
 });
 
-test('les six vues rapides ont toutes une traduction SQL', () => {
-  assert.deepEqual(SERVICE_REQUEST_QUICK_VIEWS, ['to_process', 'today', 'overdue', 'in_progress', 'to_close', 'finished']);
+test('les vues rapides (dont les réclamations) ont toutes une traduction SQL', () => {
+  assert.deepEqual(SERVICE_REQUEST_QUICK_VIEWS, ['to_process', 'today', 'overdue', 'in_progress', 'to_close', 'finished', 'complaints']);
   for (const quick_view of SERVICE_REQUEST_QUICK_VIEWS) {
     assert.ok(buildServiceRequestDashboardFilters({ quick_view }).clauses.length > 1, quick_view);
   }

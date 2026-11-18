@@ -13,7 +13,8 @@ import {
 import { useGetMyMaalemReviewPermissionsQuery } from '../store/api/maalemReviewPermissionsApi';
 
 const STATUS_LABELS: Record<MaalemReviewStatus, string> = {
-  pending: 'En attente', published: 'Publié', hidden: 'Masqué', rejected: 'Rejeté',
+  // Pending: given with the client's validation, published automatically when the team closes the mission (or by hand).
+  pending: 'En attente de clôture', published: 'Publié', hidden: 'Masqué', rejected: 'Rejeté',
 };
 const STATUS_STYLES: Record<MaalemReviewStatus, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-800',

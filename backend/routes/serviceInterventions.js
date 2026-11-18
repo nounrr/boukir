@@ -23,6 +23,7 @@ import {
   scheduleHasMeaningfulChange,
 } from '../utils/operationalNotification.js';
 import { suspendReviewInvitationsForRequest } from '../utils/reviewInvitation.js';
+import { publishPendingReviewsOnClosure } from '../utils/clientReview.js';
 import { queueReviewInvitationScheduling } from '../workers/reviewInvitationWorker.js';
 
 const maalemRouter = Router();
@@ -327,11 +328,23 @@ adminServiceInterventionsRouter.post('/:id(\\d+)/transition', async (req, res, n
           String(req.body.closure_internal_note || '').trim() || null, id]
       );
       if (closureResult.affectedRows !== 1) fail(409, 'Cette intervention est déjà clôturée');
+      // The stars the customer gave with their verdict go public now.
+      await publishPendingReviewsOnClosure(connection, {
+        requestId: intervention.service_request_id,
+        assignmentId: intervention.current_assignment_id,
+      });
     } else if (nextStatus === 'completed') {
-      // Finished on the team's word: the work is done, so the progress reads 100 % everywhere.
+      // Finished on the team's word: the work is done (100 %), done by the assigned Maalem, with the report fields the
+      // database requires for a finished mission (and the customer's review needs) filled in when the Maalem left them empty.
       await connection.query(
-        "UPDATE service_interventions SET status = 'completed', completed_at = ?, progress_percent = 100 WHERE id = ?",
-        [new Date(), id]
+        `UPDATE service_interventions
+         SET status = 'completed', completed_at = ?, progress_percent = 100,
+             completed_by_contact_id = COALESCE(completed_by_contact_id, ?),
+             work_summary = COALESCE(NULLIF(TRIM(work_summary), ''), 'Travaux terminés (confirmé par l’équipe)'),
+             work_finished = COALESCE(work_finished, 1),
+             additional_intervention_required = COALESCE(additional_intervention_required, 0)
+         WHERE id = ?`,
+        [new Date(), intervention.current_maalem_contact_id, id]
       );
     } else {
       await connection.query("UPDATE service_interventions SET status = 'to_do' WHERE id = ?", [id]);

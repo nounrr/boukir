@@ -68,8 +68,16 @@ function databaseDouble() {
       }
       if (sql.includes("SET status = 'to_do'")) { state.status = 'to_do'; return [{ affectedRows: 1 }]; }
       if (sql.includes("SET status = 'completed'")) {
-        state.status = 'completed'; state.completedAt = params[0]; state.progress = 100; return [{ affectedRows: 1 }];
+        state.status = 'completed'; state.completedAt = params[0]; state.progress = 100;
+        state.completedByContactId = params[1] ?? null; return [{ affectedRows: 1 }];
       }
+      // The customer's stars given with the verdict, published at the closure.
+      if (sql.includes('FROM maalem_reviews mr') && sql.includes("mr.status = 'pending'")) return [state.pendingReviews ?? []];
+      if (sql.includes("UPDATE maalem_reviews SET status = 'published'")) {
+        (state.publishedReviews ??= []).push(Number(params[0])); return [{ affectedRows: 1 }];
+      }
+      if (sql.includes('INSERT INTO maalem_review_history')) return [{ insertId: 1 }];
+      if (sql.includes('UPDATE maalem_profiles SET updated_at')) return [{ affectedRows: 1 }];
       if (sql.includes('SET progress_percent = ?')) { state.progress = Number(params[0]); return [{ affectedRows: 1 }]; }
       if (sql.includes('SET work_summary = ?')) {
         state.report = { work_summary: params[0], observations: params[1], progress: params[2], finished: params[3], additional: params[4], incomplete: params[5] };
@@ -207,6 +215,15 @@ test('seule l’équipe clôture une intervention completed', async () => {
   assert.equal(db.state.executingAssignmentId, 3);
 });
 
+test('la clôture publie les étoiles laissées par le client avec sa validation', async () => {
+  const db = databaseDouble(); db.state.status = 'completed'; db.state.requestStatus = 'completed';
+  db.state.pendingReviews = [{ id: 41, maalem_profile_id: 7 }];
+  await serverFor(db, { id: 3, role: 'Manager', cin: 'TEST' }, async (url) => {
+    assert.equal((await fetch(`${url}/api/admin/service-interventions/91/transition`, jsonPost({ status: 'closed' }))).status, 200);
+  });
+  assert.deepEqual(db.state.publishedReviews, [41]);
+});
+
 test('une réaffectation avant clôture crédite uniquement l’affectation finale', async () => {
   const db = databaseDouble();
   db.state.status = 'completed';
@@ -263,6 +280,8 @@ test('l’équipe peut terminer une mission laissée « en cours » (progression
   assert.equal(db.state.requestStatus, 'completed');
   assert.equal(db.state.progress, 100);
   assert.ok(db.state.completedAt instanceof Date);
+  // Done by the assigned Maalem (so the customer can rate them), as the database requires for a finished mission.
+  assert.equal(db.state.completedByContactId, 70);
   assert.deepEqual(db.state.history.at(-1), { event: 'WorkCompletedByTeam', oldStatus: 'work_in_progress', newStatus: 'completed' });
 });
 

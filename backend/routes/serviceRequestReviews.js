@@ -3,11 +3,11 @@ import pool from '../db/pool.js';
 import { isEcommerceRequester } from '../utils/serviceRequest.js';
 import {
   MAALEM_REVIEW_LIMITS,
-  MAALEM_REVIEW_STATUS,
+  REVIEWABLE_REQUEST_SOURCES,
   normalizeMaalemReview,
   validateMaalemReviewInput,
 } from '../utils/maalemReview.js';
-import { markReviewInvitationSubmitted } from '../utils/reviewInvitation.js';
+import { saveCustomerReview } from '../utils/clientReview.js';
 
 const router = Router();
 
@@ -49,7 +49,7 @@ async function loadOwnedReviewContext(db, requestId, contactId, forUpdate = fals
      INNER JOIN contacts customer ON customer.id = sr.requester_contact_id
      LEFT JOIN service_interventions si ON si.service_request_id = sr.id
      LEFT JOIN service_request_assignments sra
-       ON sra.id = si.executing_assignment_id
+       ON sra.id = COALESCE(si.executing_assignment_id, sr.current_assignment_id)
       AND sra.service_request_id = sr.id
      LEFT JOIN maalem_profiles mp ON mp.id = sra.maalem_profile_id
      LEFT JOIN contacts maalem ON maalem.id = mp.contact_id
@@ -73,8 +73,16 @@ async function loadActiveReview(db, requestId, forUpdate = false) {
 
 function reviewEligibility(context, existingReview) {
   if (existingReview) return { eligible: false, reason: 'ALREADY_REVIEWED' };
-  if (!['selected_maalem', 'selected_service'].includes(context.request_source)) {
+  if (!REVIEWABLE_REQUEST_SOURCES.includes(context.request_source)) {
     return { eligible: false, reason: 'UNSUPPORTED_REQUEST_TYPE' };
+  }
+  // The Maalem has finished, the team has not closed yet: the stars wait (pending) and go public at the closure.
+  if (!context.request_deleted_at && !context.cancelled_at && context.request_status === 'completed') {
+    if (!context.maalem_profile_id || !context.maalem_contact_id) return { eligible: false, reason: 'FINAL_MAALEM_MISSING' };
+    if (Number(context.requester_contact_id) === Number(context.maalem_contact_id)) {
+      return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN' };
+    }
+    return { eligible: true, reason: null, published_after_closure: true };
   }
   if (context.request_deleted_at || context.cancelled_at || context.request_status !== 'closed') {
     return { eligible: false, reason: 'REQUEST_NOT_CLOSED' };
@@ -100,7 +108,7 @@ function reviewEligibility(context, existingReview) {
   if (Number(context.requester_contact_id) === Number(context.maalem_contact_id)) {
     return { eligible: false, reason: 'SELF_REVIEW_FORBIDDEN' };
   }
-  return { eligible: true, reason: null };
+  return { eligible: true, reason: null, published_after_closure: false };
 }
 
 function publicContext(context, existingReview) {
@@ -165,48 +173,16 @@ router.post('/:id(\\d+)/review', async (req, res, next) => {
       fail(409, 'Cette intervention ne peut pas être évaluée', eligibility.reason);
     }
 
-    const submittedAt = new Date();
-    const [insert] = await connection.query(
-      `INSERT INTO maalem_reviews
-         (service_request_id, intervention_id, customer_contact_id, maalem_profile_id,
-          rating, comment, status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        requestId,
-        Number(context.intervention_id),
-        contactId,
-        Number(context.maalem_profile_id),
-        validation.value.rating,
-        validation.value.comment,
-        MAALEM_REVIEW_STATUS.PUBLISHED,
-        submittedAt,
-      ]
-    );
-    const reviewId = Number(insert.insertId);
-
-    await connection.query(
-      `INSERT INTO maalem_review_history
-         (review_id, event_type, new_rating, new_comment, new_status,
-          actor_type, actor_contact_id, actor_name)
-       VALUES (?, 'CREATED', ?, ?, ?, 'CONTACT', ?, ?)`,
-      [
-        reviewId,
-        validation.value.rating,
-        validation.value.comment,
-        MAALEM_REVIEW_STATUS.PUBLISHED,
-        contactId,
-        context.customer_name || `Client #${contactId}`,
-      ]
-    );
-
-    await connection.query('UPDATE maalem_profiles SET updated_at = NOW() WHERE id = ?', [Number(context.maalem_profile_id)]);
-
-    await markReviewInvitationSubmitted(connection, {
-      serviceRequestId: requestId,
-      customerContactId: contactId,
-      reviewId,
-      submittedAt,
+    const result = await saveCustomerReview(connection, {
+      requestId,
+      contactId,
+      actorName: context.customer_name,
+      rating: validation.value.rating,
+      comment: validation.value.comment,
     });
+    if (!result.saved) fail(409, 'Cette intervention ne peut pas être évaluée', result.reason);
+    const reviewId = result.reviewId;
+    const submittedAt = new Date();
 
     await connection.commit();
     res.set('Cache-Control', 'no-store');
@@ -216,7 +192,7 @@ router.post('/:id(\\d+)/review', async (req, res, next) => {
         service_request_id: requestId,
         rating: validation.value.rating,
         comment: validation.value.comment,
-        status: MAALEM_REVIEW_STATUS.PUBLISHED,
+        status: result.status,
         submitted_at: submittedAt,
         created_at: submittedAt,
       },

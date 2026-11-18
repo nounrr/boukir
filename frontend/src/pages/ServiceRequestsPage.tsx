@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, Bell, CalendarDays, Check, CheckCircle2, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, CircleDot,
   Clock3, LockKeyhole, ExternalLink, FileText, Filter, HardHat, Loader2, MapPin, MessageCircle, Paperclip, Phone, RefreshCw, RotateCcw,
-  Save, Search, SlidersHorizontal, Star, UserRound, Wallet, Wrench, X, XCircle,
+  MessageSquareWarning, Save, Search, SlidersHorizontal, Star, UserRound, Wallet, Wrench, X, XCircle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 import { ServiceInterventionPanel } from '../components/service-requests/ServiceInterventionPanel';
@@ -85,6 +85,7 @@ const quickViews: Array<{ value: QuickView; label: string; icon: React.Component
   { value: 'in_progress', label: 'En cours', icon: Wrench },
   { value: 'to_close', label: 'À clôturer', icon: CheckCheck },
   { value: 'finished', label: 'Terminées', icon: CheckCircle2 },
+  { value: 'complaints', label: 'Réclamations', icon: MessageSquareWarning },
 ];
 
 const kpis: Array<{
@@ -599,7 +600,7 @@ export function ServiceRequestDetailPage() {
             </div>
           </details> : <p className="mt-4 text-sm text-slate-500">{terminal ? 'Aucune modification d’affectation n’est disponible pour ce dossier.' : 'Confirmez la demande avec le client pour choisir un Maalem.'}</p>}
 </Panel>{request.current_assignment_id && <button type="button" onClick={() => setOrganizationStep('appointment')} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800">Voir le rendez-vous<ChevronRight className="h-4 w-4" /></button>}</div>}
-      {visibleOrganizationStep === 'appointment' && <><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-4 py-3"><div><p className="text-sm font-semibold text-slate-800">{request.current_assigned_maalem_name || 'Maalem affecté'}</p><p className="mt-1 text-xs text-slate-500">Affectation visible dans son compte</p></div><button type="button" onClick={() => setOrganizationStep('assignment')} className="text-sm font-semibold text-blue-700 underline underline-offset-2">Voir l’affectation</button></div><ServiceInterventionPanel request={request} options={options} onChanged={refreshAll} notes={data.notes} /></>}
+      {visibleOrganizationStep === 'appointment' && <><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-4 py-3"><div><p className="text-sm font-semibold text-slate-800">{request.current_assigned_maalem_name || 'Maalem affecté'}</p><p className="mt-1 text-xs text-slate-500">Affectation visible dans son compte</p></div><button type="button" onClick={() => setOrganizationStep('assignment')} className="text-sm font-semibold text-blue-700 underline underline-offset-2">Voir l’affectation</button></div><ServiceInterventionPanel request={request} options={options} onChanged={refreshAll} notes={data.notes} review={data.review} /></>}
     </div>
     <div id="request-panel-followup" role="tabpanel" aria-labelledby="request-tab-followup" hidden={activeTab !== 'followup'}>
       <div className="grid items-start gap-5 xl:grid-cols-2"><div className="min-w-0 space-y-5"><Panel title="Notes et instructions" icon={<MessageCircle className="h-5 w-5" />}><div className="space-y-3">{data.notes.map((item) => <div key={item.id} className={`rounded-lg border p-3 ${item.visibility === 'INTERNAL' ? 'border-amber-200 bg-amber-50' : 'border-blue-200 bg-blue-50'}`}><div className="flex justify-between text-xs font-semibold"><span>{item.visibility === 'INTERNAL' ? 'Note interne — privée' : 'Instruction partageable'}</span><span>{dateTime(item.created_at)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{item.body}</p><p className="mt-2 text-xs text-slate-500">{item.actor_name}</p></div>)}</div>

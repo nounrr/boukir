@@ -84,7 +84,7 @@ export interface ServiceRequestFilters {
   overdue?: boolean;
   assigned?: boolean;
   planned?: boolean;
-  quick_view?: 'to_process' | 'today' | 'overdue' | 'in_progress' | 'to_close' | 'finished';
+  quick_view?: 'to_process' | 'today' | 'overdue' | 'in_progress' | 'to_close' | 'finished' | 'complaints';
   date_from?: string;
   date_to?: string;
   requested_maalem_id?: number;
@@ -128,6 +128,16 @@ export interface ServiceRequestFilterOptions {
   cities: string[];
 }
 
+export interface ServiceRequestReview {
+  id: number;
+  rating: number;
+  comment: string | null;
+  status: 'pending' | 'published' | 'hidden' | 'rejected';
+  submitted_at: string;
+  maalem_profile_id: number;
+  maalem_name: string | null;
+}
+
 export interface ServiceRequestDetailResponse {
   request: BackofficeServiceRequest;
   attachments: Array<{ id: number; kind: 'PHOTO' | 'DOCUMENT'; original_name: string; mime_type: string; file_size: number; created_at: string }>;
@@ -150,6 +160,8 @@ export interface ServiceRequestDetailResponse {
     is_current: boolean;
   }>;
   notifications: OperationalNotification[];
+  /** The customer's stars for the Maalem: pending until the team closes the mission, then published (unless moderated). */
+  review: ServiceRequestReview | null;
   review_invitation: ReviewInvitationStatus | null;
 }
 

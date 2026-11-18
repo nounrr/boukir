@@ -18,7 +18,11 @@ test('le dernier avis du client est retrouvé dans les notes', () => {
     { body: 'Travaux validés par le client', actor_name: 'Client A', created_at: '2026-11-17' },
     { body: 'RÉCLAMATION CLIENT : joint qui fuit encore', actor_name: 'Client A', created_at: '2026-11-18' },
   ];
-  assert.deepEqual(clientVerdictFromNotes(notes), { kind: 'complaint', comment: 'joint qui fuit encore', at: '2026-11-18', by: 'Client A' });
-  assert.deepEqual(clientVerdictFromNotes(notes.slice(0, 2)), { kind: 'validated', comment: null, at: '2026-11-17', by: 'Client A' });
+  assert.deepEqual(clientVerdictFromNotes(notes), { kind: 'complaint', comment: 'joint qui fuit encore', at: '2026-11-18', by: 'Client A', rating: null });
+  assert.deepEqual(clientVerdictFromNotes(notes.slice(0, 2)), { kind: 'validated', comment: null, at: '2026-11-17', by: 'Client A', rating: null });
+  // With the stars given in the same step.
+  assert.deepEqual(clientVerdictFromNotes([{ body: 'Travaux validés par le client · ★ 4/5 : Très propre', actor_name: 'B', created_at: 'x' }]),
+    { kind: 'validated', comment: 'Très propre', at: 'x', by: 'B', rating: 4 });
+  assert.equal(clientVerdictFromNotes([{ body: 'RÉCLAMATION CLIENT · ★ 1/5 : Fuite', created_at: 'y' }])?.rating, 1);
   assert.equal(clientVerdictFromNotes([]), null);
 });

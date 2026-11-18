@@ -236,7 +236,7 @@ router.get('/', async (req, res, next) => {
 router.get('/:id(\\d+)', async (req, res, next) => {
   try {
     const requestId = positiveId(req.params.id);
-    const [[rows], [attachments], [notes], [contacts], [events], [assignments], [notifications], [reviewInvitations]] = await Promise.all([
+    const [[rows], [attachments], [notes], [contacts], [events], [assignments], [notifications], [reviewInvitations], [reviews]] = await Promise.all([
       pool.query(`${baseSelect()} WHERE sr.id = ? AND sr.deleted_at IS NULL LIMIT 1`, [requestId]),
       pool.query(`SELECT id, request_id, kind, original_name, mime_type, file_size, created_at
         FROM service_request_attachments WHERE request_id = ? AND deleted_at IS NULL ORDER BY created_at, id`, [requestId]),
@@ -270,11 +270,19 @@ router.get('/:id(\\d+)', async (req, res, next) => {
           next_reminder_at, reminder_count, max_reminders, processing_attempts,
           opened_at, submitted_at, last_error, created_at, updated_at
         FROM maalem_review_invitations WHERE service_request_id = ? LIMIT 1`, [requestId]),
+      // The customer's stars for the Maalem (pending until the closure, then published unless moderated).
+      pool.query(`SELECT mr.id, mr.rating, mr.comment, mr.status, mr.submitted_at, mr.maalem_profile_id,
+          maalem.nom_complet AS maalem_name
+        FROM maalem_reviews mr
+        INNER JOIN maalem_profiles mp ON mp.id = mr.maalem_profile_id
+        INNER JOIN contacts maalem ON maalem.id = mp.contact_id
+        WHERE mr.service_request_id = ? AND mr.deleted_at IS NULL LIMIT 1`, [requestId]),
     ]);
     if (!rows[0]) return res.status(404).json({ message: 'Demande introuvable' });
     res.json({ request: normalizeRow(rows[0]), attachments, notes, contacts, history: events,
       assignments: assignments.map((item) => ({ ...item, id: Number(item.id), maalem_profile_id: Number(item.maalem_profile_id), compatibility_override: Boolean(Number(item.compatibility_override)), is_current: Boolean(Number(item.is_current)) })),
       notifications: notifications.map((item) => ({ ...normalizeOperationalNotificationRow(item), recipient_name: item.recipient_name })),
+      review: reviews[0] ? { ...reviews[0], id: Number(reviews[0].id), rating: Number(reviews[0].rating), maalem_profile_id: Number(reviews[0].maalem_profile_id) } : null,
       review_invitation: reviewInvitations[0] ? {
         ...reviewInvitations[0],
         reminder_count: Number(reviewInvitations[0].reminder_count),

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, CalendarClock, Camera, CheckCircle2, ExternalLink, FileText, MapPin, MessageSquare, TriangleAlert } from 'lucide-react';
+import { BadgeCheck, CalendarClock, Camera, CheckCircle2, ExternalLink, FileText, MapPin, MessageSquare, Star, TriangleAlert } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { clientVerdictFromNotes, parseMissionNotes } from './missionNotes';
 import { useAuth } from '../../hooks/redux';
 import {
   type BackofficeServiceRequest,
+  type ServiceRequestReview,
   type ServiceRequestFilterOptions,
   useGetAdminServiceInterventionQuery,
   useScheduleServiceInterventionMutation,
@@ -22,12 +24,21 @@ function errorMessage(error: unknown) {
   return [value.data?.message, ...(value.data?.errors ? Object.values(value.data.errors) : [])].filter(Boolean).join(' · ') || 'Une erreur est survenue';
 }
 
-export function ServiceInterventionPanel({ request, options, onChanged, notes = [] }: {
+const REVIEW_STATUS_TEXT: Record<ServiceRequestReview['status'], string> = {
+  pending: 'Publiée sur le profil du Maalem à la clôture de la mission',
+  published: 'En ligne sur le profil du Maalem',
+  hidden: 'Masquée par la modération',
+  rejected: 'Rejetée par la modération',
+};
+
+export function ServiceInterventionPanel({ request, options, onChanged, notes = [], review = null }: {
   request: BackofficeServiceRequest;
   options?: ServiceRequestFilterOptions;
   onChanged: () => Promise<unknown>;
   /** The request's notes (the client's verdict on the finished work is one of them). */
   notes?: Array<{ visibility?: string; body: string; actor_name?: string | null; created_at: string }>;
+  /** The customer's stars for the Maalem, when given. */
+  review?: ServiceRequestReview | null;
 }) {
   const { token } = useAuth();
   const query = useGetAdminServiceInterventionQuery(request.id, { refetchOnMountOrArgChange: true });
@@ -84,9 +95,19 @@ export function ServiceInterventionPanel({ request, options, onChanged, notes = 
   return <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
     <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3"><div className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-blue-600" /><h2 className="font-bold text-gray-900">Rendez-vous et intervention</h2></div>{intervention && <span className="rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{interventionLabels[intervention.status] || intervention.status}</span>}</div>
     {feedback && <p role="status" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{feedback}</p>}
+    {review && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+      <div className="min-w-0">
+        <p className="flex items-center gap-2 font-semibold">Note du client
+          <span className="flex" aria-label={`${review.rating} sur 5`}>{[1, 2, 3, 4, 5].map((n) => <Star key={n} className={`h-4 w-4 ${n <= review.rating ? 'fill-amber-400 text-amber-500' : 'text-amber-300'}`} />)}</span>
+          <span>{review.rating}/5</span></p>
+        {review.comment && <p className="mt-1 whitespace-pre-wrap">« {review.comment} »</p>}
+        <p className="mt-1 text-xs opacity-75">{REVIEW_STATUS_TEXT[review.status]}{review.maalem_name ? ` · ${review.maalem_name}` : ''}</p>
+      </div>
+      <Link to="/maalem-reviews" className="shrink-0 text-xs font-semibold text-amber-900 underline underline-offset-2">Avis Maalems</Link>
+    </div>}
     {verdict && <div className={`mb-4 flex items-start gap-3 rounded-lg border p-4 text-sm ${verdict.kind === 'validated' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'}`}>
       {verdict.kind === 'validated' ? <BadgeCheck className="h-5 w-5 shrink-0" /> : <TriangleAlert className="h-5 w-5 shrink-0" />}
-      <div><p className="font-semibold">{verdict.kind === 'validated' ? 'Le client a validé le travail' : 'Réclamation du client'}</p>{verdict.comment && <p className="mt-1 whitespace-pre-wrap">« {verdict.comment} »</p>}<p className="mt-1 text-xs opacity-75">{verdict.by ? `${verdict.by} · ` : ''}{dateTime(verdict.at)}</p></div>
+      <div className="min-w-0 flex-1"><p className="font-semibold">{verdict.kind === 'validated' ? 'Le client a validé le travail' : 'Réclamation du client'}</p>{verdict.comment && <p className="mt-1 whitespace-pre-wrap">« {verdict.comment} »</p>}<p className="mt-1 text-xs opacity-75">{verdict.by ? `${verdict.by} · ` : ''}{dateTime(verdict.at)}</p></div>
     </div>}
     {problems > 0 && intervention?.status !== 'closed' && <p className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"><TriangleAlert className="h-4 w-4 shrink-0" />Le Maalem a signalé {problems} problème{problems > 1 ? 's' : ''} : voir ses commentaires ci-dessous.</p>}
     {query.isError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">Impossible de charger le planning. <button type="button" onClick={() => void query.refetch()} className="underline">Réessayer</button></p>}

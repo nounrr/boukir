@@ -6,8 +6,14 @@ export const INITIAL_RESPONSE_SLA_MINUTES = (() => {
 })();
 
 export const SERVICE_REQUEST_QUICK_VIEWS = Object.freeze([
-  'to_process', 'today', 'overdue', 'in_progress', 'to_close', 'finished',
+  'to_process', 'today', 'overdue', 'in_progress', 'to_close', 'finished', 'complaints',
 ]);
+
+/** The customer's last verdict on the finished work is a complaint ("RÉCLAMATION CLIENT …" note). */
+export const OPEN_COMPLAINT_SQL = `(SELECT n.body FROM service_request_notes n
+  WHERE n.request_id = sr.id AND n.actor_type = 'CONTACT'
+    AND (n.body LIKE 'Travaux validés par le client%' OR n.body LIKE 'RÉCLAMATION CLIENT%')
+  ORDER BY n.created_at DESC, n.id DESC LIMIT 1) LIKE 'RÉCLAMATION CLIENT%'`;
 
 export function overdueSql(slaMinutes = INITIAL_RESPONSE_SLA_MINUTES) {
   const safeSla = Number.isInteger(slaMinutes) && slaMinutes >= 15 && slaMinutes <= 10080 ? slaMinutes : 120;
@@ -114,6 +120,7 @@ export function buildServiceRequestDashboardFilters(query = {}, { slaMinutes = I
     case 'in_progress': clauses.push("si.status IN ('en_route', 'arrived', 'work_in_progress')"); break;
     case 'to_close': clauses.push("si.status = 'completed'"); break;
     case 'finished': clauses.push("sr.status = 'closed'"); break;
+    case 'complaints': clauses.push(OPEN_COMPLAINT_SQL); break;
     default: break;
   }
 

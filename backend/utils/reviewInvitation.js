@@ -7,6 +7,7 @@ import {
   enqueueOperationalNotifications,
 } from './operationalNotification.js';
 import { sanitizeNotificationError } from './notificationDelivery.js';
+import { REVIEWABLE_REQUEST_SOURCES } from './maalemReview.js';
 
 const PUBLIC_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -76,7 +77,7 @@ function addDays(value, days) {
 export function reviewInvitationEligibility(context) {
   if (!context) return { eligible: false, reason: 'REQUEST_NOT_FOUND' };
   if (context.review_id) return { eligible: false, reason: 'ALREADY_REVIEWED' };
-  if (!['selected_maalem', 'selected_service'].includes(context.request_source)) {
+  if (!REVIEWABLE_REQUEST_SOURCES.includes(context.request_source)) {
     return { eligible: false, reason: 'UNSUPPORTED_REQUEST_TYPE' };
   }
   if (context.request_deleted_at || context.cancelled_at || context.request_status !== 'closed') {
@@ -369,7 +370,7 @@ export async function findClosedRequestsWithoutInvitation(db = pool, limit = 25)
      INNER JOIN maalem_profiles mp ON mp.id = sra.maalem_profile_id
      LEFT JOIN maalem_reviews mr ON mr.service_request_id = sr.id AND mr.deleted_at IS NULL
      LEFT JOIN maalem_review_invitations mri ON mri.service_request_id = sr.id
-     WHERE sr.request_source IN ('selected_maalem', 'selected_service')
+     WHERE sr.request_source IN ('selected_maalem', 'selected_service', 'quick_request')
        AND sr.status = 'closed' AND sr.cancelled_at IS NULL AND sr.deleted_at IS NULL
        AND si.status = 'closed' AND si.closed_at IS NOT NULL AND si.closed_by_employee_id IS NOT NULL
        AND si.completed_at IS NOT NULL AND si.work_finished = 1

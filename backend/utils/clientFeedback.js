@@ -12,19 +12,24 @@ export const CLIENT_FEEDBACK_PREFIX = Object.freeze({
   complaint: 'RÉCLAMATION CLIENT',
 });
 
+/** Verdict, optional comment (required for a complaint) and optional 1–5 stars for the Maalem. */
 export function validateClientFeedback(input) {
   const source = input && typeof input === 'object' ? input : {};
   const kind = String(source.kind || '');
   const comment = typeof source.comment === 'string' ? source.comment.trim() : '';
+  const rawRating = source.rating;
+  const rating = rawRating === undefined || rawRating === null || rawRating === '' ? null : Number(rawRating);
   const errors = {};
   if (!CLIENT_FEEDBACK_KINDS.includes(kind)) errors.kind = 'Choisissez « valider » ou « réclamation »';
   if (comment.length > CLIENT_FEEDBACK_MAX) errors.comment = `${CLIENT_FEEDBACK_MAX} caractères au maximum`;
   if (kind === 'complaint' && !comment) errors.comment = 'Décrivez le problème';
-  return { valid: Object.keys(errors).length === 0, errors, value: { kind, comment: comment || null } };
+  if (rating !== null && !(Number.isInteger(rating) && rating >= 1 && rating <= 5)) errors.rating = 'La note doit être un entier entre 1 et 5';
+  return { valid: Object.keys(errors).length === 0, errors, value: { kind, comment: comment || null, rating } };
 }
 
-export function clientFeedbackNote({ kind, comment }) {
-  const prefix = CLIENT_FEEDBACK_PREFIX[kind];
+/** The note the team reads: "Travaux validés par le client · ★ 4/5 : comment". The prefix stays first (read back below). */
+export function clientFeedbackNote({ kind, comment, rating = null }) {
+  const prefix = CLIENT_FEEDBACK_PREFIX[kind] + (rating ? ` · ★ ${rating}/5` : '');
   return comment ? `${prefix} : ${comment}` : prefix;
 }
 

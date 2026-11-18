@@ -37,6 +37,17 @@ function createDatabaseDouble(options = {}) {
           const existing = state.requests.find((request) => request.client_submission_id === params[1]);
           return [[existing?.row].filter(Boolean)];
         }
+        // Stars with the verdict: the Maalem assigned to the request, then the review rows.
+        if (sql.includes('COALESCE(si.executing_assignment_id, sr.current_assignment_id)')) {
+          return [[{
+            service_request_id: Number(params[0]), request_status: options.requestStatus || 'new', request_source: 'quick_request',
+            cancelled_at: null, requester_contact_id: 42, intervention_id: 70, intervention_status: options.requestStatus || 'new',
+            maalem_profile_id: 3, maalem_contact_id: 90,
+          }]];
+        }
+        if (sql.includes('FROM maalem_reviews WHERE service_request_id = ?')) return [[]];
+        if (sql.includes('INSERT INTO maalem_reviews')) { (state.reviews ??= []).push(params); return [{ insertId: 41 }]; }
+        if (sql.includes('INSERT INTO maalem_review_history') || sql.includes('UPDATE maalem_review_invitations')) return [{ affectedRows: 1 }];
         // The customer's own request, read inside a transaction (client feedback).
         if (sql.includes('FROM service_requests sr') && sql.includes('requester_contact_id = ?')) {
           if (options.ownedRequest === false || Number(params[1]) !== 42) return [[]];
@@ -150,6 +161,8 @@ async function withServer(database, callback, user = { id: 42, type_compte: 'Art
       }]];
     }
     if (sql.includes('FROM service_request_attachments')) return [[]];
+    // The customer's own stars (none unless the test sets them).
+    if (sql.includes('FROM maalem_reviews') && sql.includes('customer_contact_id = ?')) return [[database.ownReview].filter(Boolean)];
     if (sql.includes("visibility = 'SHARED'")) {
       return [[
         { id: 1, request_id: Number(params[0]), body: 'Instruction visible', actor_type: 'CONTACT', actor_name: 'Client' },
@@ -676,6 +689,29 @@ test('le client valide le travail terminé : note partagée et historique', asyn
   assert.equal(database.state.commits, 1);
 });
 
+test('les étoiles données avec la validation attendent la clôture (avis en attente)', async () => {
+  const database = createDatabaseDouble({ requestStatus: 'completed' });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/service-requests/88/client-feedback`,
+      jsonPost({ kind: 'validated', rating: 4, comment: 'Travail propre et rapide' }));
+    assert.equal(response.status, 201);
+    assert.deepEqual((await response.json()).review, { saved: true, status: 'pending', reason: null });
+  });
+  assert.equal(database.state.notes[0][1], 'Travaux validés par le client · ★ 4/5 : Travail propre et rapide');
+  // request, intervention, customer, Maalem, stars, comment, status
+  assert.deepEqual(database.state.reviews[0].slice(0, 7), [88, 70, 42, 3, 4, 'Travail propre et rapide', 'pending']);
+  assert.equal(database.state.commits, 1);
+});
+
+test('des étoiles hors 1 à 5 sont refusées', async () => {
+  const database = createDatabaseDouble({ requestStatus: 'completed' });
+  await withServer(database, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/service-requests/88/client-feedback`, jsonPost({ kind: 'validated', rating: 7 }));
+    assert.equal(response.status, 422);
+  });
+  assert.equal(database.state.notes.length, 0);
+});
+
 test('une réclamation exige un motif, puis devient une note RÉCLAMATION CLIENT', async () => {
   const database = createDatabaseDouble({ requestStatus: 'completed' });
   await withServer(database, async (baseUrl) => {
@@ -711,8 +747,10 @@ test('après son avis, le client le retrouve dans sa demande', async () => {
   const database = createDatabaseDouble();
   database.requestStatus = 'completed';
   database.sharedNotes = [{ id: 2, request_id: 88, body: 'RÉCLAMATION CLIENT : La fuite revient', actor_type: 'CONTACT', actor_name: 'Client', created_at: '2026-11-17' }];
+  database.ownReview = { id: 41, rating: 2, comment: null, status: 'pending', submitted_at: '2026-11-17' };
   await withServer(database, async (baseUrl) => {
     const body = await (await fetch(`${baseUrl}/api/service-requests/88`)).json();
     assert.deepEqual(body.client_feedback, { kind: 'complaint', at: '2026-11-17' });
+    assert.deepEqual(body.review, { id: 41, rating: 2, comment: null, status: 'pending', submitted_at: '2026-11-17' });
   });
 });

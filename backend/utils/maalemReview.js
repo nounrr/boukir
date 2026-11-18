@@ -5,6 +5,12 @@ export const MAALEM_REVIEW_STATUS = Object.freeze({
   REJECTED: 'rejected',
 });
 
+/**
+ * Requests whose Maalem can be rated: the customer chose the Maalem or the service, or described the problem
+ * (quick request) and the team assigned a Maalem.
+ */
+export const REVIEWABLE_REQUEST_SOURCES = Object.freeze(['selected_maalem', 'selected_service', 'quick_request']);
+
 export const MAALEM_REVIEW_LIMITS = Object.freeze({
   ratingMin: 1,
   ratingMax: 5,
@@ -37,7 +43,7 @@ export const PUBLIC_MAALEM_REVIEW_AGGREGATE_SQL = `LEFT JOIN (
    AND sra.maalem_profile_id = mr.maalem_profile_id
   INNER JOIN maalem_profiles review_mp ON review_mp.id = mr.maalem_profile_id
   WHERE mr.status = 'published' AND mr.hidden_at IS NULL AND mr.deleted_at IS NULL
-    AND sr.request_source IN ('selected_maalem', 'selected_service')
+    AND sr.request_source IN ('selected_maalem', 'selected_service', 'quick_request')
     AND sr.status = 'closed' AND sr.cancelled_at IS NULL AND sr.deleted_at IS NULL
     AND si.status = 'closed' AND si.closed_at IS NOT NULL
     AND si.closed_by_employee_id IS NOT NULL AND si.completed_at IS NOT NULL
@@ -81,7 +87,7 @@ export async function getPublishedMaalemReviews(db, maalemProfileId, { page = 1,
     INNER JOIN contacts customer ON customer.id = mr.customer_contact_id`;
   const where = `WHERE mr.maalem_profile_id = ?
     AND mr.status = 'published' AND mr.hidden_at IS NULL AND mr.deleted_at IS NULL
-    AND sr.request_source IN ('selected_maalem', 'selected_service')
+    AND sr.request_source IN ('selected_maalem', 'selected_service', 'quick_request')
     AND sr.status = 'closed' AND sr.cancelled_at IS NULL AND sr.deleted_at IS NULL
     AND si.status = 'closed' AND si.closed_at IS NOT NULL
     AND si.closed_by_employee_id IS NOT NULL AND si.completed_at IS NOT NULL
@@ -203,7 +209,7 @@ export async function getPublishedMaalemReviewStatistics(db, maalemProfileId) {
        AND mr.status = 'published'
        AND mr.hidden_at IS NULL
        AND mr.deleted_at IS NULL
-       AND sr.request_source IN ('selected_maalem', 'selected_service')
+       AND sr.request_source IN ('selected_maalem', 'selected_service', 'quick_request')
        AND sr.status = 'closed'
        AND sr.cancelled_at IS NULL
        AND sr.deleted_at IS NULL

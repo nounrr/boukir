@@ -28,7 +28,7 @@ export function parseMissionNotes(observations: string | null | undefined): Miss
   return notes.reverse();
 }
 
-export type ClientVerdict = { kind: 'validated' | 'complaint'; comment: string | null; at: string; by: string | null };
+export type ClientVerdict = { kind: 'validated' | 'complaint'; comment: string | null; at: string; by: string | null; rating: number | null };
 
 const VERDICT_PREFIX = { validated: 'Travaux validés par le client', complaint: 'RÉCLAMATION CLIENT' } as const;
 
@@ -39,8 +39,12 @@ export function clientVerdictFromNotes(notes: Array<{ visibility?: string; body:
     for (const kind of ['complaint', 'validated'] as const) {
       const prefix = VERDICT_PREFIX[kind];
       if (!note.body.startsWith(prefix)) continue;
-      const rest = note.body.slice(prefix.length).replace(/^\s*:\s*/, '').trim();
-      return { kind, comment: rest || null, at: note.created_at, by: note.actor_name ?? null };
+      // "Travaux validés par le client · ★ 4/5 : comment" (stars and comment both optional).
+      let rest = note.body.slice(prefix.length);
+      const stars = /^\s*·\s*★\s*([1-5])\/5/.exec(rest);
+      if (stars) rest = rest.slice(stars[0].length);
+      rest = rest.replace(/^\s*:\s*/, '').trim();
+      return { kind, comment: rest || null, at: note.created_at, by: note.actor_name ?? null, rating: stars ? Number(stars[1]) : null };
     }
   }
   return null;

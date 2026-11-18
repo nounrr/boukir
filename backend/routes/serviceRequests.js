@@ -13,6 +13,7 @@ import {
   validateClientFeedback,
 } from '../utils/clientFeedback.js';
 import { detectBufferKind } from '../utils/uploadValidation.js';
+import { ownRequestReview, reviewCommentFrom, saveCustomerReview } from '../utils/clientReview.js';
 import {
   SERVICE_REQUEST_CHANNEL,
   SERVICE_REQUEST_INITIAL_STATUS,
@@ -289,6 +290,8 @@ async function listOwnedRequestDetails(db, requestId, contactId) {
     // The customer's verdict on the finished work ("validated" or "complaint"), once given.
     client_feedback: lastClientFeedback(sharedNotes),
     can_give_feedback: CLIENT_FEEDBACK_STATUSES.includes(request.status),
+    // Their stars for the Maalem: 'pending' until the team closes the mission, then 'published'.
+    review: await ownRequestReview(db, requestId, contactId),
   };
 }
 
@@ -757,8 +760,22 @@ router.post('/:id(\\d+)/client-feedback', async (req, res, next) => {
         actorName,
       ]
     );
+    // Stars given with the verdict: kept for the Maalem who did the work, public once the team closes the mission.
+    const review = validation.value.rating
+      ? await saveCustomerReview(connection, {
+        requestId,
+        contactId,
+        actorName,
+        rating: validation.value.rating,
+        comment: reviewCommentFrom(validation.value.comment),
+      })
+      : null;
     await connection.commit();
-    return res.status(201).json({ client_feedback: { kind: validation.value.kind }, note: body });
+    return res.status(201).json({
+      client_feedback: { kind: validation.value.kind },
+      note: body,
+      review: review ? { saved: review.saved, status: review.status ?? null, reason: review.reason ?? null } : null,
+    });
   } catch (error) {
     if (connection) await connection.rollback().catch(() => {});
     return next(error);
