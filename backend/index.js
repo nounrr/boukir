@@ -51,6 +51,7 @@ import ecommerceOrdersRouter, {
 } from './routes/ecommerce/orders.js';
 import ecommercePromoRouter from './routes/ecommerce/promo.js';
 import ecommercePickupLocationsRouter from './routes/ecommerce/pickupLocations.js';
+import nominatimRouter from './routes/nominatim.js';
 import ecommerceCmiPaymentsRouter, { cmiGatewayRouter } from './routes/ecommerce/cmiPayments.js';
 import promoCodesRouter from './routes/promoCodes.js';
 import heroSlidesRouter from './routes/heroSlides.js';
@@ -434,6 +435,7 @@ app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-
 app.use('/api/ecommerce/search', optionalAuth, ecommerceSearchRouter); // E-commerce public search (with optional auth)
 app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
 app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
+app.use('/api/nominatim', nominatimRouter); // Address search / reverse geocoding for the website's and the app's map pickers (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
 app.use('/api/ecommerce/orders', optionalAuth, ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)

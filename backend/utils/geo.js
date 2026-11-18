@@ -20,6 +20,21 @@ export function normalizeLatLng(input) {
   return { lat, lng };
 }
 
+/**
+ * The delivery point of a quote or an order request, whatever name the client used:
+ * shipping_location / customer_location { lat, lng }, shipping_lat + shipping_lng (app),
+ * or shipping_latitude + shipping_longitude (website checkout).
+ */
+export function readShippingLocation(body = {}) {
+  const b = body || {};
+  return (
+    normalizeLatLng(b.shipping_location) ||
+    normalizeLatLng(b.customer_location) ||
+    normalizeLatLng({ lat: b.shipping_lat, lng: b.shipping_lng }) ||
+    normalizeLatLng({ lat: b.shipping_latitude, lng: b.shipping_longitude })
+  );
+}
+
 export function haversineDistanceKm(a, b) {
   const p1 = normalizeLatLng(a);
   const p2 = normalizeLatLng(b);

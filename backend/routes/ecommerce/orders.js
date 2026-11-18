@@ -11,7 +11,7 @@ import {
 import { phone9Sql } from '../../utils/soldeCumule.js';
 import { getEcommerceCredit, projectEcommerceCredit } from '../../utils/ecommerceCredit.js';
 import { calculateEcommerceShipping } from '../../utils/ecommerceShipping.js';
-import { getStoreLocation, haversineDistanceKm, normalizeLatLng } from '../../utils/geo.js';
+import { getStoreLocation, haversineDistanceKm, readShippingLocation } from '../../utils/geo.js';
 import { isCmiConfigured } from '../../utils/cmiPayment.js';
 import { cmiOrderToken, createCmiPaymentForOrder } from './cmiPayments.js';
 import { unitFromRow, unitSellingPrice } from '../../utils/unitPrice.js';
@@ -336,10 +336,7 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
       promo_code,
       use_cart = true,
       items = [],
-      shipping_location,
-      customer_location,
-      shipping_lat,
-      shipping_lng,
+      // The delivery point (shipping_location, shipping_lat/lng, shipping_latitude/longitude) is read by readShippingLocation.
     } = req.body || {};
 
     const rawUserId = req.user?.id || null;
@@ -365,10 +362,8 @@ router.post('/quote', quoteRateLimit, async (req, res, next) => {
     // - customer_location: { lat, lng }
     // - shipping_lat + shipping_lng
     const storeLocation = getStoreLocation();
-    const customerLocation =
-      normalizeLatLng(shipping_location) ||
-      normalizeLatLng(customer_location) ||
-      normalizeLatLng({ lat: shipping_lat, lng: shipping_lng });
+    // (the website's checkout also sends shipping_latitude + shipping_longitude)
+    const customerLocation = readShippingLocation(req.body);
     const distanceKmRaw = normalizedDeliveryMethod === 'delivery'
       ? haversineDistanceKm(storeLocation, customerLocation)
       : null;
@@ -917,10 +912,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
       use_cart = true, // If true, use user's cart; if false, use items array
       items = [], // For guest checkout or direct order: [{product_id, variant_id?, unit_id?, quantity}]
 
-      // Coordinates
-      shipping_location,
-      shipping_lat,
-      shipping_lng,
+      // Coordinates: read by readShippingLocation (shipping_location, shipping_lat/lng, shipping_latitude/longitude)
     } = req.body;
 
     const rawUserId = req.user?.id || null; // NULL for guest orders
@@ -929,8 +921,10 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
     const userId = isEmployeeToken ? null : rawUserId;
 
     // Normalize coordinates
-    const finalLat = normalizeLatLng(shipping_location)?.lat || shipping_lat || null;
-    const finalLng = normalizeLatLng(shipping_location)?.lng || shipping_lng || null;
+    // The website sends shipping_latitude + shipping_longitude, the app shipping_location: read them all.
+    const deliveryPoint = readShippingLocation(req.body);
+    const finalLat = deliveryPoint?.lat ?? null;
+    const finalLng = deliveryPoint?.lng ?? null;
 
     // Validate delivery method early.
     const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
@@ -949,9 +943,7 @@ router.post('/', checkoutRateLimit, async (req, res, next) => {
     // - shipping_location: { lat, lng }
     // - shipping_lat + shipping_lng
     const storeLocation = getStoreLocation();
-    const customerLocation =
-      normalizeLatLng(shipping_location) ||
-      normalizeLatLng({ lat: finalLat, lng: finalLng });
+    const customerLocation = deliveryPoint;
     const distanceKmRaw = normalizedDeliveryMethod === 'delivery'
       ? haversineDistanceKm(storeLocation, customerLocation)
       : null;
@@ -2840,7 +2832,10 @@ router.get('/:id', async (req, res, next) => {
           city: order.shipping_city,
           state: order.shipping_state,
           postal_code: order.shipping_postal_code,
-          country: order.shipping_country
+          country: order.shipping_country,
+          // Delivery point chosen on the map (website / app), for the maps links.
+          latitude: order.shipping_lat != null ? Number(order.shipping_lat) : null,
+          longitude: order.shipping_lng != null ? Number(order.shipping_lng) : null,
         },
 
         // Delivery / pickup
