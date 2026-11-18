@@ -109,8 +109,11 @@ const CategoriesPage: React.FC = () => {
 		if (generatingImageId !== null || batchRunning) return;
 		setGeneratingImageId(category.id);
 		try {
-			await generateCategoryImage(category.id).unwrap();
-			showSuccess(`Image créée pour ${category.nom}`);
+			const generated = await generateCategoryImage(category.id).unwrap();
+			const sources = generated.ai_image_source_products?.length ?? 0;
+			showSuccess(sources > 0
+				? `Image créée pour ${category.nom} à partir de ${sources} produit${sources > 1 ? 's' : ''} réel${sources > 1 ? 's' : ''}`
+				: `Image créée pour ${category.nom} (aucune photo produit dans cette catégorie : image imaginée)`);
 		} catch (error: any) {
 			showError(error?.data?.message || error?.message || "Erreur lors de la création de l'image");
 		} finally {

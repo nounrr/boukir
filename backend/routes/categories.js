@@ -6,7 +6,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
+import sharp from 'sharp';
 import { ensureCategoryColumns, CATEGORY_ORDER_SQL } from '../utils/ensureCategorySchema.js';
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import { requireRoles } from '../middleware/auth.js';
@@ -34,6 +35,83 @@ const IMAGE_MODEL = 'gpt-image-2';
 const IMAGE_QUALITY = 'medium';
 const IMAGE_OUTPUT_ESTIMATE_USD = 0.053;
 const generatingCategories = new Set();
+// Real product photos given to the AI as references for a category cover.
+const REFERENCE_PRODUCTS = 4;
+const uploadsRoot = path.join(__dirname, '..', 'uploads');
+
+/** The category and all its sub-categories (any depth). */
+async function categoryWithDescendants(id) {
+  const [rows] = await pool.query('SELECT id, parent_id FROM categories');
+  const children = new Map();
+  for (const row of rows) {
+    if (!row.parent_id) continue;
+    if (!children.has(row.parent_id)) children.set(row.parent_id, []);
+    children.get(row.parent_id).push(row.id);
+  }
+  const ids = [id];
+  for (let i = 0; i < ids.length; i += 1) ids.push(...(children.get(ids[i]) || []));
+  return [...new Set(ids)];
+}
+
+/**
+ * Up to REFERENCE_PRODUCTS published products of the category that have a photo on this server,
+ * spread over its sub-categories (one per sub-category first), in-stock products first.
+ */
+async function referenceProducts(categoryId) {
+  const ids = await categoryWithDescendants(categoryId);
+  const marks = ids.map(() => '?').join(',');
+  const [rows] = await pool.query(`
+    SELECT p.id, p.designation, p.image_url, p.categorie_id
+    FROM products p
+    WHERE p.ecom_published = 1
+      AND COALESCE(p.is_deleted, 0) = 0
+      AND COALESCE(p.est_service, 0) = 0
+      AND p.image_url IS NOT NULL AND p.image_url <> ''
+      AND (p.categorie_id IN (${marks})
+        OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${marks})))
+    ORDER BY (COALESCE(p.stock_partage_ecom_qty, 0) > 0) DESC, p.id DESC
+    LIMIT 80
+  `, [...ids, ...ids]);
+
+  const usable = rows.filter((row) => {
+    const url = String(row.image_url || '');
+    if (!url.startsWith('/uploads/')) return false;
+    const file = path.resolve(uploadsRoot, url.replace(/^\/uploads\//, ''));
+    return file.startsWith(uploadsRoot) && fs.existsSync(file);
+  });
+  // Round robin over sub-categories, so a univers cover mixes its departments.
+  const groups = new Map();
+  for (const row of usable) {
+    const key = row.categorie_id ?? 0;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  const picked = [];
+  const seenImages = new Set();
+  const queues = [...groups.values()];
+  while (picked.length < REFERENCE_PRODUCTS && queues.some((queue) => queue.length)) {
+    for (const queue of queues) {
+      const row = queue.shift();
+      if (!row || seenImages.has(row.image_url)) continue;
+      seenImages.add(row.image_url);
+      picked.push(row);
+      if (picked.length >= REFERENCE_PRODUCTS) break;
+    }
+  }
+  return picked;
+}
+
+/** A product photo as an upload for the image API, reduced to 768 px on a white background. */
+async function referenceFile(product, index) {
+  const file = path.resolve(uploadsRoot, String(product.image_url).replace(/^\/uploads\//, ''));
+  const buffer = await sharp(file, { failOn: 'none' })
+    .rotate()
+    .resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 88 })
+    .toBuffer();
+  return toFile(buffer, `product-${index + 1}.jpg`, { type: 'image/jpeg' });
+}
 
 function imageCost(result) {
   const details = result?.usage?.input_tokens_details;
@@ -317,6 +395,30 @@ router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus')
 
     const label = String(category.nom || '').trim();
     const details = String(category.description || '').trim().slice(0, 400);
+
+    // Real products of the category as references; text-only only when it has no product photo.
+    const references = await referenceProducts(id);
+    const referenceFiles = [];
+    for (const [index, product] of references.entries()) {
+      try {
+        referenceFiles.push(await referenceFile(product, index));
+      } catch (error) {
+        console.warn('[category image] reference skipped', product.image_url, error?.message || error);
+      }
+    }
+    const fromProducts = referenceFiles.length > 0;
+    const productNames = references.slice(0, referenceFiles.length).map((product) => String(product.designation || '').trim()).filter(Boolean);
+
+    const productPrompt = [
+      'Create one photorealistic square ecommerce category cover for a hardware, building materials and home-improvement shop in Morocco.',
+      `Category: ${label}.`,
+      details ? `Category context: ${details}.` : '',
+      `The reference images are photos of real products sold in this category${productNames.length ? ` (${productNames.join('; ')})` : ''}.`,
+      'Show these exact products together in one tasteful, balanced group: keep each product recognisable with its real shape, colors, materials and packaging as in its photo; do not invent other products.',
+      'Clean professional studio lighting, soft natural shadows, light neutral background, centered composition with some breathing room around the group, realistic scale between the products.',
+      'Do not add any words, captions, prices, watermarks, people or UI; only text already printed on the products themselves may remain.',
+    ].filter(Boolean).join(' ');
+
     const prompt = [
       'Create one photorealistic square ecommerce category thumbnail for a hardware and home-improvement shop in Morocco.',
       `Category: ${label}.`,
@@ -326,14 +428,23 @@ router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus')
       'No words, labels, logos, watermarks, people, or UI. Avoid depicting unrelated products.'
     ].filter(Boolean).join(' ');
 
-    const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 120000 });
-    const result = await client.images.generate({
-      model: IMAGE_MODEL,
-      prompt,
-      size: '1024x1024',
-      quality: IMAGE_QUALITY,
-      n: 1,
-    });
+    const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 180000 });
+    const result = fromProducts
+      ? await client.images.edit({
+        model: IMAGE_MODEL,
+        image: referenceFiles,
+        prompt: productPrompt,
+        size: '1024x1024',
+        quality: IMAGE_QUALITY,
+        n: 1,
+      })
+      : await client.images.generate({
+        model: IMAGE_MODEL,
+        prompt,
+        size: '1024x1024',
+        quality: IMAGE_QUALITY,
+        n: 1,
+      });
     const encoded = result?.data?.[0]?.b64_json;
     if (!encoded) throw new Error('Réponse IA sans image');
 
@@ -341,6 +452,7 @@ router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus')
     fs.mkdirSync(categoryImagesDir, { recursive: true });
     savedPath = path.join(categoryImagesDir, filename);
     await fs.promises.writeFile(savedPath, Buffer.from(encoded, 'base64'));
+    await optimizeImageFile(savedPath);
     const imageUrl = `/uploads/categories/${filename}`;
     const cost = imageCost(result);
 
@@ -352,7 +464,8 @@ router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus')
     if (!update.affectedRows) return res.status(404).json({ message: 'Catégorie introuvable' });
     savedPath = null;
     const [updated] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
-    res.json(updated[0]);
+    // Which real products were used (shown by the back office; empty when generated from text only).
+    res.json({ ...updated[0], ai_image_source_products: references.slice(0, referenceFiles.length).map((product) => ({ id: product.id, designation: product.designation })) });
   } catch (err) {
     if (err?.status === 429) {
       const headerValue = err.headers?.get?.('retry-after') ?? err.headers?.['retry-after'];

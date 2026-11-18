@@ -179,6 +179,8 @@ export interface Category {
   ai_image_cost_estimated?: boolean | number;
   ai_image_model?: string | null;
   ai_image_quality?: string | null;
+  /** Real products whose photos were used for the last AI image (returned by generate-image). */
+  ai_image_source_products?: { id: number; designation: string }[];
   parent_id?: number | null;
   sort_order?: number | null;
   created_by?: number;
