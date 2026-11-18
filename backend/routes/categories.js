@@ -12,6 +12,7 @@ import { ensureCategoryColumns, CATEGORY_ORDER_SQL } from '../utils/ensureCatego
 import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 import { requireRoles } from '../middleware/auth.js';
 import { optimizeImageFile } from '../utils/optimizeImage.js';
+import { applyCategoryCover } from '../utils/categoryCoverFromCatalog.js';
 
 const router = Router();
 
@@ -477,6 +478,26 @@ router.post('/:id/generate-image', requireRoles('PDG', 'Manager', 'ManagerPlus')
   } finally {
     if (savedPath) await fs.promises.unlink(savedPath).catch(() => {});
     generatingCategories.delete(id);
+  }
+});
+
+// Category image composed from our real products and brand logos (no AI, free).
+const composingCategories = new Set();
+router.post('/:id/compose-image', requireRoles('PDG', 'Manager', 'ManagerPlus'), async (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: 'ID invalide' });
+  if (composingCategories.has(id)) return res.status(409).json({ message: 'Image déjà en cours de création pour cette catégorie' });
+  composingCategories.add(id);
+  try {
+    const result = await applyCategoryCover(id, req.user?.id ?? null);
+    if (!result) return res.status(404).json({ message: 'Catégorie introuvable' });
+    if (result.skipped) return res.status(422).json({ message: 'Aucun produit avec photo dans cette catégorie : image inchangée', code: 'NO_PRODUCT_PHOTO' });
+    const [rows] = await pool.query(`SELECT ${CATEGORY_SELECT} FROM categories WHERE id = ?`, [id]);
+    res.json({ ...rows[0], cover_products: result.products, cover_brands: result.brands, previous_image_url: result.previous_image_url });
+  } catch (err) {
+    next(err);
+  } finally {
+    composingCategories.delete(id);
   }
 });
 

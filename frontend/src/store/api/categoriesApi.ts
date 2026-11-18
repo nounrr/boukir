@@ -66,6 +66,14 @@ export const categoriesApi = apiSlice.injectEndpoints({
         { type: 'Category', id: 'LIST' },
       ],
     }),
+    /** Image composed from our real products and brand logos (no AI). */
+    composeCategoryImage: builder.mutation<Category & { cover_products?: number; cover_brands?: number }, number>({
+      query: (id) => ({ url: `/categories/${id}/compose-image`, method: 'POST' }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: 'Category', id },
+        { type: 'Category', id: 'LIST' },
+      ],
+    }),
     reorderCategories: builder.mutation<Category[], { parent_id: number | null; ordered_ids: number[] }>({
       query: (body) => ({ url: '/categories/reorder', method: 'PUT', body }),
       async onQueryStarted({ parent_id, ordered_ids }, { dispatch, queryFulfilled }) {
@@ -106,6 +114,7 @@ export const {
   useCreateCategoryMutation,
   useUpdateCategoryMutation,
   useGenerateCategoryImageMutation,
+  useComposeCategoryImageMutation,
   useDeleteCategoryMutation,
   useReorderCategoriesMutation,
   useGetCategoryUsageQuery,

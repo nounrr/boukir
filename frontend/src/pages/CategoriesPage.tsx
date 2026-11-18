@@ -1,11 +1,12 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Plus, Edit, Trash2, Search, Tags, FolderTree, Sparkles, Download } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Tags, FolderTree, Sparkles, Download, LayoutGrid } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Category } from '../types';
 import {
 	useGetCategoriesQuery,
 	useDeleteCategoryMutation,
 	useGenerateCategoryImageMutation,
+	useComposeCategoryImageMutation,
 } from '../store/api/categoriesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -36,6 +37,12 @@ const CategoriesPage: React.FC = () => {
 	const batchRunningRef = useRef(false);
 	const [batchActiveIds, setBatchActiveIds] = useState<Set<number>>(new Set());
 	const [batchProgress, setBatchProgress] = useState<ImageBatchProgress | null>(null);
+	// Images composed from our real products and brand logos (no AI, free).
+	const [composeCategoryImage] = useComposeCategoryImageMutation();
+	const [composingIds, setComposingIds] = useState<Set<number>>(new Set());
+	const [composeRunning, setComposeRunning] = useState(false);
+	const composeRunningRef = useRef(false);
+	const [composeProgress, setComposeProgress] = useState<null | { total: number; completed: number; succeeded: number; skipped: number; failed: number; failedNames: string[] }>(null);
 
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -189,6 +196,73 @@ const CategoriesPage: React.FC = () => {
 		}
 	};
 
+	/** Composes the image of each category from its real products and brands (3 at a time). */
+	const runCompose = async (targets: Category[]) => {
+		if (composeRunningRef.current || targets.length === 0) return;
+		composeRunningRef.current = true;
+		setComposeRunning(true);
+		setComposeProgress({ total: targets.length, completed: 0, succeeded: 0, skipped: 0, failed: 0, failedNames: [] });
+		let next = 0;
+		const worker = async () => {
+			while (next < targets.length) {
+				const category = targets[next++];
+				setComposingIds((previous) => new Set(previous).add(category.id));
+				try {
+					await composeCategoryImage(category.id).unwrap();
+					setComposeProgress((p) => p && ({ ...p, completed: p.completed + 1, succeeded: p.succeeded + 1 }));
+				} catch (error: any) {
+					const noPhoto = error?.status === 422;
+					setComposeProgress((p) => p && ({
+						...p,
+						completed: p.completed + 1,
+						skipped: p.skipped + (noPhoto ? 1 : 0),
+						failed: p.failed + (noPhoto ? 0 : 1),
+						failedNames: noPhoto ? p.failedNames : [...p.failedNames, category.nom],
+					}));
+				} finally {
+					setComposingIds((previous) => {
+						const nextIds = new Set(previous);
+						nextIds.delete(category.id);
+						return nextIds;
+					});
+				}
+			}
+		};
+		try {
+			await Promise.all(Array.from({ length: Math.min(3, targets.length) }, worker));
+			await refetch();
+		} finally {
+			composeRunningRef.current = false;
+			setComposeRunning(false);
+		}
+	};
+
+	const handleComposeOne = async (category: Category) => {
+		if (composeRunningRef.current || composingIds.size > 0) return;
+		setComposingIds(new Set([category.id]));
+		try {
+			const result = await composeCategoryImage(category.id).unwrap();
+			showSuccess(`Image de ${category.nom} créée avec ${result.cover_products ?? 0} produit(s) et ${result.cover_brands ?? 0} marque(s) de la boutique`);
+		} catch (error: any) {
+			showError(error?.data?.message || error?.message || "Erreur lors de la création de l'image");
+		} finally {
+			setComposingIds(new Set());
+		}
+	};
+
+	const handleComposeSelected = () => runCompose(categories.filter((category) => selectedIds.has(category.id)));
+
+	const handleComposeAll = async () => {
+		const result = await showConfirmation(
+			'Remplacer toutes les images ?',
+			`Les ${categories.length} catégories vont recevoir une nouvelle image composée avec leurs vrais produits et leurs marques (sans IA, gratuit). Les catégories sans aucune photo produit gardent leur image. Visible tout de suite sur le site et l'application.`,
+			'Oui, tout remplacer',
+			'Annuler'
+		);
+		if (!result.isConfirmed) return;
+		await runCompose(categories);
+	};
+
 	const handleDelete = async (id: number) => {
 		const result = await showConfirmation(
 			'Suppression définitive',
@@ -336,6 +410,27 @@ const CategoriesPage: React.FC = () => {
 					</button>
 					{canGenerateImage && (
 						<button
+							onClick={handleComposeSelected}
+							disabled={selectedIds.size === 0 || composeRunning || batchRunning}
+							className="flex items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+							title={selectedIds.size ? 'Image composée avec les vrais produits et marques des catégories sélectionnées (gratuit)' : 'Sélectionnez des catégories'}
+						>
+							<LayoutGrid size={18} />
+							{composeRunning ? `Nos produits ${composeProgress?.completed || 0}/${composeProgress?.total || 0}` : `Nos produits (${selectedIds.size})`}
+						</button>
+					)}
+					{canGenerateImage && (
+						<button
+							onClick={handleComposeAll}
+							disabled={composeRunning || batchRunning || categories.length === 0}
+							className="flex items-center gap-2 rounded-md bg-amber-800 px-4 py-2 text-white hover:bg-amber-900 disabled:cursor-not-allowed disabled:bg-gray-400"
+							title="Remplacer l'image de toutes les catégories par une image de leurs vrais produits et marques"
+						>
+							<LayoutGrid size={18} /> Tout remplacer par nos produits
+						</button>
+					)}
+					{canGenerateImage && (
+						<button
 							onClick={handleGenerateSelectedImages}
 							disabled={selectedIds.size === 0 || batchRunning || generatingImageId !== null || translating}
 							className="flex items-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-white hover:bg-purple-800 disabled:cursor-not-allowed disabled:bg-gray-400"
@@ -374,6 +469,12 @@ const CategoriesPage: React.FC = () => {
 
 			<div className="mb-6">
 				{canGenerateImage && <p className="mb-3 text-sm text-gray-600">Image IA carrée, qualité moyenne : environ {CATEGORY_IMAGE_ESTIMATE_USD.toFixed(3)} USD par génération{selectedIds.size > 0 ? `, soit environ ${(selectedIds.size * CATEGORY_IMAGE_ESTIMATE_USD).toFixed(3)} USD pour la sélection` : ''}. Chaque image créée est facturée.</p>}
+				{composeProgress && (
+					<div role="status" className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+						{composeRunning ? 'Images « nos produits » en cours' : 'Images « nos produits » terminées'} : {composeProgress.completed}/{composeProgress.total} traitée(s), {composeProgress.succeeded} remplacée(s), {composeProgress.skipped} sans photo produit (inchangées), {composeProgress.failed} échec(s).
+						{composeProgress.failedNames.length > 0 && <span className="block mt-1">À réessayer : {composeProgress.failedNames.join(', ')}.</span>}
+					</div>
+				)}
 				{batchProgress && (
 					<div role="status" className="mb-3 rounded-md border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
 						{batchRunning ? 'Création en cours' : 'Création terminée'} : {batchProgress.completed}/{batchProgress.total} traitée(s), {batchProgress.succeeded} réussie(s), {batchProgress.failed} échec(s). Coût total des images créées : {batchProgress.costUsd.toFixed(4)} USD{batchProgress.estimatedCosts > 0 ? ` (${batchProgress.estimatedCosts} coût(s) estimé(s))` : ''}.
@@ -493,6 +594,16 @@ const CategoriesPage: React.FC = () => {
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
 											<div className="flex gap-2">
+												{canGenerateImage && (
+													<button
+														onClick={() => handleComposeOne(c)}
+														disabled={composeRunning || composingIds.size > 0 || batchRunning}
+														className="inline-flex items-center gap-1 text-amber-700 hover:text-amber-900 disabled:opacity-50"
+														title="Image composée avec les vrais produits et marques de la catégorie (gratuit)"
+													>
+														<LayoutGrid size={16} /> {composingIds.has(c.id) ? 'Création…' : 'Nos produits'}
+													</button>
+												)}
 												{canGenerateImage && (
 													<button
 														onClick={() => handleGenerateImage(c)}
