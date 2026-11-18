@@ -7,6 +7,7 @@
     "dev": "node --max-old-space-size=4096 node_modules/vite/bin/vite.js",
     "server": "node backend/index.js",
     "images:optimize": "node backend/scripts/optimize-uploads.js",
+    "categories:covers": "node backend/scripts/category-covers.js",
     "dev:full": "concurrently \"npm:server\" \"npm:dev\"",
     "db:ping": "node backend/scripts/db-ping.js",
     "db:check": "node backend/scripts/check-schema.js",
