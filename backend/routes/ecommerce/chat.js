@@ -13,7 +13,11 @@ import pool from '../../db/pool.js';
 
 const router = Router();
 
+// Choix automatique du modèle : question simple → modèle économique, problème / conseil → modèle fort.
+// AI_CHAT_ROUTING=off force toujours AI_CHAT_MODEL.
 const CHAT_MODEL = process.env.AI_CHAT_MODEL || 'gpt-5-mini';
+const SIMPLE_MODEL = process.env.AI_CHAT_MODEL_SIMPLE || 'gpt-5-nano';
+const ROUTING_ON = String(process.env.AI_CHAT_ROUTING || 'auto').toLowerCase() !== 'off';
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQ = Math.max(1, Number(process.env.AI_CHAT_MAX_REQ || 30)); // par IP et par fenêtre de 10 minutes
 const MAX_MESSAGES = 20;
@@ -236,6 +240,30 @@ function interleave(lists, limit) {
   return [...out.values()];
 }
 
+// Mots qui annoncent un problème à diagnostiquer ou un conseil (français, darija en lettres latines, arabe, anglais).
+const COMPLEX_PATTERNS = [
+  /\b(fuit|fuite|coule|goutte|humid|moisi|fissur|cass|abim|decoll|ecaill|bouch|rouill|grill|ne marche|marche pas|fonctionne pas|panne|probleme|repar|refaire|renov)/,
+  /\b(comment|pourquoi|que faire|quoi faire|conseil|difference|compar|lequel|laquelle|meilleur|choisir|combien de|quelle quantit|quels? .{0,40}\bpour\b|quelles? .{0,40}\bpour\b|pour (mon|ma|mes|un|une|le|la|les|du|des|l'|faire|poser|fixer|coller|peindre) )/,
+  /\b(mahloul|mkhsr|tkhser|ma khdamch|makhdamch|chno ndir|kifach|kifax|mochkil)/,
+  /(تسرب|يسيل|رطوبة|شق|مكسور|خربان|عطل|مشكل|كيفاش|كيف|لماذا|علاش|نصيحة|أصلح|اصلاح|إصلاح|شنو ندير|ما خدامش)/,
+  /\b(leak|broken|crack|damp|mould|mold|repair|fix|how (do|to|can|much|many)|why|which (one|is better)|advice|recommend)/,
+];
+
+// Retourne { model, reason }. Sans appel IA : règles simples, gratuites et instantanées.
+export function pickModel(history) {
+  if (!ROUTING_ON) return { model: CHAT_MODEL, reason: 'routing-off' };
+  const userTurns = history.filter((m) => m.role === 'user').slice(-3);
+  const last = userTurns[userTurns.length - 1]?.content || '';
+  if (last.length > 140) return { model: CHAT_MODEL, reason: 'long' };
+  // Une conversation qui a commencé sur un problème reste sur le modèle fort pour les suites (« et pour l'extérieur ? »).
+  for (const turn of userTurns) {
+    // Minuscules et sans accents : « s'écaille », « S’ÉCAILLE » et « s'ecaille » sont reconnus pareil.
+    const text = turn.content.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’`]/g, "'");
+    if (COMPLEX_PATTERNS.some((re) => re.test(text) || re.test(turn.content))) return { model: CHAT_MODEL, reason: 'problem-or-advice' };
+  }
+  return { model: SIMPLE_MODEL, reason: 'simple' };
+}
+
 function sanitizeHistory(raw) {
   if (!Array.isArray(raw)) return null;
   const messages = raw
@@ -254,16 +282,20 @@ router.post('/', rateLimit, async (req, res) => {
   if (!ai) return res.status(503).json({ message: 'Assistant indisponible pour le moment.' });
   const locale = ['fr', 'ar', 'en', 'zh'].includes(req.body?.locale) ? req.body.locale : 'fr';
 
-  const input = [
+  const baseInput = [
     { role: 'system', content: systemPrompt(locale) },
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
-  const searches = []; // résultats de chaque appel search_products
 
-  try {
+  // Une conversation complète avec un modèle donné : renvoie la réponse, les produits trouvés
+  // et le nombre de recherches lancées.
+  const converse = async (model) => {
+    const input = [...baseInput];
+    const searches = []; // résultats de chaque appel search_products
+    let searchCalls = 0;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
       const response = await ai.responses.create({
-        model: CHAT_MODEL,
+        model,
         store: false,
         include: ['reasoning.encrypted_content'],
         reasoning: { effort: 'low' },
@@ -273,11 +305,7 @@ router.post('/', rateLimit, async (req, res) => {
 
       const calls = (response.output || []).filter((item) => item.type === 'function_call');
       if (!calls.length) {
-        const reply = String(response.output_text || '').trim();
-        return res.json({
-          reply: reply || "Désolé, je n'ai pas compris. Pouvez-vous reformuler ?",
-          products: interleave(searches, CARD_LIMIT),
-        });
+        return { reply: String(response.output_text || '').trim(), searches, searchCalls };
       }
 
       input.push(...response.output);
@@ -286,6 +314,7 @@ router.post('/', rateLimit, async (req, res) => {
         try {
           const args = JSON.parse(call.arguments || '{}');
           if (call.name === 'search_products') {
+            searchCalls += 1;
             const found = await searchProducts(args, locale);
             if (found.length) searches.push(found);
             output = found.map(({ image_url, ...rest }) => rest);
@@ -301,7 +330,28 @@ router.post('/', rateLimit, async (req, res) => {
         input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(output) });
       }
     }
-    return res.status(502).json({ message: "L'assistant n'a pas pu répondre." });
+    return null;
+  };
+
+  try {
+    const choice = pickModel(history);
+    let result = await converse(choice.model);
+    // Filet de sécurité : si le modèle économique n'a rien trouvé ou n'a pas su répondre,
+    // on relance une fois avec le modèle fort.
+    if (
+      choice.model !== CHAT_MODEL &&
+      (!result || !result.reply || (result.searchCalls > 0 && result.searches.length === 0))
+    ) {
+      choice.model = CHAT_MODEL;
+      choice.reason = 'escalated';
+      result = await converse(CHAT_MODEL);
+    }
+    console.log(`[chat] model=${choice.model} reason=${choice.reason}`);
+    if (!result) return res.status(502).json({ message: "L'assistant n'a pas pu répondre." });
+    return res.json({
+      reply: result.reply || "Désolé, je n'ai pas compris. Pouvez-vous reformuler ?",
+      products: interleave(result.searches, CARD_LIMIT),
+    });
   } catch (error) {
     console.error('[chat] error:', error?.message || error);
     return res.status(502).json({ message: "L'assistant ne peut pas répondre pour le moment." });
