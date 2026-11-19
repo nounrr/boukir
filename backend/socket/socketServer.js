@@ -114,6 +114,10 @@ export function initializeSocketServer(httpServer) {
     // E-commerce contacts are intentionally excluded from this room.
     if (socket.user.type === 'employee') {
       socket.join('cash-register-notifications');
+      // The team's apps: every change (`staff:changed`) and the important actions (`staff:notification`).
+      socket.join('staff');
+      socket.join(`employee:${socket.user.id}`);
+      if (socket.user.role) socket.join(`role:${socket.user.role}`);
     }
     console.log(`  → Joined room: user:${socket.user.id}`);
 
@@ -207,6 +211,21 @@ export function emitCashRegisterChange(data) {
   }
   io.to('cash-register-notifications').emit('cash-register:changed', data);
   console.log('Cash-register change emitted to all employee roles:', data);
+}
+
+/** Tells every open team app that a part of the data changed, so it reloads it by itself. */
+export function emitStaffChange(data) {
+  if (!io) return;
+  io.to('staff').emit('staff:changed', data);
+}
+
+/** Emit an event to the employees holding one of the roles or named by id, the author of the action excepted. */
+export function emitToStaff({ roles = [], userIds = [], exceptId = null }, event, data) {
+  if (!io) return;
+  const rooms = [...roles.map((role) => `role:${role}`), ...userIds.map((id) => `employee:${id}`)];
+  if (!rooms.length) return;
+  const target = io.to(rooms);
+  (exceptId != null ? target.except(`employee:${exceptId}`) : target).emit(event, data);
 }
 
 /** Emit an event to one e-commerce customer (all of their open apps). */

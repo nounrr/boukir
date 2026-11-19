@@ -18,6 +18,8 @@ import { hideInternalPricesInApiResponses } from './middleware/internalPriceVisi
 import { canViewInternalPrices } from './utils/internalPricePermissions.js';
 import { enforceWeeklyPasswordChange } from './middleware/passwordPolicy.js';
 import { notifyCashRegisterChanges } from './middleware/cashRegisterRealtime.js';
+import { notifyStaffChanges } from './middleware/staffRealtime.js';
+import staffPushTokensRouter from './routes/staffPushTokens.js';
 import jwt from 'jsonwebtoken';
 
 import employeesRouter from './routes/employees.js';
@@ -360,6 +362,8 @@ app.use(morgan('dev', {
 // Broadcast a lightweight signal after successful mutations that may affect
 // the fond de caisse. Connected PDG clients then reload the canonical day view.
 app.use(notifyCashRegisterChanges);
+// Les applications de l'équipe se rechargent seules après chaque changement, et les actions importantes sont notifiées.
+app.use(notifyStaffChanges);
 
 // Personnel documents and payment proofs are private. Catalogue assets and
 // bon PDFs remain publicly served by the generic static mount below.
@@ -411,6 +415,7 @@ app.get('/api/db/info', requireRole('PDG'), (_req, res) => {
 // Routes
 app.use('/api/employees', employeesRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/staff', staffPushTokensRouter); // team phones' push tokens
 app.use('/api/users/auth', pushTokensRouter); // customer phones' push tokens
 app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 
