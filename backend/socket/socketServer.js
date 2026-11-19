@@ -118,6 +118,8 @@ export function initializeSocketServer(httpServer) {
       socket.join('staff');
       socket.join(`employee:${socket.user.id}`);
       if (socket.user.role) socket.join(`role:${socket.user.role}`);
+      // Tells the team app this server sends the change signals: it can stop reloading on its own.
+      socket.emit('staff:hello', { at: new Date().toISOString() });
     }
     console.log(`  → Joined room: user:${socket.user.id}`);
 
