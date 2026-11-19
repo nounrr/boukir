@@ -110,6 +110,7 @@ import livraisonsRouter from './routes/livraisons.js';
 import deliveryRunsRouter from './routes/deliveryRuns.js';
 import notificationsRouter from './routes/notifications.js';
 import gestionAssistantRouter from './routes/gestionAssistant.js';
+import vehiculePositionsRouter from './routes/vehiculePositions.js';
 import aiRouter from './routes/ai.js';
 import inventoryRouter from './routes/inventory.js';
 import statsRouter from './routes/stats.js';
@@ -503,6 +504,7 @@ app.use('/api/livraisons', livraisonsRouter);
 app.use('/api/delivery-runs', deliveryRunsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/gestion-assistant', gestionAssistantRouter); // Assistant de gestion de la direction (PDG, ManagerPlus)
+app.use('/api/vehicule-positions', vehiculePositionsRouter); // Suivi GPS des véhicules (positions envoyées par les téléphones des chauffeurs)
 app.use('/api/inventory', inventoryRouter);
 app.use('/api/inventory-count', inventoryCountingRouter);
 app.use('/api/stats', statsRouter);
