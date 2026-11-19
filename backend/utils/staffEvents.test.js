@@ -21,6 +21,16 @@ test('each part of the API reloads its own part of the app', () => {
   assert.equal(areaOf('/api/fond-caisse/days/2026-11-19'), 'till');
   assert.equal(areaOf('/api/employees/3/salaires'), 'team');
   assert.equal(areaOf('/api/notifications/artisan-requests/5/approve'), 'contacts');
+  // The team's Maalem, service, depot, inventory and absence pages reload too.
+  assert.equal(areaOf('/api/admin/maalem-profiles/4/status'), 'services');
+  assert.equal(areaOf('/api/admin/services/2/publication'), 'services');
+  assert.equal(areaOf('/api/admin/service-requests/9/transition'), 'services');
+  assert.equal(areaOf('/api/admin/service-interventions/by-request/9/schedule'), 'services');
+  assert.equal(areaOf('/api/stock-depot/transferts'), 'stock');
+  assert.equal(areaOf('/api/inventory/snapshots'), 'stock');
+  assert.equal(areaOf('/api/inventory-count/sessions'), 'stock');
+  assert.equal(areaOf('/api/absences'), 'team');
+  assert.equal(areaOf('/api/vehicules/3'), 'vehicles');
 });
 
 test('GPS pings, sign-in and reading never count as a change', () => {

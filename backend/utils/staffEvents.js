@@ -55,7 +55,16 @@ const AREAS = [
   ['/api/projets', 'projets'],
   ['/api/remises', 'contacts'],
   ['/api/admin/service-requests', 'services'],
+  ['/api/admin/service-interventions', 'services'],
+  ['/api/admin/services', 'services'],
+  ['/api/admin/maalem-profiles', 'services'],
+  ['/api/admin/maalem-categories', 'services'],
+  ['/api/admin/maalem-earnings', 'services'],
+  ['/api/admin/maalem-reviews', 'services'],
+  ['/api/maalem-profiles', 'services'],
+  ['/api/maalem-missions', 'services'],
   ['/api/service-requests', 'services'],
+  ['/api/inventory-count', 'stock'],
 ];
 
 const under = (path, prefix) => path === prefix || path.startsWith(`${prefix}/`);
@@ -186,7 +195,7 @@ export function staffEventOf({ method, path, query = {}, body = {}, response = {
 
   if (m === 'POST' && /^\/api\/service-requests(\/(quick|selected-maalem|selected-service))?$/.test(p)) {
     const number = r.request?.request_number ?? r.request_number ?? r.data?.request_number ?? null;
-    return { ...base, actor: null, kind: 'service:new', parts: [number], href: '/admin', data: {} };
+    return { ...base, actor: null, kind: 'service:new', parts: [number], href: '/admin/requests', data: {} };
   }
 
   return null;
