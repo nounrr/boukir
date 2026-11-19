@@ -25,6 +25,7 @@ import jwt from 'jsonwebtoken';
 import employeesRouter from './routes/employees.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
+import userVerificationRouter from './routes/userVerification.js';
 import pushTokensRouter from './routes/pushTokens.js';
 
 import categoriesRouter from './routes/categories.js';
@@ -276,6 +277,12 @@ const PUBLIC_PATHS = new Set([
   '/api/users/auth/activate',
   '/api/users/auth/google',
   '/api/users/auth/facebook',
+  '/api/users/auth/register/start',
+  '/api/users/auth/register/confirm',
+  '/api/users/auth/code/resend',
+  '/api/users/auth/password/forgot',
+  '/api/users/auth/password/forgot/send',
+  '/api/users/auth/password/reset',
 
   // Route de test WhatsApp sans token (peut être retirée en production)
 ]);
@@ -417,6 +424,7 @@ app.use('/api/employees', employeesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/staff', staffPushTokensRouter); // team phones' push tokens
 app.use('/api/users/auth', pushTokensRouter); // customer phones' push tokens
+app.use('/api/users/auth', userVerificationRouter); // codes by e-mail / SMS: sign-up, forgotten password
 app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 
 app.use('/api/categories', categoriesRouter);

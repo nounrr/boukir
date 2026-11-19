@@ -17,6 +17,9 @@ import { getEcommerceCredit } from '../utils/ecommerceCredit.js';
 import { findMaalemProfileByContactId } from '../utils/maalemProfile.js';
 import { parseMaalemRegistrationIntent } from '../utils/maalemRegistration.js';
 import { consumeMaalemActivationToken } from '../utils/maalemTeamCreation.js';
+import { checkRegistration, createLocalAccount, registrationAnswer } from '../utils/customerAccount.js';
+import { normalizePhone, phoneVariants } from '../utils/otp.js';
+import { ensureOtpSchema } from '../utils/otpStore.js';
 
 const router = Router();
 const avatarUpload = multer({
@@ -46,6 +49,9 @@ function receiveProfileAvatar(req, res, next) {
 
 // Ensure contacts has remise_balance column (used as "remise points" balance)
 ensureContactsRemiseBalance().catch(e => console.error('ensureContactsRemiseBalance:', e));
+
+// Ensure the one-time codes table and contacts.phone_verified exist (sign-up and password codes)
+ensureOtpSchema().catch(e => console.error('ensureOtpSchema:', e.message));
 
 // Ensure contacts has checkout shipping columns (used for /api/users/auth/me prefill)
 ensureContactsCheckoutColumns().catch(e => console.error('ensureContactsCheckoutColumns:', e));
@@ -92,305 +98,20 @@ function isAccountLocked(user) {
 router.post('/register', async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
-    const {
-      prenom,
-      nom,
-      email,
-      telephone,
-      type_compte,
-      password,
-      confirm_password,
-      profil_client,
-      client_profile,
-      is_company,
-      societe,
-      company_name,
-      ice,
-      artisan_path,
-      maalem_category_id,
-    } = req.body;
-
-    // Validation
-    if (!prenom || !nom || !email || !password) {
-      return res.status(400).json({
-        message: 'Les champs prénom, nom, email et mot de passe sont obligatoires',
-        field: !prenom ? 'prenom' : !nom ? 'nom' : !email ? 'email' : 'password',
-      });
-    }
-
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ message: 'Format d\'email invalide', field: 'email' });
-    }
-
-    const normalizedTelephone = String(telephone || '').trim();
-    if (!normalizedTelephone) {
-      return res.status(400).json({ message: 'Le numéro de téléphone est obligatoire', field: 'telephone' });
-    }
-    if (!/^(\+212|0)[5-7]\d{8}$/.test(normalizedTelephone)) {
-      return res.status(400).json({ message: 'Format de téléphone invalide', field: 'telephone' });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({
-        message: 'Le mot de passe doit contenir au moins 8 caractères',
-        field: 'password',
-      });
-    }
-
-    if (password !== confirm_password) {
-      return res.status(400).json({
-        message: 'Les mots de passe ne correspondent pas',
-        field: 'confirm_password',
-      });
-    }
-
-    if (type_compte && !['Client', 'Artisan', 'Promoteur', 'Artisan/Promoteur'].includes(type_compte)) {
-      return res.status(400).json({
-        message: 'Type de compte invalide',
-        field: 'type_compte',
-      });
-    }
-
-    const registrationIntent = parseMaalemRegistrationIntent({
-      type_compte: type_compte || 'Client',
-      artisan_path,
-      maalem_category_id,
-    });
-    if (!registrationIntent.valid) {
-      return res.status(400).json({
-        message: registrationIntent.error,
-        field: registrationIntent.error.includes('catégorie') ? 'maalem_category_id' : 'artisan_path',
-      });
-    }
-
-    // Check if email already exists
-    const [existing] = await connection.query(
-      'SELECT id, email, auth_provider FROM contacts WHERE email = ? AND deleted_at IS NULL',
-      [email.toLowerCase()]
-    );
-
-    if (existing.length > 0) {
-      const existingUser = existing[0];
-      if (existingUser.auth_provider === 'local') {
-        return res.status(409).json({
-          message: 'Un compte existe déjà avec cet email',
-          field: 'email',
-        });
-      } else if (existingUser.auth_provider !== 'none') {
-        return res.status(409).json({
-          message: `Un compte existe déjà avec cet email via ${existingUser.auth_provider === 'google' ? 'Google' : 'Facebook'}. Veuillez vous connecter avec ${existingUser.auth_provider === 'google' ? 'Google' : 'Facebook'}.`,
-          field: 'email',
-          sso_provider: existingUser.auth_provider,
-        });
-      }
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Determine account type and approval status
-    const isArtisanRequest = registrationIntent.is_artisan_request;
-    const effectiveTypeCompte = isArtisanRequest ? 'Client' : (type_compte || 'Client');
-    const demandeArtisan = isArtisanRequest;
-
-    // Client profile (Particulier vs Société)
-    // Applies only to true "Client" registration (not Artisan/Promoteur request flow).
-    const profileValue = String(profil_client ?? client_profile ?? '').trim().toLowerCase();
-    const requestedIsCompany =
-      is_company === true ||
-      is_company === 1 ||
-      String(is_company ?? '').toLowerCase() === 'true' ||
-      profileValue === 'societe' ||
-      profileValue === 'société' ||
-      profileValue === 'society' ||
-      profileValue === 'company';
-
-    const isCompanyProfile = !isArtisanRequest && effectiveTypeCompte === 'Client' && requestedIsCompany;
-    const companyNameValue = String(societe ?? company_name ?? '').trim();
-    const iceValue = String(ice ?? '').trim();
-
-    if (isCompanyProfile) {
-      if (!companyNameValue) {
-        return res.status(400).json({
-          message: 'Nom de la société obligatoire',
-          field: 'societe',
-        });
-      }
-      if (!iceValue) {
-        return res.status(400).json({
-          message: 'ICE obligatoire',
-          field: 'ice',
-        });
-      }
-      if (!/^\d{15}$/.test(iceValue)) {
-        return res.status(400).json({
-          message: "L'ICE doit contenir 15 chiffres.",
-          field: 'ice',
-        });
-      }
-
-      const [iceRows] = await connection.query(
-        'SELECT id FROM contacts WHERE ice = ? AND deleted_at IS NULL LIMIT 1',
-        [iceValue]
-      );
-      if (iceRows.length > 0) {
-        return res.status(409).json({
-          message: 'ICE déjà utilisé par un autre compte',
-          field: 'ice',
-        });
-      }
-    }
-
-    // Create nom_complet for BO compatibility
-    const nomComplet = `${prenom.trim()} ${nom.trim()}`;
+    await ensureOtpSchema(connection);
+    const checked = await checkRegistration(connection, req.body, 'legacy');
+    if (checked.error) return res.status(checked.error.status).json(checked.error.body);
 
     await connection.beginTransaction();
-
-    let selectedMaalemCategory = null;
-    if (registrationIntent.wants_maalem && registrationIntent.category_id != null) {
-      const [categoryRows] = await connection.query(
-        `SELECT id, nom, nom_ar, is_active
-         FROM maalem_categories
-         WHERE id = ? AND is_active = 1 AND deleted_at IS NULL
-         LIMIT 1
-         FOR UPDATE`,
-        [registrationIntent.category_id]
-      );
-      selectedMaalemCategory = categoryRows[0] || null;
-      if (!selectedMaalemCategory) {
-        await connection.rollback();
-        return res.status(400).json({
-          message: 'Catégorie Maalem inactive ou introuvable',
-          field: 'maalem_category_id',
-        });
-      }
+    const created = await createLocalAccount(connection, checked.data);
+    if (created.error) {
+      await connection.rollback();
+      return res.status(created.error.status).json(created.error.body);
     }
-
-    // Insert new contact/user
-    const [result] = await connection.query(
-      `INSERT INTO contacts 
-       (nom_complet, prenom, nom, email, telephone, type, type_compte, 
-        demande_artisan, type_compte_demande, artisan_approuve, password, auth_provider,
-        email_verified, is_active, source,
-        societe, ice, is_company)
-       VALUES (?, ?, ?, ?, ?, 'Client', ?, ?, ?, FALSE, ?, 'local', FALSE, TRUE, 'ecommerce', ?, ?, ?)`,
-      [
-        nomComplet,
-        prenom.trim(),
-        nom.trim(),
-        email.toLowerCase().trim(),
-        normalizedTelephone,
-        effectiveTypeCompte,
-        demandeArtisan,
-        isArtisanRequest ? (type_compte === 'Promoteur' ? 'Promoteur' : 'Artisan') : null,
-        hashedPassword,
-        isCompanyProfile ? companyNameValue : null,
-        isCompanyProfile ? iceValue : null,
-        isCompanyProfile ? 1 : 0,
-      ]
-    );
-
-    const userId = result.insertId;
-
-    let maalemProfile = null;
-    if (registrationIntent.wants_maalem) {
-      const [profileResult] = await connection.query(
-        `INSERT INTO maalem_profiles (contact_id, category_id, status, origin)
-         VALUES (?, ?, 'draft', 'NEW_REGISTRATION')`,
-        [userId, registrationIntent.category_id]
-      );
-      maalemProfile = {
-        id: Number(profileResult.insertId),
-        user_id: Number(userId),
-        contact_id: Number(userId),
-        category_id: registrationIntent.category_id,
-        status: 'draft',
-        status_label: 'Brouillon',
-        origin: 'NEW_REGISTRATION',
-        origin_label: 'Nouvelle inscription',
-        created_by_employee_id: null,
-        professional_data: null,
-        status_reason: null,
-        submitted_at: null,
-        reviewed_at: null,
-        reviewed_by: null,
-        category: selectedMaalemCategory ? {
-          id: Number(selectedMaalemCategory.id),
-          nom: selectedMaalemCategory.nom,
-          nom_ar: selectedMaalemCategory.nom_ar,
-          is_active: true,
-        } : null,
-      };
-    }
-
-    // Fetch created user
-    const [users] = await connection.query(
-      `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
-              email_verified, avatar_url, locale, is_active, demande_artisan,
-              artisan_approuve, created_at,
-              societe, ice, is_company, is_solde
-       FROM contacts WHERE id = ?`,
-      [userId]
-    );
-
     await connection.commit();
-
-    const user = users[0];
-    const token = generateToken(user);
-
-    // Emit socket event to PDG if artisan request was created
-    if (user.demande_artisan && !user.artisan_approuve) {
-      console.log(`🔔 New artisan request: ${user.prenom} ${user.nom} (ID: ${user.id})`);
-
-      emitToPDG('artisan-request:new', {
-        contact_id: user.id,
-        nom_complet: `${user.prenom} ${user.nom}`,
-        prenom: user.prenom,
-        nom: user.nom,
-        email: user.email,
-        telephone: user.telephone,
-        avatar_url: user.avatar_url,
-        created_at: user.created_at,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Prepare response message
-    let message = 'Compte créé avec succès';
-    if (user.demande_artisan && !user.artisan_approuve) {
-      message = `Compte créé avec succès. Votre demande pour devenir ${type_compte === 'Promoteur' ? 'Promoteur' : 'Artisan'} est en attente d'approbation par un administrateur.`;
-    }
-
-    if (maalemProfile) {
-      message = 'Compte créé avec succès. Votre brouillon Maalem est prêt à être complété.';
-    }
-
-    res.status(201).json({
-      message,
-      user: {
-        id: user.id,
-        prenom: user.prenom,
-        nom: user.nom,
-        email: user.email,
-        telephone: user.telephone,
-        societe: user.societe,
-        ice: user.ice,
-        is_company: !!user.is_company,
-        is_solde: !!user.is_solde,
-        type_compte: user.type_compte,
-        auth_provider: user.auth_provider,
-        email_verified: !!user.email_verified,
-        avatar_url: user.avatar_url,
-        locale: user.locale,
-        demande_artisan: !!user.demande_artisan,
-        artisan_approuve: !!user.artisan_approuve,
-        maalem_profile: maalemProfile,
-      },
-      token,
-      next_path: maalemProfile ? '/profile/maalem' : null,
-    });
+    res.status(201).json(registrationAnswer(created.user, created.maalemProfile, checked.data.type_compte));
   } catch (err) {
-    await connection.rollback();
+    await connection.rollback().catch(() => {});
     console.error('Registration error:', err);
     if (err?.code === 'ER_DUP_ENTRY') {
       const duplicateEmail = String(err.sqlMessage || err.message || '').toLowerCase().includes('email');
@@ -460,17 +181,23 @@ router.post('/login', async (req, res, next) => {
       });
     }
 
-    // Find user by email
+    // The identifier is an e-mail, or the phone number of an account created with it.
+    await ensureOtpSchema(connection);
+    const identifier = String(email).trim();
+    const byPhone = !identifier.includes('@') && !!normalizePhone(identifier);
     const [users] = await connection.query(
-      `SELECT id, prenom, nom, email, telephone, type_compte, password, auth_provider, 
-              email_verified, avatar_url, locale, is_active, is_blocked, 
+      `SELECT id, prenom, nom, email, telephone, type_compte, password, auth_provider,
+              email_verified, phone_verified, avatar_url, locale, is_active, is_blocked,
               login_attempts, locked_until, last_login_at, demande_artisan, artisan_approuve,
               nom_complet, adresse,
               shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
               societe, ice, is_company, is_solde,
               COALESCE(remise_balance, 0) AS remise_balance
-       FROM contacts WHERE email = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
-      [email.toLowerCase()]
+       FROM contacts
+       WHERE ${byPhone ? "REPLACE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '.', '') IN (?) AND auth_provider = 'local'" : 'email = ?'}
+         AND deleted_at IS NULL AND auth_provider != 'none'
+       ORDER BY ${byPhone ? 'phone_verified DESC, ' : ''}id ASC`,
+      [byPhone ? phoneVariants(identifier) : identifier.toLowerCase()]
     );
 
     const user = users[0];
@@ -580,6 +307,7 @@ router.post('/login', async (req, res, next) => {
         is_solde: !!user.is_solde,
         auth_provider: user.auth_provider,
         email_verified: !!user.email_verified,
+        phone_verified: !!user.phone_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
         demande_artisan: !!user.demande_artisan,
@@ -968,6 +696,7 @@ router.post('/google', async (req, res, next) => {
         type_compte: user.type_compte,
         auth_provider: user.auth_provider,
         email_verified: !!user.email_verified,
+        phone_verified: !!user.phone_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
         demande_artisan: !!user.demande_artisan,
@@ -1171,6 +900,7 @@ router.post('/facebook', async (req, res, next) => {
         type_compte: user.type_compte,
         auth_provider: user.auth_provider,
         email_verified: !!user.email_verified,
+        phone_verified: !!user.phone_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
         demande_artisan: !!user.demande_artisan,
@@ -1215,11 +945,12 @@ router.get('/me', async (req, res, next) => {
     }
 
     // Schema ensure is executed once at process startup (and is cached if called elsewhere).
+    await ensureOtpSchema().catch(() => {});
 
     const tQueryStart = process.hrtime.bigint();
     const [users] = await pool.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
-              email_verified, avatar_url, locale, is_active, last_login_at, created_at,
+              email_verified, phone_verified, avatar_url, locale, is_active, last_login_at, created_at,
               nom_complet, adresse,
               shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
               societe, ice, is_company, is_solde,
@@ -1282,6 +1013,7 @@ router.get('/me', async (req, res, next) => {
         type_compte: user.type_compte,
         auth_provider: user.auth_provider,
         email_verified: !!user.email_verified,
+        phone_verified: !!user.phone_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
         last_login_at: user.last_login_at,
@@ -1330,11 +1062,12 @@ router.put('/me', receiveProfileAvatar, async (req, res, next) => {
     }
 
     await ensureContactsCheckoutColumns(connection);
+    await ensureOtpSchema(connection).catch(() => {});
 
     await connection.beginTransaction();
 
     const [rows] = await connection.query(
-      `SELECT id, prenom, nom, is_active
+      `SELECT id, prenom, nom, telephone, is_active
        FROM contacts
        WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'
        FOR UPDATE`,
@@ -1391,6 +1124,13 @@ router.put('/me', receiveProfileAvatar, async (req, res, next) => {
       }
     }
 
+    // A new phone number has to be confirmed again before it can reset the password.
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'telephone')) {
+      const before = normalizePhone(current.telephone) || String(current.telephone || '').trim();
+      const after = normalizePhone(req.body.telephone) || String(req.body.telephone || '').trim();
+      if (before !== after) updates.push('phone_verified = 0');
+    }
+
     // Keep nom_complet in sync if prenom/nom were provided
     const nextPrenom = Object.prototype.hasOwnProperty.call(req.body || {}, 'prenom')
       ? normalizeNullableText(req.body.prenom)
@@ -1429,7 +1169,7 @@ router.put('/me', receiveProfileAvatar, async (req, res, next) => {
     // Return fresh profile (same shape as GET /me)
     const [users] = await pool.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider,
-              email_verified, avatar_url, locale, is_active, last_login_at, created_at,
+              email_verified, phone_verified, avatar_url, locale, is_active, last_login_at, created_at,
               nom_complet, adresse,
               shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
               societe, ice, is_company, is_solde,
@@ -1463,6 +1203,7 @@ router.put('/me', receiveProfileAvatar, async (req, res, next) => {
         type_compte: user.type_compte,
         auth_provider: user.auth_provider,
         email_verified: !!user.email_verified,
+        phone_verified: !!user.phone_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
         last_login_at: user.last_login_at,
