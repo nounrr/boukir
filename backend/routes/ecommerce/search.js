@@ -2,7 +2,7 @@ import { ensureProductCategoriesSchema } from '../../utils/productCategories.js'
 import { Router } from 'express';
 import OpenAI from 'openai';
 import pool from '../../db/pool.js';
-import { EMBEDDING_MODEL, geminiKey, searchByImage } from '../../utils/visualSearch.js';
+import { EMBEDDING_MODEL, analyzeImage, cleanWords, geminiKey, prepareImage, searchByImage } from '../../utils/visualSearch.js';
 import { ensureCategoryColumns } from '../../utils/ensureCategorySchema.js';
 
 const router = Router();
@@ -565,11 +565,30 @@ router.post('/visual', imageRateLimit, async (req, res) => {
   if (!geminiKey()) return res.status(503).json({ message: 'Recherche visuelle indisponible.' });
   const limit = Math.max(1, Math.min(48, Number(req.body?.limit) || 24));
   try {
-    const { results, indexed } = await searchByImage(pool, Buffer.from(match[2], 'base64'), { limit });
+    // Optional words with the photo (« le même en rouge »): one combined image + text search.
+    const text = cleanWords(req.body?.text);
+    const { results, indexed } = await searchByImage(pool, Buffer.from(match[2], 'base64'), { limit, text });
     if (indexed === 0) return res.status(503).json({ message: 'Recherche visuelle en préparation.', indexed });
     res.json({ results: results.map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })), indexed, model: EMBEDDING_MODEL });
   } catch (error) {
     console.error('[search/visual] error:', error?.message || error);
+    res.status(error?.status === 429 ? 429 : 502).json({ message: "Impossible d'analyser la photo pour le moment." });
+  }
+});
+
+// POST /api/ecommerce/search/lens { image: data URL } → the products seen in the photo, each with
+// its box ([ymin, xmin, ymax, xmax] in 0-1000), a French name and the text readable on it.
+router.post('/lens', imageRateLimit, async (req, res) => {
+  const image = String(req.body?.image || '');
+  const match = image.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return res.status(400).json({ message: 'Image invalide.' });
+  if (match[2].length > 900_000) return res.status(413).json({ message: 'Image trop lourde.' });
+  if (!geminiKey()) return res.status(503).json({ message: 'Recherche visuelle indisponible.' });
+  try {
+    const objects = await analyzeImage(await prepareImage(Buffer.from(match[2], 'base64')));
+    res.json({ objects });
+  } catch (error) {
+    console.error('[search/lens] error:', error?.message || error);
     res.status(error?.status === 429 ? 429 : 502).json({ message: "Impossible d'analyser la photo pour le moment." });
   }
 });

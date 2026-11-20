@@ -124,8 +124,12 @@ class GeminiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
 }
 
-/** Embeddings of up to 6 JPEG images, in order (normalised Float32Array each). */
-export async function embedImages(jpegs, { key = geminiKey(), fetchImpl = fetch } = {}) {
+/**
+ * Embeddings of up to 6 JPEG images, in order (normalised Float32Array each). With `text`, each
+ * image and the words form ONE embedding (Gemini aggregates the parts of one content): this is
+ * the « photo + words » search (« le même en rouge », « 180 mm »).
+ */
+export async function embedImages(jpegs, { key = geminiKey(), fetchImpl = fetch, text = '' } = {}) {
   if (!key) throw new GeminiError('GEMINI_API_KEY manquant', 503);
   if (jpegs.length === 0) return [];
   if (jpegs.length > BATCH) throw new Error(`Au plus ${BATCH} images par requête`);
@@ -135,7 +139,7 @@ export async function embedImages(jpegs, { key = geminiKey(), fetchImpl = fetch 
     body: JSON.stringify({
       requests: jpegs.map((jpeg) => ({
         model: `models/${EMBEDDING_MODEL}`,
-        content: { parts: [{ inline_data: { mime_type: 'image/jpeg', data: jpeg.toString('base64') } }] },
+        content: { parts: [{ inline_data: { mime_type: 'image/jpeg', data: jpeg.toString('base64') } }, ...(text ? [{ text }] : [])] },
         output_dimensionality: EMBEDDING_DIMS,
       })),
     }),
@@ -153,6 +157,87 @@ export async function embedImages(jpegs, { key = geminiKey(), fetchImpl = fetch 
     if (!Array.isArray(values) || values.length !== EMBEDDING_DIMS) throw new GeminiError('Embedding Gemini invalide', 502);
     return normalize(values);
   });
+}
+
+/** Words added to a photo search: letters, digits and simple punctuation, 100 characters at most. */
+export function cleanWords(text) {
+  return String(text ?? '').replace(/[^\p{L}\p{N}\s'’.,×%/-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+}
+
+/* ------------------------------------------------------------------ objects in the photo (Lens) */
+
+/** Fast multimodal model for object detection and text reading (stable; override with GEMINI_VISION_MODEL). */
+export function visionModel(env = process.env) {
+  return String(env.GEMINI_VISION_MODEL || 'gemini-3.5-flash-lite').trim();
+}
+
+// Google's recommended detection wording (box_2d = [ymin, xmin, ymax, xmax], 0-1000), for our catalogue.
+const LENS_PROMPT = [
+  'Detect the prominent products in the image (at most 6), such as building materials, tools, hardware, plumbing, electrical, paint or DIY items.',
+  'The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000.',
+  'label: the common French name of the product as a shop catalogue would write it, 1 to 4 words (for example "disque diamant", "perceuse visseuse", "colle carrelage").',
+  'text: the brand, model or reference printed on that product and readable in the photo, else an empty string. Never invent text.',
+].join(' ');
+
+const LENS_SCHEMA = {
+  type: 'object',
+  properties: {
+    objects: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          box_2d: { type: 'array', items: { type: 'integer' } },
+          label: { type: 'string' },
+          text: { type: 'string' },
+        },
+        required: ['box_2d', 'label'],
+      },
+    },
+  },
+  required: ['objects'],
+};
+
+/** Valid boxes only: 4 numbers in 0-1000, ymin < ymax and xmin < xmax, not a sliver; at most 6. */
+export function cleanObjects(raw) {
+  const list = Array.isArray(raw?.objects) ? raw.objects : [];
+  const out = [];
+  for (const item of list) {
+    const box = Array.isArray(item?.box_2d) ? item.box_2d.map(Number) : [];
+    if (box.length !== 4 || box.some((n) => !Number.isFinite(n))) continue;
+    const [ymin, xmin, ymax, xmax] = box.map((n) => Math.max(0, Math.min(1000, Math.round(n))));
+    if (ymax - ymin < 20 || xmax - xmin < 20) continue;
+    out.push({ box: [ymin, xmin, ymax, xmax], label: cleanWords(item.label).slice(0, 60), text: cleanWords(item.text).slice(0, 60) });
+    if (out.length === 6) break;
+  }
+  return out;
+}
+
+/**
+ * Lens analysis of a photo: the products in it, each with its box, its name and the text readable
+ * on it (brand, reference). Gemini generateContent with a JSON schema; thinking kept minimal.
+ */
+export async function analyzeImage(jpeg, { key = geminiKey(), fetchImpl = fetch, model = visionModel() } = {}) {
+  if (!key) throw new GeminiError('GEMINI_API_KEY manquant', 503);
+  const res = await fetchImpl(`${API}/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: jpeg.toString('base64') } }, { text: LENS_PROMPT }] }],
+      generationConfig: { responseMimeType: 'application/json', responseJsonSchema: LENS_SCHEMA, thinkingConfig: { thinkingLevel: 'minimal' } },
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new GeminiError(`Gemini HTTP ${res.status}: ${detail.slice(0, 200)}`, res.status);
+  }
+  const data = await res.json();
+  const parts = data?.candidates?.[0]?.content?.parts;
+  const text = Array.isArray(parts) ? parts.map((part) => (typeof part?.text === 'string' ? part.text : '')).join('') : '';
+  let parsed = null;
+  try { parsed = JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { parsed = null; }
+  return cleanObjects(parsed);
 }
 
 /* ------------------------------------------------------------------ in-memory index */
@@ -188,9 +273,9 @@ export async function loadIndex(db, { force = false } = {}) {
 }
 
 /** Products most similar to a customer photo (raw bytes of a JPEG/PNG/WebP image). */
-export async function searchByImage(db, imageBuffer, { limit = 24, key = geminiKey() } = {}) {
+export async function searchByImage(db, imageBuffer, { limit = 24, key = geminiKey(), text = '' } = {}) {
   const jpeg = await prepareImage(imageBuffer);
-  const [query] = await embedImages([jpeg], { key });
+  const [query] = await embedImages([jpeg], { key, text: cleanWords(text) });
   const index = await loadIndex(db);
   return { results: topMatches(query, index.ids, index.matrix, EMBEDDING_DIMS, limit), indexed: index.ids.length };
 }
