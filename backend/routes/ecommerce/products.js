@@ -135,6 +135,7 @@ router.get('/', async (req, res, next) => {
       in_stock_only, // Filter only in-stock products
       sort = 'category', // category, newest, price_asc, price_desc, popular, promo, random
       seed,         // random: same seed = same order (pages never repeat a product); a new seed = a new order
+      ids,          // comma-separated product ids (visual search results): only those, in that order
       page = 1,     // Page number (starts from 1)
       limit = 50,   // Items per page
       per_page      // Alternative to limit
@@ -166,6 +167,14 @@ router.get('/', async (req, res, next) => {
       'COALESCE(p.non_stockable, 0) = 0'
     ];
     const params = [];
+
+    // Explicit list of products (visual search): at most 60 ids, kept in the given order.
+    const idList = [...new Set(String(ids ?? '').split(',').map((v) => Number.parseInt(v.trim(), 10)).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 60);
+    if (ids != null && ids !== '') {
+      if (idList.length === 0) return res.json({ products: [], pagination: { current_page: 1, per_page: 0, total_items: 0, total_pages: 0, has_previous: false, has_next: false, from: 0, to: 0 }, filters: {} });
+      whereConditions.push(`p.id IN (${idList.map(() => '?').join(',')})`);
+      params.push(...idList);
+    }
 
     // Stock filter
     if (inStockOnly) {
@@ -330,6 +339,9 @@ router.get('/', async (req, res, next) => {
         orderBy = defaultOrder;
         break;
     }
+
+    // Visual search order (validated integers only, so safe in SQL).
+    if (idList.length) orderBy = `FIELD(p.id, ${idList.join(',')})`;
 
     const whereClause = whereConditions.join(' AND ');
 

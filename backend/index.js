@@ -44,6 +44,8 @@ import { adminMaalemEarningsRouter, clientServicePaymentRouter, maalemEarningsRo
 import { ensureServicePaymentSchema } from './utils/servicePayments.js';
 import publicMaalemsRouter from './routes/publicMaalems.js';
 import { startReviewInvitationWorker } from './workers/reviewInvitationWorker.js';
+import { startVisualSearchIndexWorker } from './workers/visualSearchIndexWorker.js';
+import { ensureVisualSearchSchema } from './utils/visualSearch.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceSearchRouter from './routes/ecommerce/search.js';
@@ -184,6 +186,7 @@ async function ensureSchemas() {
   await ensurePaymentModesAndSaisieSchema();
   await ensureClientEcheancierSchema();
   await ensureContactArchiveSchema();
+  await ensureVisualSearchSchema(pool);
   await ensureBonContactNumberSchema();
   await ensureEcommerceSnapshotAllocationsTable(pool);
   await ensureMaalemServiceTranslationColumns(pool);
@@ -596,6 +599,7 @@ ensureDb()
       console.log(`\n✅ API listening on http://localhost:${PORT}`);
       console.log(`✅ Socket.IO ready on ws://localhost:${PORT}\n`);
       startReviewInvitationWorker();
+      startVisualSearchIndexWorker();
       startContactArchiveWorker();
     });
   })
