@@ -300,6 +300,8 @@ router.get('/', async (req, res, next) => {
       ? `LEFT JOIN category_product_order pco ON pco.product_id = p.id AND pco.category_id = ${orderingCategoryId}`
       : CATEGORY_PRODUCT_ORDER_JOIN;
     const defaultOrder = categoryBrandPriceOrderSql(offerPriceExpr, { groupCategory: !orderingCategoryId });
+    // MySQL RAND(n) with a constant seed is repeatable: page 2 continues page 1 without repeats.
+    const randomSeed = (Math.abs(Number.parseInt(String(seed ?? ''), 10)) % 2147483647) || 1;
     let orderBy;
     switch (sort) {
       case 'price_asc':
@@ -309,14 +311,15 @@ router.get('/', async (req, res, next) => {
         orderBy = `${offerPriceExpr} DESC, p.id ASC`;
         break;
       case 'promo':
-        orderBy = `p.pourcentage_promo DESC, ${categoryOrder}`;
+        // Promotions first, in a random order (seeded: a new seed per visit, the same across pages),
+        // then the rest of the catalogue, also at random.
+        orderBy = seed != null && seed !== ''
+          ? `(p.pourcentage_promo > 0) DESC, RAND(${randomSeed}), p.id ASC`
+          : `p.pourcentage_promo DESC, ${categoryOrder}`;
         break;
-      case 'random': {
-        // MySQL RAND(n) with a constant seed is repeatable: page 2 continues page 1 without repeats.
-        const randomSeed = (Math.abs(Number.parseInt(String(seed ?? ''), 10)) % 2147483647) || 1;
+      case 'random':
         orderBy = `RAND(${randomSeed}), p.id ASC`;
         break;
-      }
       case 'popular':
         // Could be based on sales count or views in the future
         orderBy = 'p.created_at DESC';
