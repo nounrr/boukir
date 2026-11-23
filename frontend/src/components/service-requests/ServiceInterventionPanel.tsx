@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, CalendarClock, Camera, CheckCircle2, ExternalLink, FileText, MapPin, MessageSquare, Star, TriangleAlert } from 'lucide-react';
+import { GoogleMapPreview } from '../GoogleMapPreview';
+import { BadgeCheck, CalendarClock, Camera, CheckCircle2, ExternalLink, FileText, MessageSquare, Star, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { clientVerdictFromNotes, parseMissionNotes } from './missionNotes';
 import { useAuth } from '../../hooks/redux';
@@ -132,7 +133,7 @@ export function ServiceInterventionPanel({ request, options, onChanged, notes = 
     {intervention && <div className="mt-5 space-y-4 border-t pt-4">
       <div className="grid gap-3 text-sm sm:grid-cols-3"><div><span className="text-slate-500">Maalem courant</span><p className="font-semibold">{intervention.current_maalem_name}</p></div><div><span className="text-slate-500">Rendez-vous</span><p className="font-semibold">{hasAppointment ? `${intervention.planned_date?.slice(0, 10)} · ${intervention.planned_time_slot || ''}` : 'À convenir'}</p></div><div><span className="text-slate-500">Progression</span><p className="font-semibold">{intervention.progress_percent}%</p></div></div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-emerald-500" style={{ width: `${intervention.progress_percent}%` }} /></div>
-      {intervention.latitude != null && <a className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${intervention.latitude},${intervention.longitude}`}><MapPin className="h-4 w-4" />Localisation mission</a>}
+      {intervention.latitude != null && <GoogleMapPreview lat={Number(intervention.latitude)} lng={Number(intervention.longitude)} label="Localisation mission" />}
       {intervention.status === 'work_in_progress' && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
         <p className="mb-3 text-sm text-amber-900">{Number(intervention.progress_percent) >= 100 ? 'Le Maalem indique 100 % mais n’a pas terminé la mission dans l’application.' : 'Travaux en cours chez le client.'} Si le travail est fini, marquez la mission comme terminée : le client sera invité à valider le travail ou à faire une réclamation.</p>
         <button type="button" disabled={submitting || transitionState.isLoading} onClick={() => { if (!window.confirm('Marquer cette mission comme terminée ?')) return; void run(() => transition({ id: intervention.id, status: 'completed' }).unwrap(), 'Mission marquée comme terminée. Le client est invité à valider.'); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />Marquer comme terminée</button>

@@ -1,11 +1,12 @@
 import DocumentSaisieCheckbox from '../components/DocumentSaisieCheckbox';
+import { GoogleMapPreview } from '../components/GoogleMapPreview';
 import BonModificationNote from '../components/BonModificationNote';
 import { confirmBonExceptionAuthorization } from '../utils/confirmBonExceptionAuthorization';
 import { useCanViewInternalPrices } from '../hooks/useCanViewInternalPrices';
 import { useDeliveryAccessQuery, useAddDeliveryQueueMutation, useDeliveryQueueQuery } from '../store/api/deliveryRunsApi';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Ban, Plus, ScanBarcode, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2, MapPin } from 'lucide-react';
+  import { Ban, Plus, ScanBarcode, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, PackageCheck, Truck, RotateCcw, File, FileCheck2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
@@ -4848,25 +4849,16 @@ const BonsPage = () => {
                               <span className="text-gray-500">pickup_location_id</span>
                               <p className="font-semibold text-gray-900">{raw?.pickup_location_id ?? '-'}</p>
                             </div>
-                            {(() => {
-                              // Same links as the app and the website: the point placed on the map, else a search of the address.
-                              const lat = Number(raw?.shipping_lat);
-                              const lng = Number(raw?.shipping_lng);
-                              const hasPoint = raw?.shipping_lat != null && raw?.shipping_lng != null && Number.isFinite(lat) && Number.isFinite(lng);
-                              const query = [raw?.shipping_address_line1, raw?.shipping_city].filter(Boolean).join(', ');
-                              const href = hasPoint
-                                ? `https://www.google.com/maps?q=${lat},${lng}`
-                                : query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : null;
-                              if (!href || raw?.delivery_method === 'pickup') return null;
-                              return (
-                                <div className="col-span-2 md:col-span-4">
-                                  <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700">
-                                    <MapPin className="h-4 w-4" />
-                                    {hasPoint ? 'Localisation (point placé sur la carte)' : 'Rechercher l’adresse sur Maps'}
-                                  </a>
-                                </div>
-                              );
-                            })()}
+                            {raw?.delivery_method !== 'pickup' && (
+                              <div className="col-span-2 md:col-span-4">
+                                <GoogleMapPreview
+                                  lat={raw?.shipping_lat != null ? Number(raw.shipping_lat) : null}
+                                  lng={raw?.shipping_lng != null ? Number(raw.shipping_lng) : null}
+                                  address={[raw?.shipping_address_line1, raw?.shipping_city].filter(Boolean).join(', ')}
+                                  label={raw?.shipping_lat != null && raw?.shipping_lng != null ? 'Localisation (point placé sur la carte)' : 'Rechercher l’adresse sur Maps'}
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
 
