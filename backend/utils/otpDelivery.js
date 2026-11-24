@@ -1,7 +1,12 @@
 /**
- * Sends a one-time code by e-mail or SMS, through HTTP services (no extra package needed):
- *   E-mail: Brevo or Resend      EMAIL_PROVIDER=brevo|resend, EMAIL_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME (optional)
- *   SMS:    Twilio               TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_FROM or TWILIO_SMS_SERVICE_SID
+ * Sends a one-time code by e-mail, WhatsApp or SMS, through HTTP services (no extra package needed):
+ *   E-mail:   Brevo or Resend      EMAIL_PROVIDER=brevo|resend, EMAIL_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME (optional)
+ *   WhatsApp: Meta Cloud API       WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE (an approved
+ *                                  "authentication" template), WHATSAPP_TEMPLATE_LANG (default fr).
+ *                                  Without a template, the code goes as plain text: WhatsApp only delivers that to
+ *                                  someone who wrote to the business number in the last 24 h (enough for testing).
+ *   SMS:      Twilio               TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_FROM or TWILIO_SMS_SERVICE_SID
+ * A phone number gets its code by WhatsApp when it is set up, and by SMS when WhatsApp is not set up or fails.
  * On a developer's computer without these, OTP_DEV_LOG=1 prints the code in the server's console instead
  * (never in production).
  */
@@ -12,7 +17,7 @@ export class DeliveryUnavailable extends Error {
   constructor(channel) {
     super(channel === 'email'
       ? "L'envoi des codes par e-mail n'est pas encore configuré sur le serveur."
-      : "L'envoi des codes par SMS n'est pas encore configuré sur le serveur.");
+      : "L'envoi des codes par WhatsApp ou SMS n'est pas encore configuré sur le serveur.");
     this.status = 503;
     this.code = 'DELIVERY_UNAVAILABLE';
     this.channel = channel;
@@ -26,6 +31,11 @@ export function emailConfigured() {
   return (p === 'brevo' || p === 'resend') && !!process.env.EMAIL_API_KEY && !!process.env.EMAIL_FROM;
 }
 
+export function whatsappConfigured() {
+  const { WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = process.env;
+  return !!(WHATSAPP_TOKEN && WHATSAPP_PHONE_NUMBER_ID);
+}
+
 export function smsConfigured() {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SMS_FROM, TWILIO_SMS_SERVICE_SID } = process.env;
   return !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && (TWILIO_SMS_FROM || TWILIO_SMS_SERVICE_SID));
@@ -33,7 +43,7 @@ export function smsConfigured() {
 
 /** Which channels can carry a code right now (the app hides the others). */
 export function availableChannels() {
-  return { email: emailConfigured() || devLog(), phone: smsConfigured() || devLog() };
+  return { email: emailConfigured() || devLog(), phone: whatsappConfigured() || smsConfigured() || devLog() };
 }
 
 async function sendEmail(to, message) {
@@ -60,6 +70,35 @@ async function sendEmail(to, message) {
   );
 }
 
+/** Plain text: only delivered inside the 24 h after the person last wrote to the business number. */
+export function whatsappTextBody(to, text) {
+  return { messaging_product: 'whatsapp', recipient_type: 'individual', to: internationalPhone(to).replace('+', ''), type: 'text', text: { body: text } };
+}
+
+/** The request body for Meta: an "authentication" template carries the code in its text and in its copy-code button. */
+export function whatsappTemplateBody(to, code, env = process.env) {
+  const components = [{ type: 'body', parameters: [{ type: 'text', text: String(code) }] }];
+  if (env.WHATSAPP_TEMPLATE_BUTTON !== '0') {
+    components.push({ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: String(code) }] });
+  }
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: internationalPhone(to).replace('+', ''),
+    type: 'template',
+    template: { name: env.WHATSAPP_TEMPLATE, language: { code: env.WHATSAPP_TEMPLATE_LANG || 'fr' }, components },
+  };
+}
+
+async function sendWhatsapp(to, message) {
+  const version = process.env.WHATSAPP_API_VERSION || 'v21.0';
+  await axios.post(
+    `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    process.env.WHATSAPP_TEMPLATE ? whatsappTemplateBody(to, message.code) : whatsappTextBody(to, message.sms),
+    { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, 'content-type': 'application/json' }, timeout: 15000 },
+  );
+}
+
 async function sendSms(to, text) {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SMS_FROM, TWILIO_SMS_SERVICE_SID } = process.env;
   const form = new URLSearchParams({ To: internationalPhone(to), Body: text });
@@ -72,27 +111,57 @@ async function sendSms(to, text) {
   });
 }
 
-/** Sends the code; throws DeliveryUnavailable when nothing is set up, or a 502 when the service refuses. */
+const logFailure = (via, err) =>
+  console.error(`[otp] ${via} delivery failed:`, err?.response?.status, JSON.stringify(err?.response?.data || err?.message));
+
+/**
+ * Sends the code and says how it went ({ via: 'email' | 'whatsapp' | 'sms' | 'dev' });
+ * throws DeliveryUnavailable when nothing is set up, or a 502 when the service refuses.
+ */
 export async function deliverCode({ channel, target, message }) {
-  const ready = channel === 'email' ? emailConfigured() : smsConfigured();
-  if (!ready) {
-    if (devLog()) {
-      console.log(`[otp:dev] ${channel} ${target} → ${message.sms}`);
-      return { dev: true };
+  if (channel === 'email') {
+    if (!emailConfigured()) return devOrUnavailable(channel, target, message);
+    try {
+      await sendEmail(target, message);
+      return { dev: false, via: 'email' };
+    } catch (err) {
+      logFailure('email', err);
+      throw deliveryFailed("Le code n'a pas pu être envoyé par e-mail. Réessayez dans un instant.");
     }
-    throw new DeliveryUnavailable(channel);
   }
+
+  if (whatsappConfigured()) {
+    try {
+      await sendWhatsapp(target, message);
+      return { dev: false, via: 'whatsapp' };
+    } catch (err) {
+      logFailure('whatsapp', err);
+      if (!smsConfigured()) {
+        throw deliveryFailed("Le code n'a pas pu être envoyé par WhatsApp. Vérifiez que ce numéro utilise WhatsApp et réessayez.");
+      }
+    }
+  }
+  if (!smsConfigured()) return devOrUnavailable(channel, target, message);
   try {
-    if (channel === 'email') await sendEmail(target, message);
-    else await sendSms(target, message.sms);
-    return { dev: false };
+    await sendSms(target, message.sms);
+    return { dev: false, via: 'sms' };
   } catch (err) {
-    console.error(`[otp] ${channel} delivery failed:`, err?.response?.status, err?.response?.data || err?.message);
-    const failure = new Error(channel === 'email'
-      ? "Le code n'a pas pu être envoyé par e-mail. Réessayez dans un instant."
-      : "Le code n'a pas pu être envoyé par SMS. Vérifiez le numéro et réessayez.");
-    failure.status = 502;
-    failure.code = 'DELIVERY_FAILED';
-    throw failure;
+    logFailure('sms', err);
+    throw deliveryFailed("Le code n'a pas pu être envoyé par SMS. Vérifiez le numéro et réessayez.");
   }
+}
+
+function devOrUnavailable(channel, target, message) {
+  if (devLog()) {
+    console.log(`[otp:dev] ${channel} ${target} → ${message.sms}`);
+    return { dev: true, via: 'dev' };
+  }
+  throw new DeliveryUnavailable(channel);
+}
+
+function deliveryFailed(text) {
+  const failure = new Error(text);
+  failure.status = 502;
+  failure.code = 'DELIVERY_FAILED';
+  return failure;
 }

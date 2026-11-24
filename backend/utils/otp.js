@@ -187,6 +187,7 @@ export function codeMessage({ code, purpose, locale, name }) {
 <tr><td style="background:#f9fafb;padding:12px 24px;font-size:11px;color:#9ca3af;border-top:1px solid #eee">Boukir Diamond · Construction Store</td></tr>
 </table></td></tr></table></body></html>`;
   return {
+    code: String(code),
     subject: t.subject(code),
     html,
     text: `${t.hello}${name ? ` ${name}` : ''},\n${t.intro(why)} ${code}\n\n${t.expires}\n${t.ignore}`,

@@ -62,8 +62,9 @@ async function sendCode(req, res, { purpose, channel, target, contactId = null, 
     return null;
   }
   const message = codeMessage({ code: created.code, purpose, locale: req.body?.locale, name });
+  let sent;
   try {
-    await deliverCode({ channel, target, message });
+    sent = await deliverCode({ channel, target, message });
   } catch (err) {
     await consume((await findRequest(created.request_id)).id);
     res.status(err.status || 502).json({ message: err.message, error_type: err.code || 'DELIVERY_FAILED', channel });
@@ -72,6 +73,7 @@ async function sendCode(req, res, { purpose, channel, target, contactId = null, 
   return {
     request_id: created.request_id,
     channel,
+    via: sent.via === 'dev' ? (channel === 'email' ? 'email' : 'sms') : sent.via,
     masked: masked(channel, target),
     expires_in: CODE_TTL_MINUTES * 60,
     resend_in: RESEND_AFTER_SECONDS,
