@@ -188,6 +188,7 @@ export function codeMessage({ code, purpose, locale, name }) {
 </table></td></tr></table></body></html>`;
   return {
     code: String(code),
+    purpose,
     subject: t.subject(code),
     html,
     text: `${t.hello}${name ? ` ${name}` : ''},\n${t.intro(why)} ${code}\n\n${t.expires}\n${t.ignore}`,

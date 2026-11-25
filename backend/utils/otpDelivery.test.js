@@ -26,3 +26,9 @@ test('WhatsApp: without a template, the code goes as plain text', () => {
   assert.equal(body.to, '212612345678');
   assert.match(body.text.body, /111222/);
 });
+
+test('WhatsApp: a template with several variables gets the code, the purpose and fixed texts', () => {
+  const body = whatsappTemplateBody('0612345678', '654321', { ...env, WHATSAPP_TEMPLATE_PARAMS: '{code}|{purpose}|10 minutes|0650022242' }, 'reset');
+  assert.deepEqual(body.template.components[0].parameters.map((p) => p.text), ['654321', 'password reset', '10 minutes', '0650022242']);
+  assert.equal(body.template.components[1].parameters[0].text, '654321');
+});

@@ -2,7 +2,9 @@
  * Sends a one-time code by e-mail, WhatsApp or SMS, through HTTP services (no extra package needed):
  *   E-mail:   Brevo or Resend      EMAIL_PROVIDER=brevo|resend, EMAIL_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME (optional)
  *   WhatsApp: Meta Cloud API       WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE (an approved
- *                                  "authentication" template), WHATSAPP_TEMPLATE_LANG (default fr).
+ *                                  "authentication" template), WHATSAPP_TEMPLATE_LANG (default fr),
+ *                                  WHATSAPP_TEMPLATE_PARAMS: the template's {{1}}, {{2}}… separated by "|", where
+ *                                  {code} is the code and {purpose} what it is for (default: just {code}).
  *                                  Without a template, the code goes as plain text: WhatsApp only delivers that to
  *                                  someone who wrote to the business number in the last 24 h (enough for testing).
  *   SMS:      Twilio               TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_FROM or TWILIO_SMS_SERVICE_SID
@@ -75,9 +77,14 @@ export function whatsappTextBody(to, text) {
   return { messaging_product: 'whatsapp', recipient_type: 'individual', to: internationalPhone(to).replace('+', ''), type: 'text', text: { body: text } };
 }
 
+// Meta allows at most 15 characters per variable.
+const PURPOSES = { register: 'sign-up', reset: 'password reset', verify: 'phone check' };
+
 /** The request body for Meta: an "authentication" template carries the code in its text and in its copy-code button. */
-export function whatsappTemplateBody(to, code, env = process.env) {
-  const components = [{ type: 'body', parameters: [{ type: 'text', text: String(code) }] }];
+export function whatsappTemplateBody(to, code, env = process.env, purpose = 'verify') {
+  const params = String(env.WHATSAPP_TEMPLATE_PARAMS || '{code}').split('|').map((p) =>
+    p.trim().replaceAll('{code}', String(code)).replaceAll('{purpose}', PURPOSES[purpose] || PURPOSES.verify));
+  const components = [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text })) }];
   if (env.WHATSAPP_TEMPLATE_BUTTON !== '0') {
     components.push({ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: String(code) }] });
   }
@@ -94,7 +101,7 @@ async function sendWhatsapp(to, message) {
   const version = process.env.WHATSAPP_API_VERSION || 'v21.0';
   await axios.post(
     `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-    process.env.WHATSAPP_TEMPLATE ? whatsappTemplateBody(to, message.code) : whatsappTextBody(to, message.sms),
+    process.env.WHATSAPP_TEMPLATE ? whatsappTemplateBody(to, message.code, process.env, message.purpose) : whatsappTextBody(to, message.sms),
     { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, 'content-type': 'application/json' }, timeout: 15000 },
   );
 }
