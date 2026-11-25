@@ -1,6 +1,6 @@
 
 import React from 'react';
-import logo from "./logo.png";
+import logo from "./logo-black.png";
 import logo1 from "./logo1.png";
 import logoPlaceholder from "./logo-placeholder.svg";
 interface CompanyHeaderProps {

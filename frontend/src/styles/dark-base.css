@@ -2,6 +2,13 @@
    Mode sombre : composants (écran uniquement — l'impression reste claire).
    Les couleurs Tailwind sont surchargées dans dark-utilities.css (généré).
    ===================================================================== */
+/* Logo: black version on light screens and in print, gold version in dark mode. */
+.logo-on-dark { display: none; }
+@media screen {
+  html.dark .logo-on-light { display: none; }
+  html.dark .logo-on-dark { display: inline-block; }
+}
+
 @media screen {
   html.dark {
     color-scheme: dark;

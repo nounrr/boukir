@@ -479,7 +479,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                 src={logoBase64 || logoCurrent}
                 alt={`Logo ${companyType}`} 
                 className="object-contain mb-4"
-                width="25%"
+                width={companyType === 'MPC' ? '25%' : '40%'}
               />
               <div className='text-center'>
                 <div className="thermal-info">{getTypeLabel(type, bon)}</div>
