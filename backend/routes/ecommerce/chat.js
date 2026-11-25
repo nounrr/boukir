@@ -37,8 +37,8 @@ const STORE = {
   name: 'Boukir Diamond',
   city: 'Tanger',
   address: process.env.STORE_ADDRESS || 'IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER',
-  phone: process.env.STORE_PHONE || '0650812894',
-  whatsapp: process.env.STORE_WHATSAPP || '+212650812894',
+  phone: process.env.STORE_PHONE || '0650022242',
+  whatsapp: process.env.STORE_WHATSAPP || '+212650022242',
   email: process.env.STORE_EMAIL || 'boukir.diamond23@gmail.com',
 };
 

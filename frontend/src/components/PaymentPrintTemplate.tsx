@@ -87,12 +87,12 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   }> = {
     DIAMOND: {
       address: "IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER",
-      phones: "GSM: 0650812894 - Tél: 0666216657",
+      phones: "GSM / WhatsApp : 06 50 02 22 42",
       email: "EMAIL: boukir.diamond23@gmail.com",
     },
     MPC: {
       address: "ALot Awatif N°179 - TANGER",
-      phones: "GSM: 0650812894 - Tél: 0666216657",
+      phones: "GSM / WhatsApp : 06 50 02 22 42",
       email: "EMAIL: boukir.diamond23@gmail.com",
     }
   };
@@ -313,7 +313,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
                 {contactRef && (
                   <div><span className="font-medium">{contactRefLabel}:</span> {contactRef}</div>
                 )}
-                <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
+                <div><span className="font-medium">Service de charge:</span> <strong>06.50.02.22.42</strong></div>
               </div>
             </div>
           )}

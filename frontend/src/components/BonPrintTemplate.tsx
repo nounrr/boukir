@@ -145,16 +145,16 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   }> = {
     DIAMOND: {
       address: "IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER",
-      phones: "GSM: 0650812894 - Tél: 0666216657",
+      phones: "GSM / WhatsApp : 06 50 02 22 42",
       email: "EMAIL: boukir.diamond23@gmail.com",
-      extra: "Service de charge: 06.66.21.66.57",
+      extra: "Service de charge: 06.50.02.22.42",
       cachetImage: boukirCachet,
     },
     MPC: {
       address: "ALot Awatif N°179 - TANGER",
-      phones: "GSM: 0650812894 - Tél: 0666216657",
+      phones: "GSM / WhatsApp : 06 50 02 22 42",
       email: "EMAIL: boukir.diamond23@gmail.com",
-      extra: "Service de charge: 06.66.21.66.57",
+      extra: "Service de charge: 06.50.02.22.42",
       cachetImage: mpcCachet,
     }
   };
@@ -531,7 +531,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                   {(!contactSociete && !contactPersonName) && tel && String(tel).trim() && (
                     <div><span className="font-medium">{telephoneLabel}:</span> {String(tel).trim()}</div>
                   )}
-                  <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
+                  <div><span className="font-medium">Service de charge:</span> <strong>06.50.02.22.42</strong></div>
                 </div>
               </div>
             </>

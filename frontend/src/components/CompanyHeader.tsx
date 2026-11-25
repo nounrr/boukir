@@ -21,14 +21,14 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
       subtitle: 'CONSTRUCTION STORE',
       description: 'Vente de Matériaux de Construction céramique, et de Marbre',
       adresse: 'IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER',
-      phones: "GSM: 0650812894 - Tél: 0666216657",
+      phones: "GSM / WhatsApp : 06 50 02 22 42",
       email: "EMAIL: boukir.diamond23@gmail.com",
     },
     MPC: {
       name: 'MPC BOUKIR',
       subtitle: '',
       description: 'Vente de Matériaux de Construction céramique, et de Marbre',
-      phones: "GSM: 0650812894 - Tél: 0666216657",
+      phones: "GSM / WhatsApp : 06 50 02 22 42",
       adresse: 'ALot Awatif N°179 - TANGER',
       email: "EMAIL: boukir.diamond23@gmail.com",
     }

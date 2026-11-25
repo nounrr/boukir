@@ -366,7 +366,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               <span className="font-semibold">Nom:</span> {contactDisplayName}
             </span>
             <span>
-              <span className="font-semibold">Service de charge:</span> <strong>06.66.21.66.57</strong>
+              <span className="font-semibold">Service de charge:</span> <strong>06.50.02.22.42</strong>
             </span>
           </div>
         </div>

@@ -533,7 +533,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               <br />
               <span>Vente de Matériaux de Construction céramique, et de Marbre</span>
               <br />
-              <span>GSM: 0650812894 - Tél: 0666216657</span>
+              <span>GSM / WhatsApp : 06 50 02 22 42</span>
               <br />
               <span>
                 {bon ? `#${getBonNumeroDisplay(bon as any)}` : ''}
