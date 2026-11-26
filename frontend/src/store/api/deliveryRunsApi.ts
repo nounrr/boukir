@@ -3,7 +3,9 @@ import { api } from './apiSlice';
 export type DeliveryBon = { bon_type: string; bon_id: number; numero: string; contact_nom?: string };
 export type DeliveryQueue = DeliveryBon & { id: number; status: string; queued_at: string; run_id: number | null };
 export type DeliveryItem = DeliveryBon & { queue_id: number; outcome: string | null; failure_reason: string | null };
-export type DeliveryRun = { id: number; chauffeur_id: number | null; vehicule_id: number; chauffeur_nom: string | null; vehicule_nom: string; status: string; started_at: string; ended_at: string | null; duration_minutes: number; notes?: string; items: DeliveryItem[] };
+export type DeliveryRun = { id: number; chauffeur_id: number | null; vehicule_id: number; chauffeur_nom: string | null; vehicule_nom: string; status: string; started_at: string; ended_at: string | null; duration_minutes: number; notes?: string; items: DeliveryItem[];
+  /** Tournée en cours : dernière position du véhicule (boîtier GPS ou téléphone du chauffeur). */
+  position?: { latitude: number; longitude: number; vitesse_kmh: number | null; source: string; recorded_at: string } | null };
 export type DeliveryFilters = { from?: string; to?: string; chauffeur_id?: string; vehicule_id?: string };
 type Metrics = { runs: number; completed: number; active: number; avg_minutes: number | null; bons: number; delivered: number; failed: number };
 const deliveryApi = api.injectEndpoints({

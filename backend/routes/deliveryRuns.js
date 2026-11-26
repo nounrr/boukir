@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { verifyCurrentUserWithSchedule } from '../middleware/auth.js';
+import { notifyDeparture } from '../utils/deliveryAlerts.js';
 import { deliveryCatalog, deliveryError, ensureDeliverySchema, lockDeliveryBon, parseDeliveryBons, parseDeliveryResults, positiveId } from '../utils/deliveryRuns.js';
 
 export function createDeliveryRouter(db = pool, authenticate = verifyCurrentUserWithSchedule) {
@@ -150,6 +151,8 @@ export function createDeliveryRouter(db = pool, authenticate = verifyCurrentUser
       return run.insertId;
     });
     res.status(201).json({ id });
+    // The online orders' customers are told their order has left (app notification, after answering).
+    notifyDeparture(id, { db }).catch((error) => console.warn('Delivery departure alert failed:', error?.message || error));
   }));
 
   router.post('/runs/:id/finish', route(async (req, res) => {
@@ -194,7 +197,15 @@ export function createDeliveryRouter(db = pool, authenticate = verifyCurrentUser
       FROM delivery_runs r ${where} ORDER BY r.id DESC LIMIT 30 OFFSET ?`, [...params, (page - 1) * 30]);
     const [items] = rows.length ? await db.query(`SELECT i.*, q.bon_type, q.bon_id, q.numero, q.contact_nom
       FROM delivery_run_items i JOIN delivery_queue q ON q.id = i.queue_id WHERE i.run_id IN (?) ORDER BY i.id`, [rows.map(r => r.id)]) : [[]];
-    res.json({ total: Number(count.total), items: rows.map(r => ({ ...r, items: items.filter(i => i.run_id === r.id) })) });
+    // Tournées en cours : la dernière position du véhicule (boîtier GPS ou téléphone du chauffeur).
+    const running = rows.filter(r => r.status === 'in_progress').map(r => r.vehicule_id);
+    const [positions] = running.length ? await db.query(`SELECT vehicule_id, latitude, longitude, vitesse_kmh, source, recorded_at
+      FROM vehicule_positions WHERE vehicule_id IN (?)`, [running]).catch(() => [[]]) : [[]];
+    const positionOf = r => {
+      const p = r.status === 'in_progress' ? positions.find(x => x.vehicule_id === r.vehicule_id) : null;
+      return p ? { latitude: Number(p.latitude), longitude: Number(p.longitude), vitesse_kmh: p.vitesse_kmh == null ? null : Number(p.vitesse_kmh), source: p.source, recorded_at: p.recorded_at } : null;
+    };
+    res.json({ total: Number(count.total), items: rows.map(r => ({ ...r, position: positionOf(r), items: items.filter(i => i.run_id === r.id) })) });
   }));
   router.get('/stats', route(async (req, res) => {
     const { where, params } = filters(req.query);

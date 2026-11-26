@@ -19,6 +19,7 @@ import { contactLocale, notifyCustomer, orderStatusMessage, remiseCreditedMessag
 import { loadStatementLines } from '../../utils/statementLines.js';
 import { sanitizeReturnUrl } from '../../utils/paymentReturn.js';
 import { STATEMENT_UNION_SQL } from '../../utils/statementBalance.js';
+import { orderTracking } from '../../utils/orderTracking.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -2686,6 +2687,30 @@ ${STATEMENT_UNION_SQL}
 
 // ==================== GET SINGLE ORDER ====================
 // GET /api/ecommerce/orders/:id - Get order details
+// Suivi de la livraison : où est le véhicule qui apporte la commande (seulement pendant la livraison).
+router.get('/:id/tracking', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) return res.status(400).json({ message: 'Commande invalide' });
+    // SELECT *: the delivery point's columns (shipping_lat / shipping_lng) are not on every database.
+    const [[order]] = await pool.query('SELECT * FROM ecommerce_orders WHERE id = ? LIMIT 1', [orderId]);
+    if (!order) return res.status(404).json({ message: 'Commande introuvable' });
+    const isBackoffice = req.user?.role != null && String(req.user.role).trim().length > 0;
+    const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+    const owner = req.user?.id
+      ? Number(order.user_id) === Number(req.user.id)
+      : !!email && String(order.customer_email || '').trim().toLowerCase() === email;
+    if (!isBackoffice && !owner) return res.status(403).json({ message: 'Accès non autorisé' });
+    res.set('Cache-Control', 'no-store');
+    const lat = Number(order.shipping_lat ?? order.shipping_latitude);
+    const lng = Number(order.shipping_lng ?? order.shipping_longitude);
+    const destination = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0) && order.shipping_lat != null ? { lat, lng } : null;
+    res.json(await orderTracking(pool, orderId, order.delivery_method === 'pickup' ? null : destination));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const orderId = Number(req.params.id);

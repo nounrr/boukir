@@ -8,6 +8,7 @@ import { useGetAllVehiculesBonsStatsQuery } from '../store/api/bonsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import VehiculeFormModal from '../components/VehiculeFormModal';
 import VehiculeDetailsModal from '../components/VehiculeDetailsModal';
+import FleetGpsPanel from '../components/FleetGpsPanel';
 import { formatDateTimeWithHour } from '../utils/dateUtils';
 import { useAuth } from '../hooks/redux';
 import type { Vehicule } from '../types';
@@ -306,6 +307,8 @@ const VehiculesPage = () => {
         </div>
       </div>
 
+      {/* Suivi GPS en direct (boîtiers AlloGPS et téléphones des chauffeurs) */}
+      <FleetGpsPanel />
       {/* Cartes de statistiques */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

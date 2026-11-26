@@ -11,6 +11,7 @@ import {
   X,
   Package,
   Car,
+  MapPin,
   Filter,
   Search,
   ShieldCheck,
@@ -1094,6 +1095,21 @@ function Management({ pdg }: { pdg: boolean }) {
                           <Car size={13} />
                           {r.vehicule_nom}
                         </span>
+                        {r.status === "in_progress" && r.position && (
+                          <a
+                            href={`https://www.google.com/maps?q=${r.position.latitude},${r.position.longitude}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"
+                            title={`Position du ${new Date(r.position.recorded_at).toLocaleString("fr-FR")}`}
+                          >
+                            <MapPin size={13} />
+                            Où est le véhicule ?
+                            {r.position.vitesse_kmh != null && ` · ${Math.round(r.position.vitesse_kmh)} km/h`}
+                            {" · "}
+                            {Math.max(0, Math.round((Date.now() - new Date(r.position.recorded_at).getTime()) / 60000))} min
+                          </a>
+                        )}
                         {r.notes && (
                           <p className="mt-2 max-w-xs whitespace-pre-wrap text-xs text-slate-500">
                             {r.notes}

@@ -20,6 +20,7 @@ import { consumeMaalemActivationToken } from '../utils/maalemTeamCreation.js';
 import { checkRegistration, createLocalAccount, registrationAnswer } from '../utils/customerAccount.js';
 import { normalizePhone, phoneVariants } from '../utils/otp.js';
 import { ensureOtpSchema } from '../utils/otpStore.js';
+import { deleteCustomerAccount } from '../utils/accountDeletion.js';
 
 const router = Router();
 const avatarUpload = multer({
@@ -1220,6 +1221,48 @@ router.put('/me', receiveProfileAvatar, async (req, res, next) => {
     } catch (e) {
       // ignore rollback errors
     }
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
+
+// ==================== DELETE CURRENT USER ====================
+// DELETE /api/users/auth/me - The customer deletes their own account (from the app or the site).
+// An account with a password confirms it; Google / Facebook / code-only accounts confirm with their session.
+router.delete('/me', async (req, res, next) => {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ message: 'Token manquant' });
+  let decoded;
+  try {
+    decoded = jwt.verify(token, getJwtSecret());
+  } catch {
+    return res.status(401).json({ message: 'Token invalide' });
+  }
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[user]] = await connection.query(
+      "SELECT id, password FROM contacts WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none' FOR UPDATE",
+      [decoded.id],
+    );
+    if (!user) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+    if (user.password) {
+      const password = typeof req.body?.password === 'string' ? req.body.password : '';
+      if (!password || !(await bcrypt.compare(password, user.password))) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Mot de passe incorrect', field: 'password', code: 'PASSWORD_REQUIRED' });
+      }
+    }
+    const { kept } = await deleteCustomerAccount(connection, user.id);
+    await connection.commit();
+    res.json({ ok: true, kept });
+  } catch (err) {
+    await connection.rollback().catch(() => {});
     next(err);
   } finally {
     connection.release();

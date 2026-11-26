@@ -10,7 +10,7 @@ function fakeDb({ vehicles = [{ id: 3 }], fleet = [], trail = [] } = {}) {
     seen,
     query: async (sql, params = []) => {
       seen.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
-      if (/SELECT id FROM vehicules/.test(sql)) return [vehicles.filter((v) => v.id === params[0])];
+      if (/SELECT id(, gps_key)? FROM vehicules/.test(sql)) return [vehicles.filter((v) => v.id === params[0])];
       if (/FROM vehicules v/.test(sql)) return [fleet];
       if (/FROM vehicule_positions_historique\s+WHERE/.test(sql)) return [trail];
       return [{ affectedRows: 1 }];
@@ -90,8 +90,8 @@ test('shows the fleet to the management, with and without a position', async () 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('cache-control'), 'no-store');
     const body = await res.json();
-    assert.deepEqual(body[0].position, { latitude: 35.7595, longitude: -5.834, vitesse_kmh: 42.4, cap: null, precision_m: 12, source: 'telephone', recorded_at: '2026-11-19T10:00:00.000Z', chauffeur: 'Karim' });
-    assert.deepEqual(body[1], { id: 4, nom: 'Fourgon', immatriculation: null, position: null });
+    assert.deepEqual(body[0].position, { latitude: 35.7595, longitude: -5.834, vitesse_kmh: 42.4, cap: null, contact: null, precision_m: 12, source: 'telephone', recorded_at: '2026-11-19T10:00:00.000Z', chauffeur: 'Karim' });
+    assert.deepEqual(body[1], { id: 4, nom: 'Fourgon', immatriculation: null, gps: false, position: null });
   } finally {
     server.close();
   }
