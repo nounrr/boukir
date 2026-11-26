@@ -119,6 +119,7 @@ export function positionFrom(body) {
         cap: heading !== null && heading >= 0 && heading <= 360 ? heading : null,
         recorded_at: dateFrom(first(o, ['gps_time', 'gpstime', 'datetime', 'date_time', 'timestamp', 'time', 'date', 'fixtime', 'updated_at', 'last_update', 'lastupdate'])),
         contact: ignition === undefined ? null : ['1', 'true', 'on', 'yes'].includes(String(ignition).toLowerCase()),
+        extra: extrasFrom(o),
       });
       return;
     }
@@ -127,6 +128,48 @@ export function positionFrom(body) {
   walk(body);
   if (!candidates.length) return null;
   return candidates.sort((a, b) => (b.recorded_at?.getTime() ?? 0) - (a.recorded_at?.getTime() ?? 0))[0];
+}
+
+const text = (v) => (v === undefined || v === null || typeof v === 'object' ? null : String(v).trim() || null);
+
+/** What a box often reports beside the position, when it does: address, odometer, fuel, battery, satellites… */
+export function extrasFrom(o) {
+  const km = num(first(o, ['odometer', 'mileage', 'kilometrage', 'km', 'odo', 'totaldistance', 'total_distance']));
+  return {
+    adresse: text(first(o, ['address', 'adresse', 'location', 'place', 'street'])),
+    kilometrage_km: km === null ? null : km > 5e6 ? Math.round(km / 1000) : Math.round(km),
+    carburant: num(first(o, ['fuel', 'carburant', 'fuel_level', 'fuellevel'])),
+    batterie_v: num(first(o, ['battery', 'batterie', 'voltage', 'power', 'battery_voltage', 'externalpower'])),
+    satellites: num(first(o, ['satellites', 'sat', 'sats', 'gpssat'])),
+    altitude_m: num(first(o, ['altitude', 'alt', 'elevation'])),
+    etat: text(first(o, ['status', 'state', 'etat', 'statut', 'motion'])),
+  };
+}
+
+/**
+ * Every plain value in an AlloGPS answer, as [{ champ, valeur }] ("position.speed", "62"): the detail screen shows
+ * them all, so nothing the box reports is hidden even when its name is not one the readers above know.
+ * Tokens and passwords are never shown.
+ */
+export function detailsFrom(body, limit = 120) {
+  const out = [];
+  const walk = (node, path) => {
+    if (out.length >= limit) return;
+    if (Array.isArray(node)) {
+      // A list of points: the last one is the most recent in practice; only it is shown.
+      if (node.length) walk(node.at(-1), path);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      for (const [k, v] of Object.entries(node)) walk(v, path ? `${path}.${k}` : k);
+      return;
+    }
+    if (node === undefined || node === null || node === '') return;
+    if (/token|password|secret|jwt/i.test(path)) return;
+    out.push({ champ: path || 'valeur', valeur: String(node).slice(0, 200) });
+  };
+  walk(body, '');
+  return out;
 }
 
 /** A small client that logs in when needed and logs in again when the token is refused. */
@@ -163,6 +206,11 @@ export function createAllogpsClient(env = process.env, http = axios) {
     },
     async position(key) {
       return positionFrom(await this.gpsRaw(key));
+    },
+    /** The position and every value the box reported, from one call. */
+    async reading(key) {
+      const raw = await this.gpsRaw(key);
+      return { position: positionFrom(raw), details: detailsFrom(raw) };
     },
   };
 }

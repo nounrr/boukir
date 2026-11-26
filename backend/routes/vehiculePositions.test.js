@@ -121,3 +121,47 @@ test('gives the recent trail, bounded', async () => {
     server.close();
   }
 });
+
+test('a vehicle day: the vehicle, its points of that day and what they add up to', async () => {
+  const seen = [];
+  const db = {
+    query: async (sql, params = []) => {
+      seen.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
+      if (/SELECT \* FROM vehicules WHERE id/.test(sql)) return [[{ id: 3, nom: 'Camion', immatriculation: '123-A-6', gps_key: null }]];
+      if (/FROM vehicule_positions p/.test(sql)) return [[{ latitude: '35.78', longitude: '-5.83', vitesse_kmh: '55.0', cap: null, contact: 1, source: 'boitier', recorded_at: '2026-11-26T08:29:00Z' }]];
+      if (/FROM vehicule_positions_historique\s+WHERE/.test(sql)) {
+        return [[
+          { latitude: '35.70', longitude: '-5.83', vitesse_kmh: '40', recorded_at: '2026-11-26T08:00:00Z' },
+          { latitude: '35.72', longitude: '-5.83', vitesse_kmh: '62', recorded_at: '2026-11-26T08:02:00Z' },
+        ]];
+      }
+      return [[]];
+    },
+  };
+  const { server, url } = await serve(db, { id: 1, role: 'PDG' });
+  try {
+    const res = await fetch(`${url}/3/jour?date=2026-11-26`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.vehicule.nom, 'Camion');
+    assert.equal(body.position.contact, true);
+    assert.equal(body.points.length, 2);
+    assert.equal(body.stats.max_kmh, 62);
+    assert.ok(body.stats.distance_km > 2);
+    const day = seen.find((q) => /historique WHERE/.test(q.sql));
+    assert.deepEqual(day.params, [3, '2026-11-26 00:00:00', '2026-11-26 00:00:00']);
+    assert.equal((await fetch(`${url}/3/jour?date=2026-02-30`)).status, 400);
+    assert.equal((await fetch(`${url}/3/jour?date=hier`)).status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test('a vehicle day is for the management only', async () => {
+  const { server, url } = await serve({ query: async () => [[]] }, { id: 2, role: 'Chauffeur' });
+  try {
+    assert.equal((await fetch(`${url}/3/jour`)).status, 403);
+  } finally {
+    server.close();
+  }
+});

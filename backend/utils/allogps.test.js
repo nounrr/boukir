@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAllogpsClient, plateKey, positionFrom, tokenFrom, vehiclesFrom } from './allogps.js';
+import { createAllogpsClient, detailsFrom, plateKey, positionFrom, tokenFrom, vehiclesFrom } from './allogps.js';
 import { autoLinks } from './gpsSync.js';
 
 test('AlloGPS: the token is found wherever the login answer puts it', () => {
@@ -22,9 +22,12 @@ test('AlloGPS: vehicles are read from agencies, with their key, name and plate',
 });
 
 test('AlloGPS: a position is read whatever the field names, the latest point wins, (0,0) is ignored', () => {
-  assert.deepEqual(positionFrom({ data: { lat: '35.7595', lng: '-5.8340', speed: 42, angle: 90, gps_time: '2026-11-26 10:00:00', ignition: 1 } }), {
-    latitude: 35.7595, longitude: -5.834, vitesse_kmh: 42, cap: 90, recorded_at: new Date('2026-11-26T10:00:00'), contact: true,
-  });
+  const { extra, ...core } = positionFrom({ data: { lat: '35.7595', lng: '-5.8340', speed: 42, angle: 90, gps_time: '2026-11-26 10:00:00', ignition: 1, odometer: 123456, address: 'Route de Tétouan', battery: '12.6' } });
+  assert.deepEqual(core, { latitude: 35.7595, longitude: -5.834, vitesse_kmh: 42, cap: 90, recorded_at: new Date('2026-11-26T10:00:00'), contact: true });
+  assert.equal(extra.kilometrage_km, 123456);
+  assert.equal(extra.adresse, 'Route de Tétouan');
+  assert.equal(extra.batterie_v, 12.6);
+  assert.equal(extra.carburant, null);
   const latest = positionFrom([{ latitude: 35.1, longitude: -5.1, timestamp: 1795000000 }, { latitude: 35.2, longitude: -5.2, timestamp: 1795000600 }]);
   assert.equal(latest.latitude, 35.2);
   assert.equal(positionFrom({ lat: 0, lng: 0 }), null);
@@ -103,4 +106,23 @@ test('delivery alerts: departure for each online order, one "arriving" alert whe
   assert.equal(await checkArrivals(3, { latitude: 35.7690, longitude: -5.8110 }, { db, notify, localeOf }), 0);
   assert.match(sent[1][2], /BD-9 : arrivée dans ~1 min/);
   assert.equal(deliveryMessage({ kind: 'arriving', number: 'X', minutes: 4, locale: 'ar' }).title, 'السائق يقترب');
+});
+
+test('AlloGPS: every value of an answer is listed, the last point of a list, never a token', () => {
+  const details = detailsFrom({ token: 'abc', data: { speed: 42, sensors: { fuel: 30 }, points: [{ lat: 1 }, { lat: 2 }] } });
+  assert.deepEqual(details, [
+    { champ: 'data.speed', valeur: '42' },
+    { champ: 'data.sensors.fuel', valeur: '30' },
+    { champ: 'data.points.lat', valeur: '2' },
+  ]);
+});
+
+test('AlloGPS: a server process that does not read AlloGPS shows the reading saved by the one that does', async () => {
+  const { currentGpsState } = await import('./gpsSync.js');
+  const saved = { lastSyncAt: '2026-11-26T10:00:00.000Z', lastError: null, vehicles: [{ key: 'A1', name: 'Camion' }], live: { A1: { position: { latitude: 35.7 } } }, updated: 1 };
+  const db = { query: async (sql) => (/FROM gps_etat/.test(sql) ? [[{ data: JSON.stringify(saved) }]] : [[{ n: 1 }]]) };
+  const state = await currentGpsState(db, Date.parse('2026-11-26T10:00:30Z'));
+  assert.equal(state.vehicles[0].name, 'Camion');
+  assert.equal(state.live.A1.position.latitude, 35.7);
+  assert.ok(state.lastSyncAt instanceof Date);
 });

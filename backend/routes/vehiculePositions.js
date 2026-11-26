@@ -1,8 +1,9 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { requireRoles } from '../middleware/auth.js';
-import { ensureGpsColumn, gpsState } from '../utils/gpsSync.js';
+import { currentGpsState, ensureGpsColumn } from '../utils/gpsSync.js';
 import { checkArrivals } from '../utils/deliveryAlerts.js';
+import { tripStats } from '../utils/tripStats.js';
 
 /**
  * Suivi GPS des véhicules.
@@ -17,6 +18,9 @@ import { checkArrivals } from '../utils/deliveryAlerts.js';
  *  GET  /api/vehicule-positions/:vehiculeId/trajet   points des dernières heures (direction)
  *  GET  /api/vehicule-positions/gps                  état du suivi AlloGPS et véhicules du boîtier (direction)
  *  PUT  /api/vehicule-positions/gps/link             relier un de nos véhicules à un véhicule AlloGPS (direction)
+ *  GET  /api/vehicule-positions/:vehiculeId/jour     un jour du véhicule : position, données du boîtier, trajet,
+ *                                                    distance, vitesses, arrêts (?date=AAAA-MM-JJ, aujourd'hui par défaut)
+ *  GET  /api/vehicule-positions/:vehiculeId/jours    les jours qui ont un trajet (30 derniers)
  *
  * L'historique est gardé 30 jours.
  */
@@ -86,6 +90,20 @@ export function parsePosition(body) {
   };
 }
 
+const numOrNull = (v) => (v == null ? null : Number(v));
+
+/** A day as AAAA-MM-JJ (today, on the server's clock, when none is given), or null when it is not a real date. */
+export function dayOf(raw, now = new Date()) {
+  if (raw == null || raw === '') {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+  const text = String(raw);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const d = new Date(`${text}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== text ? null : text;
+}
+
 const idOf = (raw) => {
   const id = Number(raw);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
@@ -149,7 +167,8 @@ export function createVehiculePositionsRouter({ db = pool, ensure = ensureAll } 
   // Suivi AlloGPS : configuré ou non, dernière lecture, et les véhicules du boîtier avec le nôtre qui leur est relié.
   router.get('/gps', requireRoles(...VIEWERS), async (_req, res, next) => {
     try {
-      const [ours] = await db.query('SELECT id, nom, immatriculation, gps_key FROM vehicules WHERE gps_key IS NOT NULL');
+      const [ours] = await db.query('SELECT id, nom, immatriculation, gps_key FROM vehicules WHERE deleted_at IS NULL ORDER BY nom ASC');
+      const gpsState = await currentGpsState(db);
       res.set('Cache-Control', 'no-store');
       res.json({
         configured: gpsState.configured,
@@ -158,8 +177,17 @@ export function createVehiculePositionsRouter({ db = pool, ensure = ensureAll } 
         updated: gpsState.updated,
         vehicles: gpsState.vehicles.map((g) => {
           const linked = ours.find((o) => o.gps_key === g.key);
-          return { ...g, vehicule: linked ? { id: linked.id, nom: linked.nom, immatriculation: linked.immatriculation } : null };
+          const live = gpsState.live[g.key] ?? {};
+          return {
+            ...g,
+            vehicule: linked ? { id: linked.id, nom: linked.nom, immatriculation: linked.immatriculation } : null,
+            position: live.position ?? null,
+            read_at: live.read_at ?? null,
+            error: live.error ?? null,
+          };
         }),
+        // Our vehicles, to choose the one an AlloGPS vehicle is.
+        ours: ours.map((o) => ({ id: o.id, nom: o.nom, immatriculation: o.immatriculation ?? null, gps_key: o.gps_key ?? null })),
       });
     } catch (error) {
       next(error);
@@ -172,6 +200,7 @@ export function createVehiculePositionsRouter({ db = pool, ensure = ensureAll } 
       const id = idOf(req.body?.vehicule_id);
       const key = req.body?.gps_key == null || req.body.gps_key === '' ? null : String(req.body.gps_key).trim().slice(0, 100);
       if (!id) return res.status(400).json({ message: 'Véhicule invalide' });
+      const gpsState = await currentGpsState(db);
       if (key && gpsState.vehicles.length && !gpsState.vehicles.some((g) => g.key === key)) {
         return res.status(400).json({ message: "Ce véhicule n'existe pas chez AlloGPS" });
       }
@@ -200,6 +229,94 @@ export function createVehiculePositionsRouter({ db = pool, ensure = ensureAll } 
       );
       res.set('Cache-Control', 'no-store');
       res.json(rows.map((r) => ({ latitude: Number(r.latitude), longitude: Number(r.longitude), vitesse_kmh: r.vitesse_kmh == null ? null : Number(r.vitesse_kmh), recorded_at: r.recorded_at })));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Un jour du véhicule, tout ce qui est connu : le véhicule, sa dernière position, les données brutes du boîtier,
+  // les points du jour et ce qu'on en tire (distance, vitesse max et moyenne, temps de conduite, arrêts).
+  router.get('/:vehiculeId/jour', requireRoles(...VIEWERS), async (req, res, next) => {
+    try {
+      const id = idOf(req.params.vehiculeId);
+      if (!id) return res.status(400).json({ message: 'Véhicule invalide' });
+      const date = dayOf(req.query.date);
+      if (!date) return res.status(400).json({ message: 'Date invalide (AAAA-MM-JJ)' });
+      const [[v]] = await db.query('SELECT * FROM vehicules WHERE id = ?', [id]);
+      if (!v) return res.status(404).json({ message: 'Véhicule introuvable' });
+      const [[p]] = await db.query(
+        'SELECT p.*, e.nom_complet AS chauffeur FROM vehicule_positions p LEFT JOIN employees e ON e.id = p.employe_id WHERE p.vehicule_id = ?',
+        [id],
+      );
+      const [rows] = await db.query(
+        `SELECT * FROM vehicule_positions_historique
+          WHERE vehicule_id = ? AND recorded_at >= ? AND recorded_at < ? + INTERVAL 1 DAY
+          ORDER BY recorded_at ASC LIMIT 5000`,
+        [id, `${date} 00:00:00`, `${date} 00:00:00`],
+      );
+      const points = rows.map((r) => ({
+        latitude: Number(r.latitude),
+        longitude: Number(r.longitude),
+        vitesse_kmh: numOrNull(r.vitesse_kmh),
+        cap: numOrNull(r.cap),
+        contact: r.contact == null ? null : Number(r.contact) === 1,
+        recorded_at: r.recorded_at,
+      }));
+      const gpsState = await currentGpsState(db);
+      const live = v.gps_key ? gpsState.live[v.gps_key] : null;
+      const box = v.gps_key ? gpsState.vehicles.find((g) => g.key === v.gps_key) : null;
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        date,
+        vehicule: {
+          id: v.id,
+          nom: v.nom,
+          immatriculation: v.immatriculation ?? null,
+          marque: v.marque ?? null,
+          modele: v.modele ?? null,
+          annee: v.annee ?? null,
+          type: v.type_vehicule ?? null,
+          statut: v.statut ?? null,
+          gps_key: v.gps_key ?? null,
+          boitier: box ? { name: box.name, plate: box.plate, agency: box.agency } : null,
+        },
+        position: p
+          ? {
+              latitude: Number(p.latitude),
+              longitude: Number(p.longitude),
+              vitesse_kmh: numOrNull(p.vitesse_kmh),
+              cap: numOrNull(p.cap),
+              contact: p.contact == null ? null : Number(p.contact) === 1,
+              precision_m: numOrNull(p.precision_m),
+              source: p.source,
+              recorded_at: p.recorded_at,
+              chauffeur: p.chauffeur ?? null,
+            }
+          : null,
+        // What the box reported at its last reading: address, odometer, fuel… and every raw value.
+        boitier: live ? { read_at: live.read_at ?? null, error: live.error ?? null, extra: live.position?.extra ?? null, details: live.details ?? [] } : null,
+        points,
+        stats: tripStats(points),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Les jours qui ont un trajet (30 derniers jours), du plus récent au plus ancien.
+  router.get('/:vehiculeId/jours', requireRoles(...VIEWERS), async (req, res, next) => {
+    try {
+      const id = idOf(req.params.vehiculeId);
+      if (!id) return res.status(400).json({ message: 'Véhicule invalide' });
+      const [rows] = await db.query(
+        `SELECT DATE_FORMAT(recorded_at, '%Y-%m-%d') AS jour, COUNT(*) AS points, MAX(vitesse_kmh) AS max_kmh
+           FROM vehicule_positions_historique
+          WHERE vehicule_id = ? AND recorded_at >= CURDATE() - INTERVAL ? DAY
+          GROUP BY jour ORDER BY jour DESC`,
+        [id, HISTORY_DAYS],
+      );
+      res.set('Cache-Control', 'no-store');
+      res.json(rows.map((r) => ({ date: r.jour, points: Number(r.points), max_kmh: numOrNull(r.max_kmh) })));
     } catch (error) {
       next(error);
     }
