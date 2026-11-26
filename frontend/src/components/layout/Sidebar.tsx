@@ -57,6 +57,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   PanelLeftClose,
+  Satellite,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -154,6 +155,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, tabletCompact = false, onTogg
         { name: 'Stats livraisons', href: '/livraisons/statistiques', icon: BarChart3, show: deliveryAccess?.allowed === true },
         { name: 'Remises', href: '/remises', icon: Percent, show: !isChefChauffeur },
         { name: 'Véhicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'GPS', href: '/gps', icon: Satellite, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
       ],
     },
     {

@@ -41,6 +41,8 @@ const ChargeDetailPage = React.lazy(() => import('./pages/ChargePage').then(m =>
 const GarantiesPage = React.lazy(() => import('./pages/GarantiesPage'));
 const BonCreatePage = React.lazy(() => import('./pages/BonCreatePage'));
 const VehiculesPage = React.lazy(() => import('./pages/VehiculesPage'));
+const GpsPage = React.lazy(() => import('./pages/GpsPage'));
+const VehicleGpsPage = React.lazy(() => import('./pages/VehicleGpsPage'));
 const FondCaissePage = React.lazy(() => import('./pages/FondCaissePage'));
 const FondCaisseDetailPage = React.lazy(() => import('./pages/FondCaisseDetailPage'));
 const CategoriesPage = React.lazy(() => import('./pages/CategoriesPage'));
@@ -659,6 +661,28 @@ const AppContent: React.FC = () => {
             <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur']}>
               <LayoutWithAccessCheck>
                 <VehiculesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/gps"
+          element={
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur']}>
+              <LayoutWithAccessCheck>
+                <GpsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/gps/vehicule/:id"
+          element={
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur']}>
+              <LayoutWithAccessCheck>
+                <VehicleGpsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

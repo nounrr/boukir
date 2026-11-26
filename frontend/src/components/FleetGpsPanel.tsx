@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { MapPin, Radio, Satellite, Smartphone } from 'lucide-react';
 import { useGetFleetPositionsQuery, useGetGpsStatusQuery, useGetVehicleTrailQuery, useLinkGpsMutation, type FleetVehicle } from '../store/api/gpsApi';
 import { useAuth } from '../hooks/redux';
@@ -121,6 +122,9 @@ export default function FleetGpsPanel() {
             <Satellite className="h-5 w-5 text-blue-600" /> Suivi GPS en direct
           </h2>
           <p className="text-sm text-gray-600">Position des véhicules (boîtiers AlloGPS et téléphones des chauffeurs), mise à jour toutes les 20 secondes.</p>
+          <Link to="/gps" className="mt-1 inline-block text-sm font-semibold text-blue-700 hover:underline">
+            Ouvrir la page GPS : tous les boîtiers, trajets du jour, arrêts et données →
+          </Link>
         </div>
         <div className="text-right text-xs text-gray-500">
           {gps.data?.configured ? (
