@@ -312,6 +312,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
                     .payment-print-page th,
                     .payment-print-page td { padding: 4px 6px !important; line-height: 1.2; }
                     .payment-print-page .logo-large { max-height: 42px !important; }
+                    .payment-print-page .logo-gold { height: 56px !important; }
                     .payment-print-page .titles h1 { font-size: 15px !important; margin-bottom: 1px !important; }
                     .payment-print-page .titles h2 { font-size: 12px !important; margin-bottom: 1px !important; }
                     .payment-print-page .titles p { font-size: 10px !important; line-height: 1.15 !important; }

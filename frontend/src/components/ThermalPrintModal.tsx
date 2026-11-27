@@ -1,7 +1,8 @@
 /* ThermalPrintModal.tsx — conserve ton design, logo net en base64 */
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { X, Printer } from 'lucide-react';
-import logo from './logo3.png';
+// Le logo doré, en noir : une imprimante thermique n'imprime que le noir (le doré sortirait pâle).
+import logo from './logo-gold-thermal.png';
 import logo1 from './logo1WB.png';
 import { getBonNumeroDisplay } from '../utils/numero';
 import BonBarcode from './BonBarcode';

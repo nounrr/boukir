@@ -1,6 +1,6 @@
 
 import React from 'react';
-import logo from "./logo-black.png";
+import logo from "./logo-gold.png";
 import logo1 from "./logo1.png";
 import logoPlaceholder from "./logo-placeholder.svg";
 interface CompanyHeaderProps {
@@ -47,13 +47,13 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
   return (
     <div className="flex justify-center items-center mb-6 border-b-2 border-orange-500 pb-4">
       <div className="flex items-center justify-center mb-4">
-        <div className="w-24 h-16 mr-4 flex items-center justify-center rounded">
-            
+        <div className={`${companyType === 'MPC' ? 'w-24 h-16' : 'h-24'} mr-4 flex items-center justify-center rounded`}>
+            {/* Boukir Diamond : le logo doré (B et nom en dessous), à sa taille ; MPC garde le sien. */}
             <img 
             src={logoCurrent}
             onError={(e) => { e.currentTarget.src = logoPlaceholder; }}
               alt={`Logo ${currentCompany.name}`} 
-              className="logo-large object-contain"
+              className={companyType === 'MPC' ? 'logo-large object-contain' : 'logo-gold h-24 w-auto max-w-none object-contain'}
             />
           
         </div>

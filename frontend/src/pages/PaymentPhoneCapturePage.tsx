@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Camera, CheckCircle2, Loader2, RefreshCcw, Send, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import boukirLogo from '../components/logo-black.png';
+import boukirLogo from '../components/logo-gold.png';
 
 type CaptureState = 'loading' | 'ready' | 'uploading' | 'success' | 'expired' | 'used' | 'cancelled' | 'error';
 
@@ -84,7 +84,7 @@ export default function PaymentPhoneCapturePage() {
       <div className="mx-auto flex min-h-[calc(100dvh-3rem)] max-w-md items-center">
         <section className="w-full overflow-hidden rounded-2xl bg-white shadow-2xl shadow-black/40">
           <header className="border-b border-slate-200 px-6 py-5">
-            <img src={boukirLogo} alt="Boukir Diamond" className="mb-4 h-12 w-auto object-contain" />
+            <img src={boukirLogo} alt="Boukir Diamond" className="mb-4 h-20 w-auto object-contain" />
             <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700"><ShieldCheck size={16} /> Capture sécurisée</p>
             <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950">Photo du justificatif</h1>
             <p className="mt-1 text-sm leading-6 text-slate-600">Cadrez le chèque ou la traite bien à plat, avec tous les bords visibles.</p>

@@ -1,5 +1,4 @@
-import logoBlack from '../logo-black.png';
-import logoWhite from '../logo-white.png';
+import logoGold from '../logo-gold.png';
 import React from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
@@ -40,8 +39,7 @@ const LoginPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <img src={logoBlack} alt="Boukir Diamond" className="logo-on-light h-24 w-auto object-contain" />
-          <img src={logoWhite} alt="Boukir Diamond" className="logo-on-dark h-24 w-auto object-contain" />
+          <img src={logoGold} alt="Boukir Diamond" className="h-32 w-auto object-contain" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Connexion à votre compte

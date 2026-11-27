@@ -1,8 +1,7 @@
 import React from 'react';
 import { useAppDispatch, useAuth } from '../../hooks/redux';
 import { logout } from '../../store/slices/authSlice';
-import logoBlack from '../logo-black.png';
-import logoWhite from '../logo-white.png';
+import logoGold from '../logo-gold.png';
 import { 
   LogOut, 
   User, 
@@ -44,7 +43,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
   };
 
   return (
-    <header className="navbar fixed top-0 left-0 right-0 z-40 px-3 md:px-4 py-3 bg-white shadow-sm border-b">
+    <header className="navbar fixed top-0 left-0 right-0 z-40 px-3 md:px-4 py-2 bg-white shadow-sm border-b">
       <div className="flex items-center justify-between w-full">
         {/* Bouton toggle sidebar + titre */}
         <div className="flex items-center space-x-2 md:space-x-4">
@@ -54,8 +53,8 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-          <img src={logoBlack} alt="Boukir Diamond" className="logo-on-light h-8 w-auto object-contain" />
-          <img src={logoWhite} alt="Boukir Diamond" className="logo-on-dark h-8 w-auto object-contain" />
+          {/* Le logo doré se lit sur fond clair comme sur fond sombre. */}
+          <img src={logoGold} alt="Boukir Diamond" className="h-10 w-auto object-contain" />
           {/* Titre adaptatif selon la taille d'écran */}
           <h1 className="text-lg md:text-xl font-semibold text-gray-900">
             <span className="hidden sm:inline">Gestion Commerciale</span>
